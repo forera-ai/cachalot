@@ -1,11 +1,26 @@
 # Cachalot — Engineering Handoff
 
-**Authoritative state as of 2026-09-26 (sixth MiniMax session), after the session that fixed MiniMax-M3's decode at
-an agent's context (section 18.6), the one that made its decode 5.5 % faster with identical outputs (18.5), the one
+**Authoritative state as of 2026-09-26 (seventh MiniMax session), after the session that shortened MiniMax-M3's
+mid-sized prefills (section 18.7), the one that fixed its decode at an agent's context (18.6), the one that made its decode 5.5 % faster with identical outputs (18.5), the one
 that gave it a bias-free expert bank (18.4), the one that gave it a second drive and its own decode attention
 kernel (18.3), the one that cut its per-token overhead and measured it to 64k (18.2), the one that made it faster
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
+
+> ## Start here (2026-09-26, 0.26.0): MiniMax-M3 tool-result prefills up to 40 % shorter
+>
+> - **Mid-sized prefills no longer read the whole next layer** (section 18.7): from 128 tokens a prefill chunk queued
+>   every expert of the next layer (GLM's tuning); MiniMax's skewed top-4 of 128 reaches ~74 of them at 150 tokens.
+>   MiniMax now speculates from 768 tokens (`CACHALOT_MINIMAX_SPECULATE_MIN_TOKENS`): 150-token turns 14.7 → 8.8-10.6
+>   s, 250 15 → 12 s, all short prefills of an agent run -17 %, same tokens.
+> - **Compressed record heads for prefill reads:** `~/MiniMax-M3-coded-bank/heads.zst` (4.0 GiB, zstd of each
+>   record's scales and codes at 0.29 of their size) makes a prefill read 6 % fewer bytes; decode keeps the plain
+>   head (its decompression was on the latency path). Byte-identical slots. `CACHALOT_MINIMAX_ZHEADS` 0/1/2.
+> - Closed: speculative decoding for MiniMax (misses scale exactly with the verify width). Priced: M14 idle warming
+>   (-5 to -15 % of a follow-up's misses).
+> - **Version 0.26.0.** 388 tests pass.
+
+**Previous block, 0.25.0:**
 
 > ## Start here (2026-09-26, 0.25.0): MiniMax-M3 at an agent's context no longer stalls
 >
@@ -7626,6 +7641,99 @@ config): each is a cold 17-20 s prefill here that also evicts decode's borrow. 3
 priced by a trace first (how much of a follow-up's read set the previous turns read). 4. M13b (above), best with
 the launch cost cut (w1 and w3 in one kernel call). 5. The in-memory block copy at the first request after a
 restart. 6. G-hit, Job 3, M12.
+
+### 18.7 MiniMax-M3 prefills: stop reading the next layer whole, and compressed record heads — 2026-09-26 (0.26.0)
+
+Hamed's goal, a seventh time: MiniMax-M3 as fast as possible at unchanged quality. 0.25.0 was committed at the start
+(tree clean). Tools confirmed first: caveman, Jev (`jev_verify` answered, 0.98) and the codebase-memory graph
+(ready, 5,366 nodes). Everything below keeps the same token ids (hashes printed by the benchmark, equal in every arm
+of every table).
+
+**1. Speculative decoding priced offline, closed.** `ROUTE_TRACE` decode traces of three texts (400 tokens each,
+from 18.5) replayed through LRU at the borrowed capacity (2,510 slots), verifying G consecutive tokens per forward
+(per layer the union of their experts): misses per forward 37.2 / 74.5 / 112.1 / 151.2 for G = 1 / 2 / 3 / 4 on the
+first text, 45.3 / 90.1 / 135.8 / 180.6 and 52.8 / 105.7 / 158.6 / 212.6 on the others. Misses scale exactly with
+the width: consecutive tokens' misses do not overlap (an expert a token misses is resident for the next one
+anyway). A draft can only save the ~80 ms non-read part of a token, so even a free n-gram draft needs >70 %
+acceptance to break even, and a batched verify is not bit-identical. Not built.
+
+**2. The expert records compress where the weights do not.** zstd on one 22.16 MiB coded record: the 3-bit
+weights 0.97 (three projections), the head (bf16 scales and 2-bit bias codes, 1.9 MiB) **0.29-0.34**, the same on
+every layer sampled (3, 20, 40, 59). Decompression 1.3-1.8 ms per head on one core, and Python 3.14's
+`compression.zstd` releases the GIL (507 heads/s on 1 thread, 5,614 on 16). So `heads.zst` (new,
+`coded_bank.write_zheads`, `benchmarks/minimax_coded_bank.py --zheads BANK`): each record's head payload at zstd
+level 19, 4 KiB-aligned, 13.68 → 4.01 GiB beside the bank (5 minutes to write, round-trip checked per head); the
+weights are still read from the records, so the bank is not rewritten and the mirror needs no copy. A read takes
+the head from it (0.6 MB instead of 2.0), decompresses and scatters it into the same views, and the bias rebuild
+runs as before: 220 random experts (20 raw) byte-compared with and without, 0 mismatches.
+
+- **Decode: no gain.** `TF_ALTERNATE=cachalot.minimax.coded_bank:ZHEADS:0:1`, 320 teacher-forced tokens at 2k:
+  read wait per miss 3.51 (off) vs 3.55 ms (on), non-read part 76.1 vs 80.4 ms. A decode layer has about one
+  miss; its latency is the weight preads', and the head already ran beside them. The decompression then sits on
+  the path.
+- **Prefill: faster.** Reads there are bandwidth-bound. Cold 2k prefill (a whole-bank read), five processes,
+  fresh text: on 22.1 / 23.0 / 22.6 s, off 23.5 / 23.5 / 23.4 s.
+- **Shipped for bulk reads only**: the store sets `reader.bulk` in `get_many_prefill` and clears it in
+  `get_many`; `CACHALOT_MINIMAX_ZHEADS` = 1 (default, bulk only), 2 (always), 0 (never). `minimax_followup_turns.py`
+  (2k, then 30/60/120/30/250/30-token turns, text @1,200,000), ABBA: short prefills 39.86 / 39.93 s off,
+  **37.23 / 37.62 s on (-6 %)**, every turn faster in both on arms; cold 2k 23.5 / 23.5 → 22.0 / 22.2 s; decode
+  190.6 / 186.6 → 185.6 / 187.5 ms (unchanged).
+
+**3. M14's trace found the bigger loss: mid-sized prefills read the whole next layer.** A scratch copy of
+`minimax_followup_turns.py` recorded each turn's requested experts and the resident set at its start (12 turns,
+text @2,000,000). Below 128 tokens a turn read what its demand set lacked (turn 1: 922 predicted, 927 read). From
+128 tokens on it read ~4,970 experts whatever the size: 150 tokens needed 2,173 and read 4,965. The reason is
+`StreamingSwitchGLU`'s prefill speculation (17.1): from `SPECULATE_MIN_TOKENS` = 128 a chunk queues *every* expert
+of the next layer behind its own misses. That was tuned for GLM (top-8 of 288, where 128 tokens reach ~97 % of a
+layer); MiniMax's top-4 of 128 is skewed, so 150 tokens reach ~74 experts of a layer and 250 ~92. The rest are read
+into transient slots and dropped, and the transients evict decode's borrowed residents.
+
+Speculation on (128) against off, same text (@2,500,000), ABBA, prefill seconds:
+
+| tokens | 128, run 1 / 2 | off, run 1 / 2 |
+|---|---|---|
+| 2,048 (cold) | 22.0 / — | 27.7 / 27.6 |
+| 150 | 14.71 / 14.73 (4,959 read) | 10.06 / 10.06 (2,935) |
+| 250 | 14.84 / 14.69 | 12.10 / 12.34 |
+| 500 | 14.93 / 14.41 | 13.55 / 13.65 |
+| 1,000 | 15.26 / 14.50 | 15.90 / 15.91 |
+| 150 (later) | 14.73 / 14.64 | 9.22 / 9.00 |
+
+The crossover is between 500 and 1,000 tokens. **Shipped: MiniMax speculates from 768 tokens**
+(`CACHALOT_MINIMAX_SPECULATE_MIN_TOKENS`; a per-layer `speculate_min_tokens`, GLM keeps 128). Validation, 768
+against 128, fresh text (@3,000,000), ABBA:
+
+| tokens | 768 | 128 |
+|---|---|---|
+| 2,048 (cold) | 21.9 / 21.7 s | 25.3 / 21.5 |
+| 150 | 9.84 / 9.86 | 14.67 / 14.67 |
+| 250 | 12.10 / 12.08 | 15.37 / 14.74 |
+| 500 | 13.73 / 13.80 | 14.81 / 14.78 |
+| 800 / 1,000 | 15.01 / 14.89 and 14.91 / 14.90 | 14.85 / 16.22 and 14.88 / 14.88 |
+| 150 (later) | 10.61 / 8.83 | 17.68 / 14.66 |
+| 60 | 5.82 / 4.88 | 6.15 / 6.08 |
+| **all short prefills** | **82.0 / 79.3 s** | 99.8 / 94.7 s |
+
+-17 % over the turns, up to -40 % on a 150-token tool result, and the decode after it is faster too (after the
+second 150-token turn 280 / 291 against 336 / 336 ms per token: the speculative transients no longer evict decode's
+borrow). Both changes together are in every arm of the second table (compressed heads on).
+
+**4. M14 idle-time warming, priced from the same trace.** Between turns, preloading the most-used experts of the
+conversation so far (counts over every earlier prefill and decode request, the top `capacity`) instead of the
+resident set decode left: a follow-up prefill's misses 922 → 798, 1,839 → 1,703, 2,358 → 2,242, 1,142 → 797,
+2,902 → 2,755, 795 → 746, 1,131 → 969, 1,415 → 1,288, 760 → 621, 2,173 → 1,816, 1,372 → 1,291, 1,778 → 1,740
+(-2 to -30 %, most -5 to -15 %); the decode's first touches -4 to -24 %. Counting only earlier prefills is worse,
+weighting decode x4 the same. A real gain for an agent's pauses, but it needs an idle hook in the server, a
+cancellable preload and a guard for the decode set; not built this session.
+
+**5. Server, end to end** (`serve-minimax.sh`, scratch snapshot directory): "391" for 17 x 23 (177-token cold
+prefill 16.8 s), `get_weather({"city": "Paris"})`, then "18°C, cloudy" reusing 434 of 465 tokens at 5.51 tok/s.
+388 tests pass.
+
+**What remains, ranked.** 1. M1b, a Hermes session on 0.26.0 (Hamed): tool results of 150-700 tokens are where
+0.26.0 gains most. 2. M14 idle warming (item 4). 3. The speculation for 768+ tokens reads the whole next layer; a
+predicted set (the next layer's router on this layer's output, a union over the chunk's tokens) could keep the
+overlap without the waste at 800-2,000 tokens. 4. M13b. 5. M12.
 
 ### 16.4 Piece 4 — images through the server, end to end, and three things piece 3 had missed — 2026-09-23
 

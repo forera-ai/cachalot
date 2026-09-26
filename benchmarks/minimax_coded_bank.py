@@ -7,6 +7,9 @@ Write, check or scan a bias-free MiniMax-M3 expert bank (cachalot.minimax.coded_
     # write the bank for MoE layers 3-42 (or all with no --layers), then check 64 random experts byte for byte
     PYTHONPATH=src ~/venvs/deepseek-v41/bin/python benchmarks/minimax_coded_bank.py --write MODEL OUT [--layers 3-42]
     PYTHONPATH=src ~/venvs/deepseek-v41/bin/python benchmarks/minimax_coded_bank.py --verify MODEL OUT [--n 64]
+    # compress every record's head into BANK/heads.zst + heads.json (HANDOFF 18.7; ~4.2 GiB, a few minutes),
+    # checking each blob against the record's own head
+    PYTHONPATH=src ~/venvs/deepseek-v41/bin/python benchmarks/minimax_coded_bank.py --zheads BANK [--level 19]
 
 Records are written in expert order, one file per layer; a layer file is written to `.part` and renamed, and
 `bank.json` is rewritten after every layer, so an interrupted run leaves a usable bank of the layers done.
@@ -33,6 +36,7 @@ from cachalot.minimax.coded_bank import (
     CodedBankReader,
     encode_biases,
     format_to_json,
+    write_zheads,
     layout_from_sizes,
 )
 from cachalot.minimax.experts import build_minimax_expert_index
@@ -138,6 +142,8 @@ def main():
     ap.add_argument("--scan", action="store_true")
     ap.add_argument("--write", action="store_true")
     ap.add_argument("--verify", action="store_true")
+    ap.add_argument("--zheads", action="store_true", help="MODEL is the bank directory")
+    ap.add_argument("--level", type=int, default=19)
     ap.add_argument("model")
     ap.add_argument("out", nargs="?")
     ap.add_argument("--layers", default=None, help="a-b, inclusive")
@@ -147,6 +153,11 @@ def main():
     if a.layers:
         lo, hi = (int(x) for x in a.layers.split("-"))
         layers = set(range(lo, hi + 1))
+    if a.zheads:
+        n, raw, packed, dt = write_zheads(a.model, a.level)
+        print(f"ZHEADS {n} heads, {raw / 2**30:.2f} -> {packed / 2**30:.2f} GiB ({packed / raw:.3f}), "
+              f"level {a.level}, {dt:.0f} s")
+        return
     if a.scan:
         scan(a.model)
     if a.write:

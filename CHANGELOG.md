@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.26.0 (2026-09-26)
+
+HANDOFF section 18.7.
+
+### Changed
+- **MiniMax-M3 prefill chunks speculate from 768 tokens, not 128.** From `SPECULATE_MIN_TOKENS` a prefill chunk
+  queues every expert of the next layer behind its own misses, which suits GLM (top-8 of 288) but not MiniMax, whose
+  skewed top-4 of 128 reaches ~74 experts of a layer at 150 tokens: a 150-token prefill read 4,965 experts for a
+  demand of ~2,200, and the speculative transients evicted decode's borrowed cache. Same text, same tokens, ABBA:
+  150-token turns 14.7 → 8.8-10.6 s, 250 15.1/14.7 → 12.1 s, 500 14.8 → 13.8 s, 800-1,000 and cold 2k unchanged;
+  all short prefills of the run 99.8 / 94.7 → 82.0 / 79.3 s. `CACHALOT_MINIMAX_SPECULATE_MIN_TOKENS` sets it;
+  `StreamingSwitchGLU.speculate_min_tokens` is the per-layer override (GLM keeps 128).
+- **MiniMax prefill reads take each record's head from a compressed copy.** A bank may hold `heads.zst` +
+  `heads.json`: every record's bf16 scales and bias codes (or biases), zstd level 19, 13.68 → 4.01 GiB. A prefill
+  (bulk) read takes the head from it and the weights from the record: 6 % fewer bytes, the same bytes in the slot.
+  Short prefills 39.9 / 39.9 → 37.2 / 37.6 s, cold 2k 23.5 → 22.1 s, decode unchanged. Decode reads keep the plain
+  head: there the ~1.5 ms decompression is on the latency path and measured slower.
+  `CACHALOT_MINIMAX_ZHEADS` = 1 (default, bulk only), 2 (always), 0 (never). The store sets `reader.bulk`.
+
+### Added
+- `coded_bank.write_zheads` and `benchmarks/minimax_coded_bank.py --zheads BANK [--level 19]` (a few minutes;
+  each blob round-trip checked).
+
+### Measured, not changed
+- Speculative decoding for MiniMax: verifying G tokens per forward reads exactly G times the misses (37.2 / 74.5 /
+  151.2 for G = 1 / 2 / 4); a draft could only save the non-read part. Closed.
+- M14 idle-time warming, priced from a trace: a popularity preload between turns cuts a follow-up's prefill misses
+  5-15 % (2-30 %). Not built yet.
+
 ## 0.25.0 (2026-09-26)
 
 HANDOFF section 18.6.

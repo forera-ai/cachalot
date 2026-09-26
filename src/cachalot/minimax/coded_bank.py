@@ -22,6 +22,13 @@ the stacked checkpoint would have put there, so nothing downstream changes and o
 
 Layout on disk: `bank.json` (format, the records: layer, expert, file, offset, kind) and one `layer-NNN.bin`
 per MoE layer. A bank may cover only some layers; the others are read from the checkpoint as before.
+A bank may also hold `heads.zst` + `heads.json` (HANDOFF 18.7): every record's head (scales and codes, or scales
+and biases) compressed with zstd, 0.29 of its size, since bf16 scales and 2-bit codes are far from random while the
+3-bit weights are not (zstd gets 3 % there). A read then takes the head from that file (4 KiB-aligned blobs) and
+the weights from the record as before: 1.4 MB fewer bytes per expert (-6 %), the same bytes in the slot.
+Only bulk (prefill) reads use it by default: a decode read waits on the ~1.5 ms decompression and got slower.
+`CACHALOT_MINIMAX_ZHEADS=0` never uses it, `=2` always does (ZHEADS, a module int, for TF_ALTERNATE).
+
 `CACHALOT_MINIMAX_BANK` selects the bank directory, `CACHALOT_MINIMAX_BANK_MIRROR` an identical copy on a
 second drive (the tail `CACHALOT_MIRROR_FRACTION` of each weight piece is read from it, like the stacked
 checkpoint's mirror). ENABLED (a module constant) may be flipped between reads: both paths fill a slot with
@@ -47,6 +54,15 @@ K_BASE = -6  # code c in 0..3 means k = c - 6
 ENABLED = int(os.environ.get("CACHALOT_MINIMAX_BANK_ENABLED", "1"))  # an int, so TF_ALTERNATE can flip it
 # Experiment knob: a mirror fraction that overrides the reader's own when >= 0 (TF_ALTERNATE A/Bs, HANDOFF 18.5)
 MIRROR_FRACTION = -1.0
+# 1: compressed heads for bulk (prefill) reads only; 2: for every read; 0: never. An int, so TF_ALTERNATE can flip
+# it. Decode waits on each expert, and the ~1.5 ms decompression is on that path: 18.7 measured it slower there.
+ZHEADS = int(os.environ.get("CACHALOT_MINIMAX_ZHEADS", "1"))
+ZHEADS_VERSION = 1
+
+try:
+    from compression import zstd as _zstd  # Python 3.14+
+except ImportError:  # pragma: no cover
+    _zstd = None
 
 
 def _align(n: int) -> int:
@@ -131,6 +147,10 @@ class BankLayout:
     def raw_head(self) -> int:
         return _align(6 * self.scales)
 
+    def head_payload(self, kind: str) -> int:
+        """The head's bytes before padding: what heads.zst compresses."""
+        return 3 * (self.scales + self.codes) if kind == "coded" else 6 * self.scales
+
     def record(self, kind: str) -> int:
         return (self.coded_head if kind == "coded" else self.raw_head) + 3 * self.weight
 
@@ -162,6 +182,16 @@ class CodedBankReader(ExpertReader):
             print(f"[bank] mirror {self.bank_mirror} has no bank.json; bank mirror off", flush=True)
             self.bank_mirror = None
         self.coded_reads = 0
+        self.zhead_reads = 0
+        self.bulk = False  # set by the store: True while a prefill reads (bandwidth-bound)
+        self.zheads: dict[tuple[int, int], tuple[int, int]] = {}
+        self.zheads_file = None
+        zmeta = self.bank_dir / "heads.json"
+        if _zstd is not None and zmeta.is_file():
+            z = json.loads(zmeta.read_text())
+            if z.get("version") == ZHEADS_VERSION and (self.bank_dir / z["file"]).is_file():
+                self.zheads_file = self.bank_dir / z["file"]
+                self.zheads = {(r[0], r[1]): (r[2], r[3]) for r in z["records"]}
         bias_table()
 
     def covers(self, layer: int, expert: int) -> bool:
@@ -174,9 +204,25 @@ class CodedBankReader(ExpertReader):
                 # a trimmed checkpoint (index_from_bank) has no other copy of this expert
                 raise LookupError(f"expert {entry.layer}/{entry.expert}: not in {self.bank_dir} and no checkpoint bytes")
             return super().read_expert_into(entry, views)
-        return self._read_record(rec, views)
+        return self._read_record(rec, views, (entry.layer, entry.expert))
 
-    def _read_record(self, rec, views) -> int:
+    def _head(self, key, kind, fd, offset) -> bytes | None:
+        """The head's payload from heads.zst, or None when this bank has none for the expert."""
+        use = ZHEADS == 2 or (ZHEADS == 1 and self.bulk)
+        z = self.zheads.get(key) if use else None
+        if z is None:
+            return None
+        zoff, zlen = z
+        blob = os.pread(self._fd(self.zheads_file), zlen, zoff)
+        if len(blob) != zlen:
+            raise OSError(f"short compressed head read for {key}: {len(blob)} of {zlen}")
+        payload = _zstd.decompress(blob)
+        if len(payload) != self.layout.head_payload(kind):
+            raise OSError(f"compressed head for {key} is {len(payload)} bytes, expected {self.layout.head_payload(kind)}")
+        self.zhead_reads += 1
+        return payload
+
+    def _read_record(self, rec, views, key=None) -> int:
         fname, offset, kind = rec
         lay = self.layout
         fd = self._fd(self.bank_dir / fname)
@@ -202,10 +248,15 @@ class CodedBankReader(ExpertReader):
             pos += lay.weight
         scales = [np.asarray(views[f"{p}.scales"]).view(np.uint16) for p in PROJS]
         biases = [np.asarray(views[f"{p}.biases"]).view(np.uint16) for p in PROJS]
+        zhead = self._head(key, kind, fd, offset) if key is not None else None
         if kind == "coded":
             codes = bytearray(3 * lay.codes)
             bufs = [memoryview(views[f"{p}.scales"]).cast("B") for p in PROJS] + [memoryview(codes)]
-            got = os.preadv(fd, bufs, offset)
+            if zhead is not None:
+                _scatter(zhead, bufs)
+                got = 3 * (lay.scales + lay.codes)
+            else:
+                got = os.preadv(fd, bufs, offset)
             if got != 3 * (lay.scales + lay.codes):
                 raise OSError(f"short head read from {fname}@{offset}: {got}")
             packed = np.frombuffer(codes, np.uint8)
@@ -219,7 +270,11 @@ class CodedBankReader(ExpertReader):
             bufs = [memoryview(views[f"{p}.scales"]).cast("B") for p in PROJS] + [
                 memoryview(views[f"{p}.biases"]).cast("B") for p in PROJS
             ]
-            got = os.preadv(fd, bufs, offset)
+            if zhead is not None:
+                _scatter(zhead, bufs)
+                got = 6 * lay.scales
+            else:
+                got = os.preadv(fd, bufs, offset)
             if got != 6 * lay.scales:
                 raise OSError(f"short head read from {fname}@{offset}: {got}")
             total = got
@@ -237,6 +292,60 @@ class CodedBankReader(ExpertReader):
             total += got
         self.coded_reads += 1
         return total
+
+
+def _scatter(payload: bytes, bufs) -> None:
+    """Copy a contiguous head payload into the buffers a head preadv would have filled, in order."""
+    pos = 0
+    for b in bufs:
+        b[:] = payload[pos:pos + len(b)]
+        pos += len(b)
+
+
+def write_zheads(bank_dir, level: int = 19, threads: int = 16) -> tuple[int, int, int, float]:
+    """Write heads.zst + heads.json into a bank: each record's head payload, zstd at `level`, in bank.json's
+    order, each blob 4 KiB-aligned and checked by a round trip. Returns (heads, raw bytes, file bytes, seconds)."""
+    import fcntl
+    import time
+    from concurrent.futures import ThreadPoolExecutor
+
+    bank = Path(bank_dir)
+    meta = json.loads((bank / "bank.json").read_text())
+    lay = BankLayout(**meta["layout"])
+    fds: dict[str, int] = {}
+    for r in meta["records"]:
+        if r[2] not in fds:
+            fds[r[2]] = os.open(bank / r[2], os.O_RDONLY)
+            fcntl.fcntl(fds[r[2]], fcntl.F_NOCACHE, 1)
+
+    def job(r):
+        n = lay.head_payload(r[4])
+        head = os.pread(fds[r[2]], n, r[3])
+        blob = _zstd.compress(head, level=level)
+        if len(head) != n or _zstd.decompress(blob) != head:
+            raise RuntimeError(f"compressed head round trip failed for {r[:2]}")
+        return blob, n
+
+    part = bank / "heads.zst.part"
+    fd = os.open(part, os.O_CREAT | os.O_WRONLY | os.O_TRUNC, 0o644)
+    recs, offset, raw_bytes, t0 = [], 0, 0, time.perf_counter()
+    try:
+        with ThreadPoolExecutor(threads) as pool:
+            for r, (blob, n) in zip(meta["records"], pool.map(job, meta["records"]), strict=True):
+                os.pwrite(fd, blob, offset)
+                recs.append([r[0], r[1], offset, len(blob)])
+                raw_bytes += n
+                offset += (len(blob) + 4095) // 4096 * 4096
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+        for f in fds.values():
+            os.close(f)
+    os.replace(part, bank / "heads.zst")
+    tmp = bank / "heads.json.part"
+    tmp.write_text(json.dumps({"version": ZHEADS_VERSION, "file": "heads.zst", "level": level, "records": recs}))
+    os.replace(tmp, bank / "heads.json")
+    return len(recs), raw_bytes, offset, time.perf_counter() - t0
 
 
 def format_to_json(fmt: ExpertFormat) -> dict:

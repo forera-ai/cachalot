@@ -159,6 +159,9 @@ class StreamingSwitchGLU(nn.Module):
     decode_eval = True
     # True queues a decode token's hit experts before its misses are awaited (DECODE_HIT_OVERLAP)
     hit_overlap = False
+    # a prefill chunk of at least this many tokens reads the whole next layer while this one computes; None
+    # follows SPECULATE_MIN_TOKENS (MiniMax sets its own: its skewed top-4 of 128 needs more tokens, HANDOFF 18.7)
+    speculate_min_tokens = None
 
     def __call__(self, x, indices, prefetch=None):
         shape = x.shape
@@ -176,7 +179,8 @@ class StreamingSwitchGLU(nn.Module):
         early: dict[int, mx.array] = {}
         if prefill:
             speculate = None
-            if flat_x.shape[0] >= SPECULATE_MIN_TOKENS:
+            floor = SPECULATE_MIN_TOKENS if self.speculate_min_tokens is None else self.speculate_min_tokens
+            if flat_x.shape[0] >= floor:
                 speculate = self._next_layer_entries()
             residents = self._store.get_many_prefill(entries, speculate=speculate)
         else:

@@ -609,6 +609,7 @@ class ResidentExpertStore:
         results: list[ResidentExpert | None] = [None] * len(entries)
         pending: list[tuple[int, ExpertEntry, ExpertSlot | None]] = []
         awaited: list[tuple[int, Key]] = []          # misses whose load is already in flight
+        self.reader.bulk = False  # decode waits on each read: latency over bytes
 
         with self._lock:
             requested = {(e.layer, e.expert) for e in entries}
@@ -930,6 +931,8 @@ class ResidentExpertStore:
         """
         results: list[ResidentExpert | None] = [None] * len(entries)
         waits: list[tuple[int, Key]] = []
+        # a prefill's reads are bandwidth-bound: a reader may trade CPU for bytes (MiniMax's compressed heads)
+        self.reader.bulk = True
         with self._lock:
             # give back what decode borrowed: the transient slots are this path's
             if PREFILL_SHRINK_ALL:

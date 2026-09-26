@@ -125,6 +125,10 @@ def _wanted(name: str) -> bool:
 DECODE_OVERLAP = os.environ.get("CACHALOT_MINIMAX_DECODE_OVERLAP", "1") != "0"
 PREDICT_TOPK = int(os.environ.get("CACHALOT_MINIMAX_PREDICT_TOPK", "0"))
 DECODE_BORROW = os.environ.get("CACHALOT_MINIMAX_DECODE_BORROW", "1") != "0"
+# HANDOFF 18.7: a prefill chunk reads the whole next layer ahead only from this many tokens. GLM's 128 suits top-8
+# of 288; MiniMax's routing is skewed (150 tokens reach ~74 of 128 experts per layer), so below ~750 tokens the
+# speculative reads cost more than the overlap saves (150 tokens: 14.7 -> 9.0-10.1 s; 1,000: 15.3 vs 15.9 s).
+SPECULATE_MIN_TOKENS = int(os.environ.get("CACHALOT_MINIMAX_SPECULATE_MIN_TOKENS", "768"))
 DECODE_BORROW_KEEP = 16  # transient slots never borrowed (the store's PREDICT_SLOT_RESERVE)
 
 
@@ -194,6 +198,7 @@ class MiniMaxModel(GlmModel):
             if layer.is_sparse:
                 moe: MiniMaxM3SparseMoeBlock = layer.block_sparse_moe
                 moe.switch_mlp = StreamingSwitchGLU(i, self.store, self.expert_index, self.expert_format, moe.activation)
+                moe.switch_mlp.speculate_min_tokens = SPECULATE_MIN_TOKENS
                 n_moe += 1
 
         self._install_decode_hooks()
