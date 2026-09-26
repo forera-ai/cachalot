@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.27.0 (2026-09-26)
+
+HANDOFF section 18.8.
+
+### Changed
+- **MiniMax-M3 prefill chunks read ahead only the next layer's predicted experts.** From 100 to 3,072 tokens a
+  chunk applies the next layer's norm and router to this layer's residual (top-3 per token), and queues the union,
+  most-picked first, behind its own misses, instead of the whole next layer from 768 tokens (or nothing below).
+  The prediction is ~90-97 % precise and 78-95 % complete. Same text, same token ids in every arm, ABAB: 150-token
+  turns 9.4-9.8 → 8.3-9.1 s, 500 13.2-13.7 → 11.4-12.0 s, 800-1,500 14.5-15.1 → 12.5-13.4 s, 3,000 16.1 → 15.0 s;
+  a run's short prefills 77.0 / 79.0 → 68.0-72.8 s and 75.7 / 75.7 → 70.6 / 70.6 s. Below ~100 tokens nothing
+  changes; above 3,072 the whole layer is read again (4,096: 17.7 s whole against 19.4 predicted).
+  `CACHALOT_MINIMAX_PREFILL_PREDICT` (1/0), `_PREDICT_MIN` (100), `_PREDICT_MAX` (3072), `_PREDICT_TOPK` (3).
+  `StreamingSwitchGLU` takes an explicit `speculate` list; GLM is unchanged.
+- **MiniMax-M3 warms its expert cache between requests.** 0.2 s after a request the server moves the resident set
+  towards the experts this process has requested most (`ResidentExpertStore.warm`: missing ones read into the slots
+  of residents outside that set, never more residents than before, most wanted most recently used); the next
+  request cancels it and waits one batch of reads at most (a cancel measured 0.3 s in). 0.3-2.2 s of reads per
+  pause. With a 4 s pause between agent turns, ABAB, same token ids: decode 207.6 / 208.8 → 183.7 / 182.2 ms per
+  token (-12 %), short prefills 52.1 / 52.4 → 49.0 / 50.7 s. `CACHALOT_MINIMAX_IDLE_WARM=0` turns it off; GLM
+  has it off (`GlmModel.IDLE_WARM`). The server prints `idle warm: N experts in S s`.
+
+### Added
+- `benchmarks/minimax_followup_turns.py`: prediction recall and precision per turn, `WARM`, `WARM_SECONDS`, `PAUSE`.
+
+### Measured, not changed
+- Prediction top-2 / top-4 / top-6 against top-3: 70.2 / 70.0-72.8 / 78.9 against 68.0-74.2 s (top-6 reads too
+  much); predicting from 16 tokens: the same as not below 100. Predicted experts first, then the rest of the layer,
+  above 3,072 tokens: the same as the whole layer.
+
 ## 0.26.0 (2026-09-26)
 
 HANDOFF section 18.7.

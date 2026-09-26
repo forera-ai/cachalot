@@ -115,6 +115,54 @@ def test_decode_hook_is_bit_identical():
     assert seen == [None, ["p"]]
 
 
+def test_prefill_hook_passes_its_prediction_and_changes_no_output():
+    """A prefill chunk's next-layer prediction (HANDOFF 18.8) only chooses what is read ahead."""
+    from cachalot.minimax.language import MiniMaxM3SparseMoeBlock, ModelArgs
+
+    args = ModelArgs(model_type="minimax_m3", hidden_size=32, intermediate_size=16, dense_intermediate_size=16,
+                     shared_intermediate_size=16, num_attention_heads=2, num_key_value_heads=1, num_hidden_layers=2,
+                     num_local_experts=8, num_experts_per_tok=2, rms_norm_eps=1e-6, rope_theta=1e4, rotary_dim=8,
+                     vocab_size=10)
+    mx.random.seed(1)
+    moe = MiniMaxM3SparseMoeBlock(args)
+    table = mx.random.normal((8, 32))
+    seen = []
+
+    def switch(x, inds, prefetch=None, speculate=None):
+        seen.append(speculate)
+        return x[..., None, :] * table[inds]
+
+    moe.switch_mlp = switch
+    x = mx.random.normal((1, 5, 32))
+    plain = moe(x)
+    moe.prefill_hook = lambda r, inds: ["e3", "e1"]
+    hooked = moe(x, residual=x)
+    assert mx.array_equal(plain, hooked).item()
+    assert seen == [None, ["e3", "e1"]]
+
+
+def test_streaming_switch_reads_the_given_speculation_instead_of_the_whole_layer():
+    from cachalot.glm.experts import StreamingSwitchGLU
+
+    calls = []
+
+    class Store:
+        def get_many_prefill(self, entries, speculate=None):
+            calls.append(speculate)
+            raise StopIteration  # the call is all this test needs
+
+    index = {(layer, e): (layer, e) for layer in range(2) for e in range(4)}
+    switch = StreamingSwitchGLU(0, Store(), index, None, None)
+    switch.speculate_min_tokens = 2
+    x, inds = mx.zeros((1, 3, 4)), mx.array([[[0, 1], [1, 2], [0, 2]]])
+    for speculate in (None, [(1, 3)], []):
+        try:
+            switch(x, inds, speculate=speculate)
+        except StopIteration:
+            pass
+    assert calls == [[(1, e) for e in range(4)], [(1, 3)], []]
+
+
 def test_stacked_quantized_linears_are_bit_identical():
     """HANDOFF 18.2: q/k/v (and gate/up) as one quantized matmul give the same rows as separate ones."""
     import mlx.nn as nn

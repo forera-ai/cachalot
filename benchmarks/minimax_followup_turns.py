@@ -10,15 +10,23 @@ and misses, then the reply's ms per token and misses per token. Same text for ev
 import os
 import statistics
 import sys
+import threading
 import time
 
 
+from cachalot.minimax import model as mm
 from cachalot.minimax.model import MiniMaxModel
 
 MODEL = sys.argv[1]
 N = int(os.environ.get("N", "2048"))
 D = int(os.environ.get("D", "48"))
 SHORT = [int(v) for v in os.environ.get("SHORT", "30,60,120,30,250,30").split(",")]
+# HANDOFF 18.8: WARM=1 runs the server's idle-time warming between turns (not counted in the turn times),
+# cut off after WARM_SECONDS as a short pause would cut it
+WARM = os.environ.get("WARM", "0") != "0"
+WARM_SECONDS = float(os.environ.get("WARM_SECONDS", "0"))
+# seconds between turns in every arm (the warming runs inside it, when on): a real pause
+PAUSE = float(os.environ.get("PAUSE", "0"))
 
 m = MiniMaxModel(MODEL, expert_budget_gib=float(os.environ.get("GLM_BUDGET_GIB", "52")), heartbeat_seconds=0,
                  verbose=False)
@@ -30,6 +38,8 @@ pos = 0
 
 def prefill(n):
     global pos
+    for key in mm.PREFILL_PREDICT_STATS:
+        mm.PREFILL_PREDICT_STATS[key] = 0
     s0, t0 = m.store.stats(), time.perf_counter()
     logits = m.prefill(tokens[pos:pos + n], cache)
     pos += n
@@ -47,9 +57,40 @@ def decode(logits, n):
     return 1000 * (time.perf_counter() - t0) / n, (s1.cache_misses - s0.cache_misses) / n, ids
 
 
+def predicted():
+    # HANDOFF 18.8: the prefill's next-layer prediction, recall and precision over the layer pairs it covered
+    st = mm.PREFILL_PREDICT_STATS
+    if not st["predicted"]:
+        return ""
+    return (f" predict recall={st['overlap'] / max(1, st['actual']):.3f} "
+            f"precision={st['overlap'] / st['predicted']:.3f} predicted={st['predicted']} actual={st['actual']}")
+
+
+def idle():
+    t_pause = time.perf_counter() + PAUSE
+    try:
+        return _idle()
+    finally:
+        time.sleep(max(0.0, t_pause - time.perf_counter()))
+
+
+def _idle():
+    if not WARM:
+        return ""
+    cancel = threading.Event()
+    timer = threading.Timer(WARM_SECONDS, cancel.set) if WARM_SECONDS > 0 else None
+    if timer is not None:
+        timer.start()
+    t0 = time.perf_counter()
+    read, _ = m.warm_now(cancel)
+    if timer is not None:
+        timer.cancel()
+    return f" warm={read} in {time.perf_counter() - t0:.1f}s"
+
+
 logits, dt, miss = prefill(N)
 ms, mpt, _ = decode(logits, D)
-print(f"TURN 0 prefill={N} {dt:.1f}s decode {ms:.1f} ms/token misses/token {mpt:.1f}", flush=True)
+print(f"TURN 0 prefill={N} {dt:.1f}s decode {ms:.1f} ms/token misses/token {mpt:.1f}{idle()}", flush=True)
 pre_s, dec_ms, all_ids = [], [], []
 for i, n in enumerate(SHORT, 1):
     logits, dt, miss = prefill(n)
@@ -58,7 +99,7 @@ for i, n in enumerate(SHORT, 1):
     dec_ms.append(ms)
     all_ids += ids
     print(f"TURN {i} prefill={n} {dt:.2f}s misses={miss} decode {ms:.1f} ms/token misses/token {mpt:.1f} "
-          f"ids_head={ids[:6]}", flush=True)
+          f"ids_head={ids[:6]}{predicted()}{idle()}", flush=True)
 print(f"RESULT short_prefill_total_s={sum(pre_s):.2f} decode_mean_ms={statistics.mean(dec_ms):.1f} "
       f"turns_total_s={sum(pre_s) + sum(dec_ms) * D / 1000:.1f} ids_hash={hash(tuple(all_ids))}", flush=True)
 m.close()

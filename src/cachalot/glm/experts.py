@@ -163,7 +163,7 @@ class StreamingSwitchGLU(nn.Module):
     # follows SPECULATE_MIN_TOKENS (MiniMax sets its own: its skewed top-4 of 128 needs more tokens, HANDOFF 18.7)
     speculate_min_tokens = None
 
-    def __call__(self, x, indices, prefetch=None):
+    def __call__(self, x, indices, prefetch=None, speculate=None):
         shape = x.shape
         dim = shape[-1]
         k = indices.shape[-1]
@@ -178,10 +178,12 @@ class StreamingSwitchGLU(nn.Module):
         prefill = PREFILL_SCAN and flat_x.shape[0] > 1
         early: dict[int, mx.array] = {}
         if prefill:
-            speculate = None
-            floor = SPECULATE_MIN_TOKENS if self.speculate_min_tokens is None else self.speculate_min_tokens
-            if flat_x.shape[0] >= floor:
-                speculate = self._next_layer_entries()
+            # speculate: the caller's prediction of the next layer's experts (MiniMax, HANDOFF 18.8); an empty
+            # list reads nothing ahead. None falls back to the whole next layer from a floor of tokens.
+            if speculate is None:
+                floor = SPECULATE_MIN_TOKENS if self.speculate_min_tokens is None else self.speculate_min_tokens
+                if flat_x.shape[0] >= floor:
+                    speculate = self._next_layer_entries()
             residents = self._store.get_many_prefill(entries, speculate=speculate)
         else:
             on_hits = None

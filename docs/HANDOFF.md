@@ -1,11 +1,25 @@
 # Cachalot — Engineering Handoff
 
-**Authoritative state as of 2026-09-26 (seventh MiniMax session), after the session that shortened MiniMax-M3's
-mid-sized prefills (section 18.7), the one that fixed its decode at an agent's context (18.6), the one that made its decode 5.5 % faster with identical outputs (18.5), the one
+**Authoritative state as of 2026-09-26 (eighth MiniMax session), after the session that made MiniMax-M3's prefills
+read ahead only predicted experts and warm its cache between requests (section 18.8), the one that shortened its
+mid-sized prefills (18.7), the one that fixed its decode at an agent's context (18.6), the one that made its decode 5.5 % faster with identical outputs (18.5), the one
 that gave it a bias-free expert bank (18.4), the one that gave it a second drive and its own decode attention
 kernel (18.3), the one that cut its per-token overhead and measured it to 64k (18.2), the one that made it faster
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
+
+> ## Start here (2026-09-26, 0.27.0): MiniMax-M3 predicts its prefill reads and warms up between requests
+>
+> - **Predicted read-ahead** (section 18.8): a prefill chunk of 100-3,072 tokens applies the next layer's router to
+>   this layer's residual (top-3 per token) and reads ahead the union, not the whole layer (from 768) or nothing
+>   (below). ~92 % precise. 150-3,000-token prefills -6 to -15 %, same tokens. `CACHALOT_MINIMAX_PREFILL_PREDICT*`.
+> - **Idle-time warming:** 0.2 s after a request the server swaps residents for the process's most-requested
+>   experts (0.3-2.2 s of reads); the next request cancels it. With 4 s pauses between agent turns: decode -12 %,
+>   short prefills -3 to -6 %, same tokens. `CACHALOT_MINIMAX_IDLE_WARM=0` turns it off.
+> - Server end to end: "391", `get_weather`, an 870-token tool result in 13.5 s and its reply at 5.98 tok/s.
+> - **Version 0.27.0.** 392 tests pass.
+
+**Previous block, 0.26.0:**
 
 > ## Start here (2026-09-26, 0.26.0): MiniMax-M3 tool-result prefills up to 40 % shorter
 >
@@ -7734,6 +7748,89 @@ prefill 16.8 s), `get_weather({"city": "Paris"})`, then "18°C, cloudy" reusing 
 0.26.0 gains most. 2. M14 idle warming (item 4). 3. The speculation for 768+ tokens reads the whole next layer; a
 predicted set (the next layer's router on this layer's output, a union over the chunk's tokens) could keep the
 overlap without the waste at 800-2,000 tokens. 4. M13b. 5. M12.
+
+### 18.8 MiniMax-M3: predicted prefill read-ahead, and idle-time warming — 2026-09-26 (0.27.0)
+
+Hamed's goal, an eighth time: MiniMax-M3 as fast as possible at unchanged quality. 0.26.0 was committed at the start
+(tree clean). Tools confirmed first: caveman, Jev (`jev_verify` answered, 1.0) and the codebase-memory graph (ready,
+5,393 nodes). Every arm below printed the same `ids_hash` as its pair. The instrument throughout is
+`benchmarks/minimax_followup_turns.py` (bank, direct reads, mirror 0.13, 2k context, then short turns, `D` greedy
+tokens each), which now prints the prediction's recall and precision per turn and takes `WARM`, `WARM_SECONDS` and
+`PAUSE`. Filler: the 4.4 MB scratch concatenation of the repo's `.md`/`.py` text used since 18.3.
+
+**1. M16, predicted read-ahead (shipped).** 18.7 left a prefill chunk reading the whole next layer from 768 tokens
+(~4,970 experts whatever the demand) and nothing ahead below it. Now `MiniMaxM3SparseMoeBlock` calls a
+`prefill_hook(residual, inds)` for a prefill chunk: the next MoE layer's `post_attention_layernorm` and router applied
+to this layer's residual (the input of its MoE, before this layer's output is added), top-k per token, evaluated in
+the same sync as this layer's routing; the union of the predictions, most-picked first, goes to
+`StreamingSwitchGLU(..., speculate=...)`, which queues it behind this layer's misses exactly as the whole layer was
+queued (same transient budget, unused loads freed by `release_prefill_layer`). Which experts are read early changes;
+the arithmetic does not. The hook also counts, at the next layer, the predicted set against the routed one
+(`PREFILL_PREDICT_STATS`).
+
+Accuracy, top-4: recall 0.86 / 0.89 / 0.91 / 0.95 / 0.94 / 0.94 and precision 0.89 / 0.91 / 0.94 / 0.96 / 0.95 / 0.97
+at 150 / 250 / 500 / 800 / 1,000 / 1,500 tokens. Same text (@3,500,000), turns 150/250/500/800/1,000/1,500 after a
+2k prefill, short-prefill totals:
+
+| arm | runs (s) | 150-token turn | 1,000-token turn | misses at 1,000 |
+|---|---|---|---|---|
+| whole layer from 768 (0.26.0) | 77.0 / 79.0 / 83.7 | 9.42 / 9.76 / 9.54 | 14.53 / 14.94 / 18.55 | 4,966 |
+| top-2 | 70.2 | 8.68 | 14.95 | 4,198 |
+| top-3 | 68.0 / 74.2 | 8.84 / 9.08 | 12.54 / 12.85 | 4,279 |
+| top-4 | 70.0 / 72.8 | 9.34 / 9.32 | 12.82 / 14.54 | 4,373 |
+| top-6 | 78.9 | 10.62 | 13.63 | 4,536 |
+
+Precision matters more than recall (a wrong prediction costs a full read; a missed one is read on demand a layer
+later, still overlapped with the rest of that layer's reads). The later arms of the series drifted slower (outliers
+of 15-18 s in single turns in every configuration), so the per-turn medians decide: top-3 ships. Below 100 tokens
+(30/60/120-token turns, predicting from 16 against from 100, ABAB): 37.7 / 37.1 against 38.0 / 37.1 s, nothing to
+gain. Validation of the shipped defaults on fresh text (@3,800,000), ABAB, turns 150/300/700/1,200/4,096/200:
+**70.55 / 70.63 s against 75.69 / 75.65 s**, every turn faster except the 4,096-token one (18.24 / 18.42 against
+16.62 / 16.70). Crossover (@3,900,000, ABAB): 2,048 15.1 / 15.0 against 16.2 / 16.1, 2,500 14.3 / 14.4 against 15.4 /
+15.4, 3,000 15.0 / 15.3 against 16.1 / 16.1, 4,096 19.4 / 19.6 against 17.7 / 17.7. So above `PREFILL_PREDICT_MAX`
+= 3,072 the whole layer is read again: a long chunk's compute hides the extra reads, and its unpredicted experts
+(5 %) would otherwise be read after its routing. Reading the predicted experts first and then the rest of the layer
+above 3,072 (@4,000,000, ABAB, 4,096/3,500/6,000): 61.85 / 64.29 against 62.00 / 62.41 s, no gain, not kept.
+
+**2. M14, idle-time warming (shipped).** `ResidentExpertStore.warm(ranked, cancel)` makes the resident set the head
+of a ranking: the missing ones are read (batches of one per load worker) into the slots of residents outside the
+head, least recently used first, so the resident count never grows; afterwards the head is in rank order, most
+wanted most recently used; `cancel` is checked between batches; warming reads are not misses (`warm_bytes`).
+`GlmModel.warm_now()` ranks by the store's `use_counts` (every prefill layer call and every decode token since the
+process started, the pricing's "prefill and decode" counts of 18.7 item 4). `stream()` and `generate()` start a
+daemon thread when they finish (after `IDLE_WARM_DELAY` = 0.2 s) and stop it (set, join) when the next request
+starts; MiniMax turns it on (`CACHALOT_MINIMAX_IDLE_WARM`, default 1), GLM keeps it off.
+
+Same text (@2,000,000), turns 30/60/120/30/250/30/150/60, 32-token replies:
+
+| arm | short prefills | decode mean | notes |
+|---|---|---|---|
+| no pause, warm off | 43.74 / 44.41 s | 205.9 / 209.3 ms | |
+| no pause, warm on | 46.97 / 46.69 s | 184.4 / 184.5 ms | prefill starts the instant warming ends |
+| 4 s pause, warm off | 52.12 / 52.41 s | 207.6 / 208.8 ms | |
+| 4 s pause, warm on | **48.95 / 50.67 s** | **183.7 / 182.2 ms** | warming 0.8-2.2 s inside the pause |
+
+Warming reads 265-689 experts per pause and cuts a follow-up prefill's misses 2-20 % and decode's misses per token
+by up to a fifth (turn 2: 52.0 → 41.9). Two things the table shows that are not understood: with no pause the prefill
+after warming is slower despite fewer misses (per miss 3.5 → 4.6-5.1 ms on the 30-token turns), and a 4 s pause
+alone makes every prefill slower (43.7 → 52.1 s, warm off). The benchmark runs without the server's heartbeat
+(`heartbeat_seconds=0`), so the second may be the Metal queue going idle (the reason the heartbeat exists); the
+first may be the drive's state right after a burst. Neither changes the decision: a real agent's pause contains the
+warming, and with a pause warming wins both columns. Decode is where the gain is: the decode set of the next reply is
+closer to the process's popular experts than to what the last reply left.
+
+**3. Server, end to end** (`serve-minimax.sh`, scratch snapshot directory): "391" for 17 x 23 (177-token cold
+prefill 14.9 s), `get_weather({"city": "Paris"})` (395-token prefill 11.3 s, 4.52 tok/s), then an 870-token tool
+result (the README's first 3,000 characters) prefilled in 13.5 s and answered at 5.98 tok/s; `idle warm: 86 / 305
+experts in 0.3 / 1.0 s` between them. A request sent 0.5 s after the previous reply: `idle warm: 96 experts in 0.3s
+(cancelled)`, and its prefill (8.9 s for 168 tokens) was not delayed. 392 tests pass.
+
+**What remains, ranked.** 1. M1b, a Hermes Desktop session on 0.27.0 (Hamed): tool results of 100-3,000 tokens and
+the pauses between turns are both what this release targets; read the `[request]` and `idle warm:` lines. 2. The two
+unexplained slow-downs of item 2 (a pause without warming, and a prefill right after a burst of reads): with the
+server's heartbeat on, a `PAUSE` sweep says whether the pause cost is real in the server. 3. Warming's ranking: all
+of history counts the same; a decayed count (recent conversations weigh more) for a server shared by several
+sessions. 4. M13b. 5. M12.
 
 ### 16.4 Piece 4 — images through the server, end to end, and three things piece 3 had missed — 2026-09-23
 

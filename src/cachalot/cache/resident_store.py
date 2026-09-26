@@ -206,6 +206,7 @@ class ResidentExpertStore:
         # a preloaded session's hit rate still means what it meant before.
         self.preloaded_experts = 0
         self.preload_bytes = 0
+        self.warm_bytes = 0  # idle-time warming reads (warm())
         self.preload_seconds = 0.0
 
         self.cache_hits = 0
@@ -493,6 +494,56 @@ class ResidentExpertStore:
         self.cache_misses += 1
         self.ssd_bytes_read += nbytes
         self.ssd_read_seconds += read_seconds
+
+    def warm(self, ranked: list[ExpertEntry], cancel: threading.Event | None = None) -> tuple[int, int]:
+        """
+        Idle-time warming (HANDOFF 18.8): make the resident set the head of `ranked` (most wanted first),
+        reading the missing ones into the slots of residents outside it, least recently used first. Nothing
+        is read without a victim, so the resident count never grows. `cancel` is checked between batches of
+        reads (one per load worker, ~30 ms), so the next request waits at most one batch. Afterwards the
+        residents are in rank order, the most wanted most recently used. Returns (read, evicted).
+        Only between requests: no prefill or decode in flight.
+        """
+        with self._lock:
+            size = min(len(ranked), self._decode_capacity())
+            head = ranked[:size]
+            keys = {(e.layer, e.expert) for e in head}
+            missing = [e for e in head if (e.layer, e.expert) not in self._items]
+            victims = [k for k in self._items if k not in keys]
+        read = evicted = 0
+        batch = max(1, self._load_pool._max_workers)
+        pos = 0
+        while pos < len(missing) and victims and not (cancel is not None and cancel.is_set()):
+            chunk: list[tuple[ExpertEntry, ExpertSlot]] = []
+            with self._lock:
+                for entry in missing[pos:pos + batch]:
+                    if (entry.layer, entry.expert) in self._items:
+                        continue
+                    while victims and victims[0] not in self._items:
+                        victims.pop(0)
+                    if not victims:
+                        break
+                    self._drop_locked(victims.pop(0))
+                    evicted += 1
+                    slot = self.pool.try_acquire()
+                    if slot is None:
+                        break
+                    self._reserved += 1
+                    chunk.append((entry, slot))
+            pos += batch
+            futures = [(e, s, self._load_pool.submit(self._read_into, e, s)) for e, s in chunk]
+            for entry, slot, future in futures:
+                nbytes, _seconds = future.result()
+                with self._lock:
+                    self._admit_reserved_locked(ResidentExpert(entry.layer, entry.expert, slot))
+                    self.warm_bytes += nbytes
+                    read += 1
+        with self._lock:
+            for entry in reversed(head):
+                key = (entry.layer, entry.expert)
+                if key in self._items:
+                    self._items.move_to_end(key)
+        return read, evicted
 
     def set_capacity(self, target: int) -> int:
         """Move the resident capacity towards `target` slots by parking free slots (their memory is given back)

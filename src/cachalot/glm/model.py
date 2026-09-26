@@ -291,6 +291,7 @@ class GlmModel:
 
     def close(self) -> None:
         self._stop.set()
+        self._stop_idle_warm()
         self.store.close()
 
     # -- text ---------------------------------------------------------------------------------------------
@@ -491,6 +492,43 @@ class GlmModel:
         self._warm_thread.start()
         return f"warm set: reading {len(entries)} experts back in the background"
 
+    # -- idle-time warming (HANDOFF 18.8) ------------------------------------------------------------------
+    # After a request, while the server waits for the next one (an agent's tool, a user typing), the resident
+    # set is moved towards the experts this process has requested most, so the next turn's prefill and first
+    # decode tokens miss less. The next request cancels it (it waits for one batch of reads at most).
+    IDLE_WARM = False
+    IDLE_WARM_DELAY = 0.2  # seconds after a request before warming starts
+
+    def warm_now(self, cancel: threading.Event | None = None) -> tuple[int, int]:
+        """Warm the resident set towards the most-requested experts; (read, evicted)."""
+        counts = self.store.use_counts
+        ranked = sorted((k for k in counts if k in self.expert_index), key=lambda k: -counts[k])
+        return self.store.warm([self.expert_index[k] for k in ranked], cancel)
+
+    def _start_idle_warm(self) -> None:
+        if not self.IDLE_WARM:
+            return
+        cancel = threading.Event()
+
+        def run():
+            if cancel.wait(self.IDLE_WARM_DELAY):
+                return
+            t0 = time.perf_counter()
+            read, _ = self.warm_now(cancel)
+            if read:
+                print(f"idle warm: {read} experts in {time.perf_counter() - t0:.1f}s"
+                      f"{' (cancelled)' if cancel.is_set() else ''}", flush=True)
+
+        self._idle_warm = (cancel, threading.Thread(target=run, daemon=True, name="idle-warm"))
+        self._idle_warm[1].start()
+
+    def _stop_idle_warm(self) -> None:
+        pending = getattr(self, "_idle_warm", None)
+        if pending is not None:
+            pending[0].set()
+            pending[1].join()
+            self._idle_warm = None
+
     def _wait_warm_set(self) -> None:
         thread = getattr(self, "_warm_thread", None)
         if thread is not None:
@@ -561,6 +599,7 @@ class GlmModel:
         with self._lock:
             self._busy = True
             try:
+                self._stop_idle_warm()
                 self._wait_warm_set()
                 tokens = tuple(prompt_tokens)
                 t0 = time.perf_counter()
@@ -641,6 +680,7 @@ class GlmModel:
                 self._save_warm_set()
                 self._idle_since = time.perf_counter()
                 self._busy = False
+                self._start_idle_warm()
 
     def generate(
         self,
@@ -656,6 +696,7 @@ class GlmModel:
         with self._lock:
             self._busy = True
             try:
+                self._stop_idle_warm()
                 s0 = self.store.stats()
                 cache = self.new_cache()
                 t0 = time.perf_counter()
@@ -683,3 +724,4 @@ class GlmModel:
             finally:
                 self._idle_since = time.perf_counter()
                 self._busy = False
+                self._start_idle_warm()

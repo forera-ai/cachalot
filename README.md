@@ -108,7 +108,7 @@ idle 45 % of the time — and is now limited by the share of experts that are al
 |---|---|
 | Text generation, official chat protocol, thinking mode | ✅ working |
 | Second model: GLM-5.3-Flash (MLX 4-bit), experts streamed from SSD (`./serve-glm.sh`, `./chat-glm.sh`) | ✅ 0.18.0: text, tools, thinking, prefix cache in memory and on disk across restarts; prefill ~90 tok/s, decode 3.3-3.6 tok/s, 14.3 all-resident (from the internal SSD; since 0.19.0 the copy lives on the X10Pro and runs slower); vision, MTP not yet |
-| Third model: MiniMax-M3 (MLX 3-bit), experts streamed from SSD (`./serve-minimax.sh`, `./chat-minimax.sh`) | ✅ 0.26.0: text, tools, thinking, prefix cache in memory and on disk, expert cache kept across restarts; prefill ~240 tok/s at 16k (a 17k agent block in 101 s), 148 tok/s at 64k, a 150-token tool result in ~9-10 s; decode 3.6-4.3 tok/s after a 2k prefill (4.6-5.3 through the server, 3.5-6.3 at a 25k agent context with the display on); the expert cache shrinks as the KV cache grows, so long contexts stay below the memory ceiling; experts read from a bias-free bank (6 % fewer bytes, byte-identical outputs; prefill reads take a compressed copy of each record's scales, 6 % fewer again) with direct reads, a second copy on the X10Pro adds read bandwidth; hit experts computed while misses load; a GQA decode kernel from 4k context |
+| Third model: MiniMax-M3 (MLX 3-bit), experts streamed from SSD (`./serve-minimax.sh`, `./chat-minimax.sh`) | ✅ 0.27.0: text, tools, thinking, prefix cache in memory and on disk, expert cache kept across restarts; prefill ~240 tok/s at 16k (a 17k agent block in 101 s), 148 tok/s at 64k, a 150-token tool result in ~8.5-9 s, 1,000 tokens in ~13 s; decode 3.6-4.3 tok/s after a 2k prefill (4.6-5.3 through the server, 3.5-6.3 at a 25k agent context with the display on); the expert cache shrinks as the KV cache grows, so long contexts stay below the memory ceiling; experts read from a bias-free bank (6 % fewer bytes, byte-identical outputs; prefill reads take a compressed copy of each record's scales, 6 % fewer again) with direct reads, a second copy on the X10Pro adds read bandwidth; hit experts computed while misses load; prefill reads ahead the next layer's predicted experts; the expert cache is warmed between requests; a GQA decode kernel from 4k context |
 | Layer-major prefill with expert-major MoE scheduling | ✅ working |
 | Auto-sized, wired expert slot pool with zero-copy SSD loads | ✅ shipped |
 | Cross-turn expert residency | ✅ working, validated |
@@ -596,6 +596,10 @@ line, is `docs/HANDOFF.md` section 9.25.
     whole next layer ahead of time, which fits GLM but wasted half the reads on MiniMax; it now does so only from
     768 tokens, and prefill reads take each expert's scales from a compressed copy (6 % fewer bytes). A 150-token
     tool result prefills in ~9-10 s instead of ~15, with identical output.
+38. MiniMax-M3 predicts what a prefill needs next, and warms up while it waits (0.27.0). A tool result of
+    100-3,000 tokens now reads ahead only the next layer's experts its router predicts from the current layer,
+    6-15 % faster; and between requests the server reloads the experts the conversation uses most, so after a
+    short pause the next reply decodes ~12 % faster. Identical output.
 
 ## Project layout
 

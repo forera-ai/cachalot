@@ -22,6 +22,7 @@ from typing import Any
 
 import mlx.core as mx
 import mlx.nn as nn
+import numpy as np
 
 from cachalot.cache.resident_store import ResidentExpertStore
 from cachalot.glm.engine import _GlmSplitter
@@ -130,6 +131,20 @@ DECODE_BORROW = os.environ.get("CACHALOT_MINIMAX_DECODE_BORROW", "1") != "0"
 # speculative reads cost more than the overlap saves (150 tokens: 14.7 -> 9.0-10.1 s; 1,000: 15.3 vs 15.9 s).
 SPECULATE_MIN_TOKENS = int(os.environ.get("CACHALOT_MINIMAX_SPECULATE_MIN_TOKENS", "768"))
 DECODE_BORROW_KEEP = 16  # transient slots never borrowed (the store's PREDICT_SLOT_RESERVE)
+# HANDOFF 18.8: a prefill chunk of at least PREFILL_PREDICT_MIN tokens reads ahead only the next layer's experts that
+# its router, applied to this layer's residual, picks for any of the chunk's tokens (top PREFILL_PREDICT_TOPK each),
+# most-picked first, instead of the whole layer from SPECULATE_MIN_TOKENS (or nothing below it). Top-3 of the
+# prediction is ~92 % precise and ~80-90 % complete: 150-1,500-token prefills -6 to -15 %, same tokens; below
+# ~100 tokens it neither helps nor hurts. Which experts are read early changes, never the arithmetic. 0 turns it off.
+# Plain ints so TF_ALTERNATE / a benchmark can flip them in one process.
+PREFILL_PREDICT = int(os.environ.get("CACHALOT_MINIMAX_PREFILL_PREDICT", "1"))
+PREFILL_PREDICT_MIN = int(os.environ.get("CACHALOT_MINIMAX_PREFILL_PREDICT_MIN", "100"))
+PREFILL_PREDICT_TOPK = int(os.environ.get("CACHALOT_MINIMAX_PREFILL_PREDICT_TOPK", "3"))
+# above this many tokens a chunk reads the whole next layer again (4,096: 17.7 s whole against 19.4 predicted; 3,000:
+# 16.1 against 15.0); reading the predicted experts first and then the rest measured the same as the whole layer
+PREFILL_PREDICT_MAX = int(os.environ.get("CACHALOT_MINIMAX_PREFILL_PREDICT_MAX", "3072"))
+# per layer pair: experts predicted, experts the next layer routed to, and the overlap (benchmarks read it)
+PREFILL_PREDICT_STATS = {"predicted": 0, "actual": 0, "overlap": 0}
 
 
 class MiniMaxModel(GlmModel):
@@ -297,7 +312,43 @@ class MiniMaxModel(GlmModel):
                 return shared, prefetch
             return hook
 
+        predicted: dict[int, set[int]] = {}
+
+        def make_prefill(i, nxt):
+            def hook(residual, inds):
+                n = inds.shape[0] * inds.shape[1]
+                if not PREFILL_PREDICT or n < PREFILL_PREDICT_MIN or n > PREFILL_PREDICT_MAX:
+                    mine = predicted.pop(i, None)
+                    if mine is not None:
+                        _count_prediction(mine, inds)
+                    return None
+                pred = None
+                if nxt is not None:
+                    scores, _ = nxt.block_sparse_moe.route_scores(nxt.post_attention_layernorm(residual))
+                    pred = mx.argpartition(-scores, kth=PREFILL_PREDICT_TOPK - 1, axis=-1)[..., :PREFILL_PREDICT_TOPK]
+                # one sync for this layer's routing and the prediction (the switch's own sync is then free)
+                mx.eval(inds, *([pred] if pred is not None else []))
+                mine = predicted.pop(i, None)
+                if mine is not None:
+                    _count_prediction(mine, inds)
+                if pred is None:
+                    return []
+                counts = np.bincount(np.array(pred).reshape(-1))
+                order = [int(e) for e in np.argsort(-counts, kind="stable") if counts[e] > 0]
+                predicted[i + 1] = set(order)
+                return [index[(i + 1, e)] for e in order]
+            return hook
+
+        def _count_prediction(mine, inds):
+            actual = set(np.unique(np.array(inds)).tolist())
+            PREFILL_PREDICT_STATS["predicted"] += len(mine)
+            PREFILL_PREDICT_STATS["actual"] += len(actual)
+            PREFILL_PREDICT_STATS["overlap"] += len(mine & actual)
+
         for i, layer in enumerate(layers):
+            if layer.is_sparse:
+                nxt = layers[i + 1] if i + 1 < len(layers) and layers[i + 1].is_sparse else None
+                layer.block_sparse_moe.prefill_hook = make_prefill(i, nxt)
             if not layer.is_sparse or not DECODE_OVERLAP:
                 continue
             nxt = layers[i + 1] if i + 1 < len(layers) and layers[i + 1].is_sparse else None
@@ -305,6 +356,11 @@ class MiniMaxModel(GlmModel):
             layer.block_sparse_moe.switch_mlp.decode_eval = False
             # HANDOFF 18.5: the hit experts' matmuls run while the layer's misses are read (bit-identical)
             layer.block_sparse_moe.switch_mlp.hit_overlap = True
+
+    # HANDOFF 18.8: between requests the resident set moves towards the most-requested experts (0.8-2.2 s of
+    # reads, cancelled by the next request): with a 4 s pause between agent turns, decode -12 %, short prefills
+    # -3 to -6 %, same tokens. CACHALOT_MINIMAX_IDLE_WARM=0 turns it off.
+    IDLE_WARM = os.environ.get("CACHALOT_MINIMAX_IDLE_WARM", "1") != "0"
 
     # HANDOFF 18.6: every layer is a plain KVCache, so a conversation's snapshot is handed on, not copied
     CONSUME_SNAPSHOTS = os.environ.get("CACHALOT_MINIMAX_CONSUME_SNAPSHOTS", "1") != "0"

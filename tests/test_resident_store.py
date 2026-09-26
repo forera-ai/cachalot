@@ -716,3 +716,29 @@ def test_short_prefill_does_not_deadlock_when_its_own_residents_are_lru(index):
     t.start()
     t.join(timeout=10)
     assert done == [[0, 1, 2, 3]]
+
+
+def test_warm_swaps_the_least_wanted_residents_for_the_ranked_head(index):
+    """Idle-time warming (HANDOFF 18.8): the resident set becomes the head of the ranking, never larger."""
+    store, reader = make_store(slots=3)
+    for e in (0, 1, 2):
+        store.get(index[(0, e)])
+    before = reader.reads
+    read, evicted = store.warm([index[(1, 5)], index[(0, 1)], index[(1, 6)], index[(0, 0)]])
+    assert (read, evicted) == (2, 2)
+    assert reader.reads == before + 2
+    # rank order, the most wanted most recently used
+    assert _resident_keys(store) == [(1, 6), (0, 1), (1, 5)]
+    assert store.stats().cache_misses == 3  # warming is not a miss
+
+
+def test_warm_stops_when_cancelled(index):
+    import threading
+
+    store, reader = make_store(slots=3)
+    for e in (0, 1, 2):
+        store.get(index[(0, e)])
+    cancel = threading.Event()
+    cancel.set()
+    assert store.warm([index[(1, e)] for e in range(3)], cancel) == (0, 0)
+    assert sorted(_resident_keys(store)) == [(0, 0), (0, 1), (0, 2)]
