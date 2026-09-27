@@ -28,7 +28,7 @@ from cachalot.cache.resident_store import ResidentExpertStore
 from cachalot.glm.engine import _GlmSplitter
 from cachalot.glm.experts import StreamingSwitchGLU, tensor_sizes
 from cachalot.glm.model import GlmModel, load_non_expert_weights
-from cachalot.minimax.coded_bank import index_from_bank, layout_from_sizes, reader_from_env
+from cachalot.minimax.coded_bank import index_from_bank, layout_from_sizes, reader_from_env, slot_format
 from cachalot.minimax.experts import build_minimax_expert_index
 from cachalot.minimax.language import FAST_NORM as _FAST_NORM
 from cachalot.minimax.language import Model, ModelArgs, MiniMaxM3SparseMoeBlock
@@ -131,6 +131,10 @@ DECODE_OVERLAP = os.environ.get("CACHALOT_MINIMAX_DECODE_OVERLAP", "1") != "0"
 # (18.1 closed this with the prediction beside the misses and a second GPU round trip per layer: both fixed.)
 PREDICT_TOPK = int(os.environ.get("CACHALOT_MINIMAX_PREDICT_TOPK", "2"))
 DECODE_BORROW = os.environ.get("CACHALOT_MINIMAX_DECODE_BORROW", "1") != "0"
+# HANDOFF 18.10 (M13b): a slot keeps each group's bias as a 4-bit code (k + 7, bias = bf16(k x scale)) instead of the
+# bf16 bias: 22.35 MiB a slot instead of 23.62, ~5.7 % more resident experts in the same budget, same tokens (the
+# decode matmul is MLX's qmv with the bias rebuilt in the kernel, codes_qmv). Needs the bank. 0 keeps bf16 biases.
+SLOT_CODES = os.environ.get("CACHALOT_MINIMAX_SLOT_CODES", "1") != "0"
 # HANDOFF 18.7: a prefill chunk reads the whole next layer ahead only from this many tokens. GLM's 128 suits top-8
 # of 288; MiniMax's routing is skewed (150 tokens reach ~74 of 128 experts per layer), so below ~750 tokens the
 # speculative reads cost more than the overlap saves (150 tokens: 14.7 -> 9.0-10.1 s; 1,000: 15.3 vs 15.9 s).
@@ -182,7 +186,21 @@ class MiniMaxModel(GlmModel):
         else:
             self.expert_format, self.expert_index = build_minimax_expert_index(self.model_path)
         sizes = tensor_sizes(self.expert_format)
-        expert_bytes = sum(sizes.values())
+        # the bias-free bank when CACHALOT_MINIMAX_BANK names one (HANDOFF 18.4), else the checkpoint
+        reader = reader_from_env()
+        # HANDOFF 18.10: slots hold 4-bit bias codes instead of bf16 biases when the bank serves every expert
+        self.slot_codes = bool(
+            SLOT_CODES and hasattr(reader, "covers") and all(reader.covers(*key) for key in self.expert_index)
+        )
+        self.slot_format = slot_format(self.expert_format) if self.slot_codes else self.expert_format
+        if self.slot_codes:
+            from cachalot.minimax import codes_qmv
+
+            if not codes_qmv.self_check():
+                print("[minimax] codes kernel differs from mx.quantized_matmul on this MLX: biases are rebuilt "
+                      "for every matmul instead (bit-identical, slower)", flush=True)
+        slot_sizes = tensor_sizes(self.slot_format)
+        expert_bytes = sum(slot_sizes.values())
 
         # the same memory rules as GLM (HANDOFF 17.1): a capped MLX buffer cache, a wired set
         mx.set_cache_limit(int(float(os.environ.get("CACHALOT_GLM_MLX_CACHE_GIB", "2")) * 1024**3))
@@ -197,15 +215,14 @@ class MiniMaxModel(GlmModel):
         n_experts = self.config.num_local_experts
         self.store = ResidentExpertStore(
             int(expert_budget_gib * 1024**3),
-            # the bias-free bank when CACHALOT_MINIMAX_BANK names one (HANDOFF 18.4), else the checkpoint
-            reader_from_env(),
-            tensor_sizes=sizes,
+            reader,
+            tensor_sizes=slot_sizes,
             # one prefill layer's misses plus the next layer read early (glm.experts.PREFILL_SCAN)
             transient_slots=2 * n_experts + 16,
             load_workers=load_workers,
             verbose=verbose,
         )
-        self.store.format = self.expert_format
+        self.store.format = self.slot_format
         bank_layout = getattr(self.store.reader, "layout", None)
         if bank_layout is not None and bank_layout != layout_from_sizes(sizes):
             raise ValueError(f"expert bank {self.store.reader.bank_dir} was written for another checkpoint layout")
@@ -217,8 +234,9 @@ class MiniMaxModel(GlmModel):
         for i, layer in enumerate(self.model.layers):
             if layer.is_sparse:
                 moe: MiniMaxM3SparseMoeBlock = layer.block_sparse_moe
-                moe.switch_mlp = StreamingSwitchGLU(i, self.store, self.expert_index, self.expert_format, moe.activation)
+                moe.switch_mlp = StreamingSwitchGLU(i, self.store, self.expert_index, self.slot_format, moe.activation)
                 moe.switch_mlp.speculate_min_tokens = SPECULATE_MIN_TOKENS
+                moe.switch_mlp.codes = self.slot_codes
                 n_moe += 1
 
         self._install_decode_hooks()

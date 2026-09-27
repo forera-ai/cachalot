@@ -198,7 +198,8 @@ class CodedBankReader(ExpertReader):
         return (layer, expert) in self.records
 
     def read_expert_into(self, entry: ExpertEntry, views) -> int:
-        rec = self.records.get((entry.layer, entry.expert)) if ENABLED else None
+        # a codes slot (HANDOFF 18.10) can only be filled from the bank, whatever ENABLED says
+        rec = self.records.get((entry.layer, entry.expert)) if ENABLED or "w1.codes" in views else None
         if rec is None:
             if not entry.tensors:
                 # a trimmed checkpoint (index_from_bank) has no other copy of this expert
@@ -247,9 +248,12 @@ class CodedBankReader(ExpertReader):
                 futures.append((pool.submit(os.preadv, fd, [buf], pos), lay.weight, False, fd, None, 0))
             pos += lay.weight
         scales = [np.asarray(views[f"{p}.scales"]).view(np.uint16) for p in PROJS]
-        biases = [np.asarray(views[f"{p}.biases"]).view(np.uint16) for p in PROJS]
         zhead = self._head(key, kind, fd, offset) if key is not None else None
-        if kind == "coded":
+        if "w1.codes" in views:
+            # a slot of 4-bit bias codes (HANDOFF 18.10): the bank's 2-bit codes widened, a raw record's biases coded
+            total = self._read_head_codes(kind, fd, offset, fname, views, scales, zhead, pool)
+        elif kind == "coded":
+            biases = [np.asarray(views[f"{p}.biases"]).view(np.uint16) for p in PROJS]
             codes = bytearray(3 * lay.codes)
             bufs = [memoryview(views[f"{p}.scales"]).cast("B") for p in PROJS] + [memoryview(codes)]
             if zhead is not None:
@@ -267,6 +271,7 @@ class CodedBankReader(ExpertReader):
                 f.result()
             total = got
         else:
+            biases = [np.asarray(views[f"{p}.biases"]).view(np.uint16) for p in PROJS]
             bufs = [memoryview(views[f"{p}.scales"]).cast("B") for p in PROJS] + [
                 memoryview(views[f"{p}.biases"]).cast("B") for p in PROJS
             ]
@@ -292,6 +297,54 @@ class CodedBankReader(ExpertReader):
             total += got
         self.coded_reads += 1
         return total
+
+    def _read_head_codes(self, kind, fd, offset, fname, views, scales, zhead, pool) -> int:
+        """A record's head into a codes slot: scales into the scale views, bias codes as nibbles (codes_qmv)."""
+        from cachalot.minimax import codes_qmv
+
+        lay = self.layout
+        nib = [np.asarray(views[f"{p}.codes"]) for p in PROJS]
+        if kind == "coded":
+            codes = bytearray(3 * lay.codes)
+            bufs = [memoryview(views[f"{p}.scales"]).cast("B") for p in PROJS] + [memoryview(codes)]
+            want = 3 * (lay.scales + lay.codes)
+        else:
+            raw = bytearray(3 * lay.scales)
+            bufs = [memoryview(views[f"{p}.scales"]).cast("B") for p in PROJS] + [memoryview(raw)]
+            want = 6 * lay.scales
+        if zhead is not None:
+            _scatter(zhead, bufs)
+            got = want
+        else:
+            got = os.preadv(fd, bufs, offset)
+        if got != want:
+            raise OSError(f"short head read from {fname}@{offset}: {got}")
+        if kind == "coded":
+            packed = np.frombuffer(codes, np.uint8)
+            n = lay.codes
+            for i in range(3):
+                codes_qmv.nibbles_from_packed(packed[i * n:(i + 1) * n], K_BASE, nib[i])
+        else:
+            b = np.frombuffer(raw, np.uint16)
+            n = lay.scales // 2
+            jobs = [pool.submit(codes_qmv.nibbles_from_biases, scales[i], b[i * n:(i + 1) * n], nib[i]) for i in (1, 2)]
+            codes_qmv.nibbles_from_biases(scales[0], b[:n], nib[0])
+            for f in jobs:
+                f.result()
+        return got
+
+
+def slot_format(fmt: ExpertFormat) -> ExpertFormat:
+    """`fmt` with each projection's bf16 biases replaced by 4-bit codes (two groups a byte): a codes slot."""
+    shapes, dtypes = dict(fmt.shapes), dict(fmt.dtypes)
+    for p in PROJS:
+        groups = int(np.prod(shapes.pop(f"{p}.biases")))
+        dtypes.pop(f"{p}.biases")
+        shapes[f"{p}.codes"] = (groups // 2,)
+        dtypes[f"{p}.codes"] = "uint8"
+    names = tuple(sorted(shapes))
+    return ExpertFormat(kind=fmt.kind, bits=fmt.bits, group_size=fmt.group_size, tensor_names=names, shapes=shapes,
+                        dtypes=dtypes)
 
 
 def _scatter(payload: bytes, bufs) -> None:

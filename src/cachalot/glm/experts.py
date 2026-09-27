@@ -105,14 +105,16 @@ def tensor_sizes(fmt: ExpertFormat) -> dict[str, int]:
 
 
 def _typed(slot, fmt: ExpertFormat, proj: str):
-    """(weight, scales, biases) views of a slot, built once per slot (they alias its memory)."""
+    """(weight, scales, biases) views of a slot, built once per slot (they alias its memory); (weight, scales,
+    codes) for a slot that holds 4-bit bias codes (MiniMax, HANDOFF 18.10)."""
     views = slot.typed.get(proj)
     if views is None:
+        last = "codes" if f"{proj}.codes" in fmt.shapes else "biases"
         views = tuple(
             slot.arrays[f"{proj}.{field}"].view(getattr(mx, fmt.dtypes[f"{proj}.{field}"])).reshape(
                 fmt.shapes[f"{proj}.{field}"]
             )
-            for field in ("weight", "scales", "biases")
+            for field in ("weight", "scales", last)
         )
         slot.typed[proj] = views
     return views
@@ -129,6 +131,9 @@ PREFILL_SCAN = os.environ.get("CACHALOT_GLM_PREFILL_SCAN", "1") != "0"
 # an int so TF_ALTERNATE can flip it.
 DECODE_HIT_OVERLAP = int(os.environ.get("CACHALOT_DECODE_HIT_OVERLAP", "-1"))
 SPECULATE_MIN_TOKENS = int(os.environ.get("CACHALOT_GLM_SPECULATE_MIN_TOKENS", "128"))
+# 1 submits a decode layer's routed output (async) as soon as it is built when `decode_eval` is off, instead of with
+# the next layer's routing sync (HANDOFF 18.10); an int so TF_ALTERNATE can flip it
+DECODE_ASYNC_OUT = int(os.environ.get("CACHALOT_DECODE_ASYNC_OUT", "0"))
 
 
 class StreamingSwitchGLU(nn.Module):
@@ -143,13 +148,31 @@ class StreamingSwitchGLU(nn.Module):
         self._fmt = fmt
         self._activation = activation
 
+    # the slots hold 4-bit bias codes instead of bf16 biases (MiniMax sets it, HANDOFF 18.10)
+    codes = False
+
     def _qmm(self, x, slot, proj):
         w, s, b = _typed(slot, self._fmt, proj)
+        if self.codes:
+            from cachalot.minimax import codes_qmv
+
+            b = codes_qmv.rebuild_biases(s, b)
         return mx.quantized_matmul(
             x, w, s, b, transpose=True, group_size=self._fmt.group_size, bits=self._fmt.bits
         )
 
     def _expert_out(self, x, slot):
+        if self.codes:
+            from cachalot.minimax import codes_qmv
+
+            if codes_qmv.usable(x):
+                # one decode row: MLX's qmv with the bias rebuilt in the kernel, gate and up in one launch
+                p1, p3 = _typed(slot, self._fmt, "w1"), _typed(slot, self._fmt, "w3")
+                gate, up = codes_qmv.gate_up(x, p1, p3)
+                h = self._activation(up, gate)
+                if codes_qmv.usable(h):
+                    return codes_qmv.qmv(h, *_typed(slot, self._fmt, "w2"))
+                return self._qmm(h, slot, "w2")
         gate = self._qmm(x, slot, "w1")
         up = self._qmm(x, slot, "w3")
         return self._qmm(self._activation(up, gate), slot, "w2")
@@ -209,6 +232,8 @@ class StreamingSwitchGLU(nn.Module):
             y = mx.concatenate(outputs, axis=0).reshape(*shape[:-1], k, dim)
             if self.decode_eval:
                 mx.eval(y)
+            elif DECODE_ASYNC_OUT:
+                mx.async_eval(y)
             return y
         outputs = []
         for resident, a, b in zip(residents, starts, ends):

@@ -4,7 +4,7 @@
 # Same port and API as serve.sh (DeepSeek V4.1 Flash) and serve-glm.sh (GLM-5.3-Flash): an agent harness
 # switches models by restarting the server. Model id here: minimax-m3. Only one runtime runs at a time.
 #
-# The routed experts (7,296 x 23.6 MiB, 3-bit; 22.2 MiB each read from the bias-free bank) stream from the internal SSD into a 52 GiB wired cache; the
+# The routed experts (7,296 x 23.6 MiB, 3-bit; 22.2 MiB each read from the bias-free bank, 22.4 MiB a slot with 4-bit bias codes since 0.29.0) stream from the internal SSD into a 52 GiB wired cache; the
 # rest of the model (6.0 GiB) stays resident. Text only (the conversion has no vision tower or MTP).
 # MiniMax Sparse Attention runs as full causal attention (exact to 2,048 tokens). HANDOFF section 18.
 #

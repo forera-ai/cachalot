@@ -1,6 +1,8 @@
 # Cachalot — Engineering Handoff
 
-**Authoritative state as of 2026-09-27 (ninth MiniMax session), after the session that made MiniMax-M3's decode read
+**Authoritative state as of 2026-09-27 (tenth MiniMax session), after the session that made MiniMax-M3's expert
+slots hold 4-bit bias codes and measured where the rest of a decode token's non-read time goes (section 18.10), the
+one that made its decode read
 the next layer's predicted expert while the drive would idle and closed 18.8's two open slow-downs (section 18.9),
 the one that made its prefills
 read ahead only predicted experts and warm its cache between requests (18.8), the one that shortened its
@@ -9,6 +11,26 @@ that gave it a bias-free expert bank (18.4), the one that gave it a second drive
 kernel (18.3), the one that cut its per-token overhead and measured it to 64k (18.2), the one that made it faster
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
+
+> ## Start here (2026-09-27, 0.29.0): MiniMax-M3 caches 128 more experts in the same memory
+>
+> - **Codes in the slot (M13b, section 18.10):** a slot keeps each group's bias as a 4-bit code (bias =
+>   bf16(k x scale), k + 7) instead of bf16: 22.36 MiB instead of 23.62, 2,381 slots in 52 GiB instead of 2,253.
+>   Decode runs MLX's own `qmv_fast` copied into a Metal kernel that rebuilds the bias (gate and up in one launch);
+>   prefill rebuilds the biases on the GPU. Byte-identical (logits and decode log-probs `cmp`-equal; same `ids_hash`
+>   in six runs). Agent benchmark ABABAB: **decode -7.5 %** (207.3 → 191.7 ms, misses 37.1 → 33.9 per token), short
+>   prefills -5 %. Load-time bit check falls back to the rebuild path if a future MLX changes its kernel.
+>   `CACHALOT_MINIMAX_SLOT_CODES=0` restores bf16 biases.
+> - **The all-hit floor is ~22 ms of per-layer host round trips** (59.3 ms shipped against 37.1 with the routing
+>   known ahead, identical logits). Four ways to fill it without dropping the sync were measured; none moves a
+>   read-bound token (18.10 item 2). Op count is not it either: one `gather_qmm` for a layer's 4 experts is
+>   bit-identical and not faster.
+> - **Hardware lever for Hamed:** the X10Pro is on USB (20 Gb/s) and supplies 13 % of each read; the Mac Studio's
+>   Thunderbolt 5 ports could take an NVMe enclosure at ~6 GB/s, which would roughly halve a miss (18.10 item 4).
+> - Server end to end: "391", `get_weather({"city": "Paris"})`, a 1,263-token tool-result turn at 6.21 tok/s.
+> - **Version 0.29.0.** 400 tests pass.
+
+**Previous block, 0.28.0:**
 
 > ## Start here (2026-09-27, 0.28.0): MiniMax-M3 decode reads ahead into the drive's idle time
 >
@@ -7954,6 +7976,83 @@ store wait ~125-130 ms, other ~75 ms, all-hit floor ~53.
 warming when several sessions share the server (price on a trace first). 4. M12, the ~20 ms of GPU slowdown that
 reads cause. 5. A longer idle window for the prefetch would need the layer's GPU work to take longer or the reads to
 be split differently; the two ways tried here gave nothing.
+
+### 18.10 MiniMax-M3: codes in the slot, and the non-read time measured — 2026-09-27 (0.29.0)
+
+Hamed's goal, a tenth time: MiniMax-M3 as fast as possible at unchanged quality. 0.28.0 was committed at the start
+(tree clean). Tools confirmed first: caveman (session hook), Jev (`jev_noul` answered through TypeSafe) and the
+codebase-memory graph (ready, 5,457 nodes, one partial file outside the code). Filler: a fresh 4.5 MB concatenation
+of the repo's tracked `.md` and `.py` files (scratch).
+
+**1. Where the all-hit floor goes.** A scratch replay (the floor benchmark's rewound KV cache, 2k context) with a
+second arm that reuses the previous identical step's routing on the host, so the whole token is one graph with no
+per-layer `mx.eval`: **37.1 ms against 59.3** shipped, identical logits. Timing the evals themselves: 51 of the
+shipped 64 ms are spent inside the per-layer `mx.eval` (MLX's encode plus the GPU plus the wait), ~12 ms in Python.
+So ~22 ms a token (~0.39 ms a layer) is the GPU idling across the host round trip.
+
+**2. Filling that gap without dropping the sync: nothing survives the reads.** One process each, identical logits
+in every floor arm; decode arms by `TF_ALTERNATE` (300 teacher-forced tokens @200000, both orders where noted):
+
+| idea | all-hit floor | decode with misses |
+|---|---|---|
+| shared expert queued before the routing wait | 62.8 → 61.9 ms | — |
+| + the previous layer's predicted top-4 / top-8 experts computed before the wait (reused when routed) | 58.1 / **54.6** ms | top-8: other 80.2 → 81.3 ms; top-4: 80.3 → 82.4 (worse) |
+| the layer's routed output submitted (`async_eval`) when built (`DECODE_ASYNC_OUT`) | 61.0 → 57.7 ms | other -7 ms, store wait +2 ms (parity-averaged); agent benchmark ABAB 207.0 / 204.3 → 209.0 / 199.2 ms, same `ids_hash` |
+| miss experts and the next layer's attention built while the reads run (`get_many(defer=True)`) | — | total 250.6 → 249.9 ms (parity-averaged) |
+
+The speculative experts' encode happens before the routing is known and delays a miss layer's reads by as much as
+it saves on a hit layer; building ahead of the reads saves host time nobody waits for. With ~48 misses a token the
+token is the reads plus the per-layer GPU work. The defer and speculation code was removed; `DECODE_ASYNC_OUT` stays as an off
+switch. **Op count is not the cost:** the four experts of a
+layer as one `gather_qmm` per projection on stacked copies (scratch) is bit-identical to the per-expert
+`quantized_matmul`s and not faster (76.1 against 74.6 ms).
+
+**3. M13b, codes in the slot (shipped).** 18.6 had proven a copy of MLX's 3-bit `qmv_fast` bit-identical and
+priced it at +2.3 ms launch, +2.4 bias math. Re-measured in the decode-shaped chain (57 x 4 x 3): MLX 30.2 ms, the
+codes kernel 33.1, **gate and up in one launch (two outputs, the grid's two halves) 31.9**, bit-identical. So:
+
+- `cachalot.minimax.codes_qmv`: the kernel (MLX's text from the installed `quantized.h`, the bias rebuilt from
+  the nibble with the bank's integer RNE), `gate_up`, `qmv`, `rebuild_biases` (one thread per group, bit-identical
+  to the bank's CPU table), the CPU side (`nibbles_from_packed`: a 256-entry table from the bank's 2-bit codes;
+  `nibbles_from_biases` for the 109 raw records, refusing any bias that is not k x scale) and `self_check` (random
+  experts against `mx.quantized_matmul`, run at load; a mismatch sends every matmul through the rebuild).
+- `coded_bank.slot_format(fmt)` replaces `{p}.biases` with `{p}.codes` (uint8, groups/2); the reader fills a codes
+  slot from either head (plain or `heads.zst`) with the weights on their usual preads.
+- `StreamingSwitchGLU.codes`: `_expert_out` on one bf16 row uses the kernels, `_qmm` (prefill, anything else)
+  rebuilds the biases and calls `mx.quantized_matmul`. `_typed` yields (weight, scales, codes).
+- `MiniMaxModel` turns it on when the bank covers every expert (`CACHALOT_MINIMAX_SLOT_CODES`, default 1); the
+  resident-set file keeps its identity (the checkpoint format), since only keys are saved.
+
+Checks: 1,024-token prefill (@200000) plus 40 teacher-forced decode tokens, off and on in separate processes: the
+prefill logits and the decode log-probs files are `cmp`-equal. Slots 2,253 → 2,381. Agent benchmark
+(`minimax_followup_turns.py`, @1,300,000, 2k then 30/60/120/30/250/30-token turns, 48-token replies), ABABAB, same
+`ids_hash` in all six:
+
+| arm | short prefills | decode mean | decode misses / token | prefill misses / turn |
+|---|---|---|---|---|
+| bf16 biases | 30.77 / 30.02 / 31.05 s | 211.9 / 201.4 / 208.7 ms | 37.1 | 1,386 |
+| codes | **29.05 / 28.75 / 29.25 s** | **190.4 / 190.5 / 194.3 ms** | 33.9 | 1,306 |
+
+Decode -7.5 %, more than 18.6's 2-4 % estimate: the fused launch costs +1.7 ms, not +4.6, and the misses fell by
+3.2 a token, as 18.5's LRU slope (0.028 misses per slot, 3.6 for 128 slots) predicted, on a base of 37 rather than
+54. Short prefills -5 %: fewer misses
+outweigh the bias rebuild. Server end to end (`serve-minimax.sh`, scratch snapshot directory): "391" (177-token
+cold prefill 14.9 s), `get_weather({"city": "Paris"})` with thinking (412 tokens in 11.5 s, 4.77 tok/s), the tool
+result with 3,000 characters of the README appended (1,263 tokens in 13.3 s, 6.21 tok/s, a correct answer that
+flagged the unrelated text); `idle warm: 489 experts in 1.6s` between them. That third request reused none of the
+second's tokens because the client resent the assistant turn without its thinking (18.9 reused 470 of 501 with the
+turn resent as returned); not a codes question. 400 tests pass.
+
+**4. What bounds decode now, and the lever that is hardware.** At 2k context a token is ~34-48 misses at ~3.6 ms
+(the internal SSD at ~6.3 GB/s plus 13 % of each record from the X10Pro) plus ~75 ms of per-layer GPU work and
+round trips. `diskutil`: the X10Pro is on USB at 20 Gb/s (~2 GB/s); the Mac Studio has six Thunderbolt 5 ports
+(120 Gb/s). An NVMe drive in a Thunderbolt 5 (or 4) enclosure reads ~6 GB/s; with the bank mirrored there and the
+mirror fraction near 0.5, a miss would take roughly half as long, worth far more than any software lever left.
+Hamed's decision (a purchase); the mirror code needs no change beyond the fraction sweep.
+
+**What remains, ranked.** 1. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 2. The Thunderbolt drive (Hamed),
+then a `MIRROR_FRACTION` sweep. 3. M18, a decayed warming ranking (price on a trace first). 4. Prefill's bias
+rebuild in one launch per expert instead of three (small; prefill is read-bound). 5. M12.
 
 ### 16.4 Piece 4 — images through the server, end to end, and three things piece 3 had missed — 2026-09-23
 

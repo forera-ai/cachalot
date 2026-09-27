@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.29.0 (2026-09-27)
+
+HANDOFF section 18.10.
+
+### Changed
+- **MiniMax-M3 expert slots hold 4-bit bias codes instead of bf16 biases (M13b).** Every group bias of the
+  checkpoint is bf16(k x scale) with k in -7..-3, so a slot keeps k + 7 as a nibble: 22.36 MiB a slot instead of
+  23.62, 2,381 resident slots in the 52 GiB budget instead of 2,253 (+128), and 128 x 1.26 MiB less for the
+  transient slots. Decode multiplies with MLX's own 3-bit `qmv_fast`, copied from the installed MLX headers into an
+  `mx.fast.metal_kernel` with one change (the bias rebuilt from the code in the kernel, with the bank's rounding),
+  gate and up in one launch; prefill rebuilds the biases on the GPU (one small kernel per projection) and calls
+  `mx.quantized_matmul` as before. Byte-identical: a 1,024-token prefill's logits and 40 teacher-forced decode
+  log-probs, codes on and off, compare equal with `cmp`; the agent-turn benchmark printed the same `ids_hash` in
+  six runs. Agent-turn benchmark, ABABAB: decode 211.9 / 201.4 / 208.7 → 190.4 / 190.5 / 194.3 ms per token
+  (**-7.5 %**; misses per token 37.1 → 33.9), short prefills 30.8 / 30.0 / 31.1 → 29.1 / 28.8 / 29.3 s (-5 %).
+  The kernel is checked against `mx.quantized_matmul` when the model loads; a mismatch (a future MLX) falls back
+  to the rebuild path for every matmul. Needs the bank covering every expert. `CACHALOT_MINIMAX_SLOT_CODES=0`
+  keeps bf16 biases; `CACHALOT_MINIMAX_CODES_KERNEL=0` forces the rebuild path.
+
+### Added
+- `src/cachalot/minimax/codes_qmv.py`: the codes kernels, the GPU bias rebuild, the slot-side nibble packing and
+  the load-time bit check. `ResidentExpertStore.peek(key)`: a resident without touching the LRU order.
+- `CACHALOT_DECODE_ASYNC_OUT` (off): submit a decode layer's routed output as soon as it is built. Measured, not
+  enabled (below).
+
+### Measured, not changed
+- **The all-hit decode floor is ~22 ms of host round trips.** Replaying one token with the routing known in advance
+  (no per-layer sync) takes 37.1 ms against 59.3 shipped, identical logits. Filling that gap without dropping the
+  sync: the shared expert queued before the routing wait (-0.9 ms, noise); the previous layer's predicted top-8
+  experts computed speculatively before the wait (floor -8 ms, identical, but +1-2 ms with real misses: the extra
+  encode delays the reads); the layer output submitted early (`DECODE_ASYNC_OUT`: floor -3.3 ms, non-read part -7 ms
+  in one process, but the agent benchmark 205.7 → 204.1 ms, noise); building the miss experts and the next layer's
+  attention while the reads run (250.6 → 249.9 ms, noise). The four experts of a layer in one `gather_qmm` per
+  projection: bit-identical, not faster (76.1 against 74.6 ms). Decode is read-bound; only the first two ideas'
+  code is gone.
+
 ## 0.28.0 (2026-09-27)
 
 HANDOFF section 18.9.
