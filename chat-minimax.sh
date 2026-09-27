@@ -35,6 +35,10 @@ if [ -n "$MIRROR" ] && [ -f "$MIRROR/bank.json" ]; then
     export CACHALOT_MIRROR_FRACTION=${CACHALOT_MIRROR_FRACTION:-0.13}
 fi
 
+# The serve script's directory (0.30.0, HANDOFF 18.12): the resident expert set is read back at startup and saved
+# after every turn, and the prompt head's snapshot survives a restart. Empty disables it.
+export CACHALOT_SNAPSHOT_DIR=${CACHALOT_MINIMAX_SNAPSHOT_DIR-$HOME/.cache/cachalot/prefix-snapshots-minimax}
+
 exec ~/venvs/deepseek-v41/bin/python -m cachalot.cli chat \
     --model "$CACHALOT_MODEL_PATH" \
     --expert-budget-gib 52 \

@@ -22,6 +22,10 @@ export CACHALOT_MLX_WIRED_LIMIT_GIB=${CACHALOT_MLX_WIRED_LIMIT_GIB:-80}
 export PYTHONPATH=src
 export MLX_METAL_FAST_SYNCH=${MLX_METAL_FAST_SYNCH:-1}
 
+# The serve script's directory (0.30.0, HANDOFF 18.12): the resident expert set is read back at startup and saved
+# after every turn, and the prompt head's snapshot survives a restart. Empty disables it.
+export CACHALOT_SNAPSHOT_DIR=${CACHALOT_GLM_SNAPSHOT_DIR-$HOME/.cache/cachalot/prefix-snapshots-glm}
+
 exec ~/venvs/deepseek-v41/bin/python -m cachalot.cli chat \
     --model "$CACHALOT_MODEL_PATH" \
     --expert-budget-gib 52 \

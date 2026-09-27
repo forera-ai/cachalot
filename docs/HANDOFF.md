@@ -1,6 +1,8 @@
 # Cachalot — Engineering Handoff
 
-**Authoritative state as of 2026-09-27 (tenth MiniMax session), after the session that made MiniMax-M3's expert
+**Authoritative state as of 2026-09-27 (eleventh MiniMax session), after the session that gave GLM/MiniMax their
+checkpoints' sampling defaults, brought their terminal chat to parity and priced GPU-side expert selection
+(section 18.12), the one that made MiniMax-M3's expert
 slots hold 4-bit bias codes and measured where the rest of a decode token's non-read time goes (section 18.10), the
 one that made its decode read
 the next layer's predicted expert while the drive would idle and closed 18.8's two open slow-downs (section 18.9),
@@ -11,6 +13,23 @@ that gave it a bias-free expert bank (18.4), the one that gave it a second drive
 kernel (18.3), the one that cut its per-token overhead and measured it to 64k (18.2), the one that made it faster
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
+
+> ## Start here (2026-09-27, 0.30.0): the chat session's defects fixed, GPU-side expert selection priced
+>
+> - **M21, sampling (section 18.12 item 1):** GLM/MiniMax chat and every server request without `top_p` (all of
+>   Hermes's) now sample at the checkpoint's top_p 0.95 instead of 1.0. At 1.0, 4-8 % of tokens came from outside
+>   the 0.95 nucleus and a story ended "Your feedback is appreciated."; at 0.95 none. `--top-p`,
+>   `--default-top-p`; a request's own `top_p` wins.
+> - **M22, chat parity (item 2):** the GLM/MiniMax chat attaches the serve scripts' snapshot directory (warm set and
+>   prompt-head snapshot survive a restart: first "Hi" 14.3 s / 21 % hits before, 2.0 s prefill / 88 % after),
+>   `/stats`, `/clear`, `/help`, unknown `/words` kept local, `idle warm:` moved into the turn summary.
+> - **S0 (item 3):** routing on the GPU through a slot table with `gather_qmm`, each layer submitted async and the
+>   previous layer's routing checked on the host one step behind: all-hit floor **34 ms against ~72 shipped,
+>   bit-identical**. ~43 of 57 layers per prose token and ~26 per code token have no miss: S1 is worth 13-21 % on
+>   prose and 4-7 % on code. S1 is the next job (plan in item 4).
+> - **Version 0.30.0.** 405 tests pass.
+
+**Previous block, 0.29.0:**
 
 > ## Start here (2026-09-27, 0.29.0): MiniMax-M3 caches 128 more experts in the same memory
 >
@@ -8096,6 +8115,123 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.12 MiniMax-M3: sampling defaults, chat parity, and S0 for GPU-side expert selection — 2026-09-27 (0.30.0)
+
+Hamed's order for this session (prompt v59): M21 and M22 first, then S0, then S1 if S0 says it is worth it; the
+goal behind it, MiniMax-M3 as fast as possible at unchanged quality, plus a check of what Splash is good for here.
+0.29.0 was committed and pushed at the start (tree clean). Tools confirmed first: caveman (session hook), Jev
+(`jev_verify` answered through TypeSafe) and the codebase-memory graph (ready, 5,531 nodes, one partial file outside
+the code). Filler: a fresh 4.7 MB concatenation of the repo's tracked `.md` and `.py` files (scratch).
+
+**1. M21, sampling defaults.** Both checkpoints' `generation_config.json` say temperature 1.0, top_p 0.95
+(MiniMax-M3 and GLM-5.3-Flash alike). The GLM/MiniMax chat had no `--top-p` (so `stream(..., top_p=1.0)`); the
+server filled an omitted `top_p` with 1.0. Hermes's `agent/transports/chat_completions.py` builds `{model,
+messages, temperature, tools}` and never sends `top_p`, so every Hermes request was affected.
+
+Measured first (one process, the session's prompts, fresh single-turn conversation each, 1,400-token cap; greedy,
+then top_p 1.0 and 0.95 with seeds 1 and 2; a sampler hook counted the tokens drawn from outside the 0.95 nucleus
+of their own distribution, which is exactly what top_p 0.95 removes):
+
+| prompt | greedy | top_p 1.0, seed 1 / 2 | top_p 0.95, seed 1 / 2 |
+|---|---|---|---|
+| 200-word story | 273 tokens, stop | **24 / 24 tail tokens** of 293 / 284 | 0 / 0 of 245 / 222 |
+| TypeScript: import JSON and CSV | 1,361, stop | **61 / 44** of 1,189 / 1,237 | 0 / 0 of 982 / 1,400 (cap) |
+
+So at top_p 1.0 about 8 % of prose tokens and 4-5 % of code tokens are tail draws. The story at top_p 1.0, seed 1
+ends "Your feedback is appreciated." after the story, and carries garbled phrases ("one small foot while a wall of
+wave towered above", "None would believe in another soul"); seed 2 appends "**[Word count: 198]**". Both 0.95
+stories and the greedy one are clean. The code replies at 1.0 had no stray trailer this time, but the JSON-to-CSV
+prompt was not run (stopped to free the machine for S0; the story and the tail rate settled the question).
+
+Shipped: `GlmModel.generation_defaults()` reads the checkpoint's `generation_config.json`; the chat's `--top-p`
+and the server's `--default-top-p` default to its top_p (DeepSeek keeps 1.0; `ServerConfig.default_top_p`); a
+request's own `top_p` wins; the server prints its defaults at startup. Temperatures are unchanged: the scripts set
+1.0 for MiniMax (the config's value) and 0.6 for GLM (the config says 1.0; GLM's temperature was a deliberate
+choice in 17 and is left alone). Server end to end: "391", and the startup line
+`a request without them samples at temperature 1.0, top_p 0.95`.
+
+**2. M22, GLM/MiniMax chat parity.** `cmd_chat_glm`:
+
+- attaches the snapshot directory (`--snapshot-dir`, default `CACHALOT_SNAPSHOT_DIR`, which `chat-minimax.sh` /
+  `chat-glm.sh` now set to the serve scripts' directories): the resident set is read back in the background at
+  startup and saved after every turn; the chat passes `preload=0`, so the agent snapshots in that directory
+  (1.8 and 2.6 GB for MiniMax) are indexed but only loaded if a prompt starts with them, instead of taking memory
+  that the memory fit would take back from the expert slots;
+- snapshots the prompt head (the template's header and the system message: the common prefix of two renders that
+  differ only in the user's text, `_glm_prompt_head`) as the stream's `boundary`, so it is persisted to disk;
+- `/stats` (session prompt/reused/generated tokens, prefill and decode seconds, decode tok/s, expert hits, misses,
+  reads, ms per read, GiB read, resident experts, slots, prefix snapshots, sampling), `/clear` (keeps the system
+  message), `/help`, `/exit`/`/quit`; any other single `/word` prints "unknown command" and is never sent to the
+  model (text such as `/usr/bin ...` still is);
+- background threads report through `model.notice` (None prints, as the server does); the chat collects the
+  `warm set:` and `idle warm:` lines and appends them to the next turn's summary line;
+- `--seed` seeds the sampler.
+
+Live, `./chat-minimax.sh` with piped input on a scratch copy of the snapshot directory: `/stats` and `/foo`
+answered locally, "Hi" (164 tokens) 11.4 s prefill at 49 % hits while the 2,381-expert warm set was still being read
+(7.6 s), the head (157 tokens) written to disk; after a restart the same "Hi" reused 157 tokens, **2.0 s prefill,
+88 % hits, 15.4 tok/s** (Hamed's cold session: 14.3 s, 21 %). A first turn typed before the warm set is in waits for
+it (the reads happen either way). The server then reused the chat's head snapshot (`reused=157`). Note for the
+serve directory's `keep` (8 files): the chat's head snapshot is one more file there, pruned by last use.
+
+**3. S0, the numbers for GPU-side expert selection (18.11 S1).**
+
+(a) Miss-free layers per decode token. The chat session replayed in one conversation (Hi, story, TS import, TS
+export, story; top_p 0.95, seed 1, 400-token cap), warm set from the chat above, the store's decode `get_many`
+wrapped to count misses per call (one call per MoE layer per token):
+
+| turn | tokens | ms / token | misses / token | hit rate | layers without a miss (of 57), mean / median |
+|---|---|---|---|---|---|
+| Hi | 10 | 75 | 2.8 | 98.8 % | 54.3 / 55 |
+| story | 312 | 130 | 15.6 | 93.1 % | **43.7 / 47** |
+| TS import | 347 | 229 | 43.2 | 81.0 % | **26.0 / 26** |
+| TS export | 400 | 236 | 44.4 | 80.5 % | 25.3 / 25 |
+| story | 329 | 136 | 17.9 | 92.1 % | 42.1 / 44 |
+
+Tokens with no miss at all: 3 of ~1,400. So the host round trip has to go per layer, not per token.
+
+(b) The floor. `nosync_floor.py` from 18.10 extended (scratch `s0_floor.py`): the floor replay's identical token
+at 2k (@200000), arms alternating in one process, STEPS 20 then 30:
+
+| arm | what the host does per MoE layer | median / min ms | logits |
+|---|---|---|---|
+| A, shipped | sync on the routing, then the matmuls | 74.6 / 66.0; 71.5 / 60.1 | reference |
+| B (18.10) | nothing: last step's routing reused | 39.0 / 38.5; 38.9 / 38.6 | identical |
+| C | nothing: routing on the GPU, a 128-entry table maps it to stacked copies of the layer's routed experts (biases rebuilt from the codes), `gather_qmm` for w1, w3, w2 | 35.0 / 34.7; 35.3 / 34.5 | identical |
+| **D** | C, plus `async_eval` of the layer's output and the host reading the *previous* layer's slot indices | **34.2 / 31.2** | identical |
+
+A is higher than 18.10's 59.3 (another process, another day; its minimum is 60-66). C is faster than B: one
+`gather_qmm` per projection is cheaper than four codes-kernel launches once the host does not wait between
+layers. D is the design's core: the host learns every layer's routing one step late at no cost, because each
+layer's command buffer finishes (and signals) while the next one runs.
+
+(c) Expected gain. A sync costs (A - D) / 57 = 0.39 (18.10's 22 ms) to 0.51 (minima) to 0.65 ms (medians) per
+layer. S1 removes it from layers without a miss; a layer with a miss still needs the host (read, then its output
+and the layer run ahead are recomputed). Prose, ~43 miss-free layers: 17 / 22 / 28 ms of ~133 ms, **-13 to -21 %**.
+Code, ~26: 10 / 13 / 17 ms of ~233 ms, **-4 to -7 %**. Above the 5 % bar on the text Hamed reads most; S1 goes
+ahead.
+
+**4. S1's plan, from what S0 showed.**
+
+1. Slots in slabs: one uint8 slab per chunk of slots (so parking, 18.6, can still free memory by chunk), each
+   slot one contiguous record (weights, scales, codes of w1, w3, w2 at fixed offsets, as the bank's records and
+   Splash's `moe_expert_slab.h` lay them out), slot views as offsets into it.
+2. A (layer, expert) -> slot table as an MLX int32 array (-1 for not resident), written by the store on admit and
+   evict, read on the GPU with the routing.
+3. Decode kernels that take the slab(s) and a slot index from the GPU: the codes `gate_up` and `qmv` with the slot
+   base computed in the kernel (bit-identical to today's by construction; checked with `cmp` as in 18.10). A miss
+   maps to a dummy slot and raises a flag.
+4. The layer loop of arm D: submit layer L+1 before reading L's slot indices; if L had a miss, read it (the hits'
+   matmuls are already done), recompute L's routed output, rewind L+1's KV offset and rerun it. The 0.28.0
+   prediction stays (its scores come from the same step-behind read). Old path behind a switch; decided on
+   `TF_ALTERNATE` and the agent benchmark.
+
+**Splash, the usability check Hamed asked for.** Cloned at `c64a578` (scratch). Its MoE kernels
+(`moe_expert_gate_up_q4_*`, `moe_expert_down_q4_*`, `moe_route_select_*`, `moe_combine`) take Q4 (4-bit, 256-element
+storage) or GGUF packages from one packed buffer of resident experts; MiniMax here is MLX 3-bit group 64 with
+4-bit bias codes. Nothing is usable as code; the pattern is, and S0 measured it: GPU-side selection through a
+table over packed expert storage, the host out of the per-layer loop. 18.11's ranking of S2-S5 stands.
 
 ### 18.11 Splash (incoai/splash) reviewed for Cachalot — 2026-09-27
 

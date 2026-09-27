@@ -108,7 +108,7 @@ idle 45 % of the time — and is now limited by the share of experts that are al
 |---|---|
 | Text generation, official chat protocol, thinking mode | ✅ working |
 | Second model: GLM-5.3-Flash (MLX 4-bit), experts streamed from SSD (`./serve-glm.sh`, `./chat-glm.sh`) | ✅ 0.18.0: text, tools, thinking, prefix cache in memory and on disk across restarts; prefill ~90 tok/s, decode 3.3-3.6 tok/s, 14.3 all-resident (from the internal SSD; since 0.19.0 the copy lives on the X10Pro and runs slower); vision, MTP not yet |
-| Third model: MiniMax-M3 (MLX 3-bit), experts streamed from SSD (`./serve-minimax.sh`, `./chat-minimax.sh`) | ✅ 0.29.0: text, tools, thinking, prefix cache in memory and on disk, expert cache kept across restarts; prefill ~240 tok/s at 16k (a 17k agent block in 101 s), 148 tok/s at 64k, a 150-token tool result in ~8.5-9 s, 1,000 tokens in ~13 s; decode 4.0-5.1 tok/s after a 2k prefill (4.6-6.3 through the server, 3.5-6.3 at a 25k agent context with the display on); the expert cache shrinks as the KV cache grows, so long contexts stay below the memory ceiling; experts read from a bias-free bank (6 % fewer bytes, byte-identical outputs; prefill reads take a compressed copy of each record's scales, 6 % fewer again) with direct reads, a second copy on the X10Pro adds read bandwidth; hit experts computed while misses load; prefill reads ahead the next layer's predicted experts; the expert cache is warmed between requests; decode reads the next layer's predicted expert while the drive would idle; expert slots keep 4-bit bias codes (6 % more cached experts, byte-identical); a GQA decode kernel from 4k context |
+| Third model: MiniMax-M3 (MLX 3-bit), experts streamed from SSD (`./serve-minimax.sh`, `./chat-minimax.sh`) | ✅ 0.30.0: text, tools, thinking, the checkpoint's sampling defaults (top_p 0.95) for chat and for requests that omit them, prefix cache in memory and on disk, expert cache kept across restarts; prefill ~240 tok/s at 16k (a 17k agent block in 101 s), 148 tok/s at 64k, a 150-token tool result in ~8.5-9 s, 1,000 tokens in ~13 s; decode 4.0-5.1 tok/s after a 2k prefill (4.6-6.3 through the server, 3.5-6.3 at a 25k agent context with the display on); the expert cache shrinks as the KV cache grows, so long contexts stay below the memory ceiling; experts read from a bias-free bank (6 % fewer bytes, byte-identical outputs; prefill reads take a compressed copy of each record's scales, 6 % fewer again) with direct reads, a second copy on the X10Pro adds read bandwidth; hit experts computed while misses load; prefill reads ahead the next layer's predicted experts; the expert cache is warmed between requests; decode reads the next layer's predicted expert while the drive would idle; expert slots keep 4-bit bias codes (6 % more cached experts, byte-identical); a GQA decode kernel from 4k context; the terminal chat restores the expert cache and the prompt head after a restart and has `/stats`, `/clear`, `/help` |
 | Layer-major prefill with expert-major MoE scheduling | ✅ working |
 | Auto-sized, wired expert slot pool with zero-copy SSD loads | ✅ shipped |
 | Cross-turn expert residency | ✅ working, validated |
@@ -609,6 +609,13 @@ line, is `docs/HANDOFF.md` section 9.25.
     multiple in 4 bits and the matrix kernel rebuilds the offset as it multiplies. 128 more experts fit in the
     52 GiB cache, so fewer are read from the SSD: decode ~7.5 % faster, tool-result prefills ~5 % faster,
     byte-identical output.
+41. MiniMax-M3 and GLM sample the way their checkpoints ask (0.30.0). Chat, and any server request that does not
+    set `top_p` (Hermes never does), sampled from the whole vocabulary; both checkpoints ask for top_p 0.95. At
+    top_p 1.0, 4-8 % of the tokens came from the least likely 5 % of the distribution, which is where the stray
+    closing sentences ("Your feedback is appreciated.") came from; at 0.95, none. The GLM/MiniMax terminal chat
+    now reads the expert cache back at startup and keeps the prompt head on disk (a restart's first "Hi": 14.3 s
+    and 21 % cache hits before, a 2 s prefill and 88 % after), and answers `/stats`, `/clear` and `/help` itself
+    instead of sending them to the model.
 
 ## Project layout
 

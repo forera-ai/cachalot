@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.30.0 (2026-09-27)
+
+HANDOFF section 18.12.
+
+### Fixed
+- **GLM and MiniMax sample with their checkpoints' top_p (M21).** The terminal chat had no `--top-p` and the
+  server filled a request's missing `top_p` with 1.0; both checkpoints' `generation_config.json` ask for 0.95, and
+  Hermes's chat-completions transport never sends `top_p`. Measured on MiniMax with the 0.29.0 chat session's
+  prompts, two seeds each: at top_p 1.0, 24 of ~290 story tokens and 44-61 of ~1,200 code tokens were drawn from
+  outside the 0.95 nucleus (4-8 %), and one story ended "Your feedback is appreciated."; at 0.95, none. Now the
+  chat's `--top-p` and the server's new `--default-top-p` default to the checkpoint's value (GLM/MiniMax; DeepSeek
+  keeps 1.0), a request's own `top_p` still wins, and the server prints the defaults at startup.
+- **GLM/MiniMax chat parity (M22).** `chat-minimax.sh` / `chat-glm.sh` attach the serve scripts' snapshot
+  directory (`--snapshot-dir`, `CACHALOT_SNAPSHOT_DIR`): the resident expert set is read back at startup and saved
+  after every turn, and the prompt head (template and system message) is snapshotted to disk. A restart's first
+  "Hi": prefill 14.3 s at 21 % hits before, 2.0 s (157 of 164 tokens reused) at 88 % after. The agent snapshots
+  in that directory are indexed but not preloaded by the chat (they would take memory from the expert cache).
+  `/stats` (session tokens, hit rate, reads, ms per read, slots, sampling), `/clear` and `/help` are answered
+  locally; any other single `/word` is reported as unknown and never sent to the model. `idle warm:` and
+  `warm set:` lines from background threads go into the next turn's summary instead of the line being typed
+  (`model.notice`; the server still prints them). `--seed` seeds the chat's sampler.
+
+### Measured, not changed
+- **S0, the numbers behind GPU-side expert selection (HANDOFF 18.11 S1).** All-hit floor at 2k, one process,
+  bit-identical logits in every arm: shipped 71.5-74.6 ms (min 60-66), host-known routing 39 ms, routing on the
+  GPU through a (layer, expert) -> slot table into stacked copies with `gather_qmm` 35 ms, and the same with each
+  layer submitted asynchronously and the previous layer's routing read on the host one step behind **34.2 ms**.
+  In the chat session's replay ~43 of 57 MoE layers per prose token (93 % hits) and ~26 per code token (81 %)
+  have no miss: expected savings 17-28 ms of ~133 (13-21 %) on prose and 10-17 ms of ~233 (4-7 %) on code.
+
 ## 0.29.0 (2026-09-27)
 
 HANDOFF section 18.10.

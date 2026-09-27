@@ -76,6 +76,9 @@ class CompletionRequest(BaseModel):
 class ServerConfig(BaseModel):
     default_max_tokens: int = 1024
     default_temperature: float = 0.6
+    # Used when a request omits `top_p`. GLM and MiniMax take their checkpoint's generation_config (0.95;
+    # HANDOFF 18.12); DeepSeek keeps 1.0.
+    default_top_p: float = 1.0
     # Repetition controls. A request may override them. The 62 % collapse rate
     # that once justified a nonzero default here was the transposed residual
     # mix (docs/HANDOFF.md section 9.9); through the fixed runtime the rate is
@@ -221,7 +224,7 @@ def create_app(engine: Engine, config: ServerConfig | None = None) -> FastAPI:
         params = SamplingParams(
             max_new_tokens=max_tokens,
             temperature=config.default_temperature if body.temperature is None else body.temperature,
-            top_p=1.0 if body.top_p is None else body.top_p,
+            top_p=config.default_top_p if body.top_p is None else body.top_p,
             top_k=body.top_k or 0,
             seed=body.seed,
             **_penalties(config, body),
@@ -393,7 +396,7 @@ def create_app(engine: Engine, config: ServerConfig | None = None) -> FastAPI:
         params = SamplingParams(
             max_new_tokens=body.max_tokens or config.default_max_tokens,
             temperature=config.default_temperature if body.temperature is None else body.temperature,
-            top_p=1.0 if body.top_p is None else body.top_p,
+            top_p=config.default_top_p if body.top_p is None else body.top_p,
             top_k=body.top_k or 0,
             seed=body.seed,
             **_penalties(config, body),

@@ -70,6 +70,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--default-max-tokens", type=int, default=1024)
     p.add_argument("--default-temperature", type=float, default=0.6)
+    p.add_argument("--default-top-p", type=float, default=None,
+                   help="top_p for requests that omit it (default: GLM/MiniMax take the checkpoint's "
+                        "generation_config, DeepSeek 1.0).")
     p.add_argument("--thinking", action="store_true", help="Default requests to thinking mode.")
     p.add_argument("--reasoning-effort", default=None, help="Default reasoning effort (1-100, low, high, max).")
 
@@ -77,6 +80,11 @@ def build_parser() -> argparse.ArgumentParser:
     _runtime_args(p, cfg)
     p.add_argument("--max-new-tokens", type=int, default=1024)
     p.add_argument("--temperature", type=float, default=0.6)
+    p.add_argument("--top-p", type=float, default=None,
+                   help="nucleus sampling (GLM/MiniMax; default: the checkpoint's generation_config, else 1.0)")
+    p.add_argument("--snapshot-dir", default=os.environ.get("CACHALOT_SNAPSHOT_DIR"),
+                   help="GLM/MiniMax: read the resident expert set back from here and keep the prompt-head "
+                        "snapshot across restarts (the serve scripts' directory; default: none).")
     p.add_argument("--thinking", action="store_true")
     p.add_argument("--reasoning-effort", default=None)
     p.add_argument("--seed", type=int, default=None)
@@ -212,6 +220,8 @@ def cmd_serve(args) -> None:
         if args.snapshot_dir:
             print(model.attach_snapshot_store(args.snapshot_dir), file=sys.stderr, flush=True)
         default_id = "minimax-m3" if family == "minimax" else "glm-5.3-flash"
+        if args.default_top_p is None:
+            args.default_top_p = model.generation_defaults().get("top_p", 1.0)
         engine = GlmEngine(model, model_id=args.model_id if args.model_id != "deepseek-v4.1-flash" else default_id)
     else:
         model = _load_model(args)
@@ -223,12 +233,15 @@ def cmd_serve(args) -> None:
         ServerConfig(
             default_max_tokens=args.default_max_tokens,
             default_temperature=args.default_temperature,
+            default_top_p=1.0 if args.default_top_p is None else args.default_top_p,
             default_thinking=args.thinking,
             default_reasoning_effort=_effort(args.reasoning_effort),
             api_key=args.api_key,
         ),
     )
-    print(f"OpenAI-compatible API on http://{args.host}:{args.port}/v1  (model id: {engine.model_id})",
+    print(f"OpenAI-compatible API on http://{args.host}:{args.port}/v1  (model id: {engine.model_id}; "
+          f"a request without them samples at temperature {args.default_temperature}, "
+          f"top_p {1.0 if args.default_top_p is None else args.default_top_p})",
           file=sys.stderr, flush=True)
     try:
         uvicorn.run(app, host=args.host, port=args.port, log_level="info", access_log=False)
@@ -245,25 +258,66 @@ def _effort(value):
         return value
 
 
+GLM_CHAT_COMMANDS = "/clear, /stats, /help, /exit"
+
+
+def _glm_prompt_head(model, messages: list[dict], thinking: bool, effort) -> tuple[int, ...]:
+    """
+    The tokens every first turn starts with: the template's header and the system message. Two renders that
+    differ only in the user's text agree on it; its snapshot is what `--snapshot-dir` keeps across restarts.
+    """
+    renders = [
+        model.tokenizer.encode(model.render_chat(messages + [{"role": "user", "content": text}],
+                                                 thinking=thinking, effort=effort), add_special_tokens=False)
+        for text in ("A", "Z")
+    ]
+    n = 0
+    while n < min(map(len, renders)) and renders[0][n] == renders[1][n]:
+        n += 1
+    return tuple(renders[0][:n])
+
+
 def cmd_chat_glm(args, family: str = "glm") -> None:
     """Terminal chat for the streamed-expert families (GLM-5.3-Flash, MiniMax-M3)."""
+    import re
+
+    import numpy as np
+
     model = _load_minimax(args) if family == "minimax" else _load_glm(args)
     THINK_END = model.splitter_cls.THINK_END
     thinking = bool(args.thinking or args.reasoning_effort)
+    # the checkpoint's own nucleus unless asked otherwise (MiniMax and GLM both ship 0.95; HANDOFF 18.12)
+    top_p = args.top_p if args.top_p is not None else model.generation_defaults().get("top_p", 1.0)
+    if args.seed is not None:
+        np.random.seed(args.seed)
+    # background threads (warm set, idle warming) report here, shown with the next turn's summary
+    notices: list[str] = []
+    model.notice = notices.append
+    if args.snapshot_dir:
+        print(model.attach_snapshot_store(args.snapshot_dir, preload=0), file=sys.stderr, flush=True)
     messages: list[dict] = []
     if args.system:
         messages.append({"role": "system", "content": args.system})
+    head = _glm_prompt_head(model, messages, thinking, args.reasoning_effort)
+    session = {"turns": 0, "prompt_tokens": 0, "reused_tokens": 0, "generated_tokens": 0,
+               "prefill_seconds": 0.0, "decode_seconds": 0.0}
+    s_start = model.store.stats()
 
     def turn(user_text: str) -> None:
         messages.append({"role": "user", "content": user_text})
         text = model.render_chat(messages, thinking=thinking, effort=args.reasoning_effort)
         ids = list(model.tokenizer.encode(text, add_special_tokens=False))
+        boundary = len(head) if 0 < len(head) < len(ids) and tuple(ids[:len(head)]) == head else 0
         splitter = model.splitter_cls(model.tokenizer, thinking)
         n, in_reasoning, t_start = 0, False, time.perf_counter()
         s0 = model.store.stats()
-        for ev in model.stream(ids, max_new_tokens=args.max_new_tokens, temperature=args.temperature):
+        for ev in model.stream(ids, max_new_tokens=args.max_new_tokens, temperature=args.temperature,
+                               top_p=top_p, boundary=boundary):
             if ev[0] == "prefill":
                 fresh = len(ids) - ev[1]
+                session["prompt_tokens"] += len(ids)
+                session["reused_tokens"] += ev[1]
+                session["prefill_seconds"] += ev[2]
                 rate = f", {fresh / ev[2]:.1f} tok/s on {fresh} new" if fresh > 0 and ev[2] > 0 else ""
                 print(f"[prefill {len(ids)} tokens, reused {ev[1]}, {ev[2]:.1f}s{rate}]", file=sys.stderr, flush=True)
             elif ev[0] == "token":
@@ -290,24 +344,74 @@ def cmd_chat_glm(args, family: str = "glm") -> None:
                 misses = s1.cache_misses - s0.cache_misses
                 hits = s1.cache_hits - s0.cache_hits
                 dt = ev[2]
+                session["turns"] += 1
+                session["generated_tokens"] += n
+                session["decode_seconds"] += dt
+                earlier = "".join(f"; {m}" for m in notices)
+                notices.clear()
                 print(f"\n[{n} tokens, {n / dt if dt else 0:.2f} tok/s decode, {time.perf_counter() - t_start:.1f}s total, "
-                      f"stop={ev[1]}, expert hit {hits / max(1, hits + misses):.0%}]", file=sys.stderr, flush=True)
+                      f"stop={ev[1]}, expert hit {hits / max(1, hits + misses):.0%}{earlier}]",
+                      file=sys.stderr, flush=True)
         content = splitter.text.split(THINK_END, 1)[-1] if thinking else splitter.text
         messages.append({"role": "assistant", "content": content})
+
+    def stats() -> dict:
+        s = model.store.stats()
+        hits, misses = s.cache_hits - s_start.cache_hits, s.cache_misses - s_start.cache_misses
+        reads = s.reads - s_start.reads
+        read_s = s.read_wall_seconds - s_start.read_wall_seconds
+        out = dict(session)
+        out.update({
+            "prefill_seconds": round(session["prefill_seconds"], 1),
+            "decode_seconds": round(session["decode_seconds"], 1),
+            "decode_tok_s": round(session["generated_tokens"] / session["decode_seconds"], 2)
+            if session["decode_seconds"] else 0.0,
+            "expert_hits": hits,
+            "expert_misses": misses,
+            "expert_hit_rate": round(hits / max(1, hits + misses), 3),
+            "expert_reads": reads,
+            "read_ms_per_expert": round(1000 * read_s / reads, 2) if reads else 0.0,
+            "ssd_gib_read": round((s.ssd_bytes_read - s_start.ssd_bytes_read) / 2**30, 1),
+            "resident_experts": len(model.store),
+            "expert_slots": model.store.capacity,
+            "prefix_snapshots": len(model.prefix),
+            "sampling": {"temperature": args.temperature, "top_p": top_p},
+            "notices": list(notices),
+        })
+        return out
 
     try:
         if args.prompt:
             turn(" ".join(args.prompt))
             return
+        print(f"Cachalot chat ({family}, temperature {args.temperature}, top_p {top_p}). Commands: {GLM_CHAT_COMMANDS}",
+              file=sys.stderr, flush=True)
         while True:
             try:
-                user = input("\n> ")
-            except EOFError:
+                user = input("\n> ").strip()
+            except (EOFError, KeyboardInterrupt):
+                print()
                 break
-            if user.strip() in ("/exit", "/quit"):
-                break
-            if user.strip():
-                turn(user)
+            if not user:
+                continue
+            # a single /word is a command, answered here and never sent to the model; "/usr/bin/..." is text
+            command = re.fullmatch(r"/([A-Za-z]+)", user)
+            if command:
+                word = command.group(1).lower()
+                if word in ("exit", "quit"):
+                    break
+                if word == "clear":
+                    messages[:] = [m for m in messages if m["role"] == "system"]
+                    print("conversation cleared", file=sys.stderr, flush=True)
+                elif word == "stats":
+                    print(json.dumps(stats(), indent=2), file=sys.stderr, flush=True)
+                elif word == "help":
+                    print(f"commands: {GLM_CHAT_COMMANDS}", file=sys.stderr, flush=True)
+                else:
+                    print(f"unknown command /{word} (commands: {GLM_CHAT_COMMANDS}); nothing was sent to the model",
+                          file=sys.stderr, flush=True)
+                continue
+            turn(user)
     finally:
         model.close()
 

@@ -289,6 +289,24 @@ class GlmModel:
                 finally:
                     self._lock.release()
 
+    # Messages from background threads (the warm set read back, idle warming). None prints them; the terminal
+    # chat collects them instead and shows them in the next turn's summary, not in the line being typed.
+    notice = None
+
+    def _notify(self, message: str) -> None:
+        if self.notice is not None:
+            self.notice(message)
+        else:
+            print(message, flush=True)
+
+    def generation_defaults(self) -> dict:
+        """The checkpoint's `generation_config.json` sampling defaults (temperature, top_p) that it sets."""
+        try:
+            config = json.loads((Path(self.model_path) / "generation_config.json").read_text())
+        except (OSError, ValueError, TypeError):
+            return {}
+        return {k: float(config[k]) for k in ("temperature", "top_p") if isinstance(config.get(k), (int, float))}
+
     def close(self) -> None:
         self._stop.set()
         self._stop_idle_warm()
@@ -445,15 +463,17 @@ class GlmModel:
     # -- prefix cache ---------------------------------------------------------------------------------------
     PREFIX_BYTES = int(float(os.environ.get("CACHALOT_GLM_PREFIX_GIB", "3")) * 1024**3)
 
-    def attach_snapshot_store(self, directory) -> str:
-        """Keep system-block snapshots in `directory` across restarts (HANDOFF 17.1); returns a status line."""
+    def attach_snapshot_store(self, directory, preload: int = 4) -> str:
+        """Keep system-block snapshots in `directory` across restarts (HANDOFF 17.1); returns a status line.
+        `preload` snapshots are read into memory now, the others when a prompt starts with them (the terminal
+        chat passes 0: an agent's 2 GB blocks in that directory would only take slots from the expert cache)."""
         from cachalot.glm.snapshots import GlmSnapshotStore, glm_identity
 
         t0 = time.perf_counter()
         # files kept on disk; MiniMax's full-attention cache is ~120 KB per token (~2.4 GB at 20k), GLM's ~12 KB
         keep = int(os.environ.get("CACHALOT_SNAPSHOT_KEEP", "32"))
         store = GlmSnapshotStore(directory, glm_identity(self.model_path, self.max_seq_len, self.PREFILL_CHUNK,
-                                                          self.NUMERICS_TAG), keep=keep)
+                                                          self.NUMERICS_TAG), keep=keep, preload=preload)
         loaded = store.load_all()
         for snap in loaded:
             self._add_prefix(snap)
@@ -487,8 +507,8 @@ class GlmModel:
         def run():
             t0 = time.perf_counter()
             n = self.store.preload(entries, reserve_fraction=0.0)
-            print(f"warm set: {n} experts ({n * self.store.expert_bytes / 2**30:.1f} GiB) "
-                  f"read back in {time.perf_counter() - t0:.1f}s", flush=True)
+            self._notify(f"warm set: {n} experts ({n * self.store.expert_bytes / 2**30:.1f} GiB) "
+                         f"read back in {time.perf_counter() - t0:.1f}s")
 
         self._warm_thread = threading.Thread(target=run, daemon=True, name="warm-set")
         self._warm_thread.start()
@@ -518,8 +538,8 @@ class GlmModel:
             t0 = time.perf_counter()
             read, _ = self.warm_now(cancel)
             if read:
-                print(f"idle warm: {read} experts in {time.perf_counter() - t0:.1f}s"
-                      f"{' (cancelled)' if cancel.is_set() else ''}", flush=True)
+                self._notify(f"idle warm: {read} experts in {time.perf_counter() - t0:.1f}s"
+                             f"{' (cancelled)' if cancel.is_set() else ''}")
 
         self._idle_warm = (cancel, threading.Thread(target=run, daemon=True, name="idle-warm"))
         self._idle_warm[1].start()
