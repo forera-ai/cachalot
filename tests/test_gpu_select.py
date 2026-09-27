@@ -135,3 +135,76 @@ def test_shrinking_parks_whole_slabs_and_keeps_the_survivors_data():
     assert store.set_capacity(8) == 4
     store._full_capacity = 9
     assert store.set_capacity(9) == 8
+
+
+def test_slab_kernels_with_scale_index_slots_match_codes_qmv_bit_for_bit():
+    """A scale-index slot (HANDOFF 18.13): the slab kernels look each scale up and give codes_qmv's bits."""
+    sizes = {}
+    for p, (out, inp) in {"w1": (INTER, D), "w3": (INTER, D), "w2": (D, INTER)}.items():
+        sizes[f"{p}.weight"] = out * inp * 3 // 8
+        sizes[f"{p}.sidx"] = out * inp // 64
+        sizes[f"{p}.lut"] = 512
+        sizes[f"{p}.codes"] = out * inp // 64 // 2
+    pool = SlabSlotPool(dict(sorted(sizes.items())), 6, slab_slots=4)
+    rng = np.random.default_rng(3)
+    table = (rng.uniform(1e-3, 2e-2, 150).astype(np.float32).view(np.uint32) >> 16).astype(np.uint16)
+    scales = {}
+    for i in range(6):
+        slot = pool._slots[i]
+        for p, (out, inp) in {"w1": (INTER, D), "w3": (INTER, D), "w2": (D, INTER)}.items():
+            slot.views[f"{p}.weight"][:] = rng.integers(0, 256, slot.views[f"{p}.weight"].size, dtype=np.uint8)
+            c = rng.integers(0, 5, out * inp // 64).astype(np.uint8)
+            slot.views[f"{p}.codes"][:] = c[0::2] | (c[1::2] << 4)
+            s = table[rng.integers(0, table.size, out * inp // 64)]
+            codes_qmv.sidx_from_scales(s, slot.views[f"{p}.sidx"], slot.views[f"{p}.lut"].view(np.uint16))
+            scales[(i, p)] = s
+    act = lambda up, gate: up * mx.sigmoid(gate)  # noqa: E731
+    x = mx.array(rng.standard_normal((1, D)).astype(np.float32)).astype(mx.bfloat16)
+    slots = [5, 0, 3, 4]
+    got = SlabExperts(pool, _fmt())(x, mx.array(np.array(slots, np.int32)), act)
+    for j, i in enumerate(slots):
+        a = pool._slots[i].arrays
+
+        def typed(p, out, inp):
+            return (a[f"{p}.weight"].view(mx.uint32).reshape(out, inp * 3 // 32),
+                    mx.array(scales[(i, p)]).view(mx.bfloat16).reshape(out, inp // 64), a[f"{p}.codes"])
+
+        g, u = codes_qmv.gate_up(x, typed("w1", INTER, D), typed("w3", INTER, D))
+        want = codes_qmv.qmv(act(u, g), *typed("w2", D, INTER))
+        assert mx.array_equal(got[j:j + 1], want).item(), j
+
+
+def test_slab_kernels_with_pair_slots_match_codes_qmv_bit_for_bit():
+    """A pair slot (HANDOFF 18.13 M23b): the slab kernels take scale and bias from the table, codes_qmv's bits."""
+    sizes = {}
+    for p, (out, inp) in {"w1": (INTER, D), "w3": (INTER, D), "w2": (D, INTER)}.items():
+        sizes[f"{p}.weight"] = out * inp * 3 // 8
+        sizes[f"{p}.pidx"] = out * inp // 64
+        sizes[f"{p}.plut"] = 1024
+    pool = SlabSlotPool(dict(sorted(sizes.items())), 6, slab_slots=4)
+    rng = np.random.default_rng(4)
+    table = (rng.uniform(1e-3, 2e-2, 40).astype(np.float32).view(np.uint32) >> 16).astype(np.uint16)
+    ref = {}
+    for i in range(6):
+        slot = pool._slots[i]
+        for p, (out, inp) in {"w1": (INTER, D), "w3": (INTER, D), "w2": (D, INTER)}.items():
+            slot.views[f"{p}.weight"][:] = rng.integers(0, 256, slot.views[f"{p}.weight"].size, dtype=np.uint8)
+            c = rng.integers(0, 5, out * inp // 64).astype(np.uint8)
+            s = table[rng.integers(0, table.size, out * inp // 64)]
+            codes_qmv.pair_from(s, c, slot.views[f"{p}.pidx"], slot.views[f"{p}.plut"].view(np.uint16))
+            ref[(i, p)] = (s, c[0::2] | (c[1::2] << 4))
+    act = lambda up, gate: up * mx.sigmoid(gate)  # noqa: E731
+    x = mx.array(rng.standard_normal((1, D)).astype(np.float32)).astype(mx.bfloat16)
+    slots = [5, 0, 3, 4]
+    got = SlabExperts(pool, _fmt())(x, mx.array(np.array(slots, np.int32)), act)
+    for j, i in enumerate(slots):
+        a = pool._slots[i].arrays
+
+        def typed(p, out, inp):
+            s, nib = ref[(i, p)]
+            return (a[f"{p}.weight"].view(mx.uint32).reshape(out, inp * 3 // 32),
+                    mx.array(s).view(mx.bfloat16).reshape(out, inp // 64), mx.array(nib))
+
+        g, u = codes_qmv.gate_up(x, typed("w1", INTER, D), typed("w3", INTER, D))
+        want = codes_qmv.qmv(act(u, g), *typed("w2", D, INTER))
+        assert mx.array_equal(got[j:j + 1], want).item(), j

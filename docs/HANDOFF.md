@@ -1,6 +1,7 @@
 # Cachalot — Engineering Handoff
 
-**Authoritative state as of 2026-09-27 (eleventh MiniMax session), after the session that gave GLM/MiniMax their
+**Authoritative state as of 2026-09-27 (twelfth MiniMax session), after the session that shrank MiniMax's expert
+slots to one byte per weight group's scale and bias (section 18.13), the one that gave GLM/MiniMax their
 checkpoints' sampling defaults, brought their terminal chat to parity and moved MiniMax's expert selection onto
 the GPU (section 18.12), the one that made MiniMax-M3's expert
 slots hold 4-bit bias codes and measured where the rest of a decode token's non-read time goes (section 18.10), the
@@ -13,6 +14,21 @@ that gave it a bias-free expert bank (18.4), the one that gave it a second drive
 kernel (18.3), the one that cut its per-token overhead and measured it to 64k (18.2), the one that made it faster
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
+
+> ## Start here (2026-09-27, 0.32.0): MiniMax-M3 caches 142 more experts in the same memory
+>
+> - **M23b shipped (section 18.13 items 3-5):** no projection of any MiniMax expert has more than 205 distinct
+>   (scale, bias) pairs (166 distinct scales), so a slot keeps one byte per group indexing a 256-entry table of
+>   pairs instead of the bf16 scale and the 4-bit code: 21.10 MiB a slot instead of 22.36, **2,523 slots in 52 GiB
+>   instead of 2,381**. Byte-identical (TF log-probs and logits `cmp`-equal, same `ids_hash` in eight runs). Agent
+>   benchmark decode ~171 → ~156 ms (**-9 %**), turns -8.5 %, short prefills -6 %. `CACHALOT_MINIMAX_SLOT_SIDX=0`
+>   restores 0.31.0's slot, `=1` the intermediate byte scale index + codes.
+> - **Closed (items 1, 2, 6):** S1b, the decode prefetch inside the GPU-select loop (lead ~0.6 ms against a ~3.5 ms
+>   read; slower; deeper lookahead 46 → 21 % precise); the compact head in a side file (fewer bytes, slower read).
+> - Open: GLM's slots could take a 16-bit pair index (up to 423 pairs a projection, ~5.6 % of a slot); S1c; M1b.
+> - **Version 0.32.0.** 414 tests pass.
+
+**Previous block, 0.31.0:**
 
 > ## Start here (2026-09-27, 0.31.0): MiniMax-M3 decode picks its experts on the GPU
 >
@@ -8131,6 +8147,106 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.13 MiniMax-M3: S1b measured, and expert slots of one byte per group — 2026-09-27 (0.32.0)
+
+Hamed's brief (prompt v60, "MinMax-M3 as fast as possible at the same quality"): confirm caveman, Jev and the
+codebase-memory graph first, then plan, build, measure and document. Tools: caveman active (session hook), Jev
+answered (`jev_verify` through TypeSafe), the graph ready (5,653 nodes, one partial file outside the code). 0.31.0
+committed, tree clean. Filler: the 0.31.0 session's 4.7 MB concatenation (scratch). Every decode A/B below either
+ran in one process token by token (`TF_ALTERNATE`) or as ABAB processes of the agent benchmark
+(`minimax_followup_turns.py` @1,300,000), with nothing else on the machine.
+
+**1. S1b, the decode prefetch inside the GPU-select loop: slower, closed.** Built as
+`gpu_select.PREFETCH_TOPK` / `PREFETCH_AHEAD`: `A_i` also scores layer i+d's router on this residual (in the same
+`async_eval`), and the host, at its check of layer i, starts the best non-resident of the top-k (the store's
+`prefetch_decode`; on a miss layer, after its own reads, as 0.28.0 did). Filler @600000, 2k context, 300 tokens,
+`TF_ALTERNATE=cachalot.minimax.gpu_select:PREFETCH_TOPK:0:2`: total 219.4 ms off, **229.3 ms on**; 19.4 predicted
+reads a token, 13.9 used; read time per miss 3.49 → 3.40 ms, "other" +3 ms. The prediction for layer i+1 is on the
+host at layer i's check, which in this loop is about one all-hit layer (~0.6 ms) before layer i+1's own check; a
+read takes ~3.5 ms, so a used prediction saves at most ~0.6 ms, while a wrong one spends ~3.5 ms of a drive that is
+already the bottleneck.
+
+Reaching further ahead was priced before building it (`depth_probe.py`, scratch: `A_i` scores layers i+1..i+8 with
+their own routers on layer i's residual; at the check the top-2 non-resident experts of each are compared with
+what that layer actually missed; filler @600000, 120 tokens, 55.6 misses a token):
+
+| layers ahead | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+|---|---|---|---|---|---|---|---|---|
+| best non-resident prediction was a real miss | 46.4 % | 37.8 % | 31.5 % | 27.4 % | 23.6 % | 21.2 % | 19.2 % | 17.8 % |
+| second best | 21.3 % | 17.5 % | 15.7 % | 13.5 % | 11.9 % | 11.3 % | 10.4 % | 9.3 % |
+
+A read needs ~6 all-hit layers of lead to finish in time, where the prediction is right one time in five. The knob
+stays (default 0). S1d is done with it: an all-hit layer now advances the store's decode walk and sweeps, so
+predictions for layers already passed expire even though `get_many` is never called there.
+
+**2. Where a decode token goes now.** Filler @600000 on 0.31.0: ~46 misses a token x ~3.5 ms (22.2 MiB each at
+~6.4 GB/s, the internal SSD's wall plus 13 % from the X10Pro) = ~160 ms of read wait, ~58 ms of everything else.
+The policy side is closed (18.1, 18.4: LRU is within noise of every non-oracle policy); the bytes of a 3-bit weight
+do not compress (18.7). What is left is how many experts fit: 0.29.0's 128 extra slots were worth -7.5 %.
+
+**3. The scales have a small alphabet.** A slot of 0.31.0 holds per group of 64 weights a bf16 scale (2 bytes) and a
+4-bit bias code; the weights are 24 bytes. Sampled first (40 experts): at most 99 distinct scales per projection,
+entropy ~4.1 bits a scale. Then every record of the bank (7,296 experts x 3 projections, the heads only, 3 s):
+**at most 166 distinct scales per projection** (24 projections above 128, none above 256). And the pairs that
+matter to the kernel, (scale, k), over the 7,187 coded records: at most 173 (median 66); over the 109 raw records
+(k = -7 allowed), (scale, bias) at most **205**. So one byte per group can stand for both.
+
+**4. M23, a byte scale index (mode 1), measured first.** Slot: weights, `w?.sidx` (uint8 per group), `w?.lut` (256
+bf16), the 4-bit codes: 21.52 MiB, 2,474 slots. The reader reads the head's scales into a scratch buffer and builds
+the table while the weights stream in (`codes_qmv.sidx_from_scales`: a presence scatter over 65,536 values, then a
+gather, O(n), 0.76 ms a projection, 0.92 ms with eight threads at once since NumPy drops the GIL; on its own
+eight-thread pool so the 16 pread threads cannot queue ahead of it). The kernels are `codes_qmv`'s with `U s =
+lut[sidx[g]]` in place of the scale load (`_IMPL_SIDX`, derived from `_IMPL` by text replacement). Checks: the
+kernels against `mx.quantized_matmul` in `self_check` (MiniMax's shapes, bit-equal), the prefill rebuild, the slab
+kernels, the reader for coded and raw records with plain and compressed heads. Real model, 1,024-token prefill
+@200000 + 40 teacher-forced tokens: log-probs and logits `cmp`-equal with 0.31.0's slot (NLL 0.83467 both).
+
+Agent benchmark, four processes (0 = 0.31.0's slot, 1 = the byte scale index):
+
+| arm | decode ms/token | turns s | short prefills s | ids_hash |
+|---|---|---|---|---|
+| 0 | 174.0 | 79.5 | 29.41 | -2225462492806781555 |
+| 1 | **157.4** | **71.5** | 26.19 | same |
+| 0 | 168.8 | 76.1 | 27.44 | same |
+| 1 | **160.5** | **72.9** | 26.74 | same |
+
+Misses a token in the six follow-up turns fell by 2-5 (e.g. 40.2 → 35.4, 29.1 → 26.2); -7.2 % decode for 93 slots.
+
+**5. M23b, a byte (scale, bias) pair index (mode 2), shipped.** Slot: weights, `w?.pidx` (uint8 per group), `w?.plut`
+(256 pairs of bf16 scale and bias, 1 KiB), no codes: **21.10 MiB, 2,523 slots**. The reader needs each group's k
+as well (the bank's 2-bit codes unpacked, or a raw record's k from its biases), then `codes_qmv.pair_from` keys
+(scale << 3 | k + 7) over 2^19 values, 0.90 ms a projection; the table's bias is computed with the bank's
+rounding. The kernel takes both from the table (`U s = plut[2 * pi]; U b = plut[2 * pi + 1]`, `_IMPL_PAIR`), so the
+decode matmul no longer rebuilds a bias at all; prefill rebuilds scales and biases in one launch per projection
+(`rebuild_pair`). Same checks as item 4, all bit-equal; real model: `cmp`-equal to 0.31.0's slot again.
+
+Agent benchmark, mode 1 against mode 2, four processes: decode 158.5 / 161.7 → **156.0 / 155.3 ms**, turns
+71.8 / 73.4 → 71.2 / 71.1 s, short prefills 26.1-26.8 s both, same `ids_hash` (-2.6 % decode on top of item 4).
+Against 0.31.0's slot: **decode ~171.4 → ~155.7 ms (-9 %), turns ~77.8 → ~71.2 s (-8.5 %)**. Server end to end
+(`serve-minimax.sh`, scratch snapshot directory): the tool call with thinking, then the tool result answered
+reusing 495 of 532 tokens at 6.1 tok/s.
+
+`CACHALOT_MINIMAX_SLOT_SIDX`: 2 (default), 1 (byte scale index + codes), 0 (0.31.0). Snapshots are unaffected (they
+hold KV and the resident set's keys, not slot bytes; `NUMERICS_VERSION` unchanged).
+
+**6. The compact head on disk: slower, closed.** With the slot form known, a read could skip the head's bf16 scales:
+a side file (`sheads.bin`, 7.46 GiB, each coded record's byte scale indices, tables and 2-bit codes, 1.06 MiB
+instead of the head's 1.90) read into the slot directly, the weights still from the bank. 200 random experts
+filled the slot identically; in one process token by token (`TF_ALTERNATE` on the reader's switch, both orders):
+**3.49 → 3.77 ms a miss**. The head in the bank is contiguous with the weights it precedes; a second location costs
+more than the 0.84 MiB it saves. Code and file removed. (A bank rewritten with compact heads in place would avoid
+the second location: ~155 GiB, more than the internal SSD has free next to the current bank; Hamed's call.)
+
+**7. GLM priced for the same trick.** 24 random GLM experts (4-bit, bf16 scales and biases, 13.5 MiB a slot): up to
+**423** distinct (scale, bias) pairs a projection (median 275), ~205 distinct scales. A byte does not fit; a 16-bit
+pair index (2 bytes a group instead of 4) would save ~0.75 MiB a slot (~5.6 %). GLM biases are not k x scale, so
+only the pair form applies.
+
+**What remains, ranked.** 1. M1b, a Hermes Desktop session on 0.32.0 (Hamed). 2. GLM: the 16-bit pair slot (G6,
+~5.6 % more slots) together with S1c (GPU selection) — both change GLM's slot kernels, so one job. 3. A bank with
+compact heads in place (item 6; needs Hamed and disk space: ~3.7 % fewer bytes a miss, if contiguity holds). 4.
+S2-S5 (18.11). 5. The Thunderbolt mirror (M19, Hamed).
 
 ### 18.12 MiniMax-M3: sampling defaults, chat parity, and S0 for GPU-side expert selection — 2026-09-27 (0.30.0)
 

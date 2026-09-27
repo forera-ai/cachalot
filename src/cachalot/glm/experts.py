@@ -106,15 +106,23 @@ def tensor_sizes(fmt: ExpertFormat) -> dict[str, int]:
 
 def _typed(slot, fmt: ExpertFormat, proj: str):
     """(weight, scales, biases) views of a slot, built once per slot (they alias its memory); (weight, scales,
-    codes) for a slot that holds 4-bit bias codes (MiniMax, HANDOFF 18.10)."""
+    codes) for a slot that holds 4-bit bias codes (MiniMax, HANDOFF 18.10); (weight, sidx, codes, lut) for one that
+    also holds its scales as a byte index into a table (HANDOFF 18.13)."""
     views = slot.typed.get(proj)
     if views is None:
         last = "codes" if f"{proj}.codes" in fmt.shapes else "biases"
+        # a scale-index slot (MiniMax, HANDOFF 18.13): (weight, sidx, codes, lut)
+        # a pair slot (HANDOFF 18.13, M23b): (weight, pidx, None, plut)
+        if f"{proj}.pidx" in fmt.shapes:
+            fields = ("weight", "pidx", None, "plut")
+        elif f"{proj}.sidx" in fmt.shapes:
+            fields = ("weight", "sidx", "codes", "lut")
+        else:
+            fields = ("weight", "scales", last)
         views = tuple(
-            slot.arrays[f"{proj}.{field}"].view(getattr(mx, fmt.dtypes[f"{proj}.{field}"])).reshape(
-                fmt.shapes[f"{proj}.{field}"]
-            )
-            for field in ("weight", "scales", last)
+            None if field is None else slot.arrays[f"{proj}.{field}"].view(
+                getattr(mx, fmt.dtypes[f"{proj}.{field}"])).reshape(fmt.shapes[f"{proj}.{field}"])
+            for field in fields
         )
         slot.typed[proj] = views
     return views
@@ -152,11 +160,14 @@ class StreamingSwitchGLU(nn.Module):
     codes = False
 
     def _qmm(self, x, slot, proj):
-        w, s, b = _typed(slot, self._fmt, proj)
+        w, s, b, *lut = _typed(slot, self._fmt, proj)
         if self.codes:
             from cachalot.minimax import codes_qmv
 
-            b = codes_qmv.rebuild_biases(s, b)
+            if lut and b is None:
+                s, b = codes_qmv.rebuild_pair(s, lut[0])
+            else:
+                s, b = codes_qmv.rebuild_sidx(s, lut[0], b) if lut else (s, codes_qmv.rebuild_biases(s, b))
         return mx.quantized_matmul(
             x, w, s, b, transpose=True, group_size=self._fmt.group_size, bits=self._fmt.bits
         )

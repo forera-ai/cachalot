@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.32.0 (2026-09-27)
+
+HANDOFF section 18.13.
+
+### Changed
+- **MiniMax-M3 expert slots keep one byte per weight group (M23b).** A scan of every expert of the bank (7,296
+  records, 21,888 projections) found at most 166 distinct bf16 scales and at most 205 distinct (scale, bias) pairs
+  per projection. A slot now holds, per group, a byte index into its projection's 256-entry table of (scale, bias)
+  pairs (`w?.pidx`, `w?.plut`) instead of the bf16 scale and the 4-bit bias code: 21.10 MiB a slot instead of
+  22.36, 2,523 resident slots in 52 GiB instead of 2,381. The reader builds the table while the weights stream in
+  (`codes_qmv.pair_from`, O(n), ~0.9 ms a projection on its own thread pool; a projection with more than 256 pairs
+  is refused). The decode kernels (`codes_qmv`'s copy of MLX's qmv_fast and the slab kernels of 0.31.0) take scale
+  and bias from the table; prefill rebuilds both in one launch per projection. Byte-identical: 40 teacher-forced
+  log-probs and the prefill logits `cmp`-equal against 0.31.0's slots; the agent benchmark printed the same
+  `ids_hash` in eight runs. Agent benchmark, ABAB against 0.31.0's slots: decode 174.0 / 168.8 → 157.4 / 160.5 ms
+  with a byte scale index and the codes (mode 1), then mode 1 against the pairs 158.5 / 161.7 → 156.0 / 155.3 ms;
+  in all **-9 %** decode, turns 79.5 / 76.1 → 71.2 / 71.1 s, short prefills -6 %. `CACHALOT_MINIMAX_SLOT_SIDX`:
+  2 (default) pairs, 1 byte scale index + codes, 0 the 0.31.0 slot.
+- `minimax.gpu_select`: `CACHALOT_MINIMAX_SELECT_PREFETCH` (top-k, default 0) and `_AHEAD` read the predicted
+  experts of a later layer from inside the GPU-select loop; measured slower (below) and left off. An all-hit
+  layer now advances the store's decode walk, so stale predictions expire (S1d).
+
+### Measured and not kept
+- The 0.28.0 decode prefetch inside the GPU-select loop (S1b): 19.4 predicted reads a token, 13.9 used, 219.4 →
+  229.3 ms (in one process, token by token). The prediction is known about 0.6 ms before the layer needs it and a
+  read takes ~3.5 ms. The best non-resident prediction is right 46 % of the time one layer ahead, 38 % two, 21 %
+  six, so reaching further ahead mostly spends a saturated drive on wrong experts.
+- The compact slot form in a side file on the SSD (7.5 GiB, 0.84 MiB fewer bytes a read): 3.49 → 3.77 ms a
+  miss in both orders. The bank's head is contiguous with the weights; a second location is slower than the
+  bytes it saves. Removed.
+
 ## 0.31.0 (2026-09-27)
 
 HANDOFF section 18.12 item 5.

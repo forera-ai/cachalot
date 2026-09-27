@@ -115,6 +115,44 @@ METAL_FUNC void qmv_codes_impl(
 }
 """
 
+_BLOCK = """      const device T* sl = scales + row * in_vec_size_g;
+
+      U s = sl[0];
+      int g = goff + row * in_vec_size_g;
+      int c = (codes[g >> 1] >> ((g & 1) * 4)) & 0xF;
+      float p = float(c - K_OFFSET) * float(sl[0]);
+      uint u = as_type<uint>(p);
+      ushort hb = ushort((u + 0x7FFFu + ((u >> 16) & 1u)) >> 16);
+      U b = static_cast<U>(as_type<T>(hb));
+"""
+
+# HANDOFF 18.13 (M23): a slot may keep each group's scale as a byte index into its projection's 256-entry bf16
+# table (no expert of this checkpoint has more than 166 distinct scales in a projection): the same kernel with the
+# scale looked up, so the same bits reach the same arithmetic.
+_IMPL_SIDX = (
+    _IMPL.replace("qmv_codes_impl(", "qmv_sidx_impl(")
+    .replace("    const device T* scales,\n", "    const device uint8_t* sidx,\n    const device T* lut,\n")
+    .replace("  scales += goff;\n", "")
+    .replace("      const device T* sl = scales + row * in_vec_size_g;\n\n      U s = sl[0];\n"
+             "      int g = goff + row * in_vec_size_g;\n",
+             "      int g = goff + row * in_vec_size_g;\n      T sv = lut[sidx[g]];\n      U s = sv;\n")
+    .replace("float(sl[0])", "float(sv)")
+    .replace("    scales += block_size / group_size;\n", "")
+)
+
+# HANDOFF 18.13 (M23b): a slot may keep one byte per group indexing its projection's 256-entry table of (scale, bias)
+# pairs (no projection of this checkpoint has more than 205 distinct pairs): scale and bias come from the table, the
+# same bits the rebuild computes, and the slot needs no codes at all.
+_IMPL_PAIR = (
+    _IMPL.replace("qmv_codes_impl(", "qmv_pair_impl(")
+    .replace("    const device T* scales,\n    const device uint8_t* codes,\n",
+             "    const device uint8_t* pidx,\n    const device T* plut,\n")
+    .replace("  scales += goff;\n", "")
+    .replace(_BLOCK, "      int g = goff + row * in_vec_size_g;\n      int pi = pidx[g];\n"
+                     "      U s = plut[2 * pi];\n      U b = plut[2 * pi + 1];\n")
+    .replace("    scales += block_size / group_size;\n", "")
+)
+
 _ONE = r"""
   qmv_codes_impl<bfloat16_t, 64, 3>(
       w, s, c, x, y, IN_SIZE, OUT_SIZE,
@@ -144,6 +182,62 @@ _REBUILD = r"""
   b_out[g] = as_type<bfloat16_t>(ushort((u + 0x7FFFu + ((u >> 16) & 1u)) >> 16));
 """
 
+_ONE_SIDX = r"""
+  qmv_sidx_impl<bfloat16_t, 64, 3>(
+      w, s, l, c, x, y, IN_SIZE, OUT_SIZE,
+      threadgroup_position_in_grid, simdgroup_index_in_threadgroup, thread_index_in_simdgroup);
+"""
+
+_TWO_SIDX = r"""
+  const int nh = OUT_SIZE / 8;
+  uint3 t = threadgroup_position_in_grid;
+  if (int(t.y) < nh) {
+    qmv_sidx_impl<bfloat16_t, 64, 3>(
+        w1, s1, l1, c1, x, g, IN_SIZE, OUT_SIZE, t, simdgroup_index_in_threadgroup, thread_index_in_simdgroup);
+  } else {
+    t.y -= nh;
+    qmv_sidx_impl<bfloat16_t, 64, 3>(
+        w3, s3, l3, c3, x, u, IN_SIZE, OUT_SIZE, t, simdgroup_index_in_threadgroup, thread_index_in_simdgroup);
+  }
+"""
+
+# scales and biases for the other paths from a scale-index slot: one thread per group
+_REBUILD_SIDX = r"""
+  uint g = thread_position_in_grid.x;
+  bfloat16_t sv = l_in[s_in[g]];
+  int c = (c_in[g >> 1] >> ((g & 1) * 4)) & 0xF;
+  float p = float(c - 7) * float(sv);
+  uint u = as_type<uint>(p);
+  s_out[g] = sv;
+  b_out[g] = as_type<bfloat16_t>(ushort((u + 0x7FFFu + ((u >> 16) & 1u)) >> 16));
+"""
+
+_ONE_PAIR = r"""
+  qmv_pair_impl<bfloat16_t, 64, 3>(
+      w, s, l, x, y, IN_SIZE, OUT_SIZE,
+      threadgroup_position_in_grid, simdgroup_index_in_threadgroup, thread_index_in_simdgroup);
+"""
+
+_TWO_PAIR = r"""
+  const int nh = OUT_SIZE / 8;
+  uint3 t = threadgroup_position_in_grid;
+  if (int(t.y) < nh) {
+    qmv_pair_impl<bfloat16_t, 64, 3>(
+        w1, s1, l1, x, g, IN_SIZE, OUT_SIZE, t, simdgroup_index_in_threadgroup, thread_index_in_simdgroup);
+  } else {
+    t.y -= nh;
+    qmv_pair_impl<bfloat16_t, 64, 3>(
+        w3, s3, l3, x, u, IN_SIZE, OUT_SIZE, t, simdgroup_index_in_threadgroup, thread_index_in_simdgroup);
+  }
+"""
+
+_REBUILD_PAIR = r"""
+  uint g = thread_position_in_grid.x;
+  int pi = s_in[g];
+  s_out[g] = l_in[2 * pi];
+  b_out[g] = l_in[2 * pi + 1];
+"""
+
 _KERNELS: dict[str, object] = {}
 
 
@@ -155,6 +249,41 @@ def _kernel(name: str):
                 name="minimax_bias_rebuild", input_names=["s_in", "c_in"], output_names=["b_out"],
                 source=_REBUILD, ensure_row_contiguous=True,
             )
+        elif name == "rebuild_sidx":
+            k = mx.fast.metal_kernel(
+                name="minimax_sidx_rebuild", input_names=["s_in", "l_in", "c_in"], output_names=["s_out", "b_out"],
+                source=_REBUILD_SIDX, ensure_row_contiguous=True,
+            )
+        elif name == "rebuild_pair":
+            k = mx.fast.metal_kernel(
+                name="minimax_pair_rebuild", input_names=["s_in", "l_in"], output_names=["s_out", "b_out"],
+                source=_REBUILD_PAIR, ensure_row_contiguous=True,
+            )
+        elif name.endswith("_pair"):
+            header = _mlx_header() + _IMPL_PAIR
+            if name == "one_pair":
+                k = mx.fast.metal_kernel(
+                    name="minimax_qmv_pair", input_names=["w", "s", "l", "x"], output_names=["y"],
+                    source=_ONE_PAIR, header=header, ensure_row_contiguous=True,
+                )
+            else:
+                k = mx.fast.metal_kernel(
+                    name="minimax_qmv_pair_gate_up", input_names=["w1", "s1", "l1", "w3", "s3", "l3", "x"],
+                    output_names=["g", "u"], source=_TWO_PAIR, header=header, ensure_row_contiguous=True,
+                )
+        elif name.endswith("_sidx"):
+            header = _mlx_header() + _IMPL_SIDX
+            if name == "one_sidx":
+                k = mx.fast.metal_kernel(
+                    name="minimax_qmv_sidx", input_names=["w", "s", "l", "c", "x"], output_names=["y"],
+                    source=_ONE_SIDX, header=header, ensure_row_contiguous=True,
+                )
+            else:
+                k = mx.fast.metal_kernel(
+                    name="minimax_qmv_sidx_gate_up",
+                    input_names=["w1", "s1", "l1", "c1", "w3", "s3", "l3", "c3", "x"],
+                    output_names=["g", "u"], source=_TWO_SIDX, header=header, ensure_row_contiguous=True,
+                )
         else:
             header = _mlx_header() + _IMPL
             if name == "one":
@@ -171,11 +300,18 @@ def _kernel(name: str):
     return k
 
 
-def qmv(x, w, s, c):
-    """x [1, in] (bf16) @ dequant(w, s, codes).T: MLX's qmv_fast with the bias rebuilt in the kernel."""
+def qmv(x, w, s, c, lut=None):
+    """x [1, in] (bf16) @ dequant(w, s, codes).T: MLX's qmv_fast with the bias rebuilt in the kernel. With `lut`,
+    `s` is a uint8 scale index into it (a scale-index slot, M23)."""
     out = w.shape[0]
-    return _kernel("one")(
-        inputs=[w, s, c, x],
+    if lut is None:
+        name, inputs = "one", [w, s, c, x]
+    elif c is None:  # a pair slot (M23b): `lut` holds (scale, bias) pairs
+        name, inputs = "one_pair", [w, s, lut, x]
+    else:
+        name, inputs = "one_sidx", [w, s, lut, c, x]
+    return _kernel(name)(
+        inputs=inputs,
         template=[("IN_SIZE", x.shape[-1]), ("OUT_SIZE", out)],
         # MLX's dispatch: threadgroup (32, 2, 1), grid of threadgroups (M, out / 8, 1)
         grid=(32, 2 * (out // 8), 1), threadgroup=(32, 2, 1),
@@ -184,10 +320,17 @@ def qmv(x, w, s, c):
 
 
 def gate_up(x, p1, p3):
-    """(x @ w1.T, x @ w3.T) in one launch, each exactly as `qmv`."""
+    """(x @ w1.T, x @ w3.T) in one launch, each exactly as `qmv`; p = (weight, scales, codes) or, for a
+    scale-index slot, (weight, sidx, codes, lut)."""
     out = p1[0].shape[0]
-    return _kernel("two")(
-        inputs=[p1[0], p1[1], p1[2], p3[0], p3[1], p3[2], x],
+    if len(p1) == 4 and p1[2] is None:
+        name, inputs = "two_pair", [p1[0], p1[1], p1[3], p3[0], p3[1], p3[3], x]
+    elif len(p1) == 4:
+        name, inputs = "two_sidx", [p1[0], p1[1], p1[3], p1[2], p3[0], p3[1], p3[3], p3[2], x]
+    else:
+        name, inputs = "two", [p1[0], p1[1], p1[2], p3[0], p3[1], p3[2], x]
+    return _kernel(name)(
+        inputs=inputs,
         template=[("IN_SIZE", x.shape[-1]), ("OUT_SIZE", out)],
         grid=(32, 2 * 2 * (out // 8), 1), threadgroup=(32, 2, 1),
         output_shapes=[(1, out), (1, out)], output_dtypes=[x.dtype, x.dtype],
@@ -202,6 +345,72 @@ def rebuild_biases(scales, codes):
         grid=(n, 1, 1), threadgroup=(256, 1, 1),
         output_shapes=[(n,)], output_dtypes=[mx.bfloat16],
     )[0].reshape(scales.shape)
+
+
+def rebuild_sidx(sidx, lut, codes):
+    """(scales, biases) in bf16 that a scale-index slot stands for, on the GPU, in one launch (bit-identical)."""
+    n = sidx.size
+    s, b = _kernel("rebuild_sidx")(
+        inputs=[sidx.reshape(-1), lut, codes],
+        grid=(n, 1, 1), threadgroup=(256, 1, 1),
+        output_shapes=[(n,), (n,)], output_dtypes=[mx.bfloat16, mx.bfloat16],
+    )
+    return s.reshape(sidx.shape), b.reshape(sidx.shape)
+
+
+def rebuild_pair(pidx, plut):
+    """(scales, biases) in bf16 that a pair slot stands for (M23b), on the GPU, in one launch."""
+    n = pidx.size
+    s, b = _kernel("rebuild_pair")(
+        inputs=[pidx.reshape(-1), plut],
+        grid=(n, 1, 1), threadgroup=(256, 1, 1),
+        output_shapes=[(n,), (n,)], output_dtypes=[mx.bfloat16, mx.bfloat16],
+    )
+    return s.reshape(pidx.shape), b.reshape(pidx.shape)
+
+
+def pair_from(scales: np.ndarray, c: np.ndarray, pidx_out: np.ndarray, plut_out: np.ndarray) -> None:
+    """bf16 scale bit patterns and bias codes c = k + 7 (one per group) -> a byte index per group (`pidx_out`) and
+    the table of distinct (scale, bias) pairs (`plut_out`, uint16 [512]: scale, bias, ...; zero-padded), the bias
+    rounded as the bank rounds it. O(n). Raises above 256 pairs."""
+    key = (scales.astype(np.uint32) << 3) | c
+    seen = np.zeros(1 << 19, np.bool_)
+    seen[key] = True
+    vals = np.flatnonzero(seen)
+    if vals.size > 256:
+        raise ValueError(f"{vals.size} distinct (scale, bias) pairs, more than a byte can index")
+    inv = np.zeros(1 << 19, np.uint8)
+    inv[vals] = np.arange(vals.size, dtype=np.uint8)
+    sv = (vals >> 3).astype(np.uint16)
+    k = (vals & 7).astype(np.float32) - K_OFFSET
+    plut_out[:] = 0
+    plut_out[0:2 * vals.size:2] = sv
+    plut_out[1:2 * vals.size:2] = _bits((sv.astype(np.uint32) << 16).view(np.float32) * k)
+    np.take(inv, key, out=pidx_out)
+
+
+def codes_from_packed(packed: np.ndarray, k_base: int) -> np.ndarray:
+    """Bank 2-bit codes (4 per byte) -> one code k + 7 per group."""
+    c = np.empty(packed.size * 4, np.uint8)
+    for i in range(4):
+        c[i::4] = (packed >> (2 * i)) & 3
+    c += k_base + K_OFFSET
+    return c
+
+
+def sidx_from_scales(scales: np.ndarray, sidx_out: np.ndarray, lut_out: np.ndarray) -> None:
+    """bf16 scale bit patterns -> a byte index per group (`sidx_out`, uint8) and the sorted table of the distinct
+    values (`lut_out`, uint16 [256], zero-padded). O(n): a presence scatter, not a sort. Raises above 256 values."""
+    seen = np.zeros(65536, np.bool_)
+    seen[scales] = True
+    vals = np.flatnonzero(seen)
+    if vals.size > 256:
+        raise ValueError(f"{vals.size} distinct scales, more than a byte can index")
+    inv = np.zeros(65536, np.uint8)
+    inv[vals] = np.arange(vals.size, dtype=np.uint8)
+    lut_out[:vals.size] = vals
+    lut_out[vals.size:] = 0
+    np.take(inv, scales, out=sidx_out)
 
 
 def usable(x) -> bool:
@@ -233,6 +442,12 @@ def nibbles_from_packed(packed: np.ndarray, k_base: int, out: np.ndarray) -> Non
 
 def nibbles_from_biases(scales: np.ndarray, biases: np.ndarray, out: np.ndarray) -> None:
     """Nibbles for bf16 scale and bias bit patterns (a raw record); raises if any bias is not k * scale."""
+    c = codes_from_biases(scales, biases)
+    np.bitwise_or(c[0::2], c[1::2] << 4, out=out)
+
+
+def codes_from_biases(scales: np.ndarray, biases: np.ndarray) -> np.ndarray:
+    """One code k + 7 per group for bf16 scale and bias bit patterns; raises if any bias is not k * scale."""
     s = (scales.astype(np.uint32) << 16).view(np.float32)
     b = (biases.astype(np.uint32) << 16).view(np.float32)
     with np.errstate(divide="ignore", invalid="ignore"):
@@ -244,8 +459,7 @@ def nibbles_from_biases(scales: np.ndarray, biases: np.ndarray, out: np.ndarray)
     u = (s * (k.astype(np.float32))).view(np.uint32)
     if not np.array_equal(((u + 0x7FFF + ((u >> 16) & 1)) >> 16).astype(np.uint16), biases):
         raise ValueError("a bias is not bf16(k * scale)")
-    c = (k + K_OFFSET).astype(np.uint8)
-    np.bitwise_or(c[0::2], c[1::2] << 4, out=out)
+    return (k + K_OFFSET).astype(np.uint8)
 
 
 # -- the load-time check ----------------------------------------------------------------------------------------
@@ -281,5 +495,32 @@ def self_check(shapes=((3072, 6144), (6144, 3072)), trials: int = 2) -> bool:
             rb = rebuild_biases(s, c)
             ok &= all(bool(mx.array_equal(a, ref).item()) for a in (got, g, u))
             ok &= bool(mx.array_equal(rb, bias).item())
+            # the scale-index slot (M23): the same scales as a byte index into a table
+            pick = rng.permutation(np.unique(sc))[:200]  # at most 256 distinct scales: draw from 200 of them
+            sc_t = pick[rng.integers(0, pick.size, size=sc.shape)]
+            b_t = _bits((sc_t.astype(np.uint32) << 16).view(np.float32) * k.astype(np.float32))
+            si, lt = np.zeros(sc.shape, np.uint8), np.zeros(256, np.uint16)
+            sidx_from_scales(sc_t, si, lt)
+            s_t, b_mx = mx.array(sc_t).view(mx.bfloat16), mx.array(b_t).view(mx.bfloat16)
+            ref_t = mx.quantized_matmul(x, w, s_t, b_mx, transpose=True, group_size=GROUP, bits=BITS)
+            si_mx, lt_mx = mx.array(si), mx.array(lt).view(mx.bfloat16)
+            got_t = qmv(x, w, si_mx, c, lt_mx)
+            g_t, u_t = gate_up(x, (w, si_mx, c, lt_mx), (w, si_mx, c, lt_mx))
+            rs, rbt = rebuild_sidx(si_mx, lt_mx, c)
+            ok &= all(bool(mx.array_equal(a, ref_t).item()) for a in (got_t, g_t, u_t))
+            ok &= bool(mx.array_equal(rs, s_t).item()) and bool(mx.array_equal(rbt, b_mx).item())
+            # the pair slot (M23b): (scale, bias) looked up from one byte
+            sc_p = pick[:50][rng.integers(0, 50, size=sc.shape)]  # 50 scales x 5 codes: at most 250 pairs
+            b_p = _bits((sc_p.astype(np.uint32) << 16).view(np.float32) * k.astype(np.float32))
+            s_p, bp_mx = mx.array(sc_p).view(mx.bfloat16), mx.array(b_p).view(mx.bfloat16)
+            ref_p = mx.quantized_matmul(x, w, s_p, bp_mx, transpose=True, group_size=GROUP, bits=BITS)
+            pi, pl = np.zeros(sc.size, np.uint8), np.zeros(512, np.uint16)
+            pair_from(sc_p.reshape(-1), (k + K_OFFSET).astype(np.uint8).reshape(-1), pi, pl)
+            pi_mx, pl_mx = mx.array(pi.reshape(sc.shape)), mx.array(pl).view(mx.bfloat16)
+            got_p = qmv(x, w, pi_mx, None, pl_mx)
+            g_p, u_p = gate_up(x, (w, pi_mx, None, pl_mx), (w, pi_mx, None, pl_mx))
+            rsp, rbp = rebuild_pair(pi_mx, pl_mx)
+            ok &= all(bool(mx.array_equal(a, ref_p).item()) for a in (got_p, g_p, u_p))
+            ok &= bool(mx.array_equal(rsp, s_p).item()) and bool(mx.array_equal(rbp, bp_mx).item())
     _OK = ok
     return ok

@@ -142,6 +142,11 @@ DECODE_BORROW = os.environ.get("CACHALOT_MINIMAX_DECODE_BORROW", "1") != "0"
 # bf16 bias: 22.35 MiB a slot instead of 23.62, ~5.7 % more resident experts in the same budget, same tokens (the
 # decode matmul is MLX's qmv with the bias rebuilt in the kernel, codes_qmv). Needs the bank. 0 keeps bf16 biases.
 SLOT_CODES = os.environ.get("CACHALOT_MINIMAX_SLOT_CODES", "1") != "0"
+# HANDOFF 18.13 (M23, M23b): 2 (the default) keeps one byte per group in a codes slot, indexing the projection's
+# 256-entry table of (scale, bias) pairs (no projection of this checkpoint has more than 205; the reader refuses
+# one with more), and no codes: 21.10 MiB a slot instead of 22.36, 142 more resident experts in 52 GiB, same tokens.
+# 1: a byte scale index plus the 4-bit codes (21.52 MiB). 0: bf16 scales plus the codes (0.31.0).
+SLOT_SIDX = int(os.environ.get("CACHALOT_MINIMAX_SLOT_SIDX", "2"))
 # HANDOFF 18.7: a prefill chunk reads the whole next layer ahead only from this many tokens. GLM's 128 suits top-8
 # of 288; MiniMax's routing is skewed (150 tokens reach ~74 of 128 experts per layer), so below ~750 tokens the
 # speculative reads cost more than the overlap saves (150 tokens: 14.7 -> 9.0-10.1 s; 1,000: 15.3 vs 15.9 s).
@@ -199,7 +204,7 @@ class MiniMaxModel(GlmModel):
         self.slot_codes = bool(
             SLOT_CODES and hasattr(reader, "covers") and all(reader.covers(*key) for key in self.expert_index)
         )
-        self.slot_format = slot_format(self.expert_format) if self.slot_codes else self.expert_format
+        self.slot_format = slot_format(self.expert_format, SLOT_SIDX) if self.slot_codes else self.expert_format
         if self.slot_codes:
             from cachalot.minimax import codes_qmv
 

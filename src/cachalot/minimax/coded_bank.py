@@ -199,7 +199,8 @@ class CodedBankReader(ExpertReader):
 
     def read_expert_into(self, entry: ExpertEntry, views) -> int:
         # a codes slot (HANDOFF 18.10) can only be filled from the bank, whatever ENABLED says
-        rec = self.records.get((entry.layer, entry.expert)) if ENABLED or "w1.codes" in views else None
+        compact = "w1.codes" in views or "w1.pidx" in views
+        rec = self.records.get((entry.layer, entry.expert)) if ENABLED or compact else None
         if rec is None:
             if not entry.tensors:
                 # a trimmed checkpoint (index_from_bank) has no other copy of this expert
@@ -247,9 +248,9 @@ class CodedBankReader(ExpertReader):
             else:
                 futures.append((pool.submit(os.preadv, fd, [buf], pos), lay.weight, False, fd, None, 0))
             pos += lay.weight
-        scales = [np.asarray(views[f"{p}.scales"]).view(np.uint16) for p in PROJS]
+        scales = [np.asarray(views[f"{p}.scales"]).view(np.uint16) for p in PROJS] if "w1.scales" in views else None
         zhead = self._head(key, kind, fd, offset) if key is not None else None
-        if "w1.codes" in views:
+        if "w1.codes" in views or "w1.pidx" in views:
             # a slot of 4-bit bias codes (HANDOFF 18.10): the bank's 2-bit codes widened, a raw record's biases coded
             total = self._read_head_codes(kind, fd, offset, fname, views, scales, zhead, pool)
         elif kind == "coded":
@@ -299,18 +300,28 @@ class CodedBankReader(ExpertReader):
         return total
 
     def _read_head_codes(self, kind, fd, offset, fname, views, scales, zhead, pool) -> int:
-        """A record's head into a codes slot: scales into the scale views, bias codes as nibbles (codes_qmv)."""
+        """A record's head into a codes slot: scales into the scale views (or, in a scale-index slot, a byte index
+        and a table, M23), bias codes as nibbles (codes_qmv)."""
         from cachalot.minimax import codes_qmv
 
         lay = self.layout
-        nib = [np.asarray(views[f"{p}.codes"]) for p in PROJS]
+        pair = "w1.pidx" in views
+        nib = None if pair else [np.asarray(views[f"{p}.codes"]) for p in PROJS]
+        sidx = "w1.sidx" in views or pair
+        if sidx:
+            # a scale-index slot (M23): the bf16 scales land in a scratch buffer and become a byte index + table
+            scale_buf = bytearray(3 * lay.scales)
+            scale_bufs = [memoryview(scale_buf)[i * lay.scales:(i + 1) * lay.scales] for i in range(3)]
+            scales = [np.frombuffer(b, np.uint16) for b in scale_bufs]
+        else:
+            scale_bufs = [memoryview(views[f"{p}.scales"]).cast("B") for p in PROJS]
         if kind == "coded":
             codes = bytearray(3 * lay.codes)
-            bufs = [memoryview(views[f"{p}.scales"]).cast("B") for p in PROJS] + [memoryview(codes)]
+            bufs = scale_bufs + [memoryview(codes)]
             want = 3 * (lay.scales + lay.codes)
         else:
             raw = bytearray(3 * lay.scales)
-            bufs = [memoryview(views[f"{p}.scales"]).cast("B") for p in PROJS] + [memoryview(raw)]
+            bufs = scale_bufs + [memoryview(raw)]
             want = 6 * lay.scales
         if zhead is not None:
             _scatter(zhead, bufs)
@@ -319,29 +330,81 @@ class CodedBankReader(ExpertReader):
             got = os.preadv(fd, bufs, offset)
         if got != want:
             raise OSError(f"short head read from {fname}@{offset}: {got}")
+        if pair:
+            # M23b: each group's (scale, bias) as a byte index into the projection's table of pairs
+            if kind == "coded":
+                packed = np.frombuffer(codes, np.uint8)
+                n = lay.codes
+                cs = [codes_qmv.codes_from_packed(packed[i * n:(i + 1) * n], K_BASE) for i in range(3)]
+            else:
+                b = np.frombuffer(raw, np.uint16)
+                n = lay.scales // 2
+                cs = [codes_qmv.codes_from_biases(scales[i], b[i * n:(i + 1) * n]) for i in range(3)]
+            jobs = [_sidx_pool().submit(codes_qmv.pair_from, scales[i], cs[i], np.asarray(views[f"{p}.pidx"]),
+                                        np.asarray(views[f"{p}.plut"]).view(np.uint16)) for i, p in enumerate(PROJS)]
+            for f in jobs:
+                f.result()
+            return got
+        jobs = []
+        if sidx:
+            jobs = [_sidx_pool().submit(codes_qmv.sidx_from_scales, scales[i], np.asarray(views[f"{p}.sidx"]),
+                                np.asarray(views[f"{p}.lut"]).view(np.uint16)) for i, p in enumerate(PROJS)]
         if kind == "coded":
             packed = np.frombuffer(codes, np.uint8)
             n = lay.codes
             for i in range(3):
                 codes_qmv.nibbles_from_packed(packed[i * n:(i + 1) * n], K_BASE, nib[i])
+            for f in jobs:
+                f.result()
         else:
             b = np.frombuffer(raw, np.uint16)
             n = lay.scales // 2
-            jobs = [pool.submit(codes_qmv.nibbles_from_biases, scales[i], b[i * n:(i + 1) * n], nib[i]) for i in (1, 2)]
+            jobs += [pool.submit(codes_qmv.nibbles_from_biases, scales[i], b[i * n:(i + 1) * n], nib[i]) for i in (1, 2)]
             codes_qmv.nibbles_from_biases(scales[0], b[:n], nib[0])
             for f in jobs:
                 f.result()
         return got
 
 
-def slot_format(fmt: ExpertFormat) -> ExpertFormat:
-    """`fmt` with each projection's bf16 biases replaced by 4-bit codes (two groups a byte): a codes slot."""
+_SIDX_POOL = None
+
+
+def _sidx_pool():
+    """Threads for the scale-index conversion (M23), apart from the pread pool so reads cannot queue ahead of it."""
+    global _SIDX_POOL
+    if _SIDX_POOL is None:
+        from concurrent.futures import ThreadPoolExecutor
+
+        _SIDX_POOL = ThreadPoolExecutor(8, thread_name_prefix="expert-sidx")
+    return _SIDX_POOL
+
+
+def slot_format(fmt: ExpertFormat, sidx: int = 0) -> ExpertFormat:
+    """`fmt` with each projection's bf16 biases replaced by 4-bit codes (two groups a byte): a codes slot. With
+    `sidx` (HANDOFF 18.13, M23) the bf16 scales are replaced too, by a byte per group indexing the projection's
+    256-entry bf16 table (`{p}.lut`): 21.52 MiB a slot instead of 22.36. `sidx=2` (M23b): one byte per group
+    indexing the projection's 256 (scale, bias) pairs (`{p}.pidx`, `{p}.plut`), no codes: 21.10 MiB."""
     shapes, dtypes = dict(fmt.shapes), dict(fmt.dtypes)
     for p in PROJS:
         groups = int(np.prod(shapes.pop(f"{p}.biases")))
         dtypes.pop(f"{p}.biases")
         shapes[f"{p}.codes"] = (groups // 2,)
         dtypes[f"{p}.codes"] = "uint8"
+        if sidx == 2:
+            # a pair slot (HANDOFF 18.13, M23b): a byte per group indexing (scale, bias) pairs; no codes
+            shapes[f"{p}.pidx"] = shapes.pop(f"{p}.scales")
+            dtypes.pop(f"{p}.scales")
+            dtypes[f"{p}.pidx"] = "uint8"
+            shapes.pop(f"{p}.codes")
+            dtypes.pop(f"{p}.codes")
+            shapes[f"{p}.plut"] = (512,)
+            dtypes[f"{p}.plut"] = "bfloat16"
+        elif sidx:
+            shapes[f"{p}.sidx"] = shapes.pop(f"{p}.scales")
+            dtypes.pop(f"{p}.scales")
+            dtypes[f"{p}.sidx"] = "uint8"
+            shapes[f"{p}.lut"] = (256,)
+            dtypes[f"{p}.lut"] = "bfloat16"
     names = tuple(sorted(shapes))
     return ExpertFormat(kind=fmt.kind, bits=fmt.bits, group_size=fmt.group_size, tensor_names=names, shapes=shapes,
                         dtypes=dtypes)

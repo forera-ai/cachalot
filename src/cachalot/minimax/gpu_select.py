@@ -31,6 +31,11 @@ from cachalot.minimax import codes_qmv
 
 # 0 keeps the shipped per-layer sync; an int so TF_ALTERNATE can flip it per token
 GPU_SELECT = int(os.environ.get("CACHALOT_MINIMAX_GPU_SELECT", "1"))
+# S1b: A_i also scores layer i+PREFETCH_AHEAD's router on this layer's residual; the host, when it checks layer i,
+# starts a read of the best non-resident of the top PREFETCH_TOPK (the store's prefetch path: free transient slots,
+# no eviction). Ints so TF_ALTERNATE can flip them; 0 turns the prefetch off.
+PREFETCH_TOPK = int(os.environ.get("CACHALOT_MINIMAX_SELECT_PREFETCH", "0"))
+PREFETCH_AHEAD = int(os.environ.get("CACHALOT_MINIMAX_SELECT_PREFETCH_AHEAD", "1"))
 
 
 def _slot_base(n_slabs: int, slab_slots: int, record_bytes: int) -> str:
@@ -48,6 +53,17 @@ def _slot_base(n_slabs: int, slab_slots: int, record_bytes: int) -> str:
 
 
 def _proj(offsets: dict[str, int], p: str, tag: str) -> str:
+    if p + ".pidx" in offsets:
+        # a pair slot (HANDOFF 18.13, M23b): a byte per group and the projection's (scale, bias) table
+        return (f"  const device uint32_t* w{tag} = (const device uint32_t*)(base + {offsets[p + '.weight']});\n"
+                f"  const device uint8_t* s{tag} = base + {offsets[p + '.pidx']};\n"
+                f"  const device bfloat16_t* l{tag} = (const device bfloat16_t*)(base + {offsets[p + '.plut']});\n")
+    if p + ".sidx" in offsets:
+        # a scale-index slot (HANDOFF 18.13): a byte per group and the projection's table
+        return (f"  const device uint32_t* w{tag} = (const device uint32_t*)(base + {offsets[p + '.weight']});\n"
+                f"  const device uint8_t* s{tag} = base + {offsets[p + '.sidx']};\n"
+                f"  const device bfloat16_t* l{tag} = (const device bfloat16_t*)(base + {offsets[p + '.lut']});\n"
+                f"  const device uint8_t* c{tag} = base + {offsets[p + '.codes']};\n")
     return (f"  const device uint32_t* w{tag} = (const device uint32_t*)(base + {offsets[p + '.weight']});\n"
             f"  const device bfloat16_t* s{tag} = (const device bfloat16_t*)(base + {offsets[p + '.scales']});\n"
             f"  const device uint8_t* c{tag} = base + {offsets[p + '.codes']};\n")
@@ -80,16 +96,29 @@ class SlabExperts:
         self.dim = int(fmt.shapes["w2.weight"][0])
         n = len(pool.slabs)
         base = _slot_base(n, pool.slab_slots, pool.record_bytes)
-        head = codes_qmv._mlx_header() + codes_qmv._IMPL
+        sidx, pair = "w1.sidx" in pool.offsets, "w1.pidx" in pool.offsets
+        if pair:
+            head = codes_qmv._mlx_header() + codes_qmv._IMPL_PAIR
+            gate_up = (_GATE_UP.replace("qmv_codes_impl", "qmv_pair_impl").replace("(w1, s1, c1", "(w1, s1, l1")
+                       .replace("(w3, s3, c3", "(w3, s3, l3"))
+            down = _DOWN.replace("qmv_codes_impl", "qmv_pair_impl").replace("(w2, s2, c2", "(w2, s2, l2")
+        elif sidx:
+            head = codes_qmv._mlx_header() + codes_qmv._IMPL_SIDX
+            gate_up = (_GATE_UP.replace("qmv_codes_impl", "qmv_sidx_impl").replace("(w1, s1, c1", "(w1, s1, l1, c1")
+                       .replace("(w3, s3, c3", "(w3, s3, l3, c3"))
+            down = _DOWN.replace("qmv_codes_impl", "qmv_sidx_impl").replace("(w2, s2, c2", "(w2, s2, l2, c2")
+        else:
+            head, gate_up, down = codes_qmv._mlx_header() + codes_qmv._IMPL, _GATE_UP, _DOWN
+        tag = "_pair" if pair else "_sidx" if sidx else ""
         names = [f"slab{i}" for i in range(n)] + ["idx", "x"]
         self._gate_up = mx.fast.metal_kernel(
-            name="minimax_slab_gate_up", input_names=names, output_names=["g", "u"],
-            source=base + _proj(pool.offsets, "w1", "1") + _proj(pool.offsets, "w3", "3") + _GATE_UP,
+            name="minimax_slab_gate_up" + tag, input_names=names, output_names=["g", "u"],
+            source=base + _proj(pool.offsets, "w1", "1") + _proj(pool.offsets, "w3", "3") + gate_up,
             header=head, ensure_row_contiguous=True,
         )
         self._down = mx.fast.metal_kernel(
-            name="minimax_slab_down", input_names=names, output_names=["y"],
-            source=base + _proj(pool.offsets, "w2", "2") + _DOWN, header=head, ensure_row_contiguous=True,
+            name="minimax_slab_down" + tag, input_names=names, output_names=["y"],
+            source=base + _proj(pool.offsets, "w2", "2") + down, header=head, ensure_row_contiguous=True,
         )
 
     def __call__(self, x, slots, activation):
@@ -141,7 +170,23 @@ class GpuSelectDecoder:
         weights = weights / (mx.sum(weights, axis=-1, keepdims=True) + 1e-20)
         weights = (weights * moe.routed_scaling_factor).astype(xn.dtype)
         slots = self._slot_table()[i][inds.reshape(-1)]
-        return {"i": i, "r": r, "xn": xn, "inds": inds, "weights": weights, "slots": slots, "k": k}
+        rec = {"i": i, "r": r, "xn": xn, "inds": inds, "weights": weights, "slots": slots, "k": k, "pred": None}
+        t = i + PREFETCH_AHEAD
+        if PREFETCH_TOPK > 0 and t < len(self.layers) and self.layers[t].is_sparse:
+            nxt = self.layers[t]
+            rec["pred"] = nxt.block_sparse_moe.route_scores(nxt.post_attention_layernorm(r))[0]
+            rec["pred_layer"] = t
+        return rec
+
+    def _predicted(self, rec):
+        """The predicted layer's top-PREFETCH_TOPK experts, best first (read from the sync A_i already had)."""
+        if rec["pred"] is None:
+            return None
+        sc = np.array(rec["pred"]).reshape(-1)
+        n = min(PREFETCH_TOPK, sc.shape[0])
+        top = np.argpartition(-sc, n - 1)[:n]
+        t = rec["pred_layer"]
+        return [self.index[(t, int(e))] for e in top[np.argsort(-sc[top])]]
 
     def _output(self, rec, y=None):
         moe = self.layers[rec["i"]].block_sparse_moe
@@ -165,7 +210,15 @@ class GpuSelectDecoder:
                     store._items.move_to_end(key)
                     store.use_counts[key] += 1
                 store.cache_hits += len(routes)
+                if store._inflight:
+                    # get_many is not called on an all-hit layer: advance the decode walk here so stale
+                    # predictions still expire (HANDOFF 18.12, S1d)
+                    store._advance_decode_pass_locked(rec["i"])
+                    store._sweep_inflight_locked(keep=set())
             self.hit_layers += 1
+            pred = self._predicted(rec)
+            if pred:
+                store.prefetch_decode(pred)
             return True
         self.miss_layers += 1
         return False
@@ -173,7 +226,7 @@ class GpuSelectDecoder:
     def _fix(self, rec):
         """Read a layer's missing experts and recompute only their rows; the corrected layer output."""
         i, routes, slots = rec["i"], rec["routes"], rec["slot_ids"]
-        residents = self.store.get_many([self.index[(i, int(e))] for e in routes])
+        residents = self.store.get_many([self.index[(i, int(e))] for e in routes], prefetch=self._predicted(rec))
         miss = [j for j in range(len(routes)) if slots[j] < 0]
         moe = self.layers[i].block_sparse_moe
         fresh = self.experts(rec["xn"].reshape(1, -1),
@@ -198,7 +251,7 @@ class GpuSelectDecoder:
             r = h + layer.self_attn(layer.input_layernorm(h), None, cache[i])
             if layer.is_sparse:
                 rec = self._route(i, layer, r)
-                mx.async_eval(rec["slots"], rec["inds"])
+                mx.async_eval(rec["slots"], rec["inds"], *([rec["pred"]] if rec["pred"] is not None else []))
             else:
                 rec = None
                 out = r + layer.mlp(layer.post_attention_layernorm(r))

@@ -54,8 +54,9 @@ def test_layout_sizes_match_minimax():
     assert lay.record("raw") > lay.record("coded")
 
 
-def _tiny_bank(tmp_path, lay):
-    """A two-record bank (one coded, one raw) in the real on-disk format, and the bytes each slot must hold."""
+def _tiny_bank(tmp_path, lay, distinct=None):
+    """A two-record bank (one coded, one raw) in the real on-disk format, and the bytes each slot must hold.
+    `distinct`: draw each projection's scales from that many values (the checkpoint has at most 166)."""
     import json
 
     from cachalot.minimax.coded_bank import PROJS, pack_codes
@@ -67,6 +68,8 @@ def _tiny_bank(tmp_path, lay):
         v = {}
         for p in PROJS:
             s = _bf16(rng.uniform(1e-3, 2e-2, groups))
+            if distinct:
+                s = s[rng.integers(0, distinct, groups)]
             k = rng.integers(-6, -2, groups) if kind == "coded" else rng.integers(-7, -2, groups)
             v[f"{p}.scales"], v[f"{p}.biases"] = s, _bf16(k.astype(np.float32) * _f32(s))
             v[f"{p}.weight"] = rng.integers(0, 256, lay.weight, dtype=np.uint8)
