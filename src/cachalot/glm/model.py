@@ -86,6 +86,48 @@ def _remap(weights: dict[str, mx.array]) -> dict[str, mx.array]:
 
 MEMORY_FIT_EVERY = int(os.environ.get("CACHALOT_MEMORY_FIT_EVERY", "512"))
 MEMORY_FIT_MIN_SLOTS = 8
+# HANDOFF 18.15 (S2): the expert capacity may only grow while macOS reports normal memory pressure and at least this
+# much stays available (kern.memorystatus_level: free plus reclaimable) after the growth; at warning pressure, or with
+# less than half of it available, a slab is given back. Free pages alone sit near 0.5 GiB at normal pressure.
+HOST_AVAILABLE_FLOOR = int(float(os.environ.get("CACHALOT_HOST_AVAILABLE_FLOOR_GIB", "8")) * 1024**3)
+
+_SYSCTL = None
+
+
+def _sysctl(name: str) -> int | None:
+    global _SYSCTL
+    if _SYSCTL is None:
+        import ctypes
+        import ctypes.util
+
+        try:
+            _SYSCTL = ctypes, ctypes.CDLL(ctypes.util.find_library("c")).sysctlbyname
+        except (OSError, AttributeError):
+            _SYSCTL = False
+    if not _SYSCTL:
+        return None
+    ctypes, fn = _SYSCTL
+    value, size = ctypes.c_uint64(0), ctypes.c_size_t(8)
+    if fn(name.encode(), ctypes.byref(value), ctypes.byref(size), None, 0) != 0:
+        return None
+    return value.value if size.value == 8 else value.value & 0xFFFFFFFF
+
+
+def host_memory() -> tuple[int, int]:
+    """(free bytes, kern.memorystatus_vm_pressure_level: 1 normal, 2 warning, 4 critical); (-1, 0) where the
+    kernel does not say (not macOS)."""
+    free, page, level = _sysctl("vm.page_free_count"), _sysctl("hw.pagesize"), _sysctl("kern.memorystatus_vm_pressure_level")
+    if free is None or page is None:
+        return -1, 0
+    return free * page, level or 0
+
+
+def host_available() -> int:
+    """Bytes macOS considers available to allocate (kern.memorystatus_level percent of RAM); -1 when unknown."""
+    level, total = _sysctl("kern.memorystatus_level"), _sysctl("hw.memsize")
+    if level is None or total is None:
+        return -1
+    return total * level // 100
 
 
 class _NoProjectedCache(KVCache):
@@ -407,6 +449,7 @@ class GlmModel:
         logits = None
         # decode's finished wrong predictions (MiniMax, HANDOFF 18.9) give their transient slots back first
         self.store.expire_predictions()
+        self._fit_prefill(len(tokens))
         try:
             for start in range(0, len(tokens), self.PREFILL_CHUNK):
                 logits = self._forward(tokens[start:start + self.PREFILL_CHUNK], cache)
@@ -439,6 +482,43 @@ class GlmModel:
     # MEMORY_FIT_EVERY tokens, the expert capacity gives back or takes back whole slots to stay at it.
     # None (GLM) disables it.
     _memory_target: int | None = None
+    # HANDOFF 18.15 (S2): the expert bytes allowed while a chunk of PREFILL_CHUNK tokens prefills (its activations
+    # need the memory); None (GLM) keeps the capacity through a prefill. Chunks of PREFILL_FULL_TOKENS or fewer keep
+    # the full capacity, longer ones scale down to this linearly.
+    _prefill_budget: int | None = None
+    PREFILL_FULL_TOKENS = 2048
+
+    def _host_capacity(self, capacity: int) -> int:
+        """The capacity the machine's memory allows (S2): a slab less at warning pressure or under half the floor
+        available, else whatever keeps HOST_AVAILABLE_FLOOR available."""
+        _, level = host_memory()
+        available = host_available()
+        if available < 0:
+            return capacity
+        pool = self.store.pool
+        step = getattr(pool, "slab_slots", MEMORY_FIT_MIN_SLOTS)
+        if level >= 2 or available < HOST_AVAILABLE_FLOOR // 2:
+            return capacity - step
+        return capacity + max(0, available - HOST_AVAILABLE_FLOOR) // self.store.expert_bytes
+
+    def _fit_prefill(self, n: int) -> None:
+        """Before prefilling `n` tokens (S2): give back the slots a long chunk's activations need; the first decode
+        token's _fit_memory takes them back."""
+        if self._prefill_budget is None or n <= 0:
+            return
+        store = self.store
+        full = getattr(store, "_full_capacity", store.capacity)
+        low = self._prefill_budget // store.expert_bytes
+        m = min(n, self.PREFILL_CHUNK)
+        f = min(1.0, max(0.0, (m - self.PREFILL_FULL_TOKENS) / max(1, self.PREFILL_CHUNK - self.PREFILL_FULL_TOKENS)))
+        want = min(int(full - f * max(0, full - low)), self._host_capacity(store.capacity))
+        if want >= store.capacity:
+            return
+        before = store.capacity
+        after = store.set_capacity(want)
+        mx.clear_cache()
+        if after != before:
+            print(f"memory fit: expert slots {before} -> {after} for a {n}-token prefill", flush=True)
 
     def _fit_memory(self) -> None:
         target = self._memory_target
@@ -446,11 +526,15 @@ class GlmModel:
             return
         store = self.store
         slot = store.expert_bytes
+        if self._prefill_budget is not None:
+            mx.clear_cache()  # the prefill's cached buffers are not what the host check should count
         excess = mx.get_active_memory() - target
         full = getattr(store, "_full_capacity", store.capacity)
         # shrink by whole slots rounded up, grow by whole slots rounded down
         want = store.capacity - int(-(-excess // slot)) if excess > 0 else store.capacity + int(-excess // slot)
         want = min(full, want)
+        if self._prefill_budget is not None:
+            want = min(want, self._host_capacity(store.capacity))
         if abs(want - store.capacity) < MEMORY_FIT_MIN_SLOTS:
             return
         before = store.capacity
@@ -480,7 +564,7 @@ class GlmModel:
         self.disk = store
         warm = self.start_warm_set(Path(directory) / "resident-set.json") if WARM_SET else "warm set off"
         return (f"prefix snapshots: {len(loaded)} loaded from {directory} "
-                f"({', '.join(str(len(s.tokens)) for s in loaded) or 'none'} tokens), "
+                f"({', '.join(str(len(s.tokens)) for s in loaded) + ' tokens' if loaded else 'none'}), "
                 f"{len(store.tokens) - len(loaded)} more on disk, in {time.perf_counter() - t0:.2f}s; {warm}")
 
     # -- warm restart (HANDOFF 18.2) ---------------------------------------------------------------------
@@ -634,6 +718,7 @@ class GlmModel:
                 else:
                     cache, reused, logits = self.new_cache(), 0, None
                 pos = reused
+                self._fit_prefill(len(tokens) - reused)
                 cuts = sorted({c for c in (boundary,) if reused < c < len(tokens)} | {len(tokens)})
                 for cut in cuts:
                     while pos < cut:

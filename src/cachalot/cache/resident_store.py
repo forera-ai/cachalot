@@ -75,6 +75,13 @@ class ResidentStoreStats:
     reads: int = 0
     fast_reads: int = 0
     read_wall_seconds: float = 0.0
+    # every read's bytes and the wall time with at least one read in flight: bytes / busy is the drive's rate
+    # while it was reading, which the summed durations above are not once reads overlap (HANDOFF 18.15, M26)
+    read_bytes: int = 0
+    read_busy_seconds: float = 0.0
+    # decode (get_many): the time the caller waited for its misses' reads, and how many misses it waited for
+    decode_wait_seconds: float = 0.0
+    decode_waited_misses: int = 0
 
     @property
     def requests(self) -> int:
@@ -271,6 +278,12 @@ class ResidentExpertStore:
         self.reads = 0
         self.fast_reads = 0
         self.read_wall_seconds = 0.0
+        self.read_bytes = 0
+        self.read_busy_seconds = 0.0
+        self._reads_in_flight = 0
+        self._busy_since = 0.0
+        self.decode_wait_seconds = 0.0
+        self.decode_waited_misses = 0
 
     def prefetch_decode(self, entries: list[ExpertEntry], limit: int | None = None) -> int:
         """
@@ -537,13 +550,25 @@ class ResidentExpertStore:
         self._items[resident.key] = resident
 
     def _read_into(self, entry: ExpertEntry, slot: ExpertSlot) -> tuple[int, float]:
-        t0 = perf_counter()
-        nbytes = self.reader.read_expert_into(entry, slot.views)
-        seconds = perf_counter() - t0
+        with self._read_tally_lock:
+            t0 = perf_counter()
+            if self._reads_in_flight == 0:
+                self._busy_since = t0
+            self._reads_in_flight += 1
+        try:
+            nbytes = self.reader.read_expert_into(entry, slot.views)
+        finally:
+            with self._read_tally_lock:
+                t1 = perf_counter()
+                self._reads_in_flight -= 1
+                if self._reads_in_flight == 0:
+                    self.read_busy_seconds += t1 - self._busy_since
+        seconds = t1 - t0
         with self._read_tally_lock:
             self.reads += 1
             self.fast_reads += seconds < FAST_READ_SECONDS
             self.read_wall_seconds += seconds
+            self.read_bytes += nbytes
         return nbytes, seconds
 
     def _record_miss(self, nbytes: int, read_seconds: float) -> None:
@@ -848,6 +873,7 @@ class ResidentExpertStore:
             on_hits(list(results))
 
         # predicted loads this layer needs: wait for them and admit
+        t_wait = perf_counter()
         for i, key in awaited:
             with self._lock:
                 item = self._inflight.get(key)
@@ -879,11 +905,13 @@ class ResidentExpertStore:
                 self._items.move_to_end(key)
 
         if not pending:
+            self._tally_decode_wait(t_wait, len(awaited))
             if prefetch and after:
                 issue()
             return results
 
         loaded = {key: fut.result() for key, fut in futures.items()}
+        self._tally_decode_wait(t_wait, len(awaited) + len(futures))
 
         with self._lock:
             for i, entry, slot in pending:
@@ -901,6 +929,12 @@ class ResidentExpertStore:
         if prefetch and after:
             issue()
         return results
+
+    def _tally_decode_wait(self, t0: float, misses: int) -> None:
+        if misses:
+            with self._read_tally_lock:
+                self.decode_wait_seconds += perf_counter() - t0
+                self.decode_waited_misses += misses
 
     # ------------------------------------------------------------------
     # prefill path
@@ -1342,6 +1376,11 @@ class ResidentExpertStore:
                 reads=self.reads,
                 fast_reads=self.fast_reads,
                 read_wall_seconds=self.read_wall_seconds,
+                read_bytes=self.read_bytes,
+                read_busy_seconds=self.read_busy_seconds + (
+                    perf_counter() - self._busy_since if self._reads_in_flight else 0.0),
+                decode_wait_seconds=self.decode_wait_seconds,
+                decode_waited_misses=self.decode_waited_misses,
             )
 
     def __len__(self) -> int:

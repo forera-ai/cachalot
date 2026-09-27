@@ -41,7 +41,7 @@ export CACHALOT_SNAPSHOT_DIR=${CACHALOT_MINIMAX_SNAPSHOT_DIR-$HOME/.cache/cachal
 
 exec ~/venvs/deepseek-v41/bin/python -m cachalot.cli chat \
     --model "$CACHALOT_MODEL_PATH" \
-    --expert-budget-gib 52 \
+    --expert-budget-gib 56 \
     --max-seq-len 131072 \
     --max-new-tokens 2000 \
     --temperature 1.0 \

@@ -162,6 +162,21 @@ def test_get_many_parallel_misses_admit_in_order(index):
     assert store.stats().cache_hits == 6
 
 
+def test_read_busy_time_and_decode_wait_are_tallied(index):
+    # M26 (HANDOFF 18.15): overlapping reads count once in the drive's busy time, and a decode step's wait is
+    # charged to the misses it waited for
+    store, _ = make_store(slots=8, latency=0.02)
+    store.get_many([index[(0, i)] for i in range(4)])
+    s = store.stats()
+    assert s.reads == 4 and s.read_bytes == 4 * EXPERT_BYTES
+    assert s.read_wall_seconds >= 4 * 0.02
+    assert 0.02 <= s.read_busy_seconds < s.read_wall_seconds
+    assert s.decode_waited_misses == 4
+    assert 0.02 <= s.decode_wait_seconds < 4 * 0.02
+    store.get_many([index[(0, i)] for i in range(4)])  # all hits: nothing waited
+    assert store.stats().decode_waited_misses == 4
+
+
 def test_get_many_respects_budget_and_mixed_hits(index):
     store, _ = make_store(slots=3)
     store.get(index[(1, 0)])

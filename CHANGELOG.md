@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.34.0 (2026-09-28)
+
+HANDOFF section 18.15.
+
+### Changed
+- **MiniMax-M3 caches experts in 56 GiB instead of 52, under a memory governor (S2).** On 0.33.0 a 56 GiB expert
+  budget is no longer slower than 52 (18.1 and 18.5 measured it slower on older code): agent benchmark, four
+  ABAB processes, **decode 162.6 → 141.1 ms a token (-13 %)**, turns 73.6 → 65.0 s (-12 %), short prefills -9 %,
+  the same `ids_hash`. A fixed 56 is not safe, though: an 8,192-token prefill chunk at 56 reached warning pressure
+  (30.6 → 48.7 s) and then Metal's out-of-memory. So a prefill now gives back slots first: chunks up to 2,048
+  tokens keep the full capacity, an 8,192-token chunk prefills at 52 GiB's (linear in between), and the first decode
+  token's memory fit takes the slabs back. The capacity grows only at normal pressure and with at least 8 GiB
+  available (`kern.memorystatus_level`) afterwards; at warning pressure, or under 4 GiB available, a slab is given
+  back. At startup the budget is capped at what macOS reports available minus 20 GiB. Through `stream()` (the
+  server and chat path), 8k then 16.5k prompts: prefill the same as at 52, decode -5 to -6 %, same tokens, no
+  pressure. `./serve-minimax.sh` and `./chat-minimax.sh` pass 56; `CACHALOT_MINIMAX_PREFILL_BUDGET_GIB` (52),
+  `CACHALOT_HOST_AVAILABLE_FLOOR_GIB` (8), `CACHALOT_MINIMAX_STARTUP_RESERVE_GIB` (20).
+- **`/stats` in the GLM/MiniMax chat (M26):** `read_ms_per_expert` (the mean duration of one read, which grows with
+  the queue depth) is replaced by `decode_wait_ms_per_miss` (what a decode miss cost the token) and `drive_gib_s`
+  (bytes read over the wall time with at least one read in flight, `drive_busy_seconds`); `ssd_gib_read` counts
+  every read; `borrowed_transient_slots` explains `resident_experts` above `expert_slots`. The startup line prints
+  "(none)" instead of "(none tokens)".
+
+### Measured and not kept (HANDOFF 18.15)
+- M25, predicting the first miss after an all-hit layer: 8.1 of 34.2 misses a token, spread over every layer; the
+  previous token's runner-up experts are 1-4 % precise.
+- Fusing the decode token's small kernels (`mx.compile` of the swiglu, routing tail and output combine): bit-equal,
+  -1.1 ms of a 30 ms all-hit floor. The expert matvec in other threadgroup shapes, with wider or software-pipelined
+  loads: bit-equal, none faster (380-420 GB/s against ~640 for plain reads).
+- M24 priced: a compact record (the slot image) reads 4.1-4.6 % faster a miss; needs Hamed (bank rewrite).
+
 ## 0.33.1 (2026-09-28)
 
 Documentation only (HANDOFF section 18.14 item 9).

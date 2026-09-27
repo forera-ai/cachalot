@@ -147,7 +147,7 @@ def _load_minimax(args):
     from cachalot.minimax.model import MiniMaxModel
 
     print(f"cachalot {__version__}: loading MiniMax-M3 from {args.model}", file=sys.stderr, flush=True)
-    budget = args.expert_budget_gib or 52.0
+    budget = args.expert_budget_gib or 56.0
     model = MiniMaxModel(args.model, expert_budget_gib=budget, load_workers=max(8, args.io_workers), verbose=args.verbose)
     model.max_seq_len = args.max_seq_len
     return model
@@ -359,7 +359,10 @@ def cmd_chat_glm(args, family: str = "glm") -> None:
         s = model.store.stats()
         hits, misses = s.cache_hits - s_start.cache_hits, s.cache_misses - s_start.cache_misses
         reads = s.reads - s_start.reads
-        read_s = s.read_wall_seconds - s_start.read_wall_seconds
+        busy = s.read_busy_seconds - s_start.read_busy_seconds
+        waited = s.decode_waited_misses - s_start.decode_waited_misses
+        wait_s = s.decode_wait_seconds - s_start.decode_wait_seconds
+        resident = len(model.store)
         out = dict(session)
         out.update({
             "prefill_seconds": round(session["prefill_seconds"], 1),
@@ -370,10 +373,15 @@ def cmd_chat_glm(args, family: str = "glm") -> None:
             "expert_misses": misses,
             "expert_hit_rate": round(hits / max(1, hits + misses), 3),
             "expert_reads": reads,
-            "read_ms_per_expert": round(1000 * read_s / reads, 2) if reads else 0.0,
-            "ssd_gib_read": round((s.ssd_bytes_read - s_start.ssd_bytes_read) / 2**30, 1),
-            "resident_experts": len(model.store),
+            # HANDOFF 18.15 (M26): what a decode miss cost the token, and the drive's rate while it was reading
+            # (the mean duration of one read grows with the queue depth and was neither)
+            "decode_wait_ms_per_miss": round(1000 * wait_s / waited, 2) if waited else 0.0,
+            "drive_gib_s": round((s.read_bytes - s_start.read_bytes) / 2**30 / busy, 2) if busy else 0.0,
+            "drive_busy_seconds": round(busy, 1),
+            "ssd_gib_read": round((s.read_bytes - s_start.read_bytes) / 2**30, 1),
+            "resident_experts": resident,
             "expert_slots": model.store.capacity,
+            "borrowed_transient_slots": max(0, resident - model.store.capacity),
             "prefix_snapshots": len(model.prefix),
             "sampling": {"temperature": args.temperature, "top_p": top_p},
             "notices": list(notices),

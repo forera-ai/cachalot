@@ -1,6 +1,7 @@
 # Cachalot — Engineering Handoff
 
-**Authoritative state as of 2026-09-27 (thirteenth MiniMax session), after the session that made MiniMax's decode
+**Authoritative state as of 2026-09-28 (fourteenth MiniMax session), after the session that grew MiniMax's expert
+cache to 56 GiB under a memory governor (section 18.15), the one that made MiniMax's decode
 read the next two layers' missing experts from the speculative routing its GPU loop already computes (section
 18.14), the one that shrank MiniMax's expert
 slots to one byte per weight group's scale and bias (section 18.13), the one that gave GLM/MiniMax their
@@ -16,6 +17,25 @@ that gave it a bias-free expert bank (18.4), the one that gave it a second drive
 kernel (18.3), the one that cut its per-token overhead and measured it to 64k (18.2), the one that made it faster
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
+
+> ## Start here (2026-09-28, 0.34.0): MiniMax-M3 caches experts in 56 GiB under a memory governor
+>
+> - **S2 shipped (section 18.15 items 5-8):** on 0.33.0 a 56 GiB expert budget beats 52 (18.1/18.5's "56 is slower"
+>   no longer holds): agent benchmark, four ABAB processes, **decode 162.6 → 141.1 ms (-13 %)**, turns 73.6 → 65.0 s,
+>   short prefills -9 %, same `ids_hash`. A fixed 56 fails an 8,192-token prefill chunk (warning pressure, then
+>   Metal OOM), so the store now parks slabs before a long chunk (full capacity to 2,048 tokens, 52 GiB's at 8,192)
+>   and the first decode token's fit unparks them; growth needs normal pressure and 8 GiB available
+>   (`kern.memorystatus_level`) afterwards; warning pressure or < 4 GiB available gives back a slab; startup caps the
+>   budget at available − 20 GiB. Scripts pass 56.
+> - **M26 shipped:** `/stats` shows `decode_wait_ms_per_miss`, `drive_gib_s` and `borrowed_transient_slots`; the
+>   startup line prints "(none)".
+> - **Closed (items 1-4):** M25 (first miss after an all-hit layer: 8.1 of 34.2 misses, cross-token prediction 1-4 %
+>   precise); the all-hit floor is GPU-bound (experts 12.2, attention 12.3, routing 5.5, shared 5.3 ms at 2k) and
+>   neither kernel fusion (-1.1 ms) nor matvec variants (bit-equal, none faster) move it. **M24 priced:** a compact
+>   slot-image record reads 4.1-4.6 % faster a miss (Hamed's call: bank rewrite).
+> - **Version 0.34.0.** 424 tests pass.
+
+**Previous block, 0.33.0:**
 
 > ## Start here (2026-09-27, 0.33.0): MiniMax-M3 decode reads the next layers' misses while it waits
 >
@@ -8171,6 +8191,110 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.15 MiniMax-M3: a 56 GiB expert cache under a memory governor, and the decode floor measured — 2026-09-28 (0.34.0)
+
+Hamed's brief (prompt v62, the fourteenth "MiniMax-M3 as fast as possible at the same quality"): confirm caveman,
+Jev and the codebase-memory graph first, then plan, build, measure and document. Tools: caveman active (session
+hook), Jev answered (`jev_verify` through TypeSafe), the graph ready (5,727 nodes, one partial file outside the
+code). 0.33.1 committed, tree clean. Filler: the 0.33.0 session's 4.8 MB concatenation (scratch).
+
+**1. M25, the first miss after an all-hit layer: priced, closed.** A wrapper around `GpuSelectDecoder` logged, per
+token and MoE layer, the routes, their slots, and the router's top-16 with their residency (2k context @600000,
+300 tokens, 149.4 ms a token, 34.6 misses). 26.1 misses a token come after a miss in one of the two layers before
+(0.33.0's speculative reads cover them), **8.1 do not**, spread evenly over the layers. The only signal with lead
+time for those is the previous token: its layer-i experts beyond its own top-4 that are not resident. As a
+predictor for this token's layer-i misses: top-1 runner-up 55 reads a token for 0.7 uncovered misses (1 %
+precise), top-4 196 reads for 1.8. Nothing to build.
+
+**2. Where the all-hit floor goes.** The shipped loop replaying one token, every expert resident: 34.7 ms, of which
+the host is blocked in `_check` 14.6 ms and busy 19.2 ms, so the GPU is the limit, not Python. Each piece as a
+dependent chain over all layers, one eval (`floor_chain.py`, scratch):
+
+| piece | 2k context | 16k |
+|---|---|---|
+| routed experts (57 layers x 4, slab kernels) | 12.2 ms | 12.4 |
+| attention (60 layers, 3-bit q/k/v/o, GQA kernel) | 12.3 | 18.0 |
+| routing (norm, 8-bit gate, sigmoid, top-4, weights, slot lookup) | 5.5 | 5.6 |
+| shared expert | 5.3 | 5.4 |
+| lm_head, dense layers | 1.0, 0.9 | same |
+
+Every non-expert weight is 3-bit except the gates (8-bit): attention 2.61 GiB, shared experts 1.32, embedding and
+lm_head 0.50 each. The 3-bit matvecs run at 250-420 GB/s; a plain read of the same bytes in the same launch shape
+reaches ~640 GB/s; a dependent tiny kernel costs ~3.7 µs.
+
+**3. The floor's two levers, measured: neither pays.** (a) `mx.compile` of the swiglu (routed and shared), the
+routing tail and the output combine, alternating per step in one process: 30.3 → 29.2 ms, logits `array_equal` in
+every arm; ~1 µs a removed launch, 0.7 % of an agent token. Not shipped. (b) The pair kernel with other shapes (2,
+4, 8 or 16 rows a simdgroup, 1, 2 or 4 simdgroups a threadgroup), with the lane's 6 weight bytes loaded as three
+`ushort`s, and with the next block's bytes loaded before this block's arithmetic: all bit-equal to the shipped
+kernel (each row's sum order is unchanged), none faster (4.4-5.1 ms against 4.4 for 57 gate/up launches, 3.9-4.7
+against 4.0 for down). MLX's `qmv_fast` layout is the local optimum here.
+
+**4. M24 priced.** 200 random coded experts written as the slot image (pidx and plut of the three projections,
+padded to 16 KiB, then the weights; 21.11 MiB against the bank's 22.16) on the internal SSD and on the X10Pro
+(mirror tail 0.13), read cold with direct I/O, alternating with the same experts from the bank into a pair slot
+(`m24_price.py`, scratch): slot bytes identical; **3.46 → 3.30 ms a miss at queue depth 1 (-4.6 %), 3.15 → 3.02 at
+depth 4 (-4.1 %)**, both at the drives' combined rate (6.3 / 6.9 GiB/s): the saving is the bytes, the conversion
+was already hidden. The compact head also compresses (zstd 3: 0.85 → 0.47 MiB, 0.76 ms to decompress, pidx entropy
+~5 bits), another ~1.7 % of a record if decompressed while the weights stream. Prefill reads already use
+`heads.zst` (20.8 MiB a record), so M24 helps decode only. It needs Hamed: the bank and its mirror rewritten.
+
+**5. The budget, re-measured.** Agent benchmark (`minimax_followup_turns.py` @1300000), six processes 52/56/54
+twice, a sampler logging free memory, compressor and pressure every 2 s:
+
+| budget | decode ms/token | turns s | short prefills s | min free GiB | pressure |
+|---|---|---|---|---|---|
+| 52 | 158.0 / 161.3 | 73.5 / 73.2 | 28.0 / 26.8 | 1.5-2.6 | normal |
+| 54 | 145.6 / 145.1 | 67.3 / 67.0 | 25.3 / 25.2 | 0.2-0.8 | normal |
+| 56 | **140.4 / 137.9** | **65.0 / 63.7** | 24.6 / 24.0 | 0.11-0.12 | normal |
+
+Same `ids_hash` in all six. At 56 free memory dips to ~0.1 GiB only during the cold 2k prefill and sits at 2-3 GiB
+through the turns. 18.1 (0.20.0) and 18.5 (0.24.0) measured 56 slower; since then the slots shrank, the page cache
+is bypassed and decode runs on the GPU-select loop.
+
+**6. A fixed 56 fails long prefills.** `glm_prefill_timeline.py` at 8,192 tokens then 150 teacher-forced tokens:
+at 52, prefill 30.6 s, decode 199 ms, peak 73.5 GiB; at 56, prefill **48.7 s** (warning pressure, swap +180 MB),
+decode 185 ms, peak 77.4 GiB against the 80 GiB wired limit; the repeat at 56 and a 16k run at 56 ended in
+`kIOGPUCommandBufferCallbackErrorOutOfMemory`. The chunk's activations need the memory the extra slabs take.
+
+**7. S2, the memory governor (shipped).** `GlmModel._fit_prefill(n)` before a prefill (the `stream` path and
+`prefill`): chunks of up to 2,048 tokens keep the full capacity, an 8,192-token chunk prefills at
+`_prefill_budget` (52 GiB for MiniMax), linear between; the store parks whole slabs (18.6's `set_capacity`). The
+first decode token's `_fit_memory` unparks them (its target is MLX's active memory after loading, which includes
+the full pool). Both also consult the machine: `_host_capacity` gives back a slab at warning pressure
+(`kern.memorystatus_vm_pressure_level` >= 2) or with less than 4 GiB available, and allows growth only while 8 GiB
+stays available (`kern.memorystatus_level` percent of RAM, free plus reclaimable; free pages alone sit near 0.5 GiB
+at normal pressure, and a first version keyed on them parked a slab on the server's first request for nothing).
+At startup the budget is capped at available − 20 GiB. GLM is untouched (`_prefill_budget` None). Tests:
+`tests/test_memory_governor.py`.
+
+Through `stream()` (`stream_long.py`, scratch; 8,192-token prompt, 150 greedy tokens, then the reply plus 8,192
+more), four processes 56/52/56/52:
+
+| budget | 8k prefill s | decode ms | 16.5k prefill s | decode ms | capacity (prefill → decode) |
+|---|---|---|---|---|---|
+| 56 | 30.0 / 30.8 | **178.4 / 178.5** | 37.9 / 40.4 | **146.2 / 153.1** | 2,718 → 2,544 → 2,672 |
+| 52 | 30.3 / 32.9 | 185.4 / 194.8 | 37.9 / 38.9 | 156.3 / 160.7 | 2,523 → 2,416 at 16k |
+
+Same `ids_hash` per turn in all four, pressure normal throughout. The agent benchmark on the governed code, ABAB
+56/52: decode **141.8 / 140.4 against 162.0 / 163.2 ms (-13.2 %)**, turns 65.1 / 64.9 against 73.5 / 73.6 s
+(-11.6 %), short prefills 24.3 / 24.4 against 26.9 / 26.7 s (-9 %), same `ids_hash`, 13-16 GiB available.
+Through the server (`serve-minimax.sh`, scratch snapshot directory): no parking for 399-token prompts, MLX active
+67.0 GiB, the tool call and the tool-result answer as before. Sampled at T = 1 the model sometimes prefaces the call
+with "I don't have a weather tool" or answers without it; greedy outputs are identical to 52's, so this is the
+3-bit model, not the budget.
+
+**8. M26 shipped (display).** The store counts every read's bytes and the wall time with at least one read in
+flight (`read_bytes`, `read_busy_seconds`), and decode's wait for its misses in `get_many` (`decode_wait_seconds`,
+`decode_waited_misses`). The chat's `/stats`: `decode_wait_ms_per_miss`, `drive_gib_s`, `drive_busy_seconds`,
+`ssd_gib_read` (every read), `borrowed_transient_slots`. `attach_snapshot_store` prints "(none)".
+
+**What remains, ranked.** 1. M1c and M1b (Hamed): the first chat and Hermes sessions on 0.34.0, with
+`/stats`' new fields and the sampler (does the governor park under Hermes Desktop's memory?). 2. M24 (Hamed): the
+bank rewritten as slot images, -4.1 to -4.6 % a miss, ~-3 % a decode token, prefill unchanged; ~1.7 % more with
+compressed heads in place. 3. GLM: G6 + S1c + S1e, and S2's `_prefill_budget` for GLM once its slots are slabbed.
+4. M19 (a Thunderbolt mirror). 5. S3-S5.
 
 ### 18.14 MiniMax-M3: speculative prefetch from the GPU loop's own routing — 2026-09-27 (0.33.0)
 
