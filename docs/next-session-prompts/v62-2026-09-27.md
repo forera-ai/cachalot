@@ -5,7 +5,7 @@
 
 | version | written | produced by | what changed |
 |---|---|---|---|
-| **v62** | 2026-09-27 | Hamed asked a thirteenth time for MiniMax-M3 as fast as possible at unchanged quality, tools (caveman, Jev, codebase-memory) confirmed first | **0.33.0: on a miss at layer i, MiniMax decode reads layer i+1's and i+2's missing experts from the routing the GPU-select loop already ran (missing experts' rows now zero): ~91 % / ~88 % of those reads used, byte-identical, agent decode -15 %, turns -10 %, 8k -15 %. Closed: entropy-coded weights (GPU decode 79 vs 14 µs a matmul), a wider mirror (X10Pro at 1.00 GB/s, USB 10 Gb/s), depth 3, a wider predicted-read pool. TF_ALTERNATE needs swapped pairs (even/odd token sets differ).** §18.14 |
+| **v62** | 2026-09-27 | Hamed asked a thirteenth time for MiniMax-M3 as fast as possible at unchanged quality, tools (caveman, Jev, codebase-memory) confirmed first | **0.33.0: on a miss at layer i, MiniMax decode reads layer i+1's and i+2's missing experts from the routing the GPU-select loop already ran (missing experts' rows now zero): ~91 % / ~88 % of those reads used, byte-identical, agent decode -15 %, turns -10 %, 8k -15 %. Closed: entropy-coded weights (GPU decode 79 vs 14 µs a matmul), a wider mirror (X10Pro at 1.00 GB/s, USB 10 Gb/s), depth 3, a wider predicted-read pool. TF_ALTERNATE needs swapped pairs (even/odd token sets differ). Hamed's chat on 0.33.0 (§18.14 item 9): prose 12.7-12.9 tok/s, code 5.5, answers clean; M26 (stats display) and a first-turn check added.** §18.14 |
 | v61 | 2026-09-27 | Hamed asked a twelfth time for MiniMax-M3 as fast as possible at unchanged quality, tools (caveman, Jev, codebase-memory) confirmed first | **0.32.0: MiniMax expert slots keep one byte per weight group indexing a 256-entry (scale, bias) table (no projection has more than 205 pairs): 21.10 MiB a slot instead of 22.36, 2,523 slots in 52 GiB instead of 2,381, byte-identical; agent decode -9 %, turns -8.5 %. S1b (prefetch inside the GPU-select loop) and compact heads in a side file measured slower and closed. §18.13 |
 | v60 | 2026-09-27 | Hamed asked for the chat defects fixed, the Splash plan's numbers, and MiniMax-M3 as fast as possible at unchanged quality | **0.30.0: GLM/MiniMax sample at their checkpoints' top_p 0.95 (at 1.0, 4-8 % of tokens came from the tail), the GLM/MiniMax chat restores its expert cache and prompt head after a restart and keeps `/stats`, `/clear`, `/help` local. 0.31.0: MiniMax decode selects its experts on the GPU (slabbed slots, a slot table, the host one layer behind): byte-identical, agent turns decode -9.5 %, prose -21 %, code -5 %. §18.12 |
 | v59 | 2026-09-27 | Hamed asked for this session's chat defects fixed first, then a plan for what Cachalot can take from Splash (incoai/splash) | **Order: M21 sampling defaults and M22 chat parity (the 0.29.0 chat session's defects), then the Splash jobs S0-S5: GPU-side expert selection over a stacked slot slab (removes the ~22 ms per-layer sync), a memory governor, INT8 KV, concurrent decode batching.** §18.10 item 5, §18.11 |
@@ -36,7 +36,8 @@ sections **18.14**, **18.13**, **18.12** (item 5 first), **18.11**, **18.10**, *
 
 **Hamed's standing priority order: Hermes usage first, vision second, speed/performance third.**
 
-**Suggested order for the next session (ask Hamed first; his standing order is Hermes, vision, speed):** M1b on
+**Suggested order for the next session (ask Hamed first; his standing order is Hermes, vision, speed):** M1c (a
+chat restart, 2 minutes) and M26 (display fixes) first, then M1b on
 0.33.0 if Hamed can run Hermes (the first Hermes read of the sampling fix, GPU selection, the pair slots and the
 speculative prefetch), then G6 + S1c + S1e together (GLM's 16-bit pair slot, GPU selection, and 0.33.0's
 speculative prefetch on top: all rewrite GLM's decode loop), then S2-S5. For more MiniMax speed: M25 (a prediction
@@ -134,6 +135,16 @@ from the GPU loop's speculative routing, plus ~45-50 ms of GPU work and host rou
 The ~10 misses a token that follow an all-hit layer have no prediction. A slot holds one byte per group into a
 (scale, bias) table (2,523 slots in 52 GiB). A follow-up prefill is reads at the drives' wall.
 
+- **M26 — `/stats` and startup display (new, small; §18.14 item 9).** `read_ms_per_expert` is the mean duration
+  of one read over every kind of read and rises with queue depth: report decode wait per miss and the drive's
+  GB/s over the time it was reading instead; show `resident_experts` as slots plus borrowed transient slots; print
+  "(none)" instead of "(none tokens)" in `attach_snapshot_store`'s line. Display only; bump a patch version.
+- **M1c — the chat's first turn after a restart (Hamed, 2 minutes).** `./chat-minimax.sh`, "Hi": expect
+  `reused 157` (the chat head written on 2026-09-28) and a prefill of ~7 tokens; if it prefills 164 again, the
+  head snapshot is not being matched (check `glm_identity`, the render of an empty conversation, and
+  `CACHALOT_SNAPSHOT_KEEP`).
+- **Short follow-up prefills** (§18.14 item 9): 23-29 new tokens cost 3.1-4.3 s in chat, ~10 % of a code turn. Still
+  closed below 100 tokens (18.6 item 5, 18.8); reopen only with a mechanism that changes what is read.
 - **M25 — the first miss after an all-hit layer (new).** Price it before building: how many of a token's misses
   are first-after-hit, and what lead any predictor has there (S1b's router on the residual: 46 % precise, ~0.6 ms
   lead, slower). A new mechanism is needed; do not reopen S1b.

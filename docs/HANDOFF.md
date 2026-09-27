@@ -33,6 +33,8 @@ The first block below is new; the blocks after it still hold.
 >   X10Pro is at 1.00 GB/s at every queue depth: USB 10 Gb/s, and 0.13 is already the ideal split); a wider
 >   predicted-read pool; depth 3.
 > - Open: the ~10 misses a token that follow an all-hit layer have no prediction; M24, M19, M1b; GLM on the loop.
+> - **Hamed's chat on 0.33.0 (item 9):** prose 12.7-12.9 tok/s at 95 % hits (0.29.0: 8.4-9.2), code 5.5 (4.3), no
+>   stray sentences; short follow-ups still a fixed 3.1-4.3 s; `/stats`' `read_ms_per_expert` misleads (M26).
 > - **Version 0.33.0.** 416 tests pass.
 
 **Previous block, 0.32.0:**
@@ -8262,6 +8264,51 @@ with ~0.6 ms of lead). 1. M1b, a Hermes Desktop session on 0.33.0 (Hamed). 2. GL
 speculative prefetch, which needs the GPU-select loop (GLM has none yet). 3. M24, a bank with compact heads in
 place (Hamed, disk space; ~3.7 % fewer bytes a miss). 4. M19, a Thunderbolt mirror (Hamed; the X10Pro is at
 1.00 GB/s). 5. S2-S5.
+
+**9. Hamed's interactive session on 0.33.0** (`./chat-minimax.sh`, 2026-09-28, six turns plus `/stats`; nearly the
+same prompts as his 0.29.0 session in 18.10 item 5, so the two read side by side, though the replies are sampled
+and differ in text and length: not an A/B):
+
+| turn | prompt | new tokens | prefill | reply | decode (0.29.0) | hits (0.29.0) | idle warm reported |
+|---|---|---|---|---|---|---|---|
+| "Hi" | 164 | 164 | 11.2 s (14.3) | 10 | 6.46 tok/s (4.26) | 51 % (21) | — |
+| 200-word story "in a greek" | 199 | 26 | 3.3 s | 663 | **12.66** (9.23) | 95 % (92) | 1,251 experts, 4.0 s |
+| the same, "(small lake)" | 890 | 29 | 3.1 s | 671 | **12.93** | 95 % | 603, 2.0 s |
+| TypeScript: import JSON and CSV | 1,583 | 23 | 3.5 s | 727 | **5.53** (4.30) | 82 % (79) | 666, 2.1 s |
+| TypeScript: JSON to CSV | 2,335 | 26 | 4.3 s | 959 | **5.46** (4.34) | 83 % (79) | 1,270, 5.0 s |
+| 200-word story, lucky coin | 3,318 | 25 | 3.6 s | 275 | **10.04** (8.37) | 92 % (91) | 1,213, 3.8 s |
+
+`/stats`: 8,489 prompt tokens, 8,196 reused (every turn reused all earlier ones), 3,305 generated, decode
+7.51 tok/s over 440 s, hit rate 0.88, 108,485 expert reads for 92,448 misses, 2,159 GiB read.
+
+What it shows:
+
+- **Speed.** Prose +37-54 % and code +26-29 % against 0.29.0 on the same kind of prompt (0.30.0-0.33.0 together:
+  GPU selection, pair slots, speculative prefetch); code's hit rate rose 79 → 82-83 % with 0.32.0's extra slots.
+  Prose at 95 % hits now runs ~79 ms a token, code at 82 % ~182 ms: the text's routing still decides.
+- **0.30.0's chat fixes hold live.** No stray sentence after a code answer (0.29.0 printed "A cop is at the corner."
+  at top_p 1.0; now top_p 0.95), `/stats` answered locally, `idle warm:` in the summary line, not in the input.
+- **The first turn.** `prefix snapshots: 0 loaded ... 3 more on disk` is by design (the chat preloads none and reads
+  one when a prompt starts with it), but none of the three on disk was a chat head: this was the first chat since
+  0.30.0 gave the chat the serve scripts' snapshot directory. The turn wrote `prefix-157-...` (the chat head), so
+  the next restart's "Hi" should reuse 157 tokens and prefill ~7. The turn also waited ~3 s for the warm set
+  (`stream` calls `_wait_warm_set` before its timer: 15.8 s total = ~3 s + 11.2 s prefill + 1.5 s decode), which
+  read back 2,509 experts (51.7 GiB) in 8.0 s, a set left by a server session and not the chat's (51 % hits).
+- **Short follow-ups cost a near-fixed 3.1-4.3 s for 23-29 new tokens**, as on 0.29.0 (2.7-4.0 s): ~10 % of a code
+  turn and ~12 % of the short story turn. This is the prefill path, which 0.33.0 does not touch; 18.6 item 5 and
+  18.8 measured it at the drives' wall with read-ahead useless below 100 tokens. Only a new mechanism reopens it.
+- **`/stats` reads wrong since 0.33.0's deeper queue.** `read_ms_per_expert` (8.25) is the mean duration of one read
+  over every read (prefill bulk reads, warm set, idle warming, speculative reads), and overlapping reads each take
+  longer while the drive delivers more; it is not the cost of a miss (~3.0 ms in 18.14 item 5). `resident_experts`
+  (2,779) above `expert_slots` (2,523) counts decode's borrowed transient slots. The startup line prints
+  "(none tokens)" when nothing is preloaded. All three are display defects (M26).
+- **Answers.** Coherent and on topic; the "in a greek" prompt (probably "creek") was read as the Greek language,
+  reasonably. Small faults of a 3-bit model sampled at T = 1: a wrong Greek verb ("τα κύματα ψήναν ψηλά"), stories
+  labelled "200 words" whatever their length, a casino story whose last line does not follow, and TypeScript
+  answers with one false claim each ("importFile works with any extension"; "generic TypeScript interfaces") and a
+  `resolveJsonModule` footer copied from the first answer into the second. Nothing points at the runtime: 0.33.0 is
+  byte-identical to 0.32.0 (item 6).
+- The transformers warning about `fix_mistral_regex` is the known false alarm (section 18).
 
 ### 18.13 MiniMax-M3: S1b measured, and expert slots of one byte per group — 2026-09-27 (0.32.0)
 

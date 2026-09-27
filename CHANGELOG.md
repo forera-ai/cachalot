@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.33.1 (2026-09-28)
+
+Documentation only (HANDOFF section 18.14 item 9).
+
+- Hamed's chat session on 0.33.0 read against his 0.29.0 one on the same prompts: prose 12.7-12.9 tok/s at 95 %
+  hits (8.4-9.2 before), code 5.5 tok/s (4.3), no stray sentences, every earlier token reused. Found: short
+  follow-ups still cost a fixed 3.1-4.3 s; `/stats`' `read_ms_per_expert` is a per-read duration that rises with
+  queue depth, not a miss's cost; `resident_experts` exceeds `expert_slots` (borrowed transient slots); the startup
+  line prints "(none tokens)". Next-session prompt v62 gains M26 (display fixes) and M1c (check the chat head
+  snapshot on the next restart).
+
 ## 0.33.0 (2026-09-27)
 
 HANDOFF section 18.14.
