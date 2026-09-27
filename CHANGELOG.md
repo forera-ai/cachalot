@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.34.1 (2026-09-28)
+
+Documentation only (HANDOFF section 18.15 item 9).
+
+- Hamed's chat session on 0.34.0 read against his 0.33.0 one on the same prompts: decode +7 to +17 % (prose 13.6 /
+  11.8 tok/s, code 6.1-6.4), short follow-ups 2.3-3.3 s (3.1-4.3), code hit rates +1-2 points; the chat head
+  snapshot is reused after a restart ("Hi" prefilled 7 of 164 tokens: M1c done); `/stats`' new fields read as
+  intended (1.79 ms of decode wait per miss, the drive at 6.65 GiB/s). The first turn waits 8.8 s for the 56 GiB
+  warm set: M27 in next-session prompt v63. Answers clean; their faults are the 3-bit model's at T = 1.
+
 ## 0.34.0 (2026-09-28)
 
 HANDOFF section 18.15.

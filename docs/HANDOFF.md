@@ -33,7 +33,10 @@ The first block below is new; the blocks after it still hold.
 >   precise); the all-hit floor is GPU-bound (experts 12.2, attention 12.3, routing 5.5, shared 5.3 ms at 2k) and
 >   neither kernel fusion (-1.1 ms) nor matvec variants (bit-equal, none faster) move it. **M24 priced:** a compact
 >   slot-image record reads 4.1-4.6 % faster a miss (Hamed's call: bank rewrite).
-> - **Version 0.34.0.** 424 tests pass.
+> - **Hamed's chat on 0.34.0 (item 9):** decode +7 to +17 % against 0.33.0 (prose 13.6 / 11.8 tok/s, code 6.1-6.4),
+>   short follow-ups 2.3-3.3 s, the chat head reused (157 tokens: M1c done); the first turn waits 8.8 s for the
+>   56 GiB warm set (M27).
+> - **Version 0.34.1** (0.34.0 + this read). 424 tests pass.
 
 **Previous block, 0.33.0:**
 
@@ -8290,8 +8293,40 @@ flight (`read_bytes`, `read_busy_seconds`), and decode's wait for its misses in 
 `decode_waited_misses`). The chat's `/stats`: `decode_wait_ms_per_miss`, `drive_gib_s`, `drive_busy_seconds`,
 `ssd_gib_read` (every read), `borrowed_transient_slots`. `attach_snapshot_store` prints "(none)".
 
-**What remains, ranked.** 1. M1c and M1b (Hamed): the first chat and Hermes sessions on 0.34.0, with
-`/stats`' new fields and the sampler (does the governor park under Hermes Desktop's memory?). 2. M24 (Hamed): the
+**9. Hamed's chat session on 0.34.0** (`./chat-minimax.sh`, 2026-09-28, five turns plus `/stats`; nearly the same
+prompts as his 0.33.0 session in 18.14 item 9, sampled at T = 1, so a side-by-side read, not an A/B):
+
+| turn | new tokens | prefill 0.34 (0.33) | reply tokens | decode tok/s 0.34 (0.33) | hits 0.34 (0.33) |
+|---|---|---|---|---|---|
+| "Hi" | 7 of 164 (reused 157) | 2.4 s (11.2 s, 164 new) | 10 | 6.33 (6.46) | 74 % (51) |
+| 200-word story, fish in a creek | 25 | 2.3 s (3.3) | 260 | **13.60** (12.66) | 95 % (95) |
+| TypeScript: import JSON and CSV | 23 | 3.0 s (3.1) | 505 | **6.12** (5.53) | 84 % (82) |
+| TypeScript: JSON to CSV | 26 | 2.8 s (3.5) | 569 | **6.36** (5.46) | 85 % (83) |
+| 200-word story, lucky coin | 25 | 3.3 s (3.6) | 312 | **11.79** (10.04) | 94 % (92) |
+
+`/stats`: 3,455 prompt tokens, 3,349 reused, 1,656 generated, decode 7.56 tok/s over 219 s, hit rate 0.878,
+`decode_wait_ms_per_miss` 1.79, `drive_gib_s` 6.65 over 187.5 s busy, 1,247 GiB read (warm set and idle warming
+included), 2,974 resident = 2,718 slots + 256 borrowed.
+
+- **Speed.** Decode +7 to +17 % against 0.33.0 on the same kind of prompt, short follow-up prefills 2.3-3.3 s
+  (3.1-4.3): the 56 GiB cache, as the agent benchmark measured (-13 %). Code hit rates +1-2 points.
+- **M1c done.** The chat head snapshot written on 2026-09-28 was matched: "Hi" reused 157 tokens and prefilled 7.
+- **The first turn waits for the warm set:** 9.2 s total for a 10-token reply, of which the warm set (2,718 experts,
+  56 GiB, read back in 8.8 s) is most; at 52 GiB it was ~8 s. `stream` calls `_wait_warm_set` before prefilling so
+  the prefill's reads do not queue behind it. Once per restart. M27 (below) prices letting the first turn start at
+  once.
+- **M26 reads as intended.** 1.79 ms of decode wait per miss is under a raw read's ~3.0 ms because the speculative
+  reads (0.33.0) arrive partly done; 6.65 GiB/s is the internal SSD plus the X10Pro tail at their wall.
+- **Answers.** Coherent, on topic, no stray text, every turn `stop=stop`. Faults of the 3-bit model at T = 1, none
+  pointing at the runtime (0.34.0 is byte-identical to 0.33.0): the coin story mixes a coin toss with roulette
+  ("landed on velvet twenty-six times") and runs ~250 words; the CSV exporter quotes a value only when it holds the
+  delimiter or a newline, not a quote; the importer declares an unused `ImportedData` type and splits CSV lines
+  without quoted fields (it does point to papaparse). The memory governor printed nothing: no prefill here was
+  long enough to park, and the capacity never had to shrink.
+
+**What remains, ranked.** 1. M1b (Hamed): a Hermes session on 0.34.0 with the sampler beside it (does the
+governor park under Hermes Desktop's memory? `memory fit:` lines). M1c is done (item 9). M27: the first turn after
+a restart waits ~8.8 s for the warm set; price starting it at once. 2. M24 (Hamed): the
 bank rewritten as slot images, -4.1 to -4.6 % a miss, ~-3 % a decode token, prefill unchanged; ~1.7 % more with
 compressed heads in place. 3. GLM: G6 + S1c + S1e, and S2's `_prefill_budget` for GLM once its slots are slabbed.
 4. M19 (a Thunderbolt mirror). 5. S3-S5.
