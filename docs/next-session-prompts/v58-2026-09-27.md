@@ -5,7 +5,7 @@
 
 | version | written | produced by | what changed |
 |---|---|---|---|
-| **v58** | 2026-09-27 | Hamed asked a tenth time for MiniMax-M3's performance, as far as possible at unchanged quality | **0.29.0: MiniMax expert slots hold 4-bit bias codes (M13b): 2,381 slots in 52 GiB instead of 2,253, decode MLX's own qmv copied into a Metal kernel that rebuilds the bias (gate and up in one launch), byte-identical; agent benchmark decode -7.5 %, short prefills -5 %. The all-hit floor is ~22 ms of per-layer host round trips; four ways to fill it measured, none moves a read-bound token. Hardware lever: a Thunderbolt 5 NVMe for the mirror.** §18.10 |
+| **v58** | 2026-09-27 | Hamed asked a tenth time for MiniMax-M3's performance, as far as possible at unchanged quality | **0.29.0: MiniMax expert slots hold 4-bit bias codes (M13b): 2,381 slots in 52 GiB instead of 2,253, decode MLX's own qmv copied into a Metal kernel that rebuilds the bias (gate and up in one launch), byte-identical; agent benchmark decode -7.5 %, short prefills -5 %. The all-hit floor is ~22 ms of per-layer host round trips; four ways to fill it measured, none moves a read-bound token. Hardware lever: a Thunderbolt 5 NVMe for the mirror. Hamed's chat session on 0.29.0 then found MiniMax sampling at top_p 1.0 (its config says 0.95), no warm restart in the GLM/MiniMax chat, `/stats` sent to the model, and `idle warm:` printed into the input line.** §18.10 |
 | v57 | 2026-09-27 | Hamed asked a ninth time for MiniMax-M3's performance, as far as possible at unchanged quality | 0.28.0: each MiniMax decode layer predicts the next layer's experts (its own norm and router on this residual, in the same sync, ranked on the host) and, once its own misses are in, reads the best non-resident one of the top-2 while the GPU finishes the layer (the drive idled ~1.5 ms per layer): decode -1 to -6 % per token, -3.4 % in the agent benchmark, same tokens. 18.1's prediction had lost to a second GPU round trip. M17 closed: 18.8's pause cost was the benchmark's missing heartbeat; warming re-measured at -7 % decode, -5 % short prefills. §18.9 |
 | v56 | 2026-09-26 | Hamed asked an eighth time for MiniMax-M3's performance, as far as possible at unchanged quality | 0.27.0: MiniMax prefill chunks of 100-3,072 tokens read ahead only the next layer's experts its router predicts from this layer's residual (top-3, ~92 % precise): 150-3,000-token prefills -6 to -15 %, same tokens. Between requests the server warms the expert cache towards the most-requested experts (cancelled by the next request): with 4 s pauses, decode -12 %, short prefills -3 to -6 %. §18.8 |
 | v55 | 2026-09-26 | Hamed asked a seventh time for MiniMax-M3's performance, as far as possible at unchanged quality | **0.26.0: MiniMax prefill chunks read the whole next layer ahead only from 768 tokens (GLM's 128 wasted half the reads on MiniMax's skewed routing): 150-token tool results 14.7 → 8.8-10.6 s, all short prefills -17 %, same tokens. Prefill reads take each record's scales and codes from a compressed copy (`heads.zst`, 6 % fewer bytes); decode keeps the plain head. Speculative decoding closed on arithmetic; M14 idle warming priced (-5 to -15 % of a follow-up's misses).** §18.7 |
@@ -90,6 +90,26 @@ drive's temperature beside it (`smartctl -a disk0` if installed; ask Hamed befor
 internal drive's MB/s falls with temperature, the drift is thermal: price a cool-down or a read-rate cap. The GLM
 runs showed no such drift over ~10 minutes (5.3 GiB/s steady), which is itself a clue (bigger reads, fewer IOPS).
 
+## Jobs M21-M22 — first, before any speed work: what Hamed's 0.29.0 chat session found (§18.10 item 5)
+
+Hermes usage comes first, and M21 touches every Hermes request that omits `top_p`.
+
+- **M21 — MiniMax sampling defaults.** The chat has no `--top-p` (so `stream(..., top_p=1.0)`) and the server fills
+  an omitted `top_p` with 1.0, while `generation_config.json` says temperature 1.0, top_p 0.95. Measure first: the
+  session's prompts ("write a typescript code to import json and csv files.", "... export a json file into a csv
+  file.", a 200-word story) at top_p 1.0 against 0.95, a few seeds each, plus greedy; count stray trailing
+  sentences and obviously wrong code. Then read the defaults from the checkpoint's `generation_config.json` (chat
+  `--top-p`, `ServerConfig.default_top_p`, `serve-minimax.sh`); a request's own `top_p` still wins. Check what
+  Hermes sends (`CACHALOT_SERVER_DUMP`). GLM: read its `generation_config.json` the same way.
+- **M22 — GLM/MiniMax chat parity (`cmd_chat_glm` in `src/cachalot/cli.py`).** Attach the snapshot directory
+  (`CACHALOT_SNAPSHOT_DIR`, the serve script's default) so the warm set is read back and saved and prefix snapshots
+  persist (the session's first turn: 21 % hits, 14.3 s for 164 tokens); `/stats` (store hits, misses, reads, slots)
+  and `/clear`; any other `/word` answered locally, never sent to the model; the `idle warm:` line shown in the next
+  turn's summary instead of printed into the input line (a flag on the model; the server keeps printing it).
+
+Useful numbers from the same session: prose decodes at 8.4-9.2 tok/s (~91 % hits), code at 4.3 tok/s (~79 %); a
+13-27-token follow-up prefill costs 2.7-4.0 s, all reads; idle warming grew to ~1,000-1,150 experts in 3.2-3.7 s.
+
 ## MiniMax-M3 jobs (§18.10). Ask Hamed whether MiniMax speed is still the goal.
 
 Where a token goes, 2k context: ~34-48 misses x 22.2 MiB at ~3.6 ms (the internal SSD at ~6.3 GB/s plus 13 % of each
@@ -97,7 +117,7 @@ record from the X10Pro over USB), ~10-14 of them partly read ahead in the drive'
 per-layer GPU work and host round trips; the all-hit floor is ~59 ms, of which ~22 ms is the per-layer sync. Since
 0.29.0 a slot holds 4-bit bias codes (2,381 slots in 52 GiB). A follow-up prefill is reads at the drives' wall.
 
-- **M1b — a Hermes Desktop session on 0.29.0 (needs Hamed).** Read the `[request]` lines (`prefill=`, `miss/tok=`,
+- **M1b — a Hermes Desktop session on 0.29.0, after M21 (needs Hamed).** Read the `[request]` lines (`prefill=`, `miss/tok=`,
   `mlx=`, `memory fit:`) and the `idle warm:` lines with `benchmarks/slow_window_sampler.py` beside it. Ask Hamed to
   point Hermes's `auxiliary.*` tasks at a hosted provider.
 - **M19 — a Thunderbolt drive for the mirror (needs Hamed; a purchase).** The X10Pro is on USB 20 Gb/s; the Mac

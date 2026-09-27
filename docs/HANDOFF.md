@@ -28,6 +28,12 @@ The first block below is new; the blocks after it still hold.
 > - **Hardware lever for Hamed:** the X10Pro is on USB (20 Gb/s) and supplies 13 % of each read; the Mac Studio's
 >   Thunderbolt 5 ports could take an NVMe enclosure at ~6 GB/s, which would roughly halve a miss (18.10 item 4).
 > - Server end to end: "391", `get_weather({"city": "Paris"})`, a 1,263-token tool-result turn at 6.21 tok/s.
+> - **Hamed's `./chat-minimax.sh` session on 0.29.0 (18.10 item 5) found four defects, none from the codes:**
+>   MiniMax samples at temperature 1.0 with **top_p 1.0** in chat and in the server whenever a request omits
+>   `top_p` (its `generation_config` says 0.95), the likely source of stray sentences after code answers; the
+>   GLM/MiniMax chat never attaches the snapshot directory, so no warm-set restore (first turn 21 % hits, 14.3 s)
+>   and no disk snapshots; `/stats` (and any unknown slash command) goes to the model as a user turn and stays in
+>   the history; `idle warm:` prints into the line being typed. Fix before the next speed work.
 > - **Version 0.29.0.** 400 tests pass.
 
 **Previous block, 0.28.0:**
@@ -8050,9 +8056,43 @@ round trips. `diskutil`: the X10Pro is on USB at 20 Gb/s (~2 GB/s); the Mac Stud
 mirror fraction near 0.5, a miss would take roughly half as long, worth far more than any software lever left.
 Hamed's decision (a purchase); the mirror code needs no change beyond the fraction sweep.
 
-**What remains, ranked.** 1. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 2. The Thunderbolt drive (Hamed),
-then a `MIRROR_FRACTION` sweep. 3. M18, a decayed warming ranking (price on a trace first). 4. Prefill's bias
-rebuild in one launch per expert instead of three (small; prefill is read-bound). 5. M12.
+**5. Hamed's interactive session on 0.29.0** (`./chat-minimax.sh`, six turns, read after the release):
+
+| turn | prompt | new tokens | prefill | reply | decode | hits | idle warm after |
+|---|---|---|---|---|---|---|---|
+| "Hi" | 164 | 164 | 14.3 s | 10 tokens | 4.26 tok/s | 21 % | 271 experts, 0.9 s |
+| 200-word story | 199 | 26 | 3.7 s | 312 | **9.23 tok/s** | 92 % | 436, 1.4 s |
+| TypeScript: import JSON and CSV | 533 | 23 | 3.4 s | 368 | 4.30 | 79 % | 1,019, 3.3 s |
+| TypeScript: JSON to CSV | 926 | 26 | 3.4 s | 358 | 4.34 | 79 % | 1,142, 3.7 s |
+| 200-word story | 1,310 | 27 | 4.0 s | 317 | **8.37** | 91 % | 1,028, 3.2 s |
+| `/stats` (sent to the model) | 1,639 | 13 | 2.7 s | 33 | 5.35 | 77 % | 898, 2.8 s |
+
+Speed: prose at ~91 % hits decodes at 8.4-9.2 tok/s (~110-120 ms a token), code at ~79 % hits at 4.3 tok/s: the
+text's routing, not the context, decides (as 18.3 found). A short follow-up (13-27 new tokens) costs a near-fixed
+2.7-4.0 s, all reads; the reply splice reused every earlier token. Four defects, all outside this release's change
+(the codes are byte-identical to the bf16 path, 18.10 item 3):
+
+- **Sampling without nucleus.** `chat-minimax.sh` passes `--temperature 1.0` and the GLM/MiniMax chat has no
+  `--top-p`, so `stream(..., top_p=1.0)`; the server fills an omitted `top_p` with 1.0 (`server/app.py`) while
+  `serve-minimax.sh` sets only `--default-temperature 1.0`. The checkpoint's `generation_config.json` asks for
+  temperature 1.0 **and top_p 0.95**. Full-vocabulary sampling at T = 1 on a 3-bit model is the likely cause of what
+  the session showed: a stray sentence after each code answer ("A cop is at the corner.", "Antarctica is a
+  continent.") and a JSON importer wired to the CSV parser. Not yet verified: the same prompts with top_p 0.95 (and
+  greedy) against top_p 1.0, several seeds. Hermes is exposed too whenever its requests omit `top_p`.
+- **No warm restart in chat.** `cmd_chat_glm` never calls `attach_snapshot_store`, so the resident set is neither
+  read back at startup nor saved, and no prefix snapshot reaches disk: the first turn ran cold (21 % hits, 164
+  tokens in 14.3 s; the server's warm restart made a first short turn 8.7 → 4.8 s in 18.2).
+- **Slash commands.** The GLM/MiniMax chat handles only `/exit` and `/quit`; `/stats` went to the model as a user
+  turn (a confused reply) and stays in the conversation. DeepSeek's chat has `/clear`, `/stats`, `/exit`.
+- **`idle warm:` interrupts typing.** The warming thread prints while the prompt is waiting (`> write aidle warm:
+  1142 experts in 3.7s`). In chat it belongs in the next turn's summary line.
+
+**What remains, ranked.** 1. M21, MiniMax sampling defaults (top_p 0.95 from `generation_config` in chat and as
+the server's default for a request without `top_p`), verified on the session's prompts. 2. M22, chat parity for
+GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash commands kept local, the warming
+line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
+`MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
+launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 ### 16.4 Piece 4 — images through the server, end to end, and three things piece 3 had missed — 2026-09-23
 
