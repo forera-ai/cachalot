@@ -754,9 +754,9 @@ def test_prefetch_after_demand_waits_for_the_layers_misses_and_keeps_one_per_lay
     submitted_while_demand = []
     orig = store.prefetch_decode
 
-    def spy(entries):
+    def spy(entries, limit=None):
         submitted_while_demand.append(store.is_resident((1, 3)))
-        return orig(entries)
+        return orig(entries, limit)
 
     monkeypatch.setattr(store, "prefetch_decode", spy)
     store.get_many([index[(1, 3)]], prefetch=[index[(2, 0)], index[(2, 1)], index[(2, 2)], index[(3, 5)]])
@@ -767,3 +767,25 @@ def test_prefetch_after_demand_waits_for_the_layers_misses_and_keeps_one_per_lay
     store.get_many([index[(1, 3)]], prefetch=[index[(2, 4)]])
     assert (2, 4) in _inflight_keys(store)
     _drain_predictions(store)
+
+
+def test_a_callable_prefetch_is_called_once_the_layers_reads_are_submitted(index, monkeypatch):
+    """HANDOFF 18.14: a callable prefetch is evaluated only when issued; with prefetch_after=False that is right
+    after the layer's own reads are submitted, before they are awaited, and prefetch_limit overrides
+    DECODE_PREFETCH_LIMIT (and prefetch_after DECODE_PREFETCH_AFTER_DEMAND)."""
+    monkeypatch.setattr(resident_store, "DECODE_PREFETCH_AFTER_DEMAND", 1)
+    monkeypatch.setattr(resident_store, "DECODE_PREFETCH_LIMIT", 1)
+    store, _ = make_store(slots=8, latency=0.05, transient=24)
+    seen = []
+
+    def predicted():
+        seen.append(store.is_resident((1, 3)))
+        return [index[(2, 0)], index[(2, 1)], index[(2, 2)]]
+
+    store.get_many([index[(1, 3)]], prefetch=predicted, prefetch_limit=8, prefetch_after=False)
+    assert seen == [False]  # called while the miss (1, 3) was still being read
+    assert _inflight_keys(store) == {(2, 0), (2, 1), (2, 2)}
+    _drain_predictions(store)
+    # a callable that predicts nothing issues nothing
+    store.get_many([index[(1, 4)]], prefetch=lambda: [], prefetch_after=False)
+    assert _inflight_keys(store) == set()

@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.33.0 (2026-09-27)
+
+HANDOFF section 18.14.
+
+### Changed
+- **MiniMax-M3 decode reads the next layers' missing experts from the routing its GPU loop already computed.**
+  When the host finds a miss at layer i, the 0.31.0 loop has already run layer i+1's attention and routing on
+  layer i's output. The slab kernels now give a not-yet-read expert (slot -1) zero rows, so that output is layer
+  i's without its misses and its routing matches layer i+1's real one ~91 % of the time. As soon as layer i's own
+  reads are submitted, the host issues reads for layer i+1's non-resident experts, then runs layer i+1's hit
+  experts and layer i+2's attention and routing on that output (its KV write rewound at once) and issues layer
+  i+2's (~88 % of the speculated reads are used). The drive no longer idles while the host recomputes a layer and
+  its queue is deeper: read time per miss 3.5 → ~3.0 ms. Byte-identical (TF log-probs and prefill logits
+  `cmp`-equal against 0.32.0 at 1k and 8k context; the agent benchmark's `ids_hash` unchanged). Agent benchmark,
+  ABAB: **decode 187.1 → 158.4 ms a token (-15 %)**, turns 80.7 → 72.4 s (-10 %); 8k context 280 → 238 ms.
+  `CACHALOT_MINIMAX_SPEC_PREFETCH` (reads per layer, default 8; 0 restores 0.32.0), `CACHALOT_MINIMAX_SPEC_DEPTH`
+  (2), `CACHALOT_MINIMAX_SPEC_AFTER_DEMAND` (0: issued alongside the layer's own reads).
+- `ResidentExpertStore.get_many` takes a callable `prefetch` (called only when the prefetch is issued),
+  `prefetch_limit` and `prefetch_after`; `prefetch_decode` takes a per-call `limit`.
+
+### Measured and not kept
+- Entropy-coding the 3-bit expert weights: 2.68 bits of entropy a weight (a static Huffman code 2.72, 9.4 % fewer
+  bytes), but a bit-exact decode inside the matmul (lanes reading one interleaved stream in lockstep) takes 79 µs
+  against 14 µs a projection, ~+90 ms of GPU time a token against at most ~25 ms saved; a CPU decoder would need
+  ~13 G symbols/s.
+- A wider mirror: the X10Pro reads 1.00 GB/s at every queue depth and piece size (USB 10 Gb/s); the 0.13 split is
+  already ideal.
+- Six workers for predicted reads instead of two (no change); speculating three layers deep (+1.7 %); building the
+  depth-2 graph before layer i's reads are submitted (it delayed them).
+
 ## 0.32.0 (2026-09-27)
 
 HANDOFF section 18.13.

@@ -1,6 +1,8 @@
 # Cachalot — Engineering Handoff
 
-**Authoritative state as of 2026-09-27 (twelfth MiniMax session), after the session that shrank MiniMax's expert
+**Authoritative state as of 2026-09-27 (thirteenth MiniMax session), after the session that made MiniMax's decode
+read the next two layers' missing experts from the speculative routing its GPU loop already computes (section
+18.14), the one that shrank MiniMax's expert
 slots to one byte per weight group's scale and bias (section 18.13), the one that gave GLM/MiniMax their
 checkpoints' sampling defaults, brought their terminal chat to parity and moved MiniMax's expert selection onto
 the GPU (section 18.12), the one that made MiniMax-M3's expert
@@ -14,6 +16,26 @@ that gave it a bias-free expert bank (18.4), the one that gave it a second drive
 kernel (18.3), the one that cut its per-token overhead and measured it to 64k (18.2), the one that made it faster
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
+
+> ## Start here (2026-09-27, 0.33.0): MiniMax-M3 decode reads the next layers' misses while it waits
+>
+> - **Speculative prefetch shipped (section 18.14 items 3-7):** when layer i misses, the GPU-select loop of 0.31.0
+>   has already run layer i+1's attention and routing on layer i's output. The slab kernels now give a missing
+>   expert zero rows, so that output is layer i's without its misses, and its routing is layer i+1's real one
+>   ~91 % of the time. The host issues reads for layer i+1's non-resident experts as soon as layer i's own reads
+>   are submitted, then runs layer i+1's hit experts and layer i+2's attention and routing on that and issues
+>   layer i+2's (depth 2, ~88 % used). **Byte-identical** (TF log-probs and prefill logits `cmp`-equal at 1k and
+>   8k against 0.32.0; same `ids_hash`). Agent benchmark ABAB: **decode 187.1 → 158.4 ms (-15 %)**, turns
+>   80.7 → 72.4 s (-10 %); 8k context 280 → 238 ms. `CACHALOT_MINIMAX_SPEC_PREFETCH=0` restores 0.32.0;
+>   `_SPEC_DEPTH` (2), `_SPEC_AFTER_DEMAND` (0).
+> - **Closed (items 1, 2, 8):** entropy-coding the 3-bit weights (2.68 bits of entropy, but a bit-exact GPU decode
+>   in the matmul costs 79 µs against 14 µs; a CPU decoder would need ~13 G symbols/s); a wider mirror (the
+>   X10Pro is at 1.00 GB/s at every queue depth: USB 10 Gb/s, and 0.13 is already the ideal split); a wider
+>   predicted-read pool; depth 3.
+> - Open: the ~10 misses a token that follow an all-hit layer have no prediction; M24, M19, M1b; GLM on the loop.
+> - **Version 0.33.0.** 416 tests pass.
+
+**Previous block, 0.32.0:**
 
 > ## Start here (2026-09-27, 0.32.0): MiniMax-M3 caches 142 more experts in the same memory
 >
@@ -8147,6 +8169,99 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.14 MiniMax-M3: speculative prefetch from the GPU loop's own routing — 2026-09-27 (0.33.0)
+
+Hamed's brief (prompt v61, the thirteenth "MiniMax-M3 as fast as possible at the same quality"): confirm caveman,
+Jev and the codebase-memory graph first, then plan, build, measure and document. Tools: caveman active (session
+hook), Jev answered (`jev_decide`), the graph ready (5,700 nodes, one partial file outside the code). 0.32.0
+committed, tree clean. Filler: a fresh 4.8 MB concatenation of the repo's `.md` and `.py` files (scratch), so the
+absolute numbers below are not comparable with 18.13's.
+
+**A method note first.** `TF_ALTERNATE` gives arm A the even tokens and arm B the odd ones. On this filler the two
+token sets differ by up to ~12 ms a token on the same code, so every decision below is read from a *swapped pair*:
+`A:B` and `B:A` on the same text, each arm's mean total (store wait + other) averaged over its even and odd run.
+Single-order readings in earlier sections are probably right in sign but may carry a few percent of this bias.
+
+**1. Entropy-coding the 3-bit weights: closed on arithmetic.** 18.3 measured the codes' entropy at 89 % of 3 bits.
+Measured again on 24 random experts (72 projections): 2.678 bits a weight, a static Huffman code 2.718 (lengths
+5, 5, 3, 3, 2, 2, 3, 4 for levels 0-7; the histogram is the same in every expert, so one code fits all), i.e.
+9.4 % fewer weight bytes both on disk and in a slot. The decode matmul would have to decode it. A prototype
+(scratch `ent.py`): each row's 32 SIMD lanes read one interleaved word stream in lockstep (a lane refills when
+its bit buffer drops below 32 bits, `simd_prefix_exclusive_sum` gives it the next word; the encoder simulates
+this, so only one offset per row is stored), the 16 symbols a lane needs per block are decoded into MLX's packed
+layout and handed to MLX's own `qdot` in thread memory. **Bit-equal** to the pair kernel on real experts, but
+**79-89 µs against 14 µs** a 3072x6144 matmul: ~1,370 matmuls a token make that ~+90 ms of GPU time against at
+most ~25 ms of fewer reads and more slots. A decoder on the CPU instead would have to produce ~2.6 G symbols a
+token (~13 G/s). Neither is close.
+
+**2. The X10Pro is at its wall.** Direct reads of the bank's mirror copy, random 0.9 and 3 MiB pieces, 1-12 at a
+time: 0.73 GB/s at one, **1.00 GB/s** from three on, whatever the size. That is USB 10 Gb/s (Macs do not do USB
+3.2 Gen 2x2). With the internal SSD at ~6.4 GB/s the ideal split is 1.0 / 7.4 = 0.135: 18.5's 0.13 is already it.
+Only M19 (a Thunderbolt enclosure) changes this.
+
+**3. Where the lever is.** In the GPU-select loop a miss at layer i is found when the host checks layer i while
+layer i+1's attention and routing (`A_{i+1}`) are already submitted; the loop then rewinds layer i+1's KV write,
+reads layer i's missing experts, recomputes their rows and reruns `A_{i+1}`. That discarded `A_{i+1}` is layer
+i+1's routing on layer i's output with the missing experts' rows taken from slot 0 (whatever expert sits there).
+If those rows are zero instead, it is the routing on layer i's output *minus its misses*, and the host has it
+~3.5 ms (a read) before layer i+1 needs it, against ~0.6 ms for 18.13's S1b.
+
+**4. The build.** (a) `SlabExperts`' down kernel writes zero rows for a slot of -1 (`gpu_select._DOWN`); the hit rows
+are untouched, and a miss's rows are replaced by `_fix` as before, so outputs cannot change. (b) `_fix(rec, spec)`
+passes the store a callable prefetch: `_speculated` reads `A_{i+1}`'s slots and routes (finished long before) and
+returns layer i+1's experts with slot -1, up to `SPEC_PREFETCH` (8). (c) `get_many(prefetch=callable,
+prefetch_limit=, prefetch_after=)`: the callable is called on the calling thread only when the prefetch is issued;
+the limit overrides `DECODE_PREFETCH_LIMIT` (1 for MiniMax's 0.28.0 prediction); `prefetch_after` overrides
+`DECODE_PREFETCH_AFTER_DEMAND`. `prefetch_decode(entries, limit=None)`. (d) Depth 2 (`_speculate_deeper`): after
+layer i+1's reads are issued, the same callable runs layer i+1's experts on the speculative output (its own
+misses zero again), layer i+2's attention (its KV write rewound at once) and routing, and issues layer i+2's
+reads. All of it runs after layer i's own reads are submitted.
+
+**5. Measured, one process, 2k context, 300 tokens, swapped pairs** (`TF_ALTERNATE`, filler @600000 and @1300000):
+
+| comparison | text | arm means, ms a token | change | reads issued / used a token |
+|---|---|---|---|---|
+| spec off → depth 1, after demand | @600000 | 172.2 → 164.3 | -4.6 % | 18.8-19.8 / 17.2-17.9 |
+| spec off → depth 1, after demand | @1300000 | 161.5 → 153.8 | -4.8 % | 17.8-18.1 / 16.2-16.5 |
+| after demand → with demand (depth 1) | @600000 | 164.5 → 156.5 | -4.9 % | same |
+| predicted-read pool 2 → 6 workers | @600000 | 155.9 → 156.1 | none | same |
+| depth 1 → 2, depth-2 graph built before layer i's reads | @600000 | 154.2 → 152.2 | -1.3 % (other +6.5 ms) | 26-27 / 23-24 |
+| depth 1 → 2, built after layer i's reads are submitted | @600000 | 154.2 → 149.5 | -3.0 % | 26-27 / 23-24 |
+| depth 1 → 2 (shipped form) | @1300000 | 144.7 → 140.9 | -2.7 % | 24.5 / 21.5 |
+| depth 2 → 3 | @600000 | 147.1 → 149.6 | +1.7 % | 30-31 / 26-27 |
+
+Precision is ~91 % at depth 1 and ~88 % at depth 2 (a used read is one the next layer requested). Read time per
+miss falls 3.53 → ~3.0 ms: the drive's queue is deeper and it no longer idles while the host recomputes a layer.
+"With demand" (the speculated reads issued right after layer i's own, sharing the drive) beats "after demand"
+(3.30 → 3.10 ms a miss); the 0.28.0 prediction of the non-GPU-select path keeps its after-demand setting.
+
+**6. Byte-identical.** 1,024-token prefill @200000 + 60 teacher-forced tokens, 0.32.0's code (stashed) against the
+shipped defaults in separate processes: TF log-probs and prefill logits `cmp`-equal (170.0 → 153.8 ms a token).
+8,192 tokens (the GQA decode kernel's range, where depth 2's extra KV rewind matters), spec 0 against the
+default: `cmp`-equal, **280.4 → 238.3 ms** (-15 %; separate processes). The agent benchmark printed one `ids_hash`
+in all four runs.
+
+**7. The agent benchmark** (`minimax_followup_turns.py` @1300000, 2k then six short turns, 48-token replies,
+ABAB processes, `CACHALOT_MINIMAX_SPEC_PREFETCH` 0 / 8):
+
+| arm | decode ms/token | turns s | short prefills s | first reply ms/token |
+|---|---|---|---|---|
+| off | 188.4 | 81.0 | 26.75 | 248.3 |
+| on | **156.3** | **71.2** | 26.15 | 212.1 |
+| off | 185.8 | 80.3 | 26.76 | 249.9 |
+| on | **160.5** | **73.5** | 27.31 | 215.8 |
+
+**Decode -15.3 %, turns -10.3 %**, prefills unchanged (the path is decode only). Through the server
+(`serve-minimax.sh`, scratch snapshot directory): the tool call (399-token prompt, 47 tokens at 4.82 tok/s) and the
+tool-result turn (399 of 450 reused, 53 tokens at **7.48 tok/s**, 88 % hits).
+
+**8. What is left, ranked.** Of ~34 misses a token, ~23 now arrive predicted; the other ~10 are mostly the first
+miss after an all-hit layer, which nothing predicts early enough (S1b's router-on-residual guess is 46 % precise
+with ~0.6 ms of lead). 1. M1b, a Hermes Desktop session on 0.33.0 (Hamed). 2. GLM: G6 + S1c, and then this
+speculative prefetch, which needs the GPU-select loop (GLM has none yet). 3. M24, a bank with compact heads in
+place (Hamed, disk space; ~3.7 % fewer bytes a miss). 4. M19, a Thunderbolt mirror (Hamed; the X10Pro is at
+1.00 GB/s). 5. S2-S5.
 
 ### 18.13 MiniMax-M3: S1b measured, and expert slots of one byte per group — 2026-09-27 (0.32.0)
 

@@ -87,6 +87,23 @@ def test_slab_kernels_match_codes_qmv_bit_for_bit():
     assert np.array_equal(np.array(again.view(mx.uint16)), np.array(got[1:3].view(mx.uint16)))
 
 
+def test_a_missing_expert_slot_gives_zero_rows_and_leaves_the_others_alone():
+    """HANDOFF 18.14: slot -1 (a miss the host has not read yet) yields zero rows from the slab kernels, so a
+    speculative layer output leaves the expert out; the hit experts' rows are unchanged."""
+    pool = SlabSlotPool(_sizes(), 6, slab_slots=4)
+    rng = np.random.default_rng(3)
+    for i in range(6):
+        _fill(pool, i, rng)
+    act = lambda up, gate: up * mx.sigmoid(gate)  # noqa: E731
+    x = mx.array(rng.standard_normal((1, D)).astype(np.float32)).astype(mx.bfloat16)
+    experts = SlabExperts(pool, _fmt())
+    full = experts(x, mx.array(np.array([5, 0, 3], np.int32)), act)
+    part = experts(x, mx.array(np.array([5, -1, 3], np.int32)), act)
+    assert np.array_equal(np.array(part[0].view(mx.uint16)), np.array(full[0].view(mx.uint16)))
+    assert np.array_equal(np.array(part[2].view(mx.uint16)), np.array(full[2].view(mx.uint16)))
+    assert not np.array(part[1].astype(mx.float32)).any()
+
+
 def _store(n_slots=12, slab=4, capacity_budget=8):
     pool = SlabSlotPool(_sizes(), n_slots, slab_slots=slab)
     store = ResidentExpertStore(capacity_budget * pool.slot_bytes, slot_pool=pool)

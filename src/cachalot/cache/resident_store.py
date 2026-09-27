@@ -272,7 +272,7 @@ class ResidentExpertStore:
         self.fast_reads = 0
         self.read_wall_seconds = 0.0
 
-    def prefetch_decode(self, entries: list[ExpertEntry]) -> int:
+    def prefetch_decode(self, entries: list[ExpertEntry], limit: int | None = None) -> int:
         """
         Start loading experts predicted for an upcoming decode layer into
         free transient slots (never evicting a resident). A predicted expert
@@ -281,9 +281,10 @@ class ResidentExpertStore:
         """
         submitted = 0
         per_layer: dict[int, int] = defaultdict(int)
+        cap = DECODE_PREFETCH_LIMIT if limit is None else limit
         with self._lock:
             for entry in entries:
-                if DECODE_PREFETCH_LIMIT and per_layer[entry.layer] >= DECODE_PREFETCH_LIMIT:
+                if cap and per_layer[entry.layer] >= cap:
                     continue
                 key = (entry.layer, entry.expert)
                 if key in self._items or key in self._inflight:
@@ -755,6 +756,8 @@ class ResidentExpertStore:
         max_misses: int | None = None,
         priorities: list[float] | None = None,
         prefetch: list[ExpertEntry] | None = None,
+        prefetch_limit: int | None = None,
+        prefetch_after: bool | None = None,
         on_hits=None,
     ) -> list[ResidentExpert | None]:
         """
@@ -765,7 +768,12 @@ class ResidentExpertStore:
         prefetch: experts predicted for a later layer; their loads are
         submitted right after this layer's real misses (prefetch_decode) so
         they stream while the GPU works. Misses already in flight from an
-        earlier prediction are awaited instead of re-read.
+        earlier prediction are awaited instead of re-read. A callable is
+        called (on this thread) only when the prefetch is issued, so a
+        prediction the GPU is still computing need not be waited for before
+        this layer's own reads start; `prefetch_limit` overrides
+        DECODE_PREFETCH_LIMIT for it and `prefetch_after` (when not None)
+        DECODE_PREFETCH_AFTER_DEMAND.
 
         max_misses (opt-in approximation): load at most this many misses,
         highest `priorities` first; the rest are returned as None and
@@ -826,9 +834,15 @@ class ResidentExpertStore:
             if key not in futures:
                 futures[key] = self._load_pool.submit(self._read_into, entry, slot)
 
-        after = bool(DECODE_PREFETCH_AFTER_DEMAND)
+        after = bool(DECODE_PREFETCH_AFTER_DEMAND) if prefetch_after is None else prefetch_after
+
+        def issue():
+            ents = prefetch() if callable(prefetch) else prefetch
+            if ents:
+                self.prefetch_decode(ents, prefetch_limit)
+
         if prefetch and not after:
-            self.prefetch_decode(prefetch)
+            issue()
 
         if on_hits is not None and (pending or awaited):
             on_hits(list(results))
@@ -866,7 +880,7 @@ class ResidentExpertStore:
 
         if not pending:
             if prefetch and after:
-                self.prefetch_decode(prefetch)
+                issue()
             return results
 
         loaded = {key: fut.result() for key, fut in futures.items()}
@@ -885,7 +899,7 @@ class ResidentExpertStore:
                 results[i] = resident
 
         if prefetch and after:
-            self.prefetch_decode(prefetch)
+            issue()
         return results
 
     # ------------------------------------------------------------------
