@@ -1,8 +1,8 @@
 # Cachalot — Engineering Handoff
 
 **Authoritative state as of 2026-09-27 (eleventh MiniMax session), after the session that gave GLM/MiniMax their
-checkpoints' sampling defaults, brought their terminal chat to parity and priced GPU-side expert selection
-(section 18.12), the one that made MiniMax-M3's expert
+checkpoints' sampling defaults, brought their terminal chat to parity and moved MiniMax's expert selection onto
+the GPU (section 18.12), the one that made MiniMax-M3's expert
 slots hold 4-bit bias codes and measured where the rest of a decode token's non-read time goes (section 18.10), the
 one that made its decode read
 the next layer's predicted expert while the drive would idle and closed 18.8's two open slow-downs (section 18.9),
@@ -13,6 +13,22 @@ that gave it a bias-free expert bank (18.4), the one that gave it a second drive
 kernel (18.3), the one that cut its per-token overhead and measured it to 64k (18.2), the one that made it faster
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
+
+> ## Start here (2026-09-27, 0.31.0): MiniMax-M3 decode picks its experts on the GPU
+>
+> - **S1 shipped (section 18.12 item 5):** expert slots in 128-slot slabs, a (layer, expert) -> slot table the
+>   store keeps exact, decode kernels that find a slot from a GPU index, and a layer loop that submits attention +
+>   routing, then the experts, while the host checks the previous layer's slots one step behind; a miss is read
+>   and only its rows recomputed. **Byte-identical** (TF log-probs and logits `cmp`-equal, same ids at 20k/40k,
+>   same `ids_hash`). Agent benchmark ABAB **decode -9.5 %** (190 → 172 ms); prose -21 %, code -5 %, 40k -8 %.
+>   `CACHALOT_MINIMAX_GPU_SELECT=0` restores the per-layer sync.
+> - The memory fit parks whole slabs (at most a quarter slab of excess left; survivors copied out of the victim
+>   slab). Verified at 20k and 40k.
+> - Open: the shipped path's decode prefetch (0.28.0) has no counterpart in the new loop (worth ~13 reads a token
+>   on 79 %-hit text); reads could start ~0.3 ms earlier from a waiter thread; GLM could take the same loop.
+> - **Version 0.31.0.** 409 tests pass.
+
+**Previous block, 0.30.0:**
 
 > ## Start here (2026-09-27, 0.30.0): the chat session's defects fixed, GPU-side expert selection priced
 >
@@ -8191,7 +8207,7 @@ wrapped to count misses per call (one call per MoE layer per token):
 
 Tokens with no miss at all: 3 of ~1,400. So the host round trip has to go per layer, not per token.
 
-(b) The floor. `nosync_floor.py` from 18.10 extended (scratch `s0_floor.py`): the floor replay's identical token
+(b) The floor. `nosync_floor.py` from 18.10 extended (now `benchmarks/minimax_select_floor.py`): the floor replay's identical token
 at 2k (@200000), arms alternating in one process, STEPS 20 then 30:
 
 | arm | what the host does per MoE layer | median / min ms | logits |
@@ -8226,6 +8242,73 @@ ahead.
    matmuls are already done), recompute L's routed output, rewind L+1's KV offset and rerun it. The 0.28.0
    prediction stays (its scores come from the same step-behind read). Old path behind a switch; decided on
    `TF_ALTERNATE` and the agent benchmark.
+
+**5. S1 built and shipped (0.31.0).** First a scratch prototype (monkeypatched pool and loop, `s1_proto.py`),
+then the production code.
+
+The prototype, one process, the chat session's two prompts after the warm set, greedy, arms alternating token by
+token (A shipped, S the new loop), the first 24 tokens run both ways (S, rewind, A) and compared bit for bit:
+
+| version | story (93 % hits) A → S ms | code (81 %) A → S ms | logits |
+|---|---|---|---|
+| v1: layer submitted whole, previous layer checked after it; all k experts recomputed on a miss (both arms without prediction) | 95.8 → 80.3 | 230.2 → 233.4 | 24/24 identical |
+| v2: each layer submitted as (attention, routing, slot lookup) then (experts); the previous layer checked between the two; only the missing rows recomputed (both without prediction) | 99.1 → 77.9 | 228.7 → 214.6 | 24/24 |
+| v2 against the shipped path with its prediction on | **95.4 → 75.4 (-21 %)** | **224.7 → 213.9 (-5 %)** | 24/24 |
+| v2 with 0.28.0's prediction added to S (prefetch at the host check) | 97.7 → 77.6 | 224.3 → 215.8 | 24/24 |
+
+v1 lost on code: its reads started only after the whole previous layer (its experts included) had run. In v2 the
+host checks layer i-1 right after submitting layer i's routing, so a miss's reads start about when the shipped
+path's would, and the GPU has layer i-1's experts queued meanwhile. Prediction inside S added nothing (its lead
+time is a fraction of a layer there), so it is not in the shipped loop.
+
+Production (`cachalot.cache.slots.SlabSlotPool`, `ResidentExpertStore.track_slots` / `_TrackedItems` /
+`_set_capacity_slabs_locked`, `cachalot.minimax.gpu_select`, `MiniMaxModel._forward`):
+
+- **Slabs.** `SlabSlotPool`: slabs of 128 slots as (slots, record) uint8 arrays (one MLX dimension is an int32; a
+  flat 2.9 GB slab overflowed it); each slot one record with its nine tensors page-aligned (23,445,504 bytes);
+  `slot.arrays` are MLX slices of the slab and `slot.views` NumPy slices, so the reader, prefill and `_typed` work
+  unchanged, and memory is not doubled (MLX active 63.2 GiB after load, as before). 21 slabs for 2,653 slots.
+- **The table.** `_TrackedItems`, the store's resident `OrderedDict` with a (layer, expert) -> slot int32 table
+  updated on every insertion and removal (recency moves do not touch it) and a version counter; the decoder
+  uploads it (60 x 128 int32) only when the version moved.
+- **Kernels.** `gpu_select.SlabExperts`: `codes_qmv`'s qmv_fast copy with the slot base computed in the kernel from
+  `idx[j]` (grid z = the routed expert), gate and up in one launch, down in one; every slab is an input (a parked
+  one is a 1 x 4,096 placeholder: a one-element input is bound as `constant` and the ternary pick fails to compile).
+  A miss (-1) reads slot 0. Unit test: bit-identical to `codes_qmv.gate_up` / `qmv` per expert, and after a park.
+- **The loop.** `GpuSelectDecoder.forward`: per layer `A_i` (attention, routing, slot lookup, `async_eval`), check
+  of layer i-1 (`np.array` of its slots; all resident: touch LRU, count hits; else `get_many`, recompute the missing
+  rows, rewind the KV offsets of the layers run after it, rerun from i), then `M_i` (routed experts, shared expert,
+  output, `async_eval`). The residual sum is taken in the shipped order. A miss's `get_many` is the shipped read
+  and admission path; its eviction never reaches an in-flight slot (the layer's hits were just touched; everything
+  before layer i-1's routing has finished, FIFO).
+- **Parking.** With a slab pool the memory fit parks whole slabs (never slab 0): until at most a quarter slab of
+  excess is left; it unparks only with a slab and a quarter of room (no oscillation). A victim slab's residents
+  that survive the LRU evictions are copied into free slots elsewhere (between tokens). The first rule tried,
+  round-to-nearest, left 1.6 GiB above the target at 40k (the last slab holds only 93 slots).
+
+Checks: 1,024-token prefill @200000 + 40 teacher-forced tokens, `GPU_SELECT` 0 and 1 in two processes: the
+log-probs and logits files `cmp`-equal (NLL 0.83467 both). `stream` at 20k (@2,000,000, 60 greedy tokens): same ids
+(`7f151856f898`), one slab parked, MLX active 63.5 GiB (target 64.2). 40k: same ids (`33c2151f70ad`), 207.6 →
+190.7 ms a token. Server: "391", `get_weather({"city": "Paris"})` with thinking, the tool result answered reusing 455
+of 492 tokens at 5.84 tok/s. 409 tests.
+
+Speed, the shipped benchmarks:
+
+| benchmark | shipped | GPU select |
+|---|---|---|
+| agent turns (`minimax_followup_turns.py` @1,300,000, 2k + 30/60/120/30/250/30 tokens, 48-token replies), ABAB | decode 194.4 / 185.8 ms, turns 84.1 / 81.6 s | **173.0 / 171.1 ms (-9.5 %)**, 77.9 / 77.2 s; same `ids_hash`, same misses |
+| `TF_ALTERNATE` on filler @600000 (2k, 300 tokens, 79 % hits) | total 228.3 ms (other 80.4, read wait 149.0) | 227.0 ms (other 60.5, read wait 162.6) |
+
+The filler row is the open item: the new loop saves 20 ms of non-read time but waits 14 ms longer on reads,
+because the shipped path's prediction (0.28.0: 19 prefetches a token, 13 used) has no counterpart in it.
+
+**What remains, ranked.** 1. The decode prefetch in the new loop with a real lead: predict layer i+1's experts
+from layer i's residual in `A_i` and start the best non-resident one as soon as the host sees layer i-1 (not at
+layer i's own check), or from a waiter thread that blocks on each `A_i` and starts its reads the moment the
+routing lands (~0.3 ms earlier than the host loop's check). 2. M1b, a Hermes Desktop session on 0.31.0 (Hamed).
+3. GLM on the same loop (42 MoE layers; its slots hold bf16 biases, so a biases variant of the slab kernel).
+4. S2 (memory governor), S3 (INT8 KV), S4 (batching), S5 (API) as 18.11 ranks them. 5. The Thunderbolt mirror
+(Hamed). 6. M21's third prompt (TS export) was not run at the two top_p values.
 
 **Splash, the usability check Hamed asked for.** Cloned at `c64a578` (scratch). Its MoE kernels
 (`moe_expert_gate_up_q4_*`, `moe_expert_down_q4_*`, `moe_route_select_*`, `moe_combine`) take Q4 (4-bit, 256-element

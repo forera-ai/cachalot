@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.31.0 (2026-09-27)
+
+HANDOFF section 18.12 item 5.
+
+### Changed
+- **MiniMax-M3 decode selects its experts on the GPU (S1; the pattern of Splash's GPU-side MoE).** The shipped
+  decode layer waited on the host for each MoE layer's routing before its experts ran (~0.4-0.65 ms of GPU idle
+  per layer). Now the expert slots live in slabs of 128 (`cache.slots.SlabSlotPool`: one contiguous, page-aligned
+  record per slot, slot arrays and views are views into the slab, so reads and prefill are unchanged), the store
+  keeps a (layer, expert) -> slot table in step with every admission and eviction (`track_slots`), and a decode
+  token (`minimax.gpu_select.GpuSelectDecoder`) submits each layer as attention + routing + slot lookup, then the
+  routed experts straight from the slabs (the codes kernels with the slot base computed from a GPU index), while
+  the host reads the previous layer's slots one step behind. A layer with a miss is fixed: the store reads the
+  missing experts (the same `get_many`), only their rows are recomputed, and the next layer's attention is rewound
+  and rerun. Byte-identical: 40 teacher-forced log-probs and the prefill logits `cmp`-equal with it on and off;
+  same greedy ids at 20k and 40k context; the agent benchmark printed the same `ids_hash` in four runs.
+  Agent benchmark ABAB: decode 194.4 / 185.8 → 173.0 / 171.1 ms per token (**-9.5 %**), turns -6 %. Chat-like
+  text in one process, token by token against the shipped path: prose (93 % hits) 95.4 → 75.4 ms (-21 %), code
+  (81 %) 224.7 → 213.9 ms (-5 %); a 79 %-hit filler text even (the shipped path's decode prefetch, 13 used reads
+  a token, has no counterpart yet). 40k context: 207.6 → 190.7 ms. `CACHALOT_MINIMAX_GPU_SELECT=0` restores the
+  per-layer sync (it also runs on the slab pool, so `TF_ALTERNATE` can flip it per token).
+- The memory fit parks and unparks whole slabs with a slab pool: shrinking leaves at most a quarter slab of
+  excess, growing needs a slab and a quarter of room; a victim slab's surviving residents are copied to free slots
+  elsewhere, so the resident set is the one slot-granular parking would keep.
+
 ## 0.30.0 (2026-09-27)
 
 HANDOFF section 18.12.

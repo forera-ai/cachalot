@@ -112,6 +112,13 @@ def parse_minimax_tool_calls(text: str, tools=None) -> list[dict[str, Any]]:
     return calls
 
 
+def codes_qmv_ok() -> bool:
+    """The codes kernel is on and matched mx.quantized_matmul at load (the slab kernels are the same code)."""
+    from cachalot.minimax import codes_qmv
+
+    return bool(codes_qmv.KERNEL) and codes_qmv._OK
+
+
 def _checkpoint_tensor_names(model_path) -> list[str]:
     from cachalot.storage.index import read_safetensors_header
 
@@ -213,12 +220,23 @@ class MiniMaxModel(GlmModel):
             mx.set_wired_limit(int(min(wired_limit_gib * 1024**3, recommended)))
 
         n_experts = self.config.num_local_experts
+        transient = 2 * n_experts + 16  # one prefill layer's misses plus the next layer read early (PREFILL_SCAN)
+        budget = int(expert_budget_gib * 1024**3)
+        # HANDOFF 18.12: with the codes kernel, the slots live in slabs so decode can pick its experts on the GPU
+        from cachalot.minimax import gpu_select
+
+        pool = None
+        self.gpu_select = bool(gpu_select.GPU_SELECT and self.slot_codes and codes_qmv_ok())
+        if self.gpu_select:
+            from cachalot.cache.slots import SlabSlotPool
+
+            pool = SlabSlotPool(slot_sizes, budget // expert_bytes + transient, verbose=verbose)
         self.store = ResidentExpertStore(
-            int(expert_budget_gib * 1024**3),
+            budget,
             reader,
             tensor_sizes=slot_sizes,
-            # one prefill layer's misses plus the next layer read early (glm.experts.PREFILL_SCAN)
-            transient_slots=2 * n_experts + 16,
+            slot_pool=pool,
+            transient_slots=transient,
             load_workers=load_workers,
             verbose=verbose,
         )
@@ -240,6 +258,7 @@ class MiniMaxModel(GlmModel):
                 n_moe += 1
 
         self._install_decode_hooks()
+        self.gpu_decoder = gpu_select.GpuSelectDecoder(self) if self.gpu_select else None
         # the store's decode prefetch timing for the prediction above (module ints, so TF_ALTERNATE can flip them)
         from cachalot.cache import resident_store as _rs
 
@@ -404,6 +423,13 @@ class MiniMaxModel(GlmModel):
         return [KVCache() for _ in self.model.layers]
 
     def _forward(self, tokens: list[int], cache) -> mx.array:
+        from cachalot.minimax import gpu_select
+
+        if len(tokens) == 1 and self.gpu_decoder is not None and gpu_select.GPU_SELECT:
+            return self.gpu_decoder.forward(tokens[0], cache)
+        return self._forward_layers(tokens, cache)
+
+    def _forward_layers(self, tokens: list[int], cache) -> mx.array:
         # the lm_head on the last position only: a prefill chunk of 8,192 would otherwise build 8,192 x 200k
         # logits (3.3 GB) to keep one row (HANDOFF 18.1). One token (decode) is the same call as before.
         h = self.model.model(mx.array(tokens, dtype=mx.int32)[None], cache=cache)[:, -1:, :]

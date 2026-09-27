@@ -30,8 +30,10 @@ from dataclasses import dataclass
 from threading import RLock
 from time import perf_counter
 
+import numpy as np
+
 from cachalot.cache.resident import ResidentExpert
-from cachalot.cache.slots import ExpertSlot, ExpertSlotPool
+from cachalot.cache.slots import ExpertSlot, ExpertSlotPool, SlabSlotPool
 from cachalot.storage.index import ExpertEntry
 from cachalot.storage.reader import ExpertReader
 
@@ -100,6 +102,49 @@ def tensor_sizes_from_entry(entry: ExpertEntry) -> dict[str, int]:
     if missing:
         raise ValueError(f"expert entry lacks tensors {sorted(missing)}")
     return dict(sorted(sizes.items()))
+
+
+class _TrackedItems(OrderedDict):
+    """
+    The store's residents, keeping a (layer, expert) -> slot index table in step with every change (HANDOFF
+    18.12): -1 for an expert that is not resident. A GPU decode path reads the table to find its experts
+    without asking the host; `version` moves on every change so a copy on the GPU is refreshed only then.
+    Recency moves (`move_to_end`) do not change the table.
+    """
+
+    def __init__(self, table: np.ndarray) -> None:
+        super().__init__()
+        self.table = table
+        self.version = 0
+
+    def __setitem__(self, key, value) -> None:
+        super().__setitem__(key, value)
+        self.table[key] = value.slot.index
+        self.version += 1
+
+    def __delitem__(self, key) -> None:
+        super().__delitem__(key)
+        self.table[key] = -1
+        self.version += 1
+
+    def pop(self, key, *default):
+        present = key in self
+        value = super().pop(key, *default)
+        if present:
+            self.table[key] = -1
+            self.version += 1
+        return value
+
+    def popitem(self, last: bool = True):
+        key, value = super().popitem(last=last)
+        self.table[key] = -1
+        self.version += 1
+        return key, value
+
+    def clear(self) -> None:
+        super().clear()
+        self.table[...] = -1
+        self.version += 1
 
 
 class ResidentExpertStore:
@@ -555,6 +600,21 @@ class ResidentExpertStore:
                     self._items.move_to_end(key)
         return read, evicted
 
+    def track_slots(self, n_layers: int, n_experts: int) -> np.ndarray:
+        """Keep a (layer, expert) -> slot index table from now on (HANDOFF 18.12); returns it (int32, -1 for
+        an expert that is not resident). `slot_table_version` moves whenever it changes."""
+        table = np.full((n_layers, n_experts), -1, np.int32)
+        with self._lock:
+            items = _TrackedItems(table)
+            for key, value in self._items.items():
+                items[key] = value
+            self._items = items
+        return table
+
+    @property
+    def slot_table_version(self) -> int:
+        return getattr(self._items, "version", 0)
+
     def set_capacity(self, target: int) -> int:
         """Move the resident capacity towards `target` slots by parking free slots (their memory is given back)
         or unparking them, never above the capacity the store was built with (HANDOFF 18.6).
@@ -565,7 +625,9 @@ class ResidentExpertStore:
             if not hasattr(self, "_full_capacity"):
                 self._full_capacity = self.capacity
             target = max(1, min(int(target), self._full_capacity))
-            if target < self.capacity:
+            if isinstance(self.pool, SlabSlotPool):
+                self._set_capacity_slabs_locked(target)
+            elif target < self.capacity:
                 want = self.capacity - target
                 keep = target + self.decode_borrow
                 while len(self._items) + self._reserved > keep and self._items:
@@ -578,6 +640,53 @@ class ResidentExpertStore:
                 self.capacity += self.pool.unpark(target - self.capacity)
             self.budget_bytes = self.capacity * self.expert_bytes
             return self.capacity
+
+    def _set_capacity_slabs_locked(self, target: int) -> None:
+        """set_capacity for a slab pool: memory comes back a whole slab at a time. Shrinking parks slabs until at
+        most a quarter of a slab of excess is left; growing unparks a slab only with a quarter of a slab of room to
+        spare after it, so a fit never parks and unparks the same slab in turn.
+        A victim slab's residents that survive the LRU evictions move into free slots elsewhere (a record copy;
+        only between tokens, when nothing reads the slots), so the resident set is what slot-granular parking
+        would have kept."""
+        pool: SlabSlotPool = self.pool
+        size = pool.slab_slots
+        slack = size // 4
+        if target < self.capacity:
+            for s in reversed(pool.active_slabs()):
+                if self.capacity - target <= slack or s == 0:  # slab 0 stays: a miss's placeholder slot is there
+                    break
+                rows = pool._slab_range(s)
+                in_slab = {v.slot.index for v in self._items.values() if pool.slab_of(v.slot.index) == s}
+                with pool._cond:
+                    free = set(pool._free)
+                if any(i not in free and i not in in_slab for i in rows):
+                    continue  # a read or a transient holds one of its slots: try the next slab
+                keep = self.capacity - len(rows) + self.decode_borrow
+                while len(self._items) + self._reserved > keep and self._items:
+                    self._evict_lru_locked()
+                for key, resident in list(self._items.items()):
+                    if pool.slab_of(resident.slot.index) != s or key not in self._items:
+                        continue
+                    dst = pool.try_acquire_outside({s})
+                    while dst is None and self._items:
+                        self._evict_lru_locked()
+                        if key not in self._items:
+                            break
+                        dst = pool.try_acquire_outside({s})
+                    if key not in self._items or dst is None:
+                        continue
+                    for name in pool.tensor_names:
+                        dst.views[name][:] = resident.slot.views[name]
+                    self._items[key] = ResidentExpert(resident.layer, resident.expert, dst)
+                    pool.release(resident.slot)
+                self.capacity -= pool.park_slab(s)
+        elif target > self.capacity:
+            for s in range(len(pool.slabs)):
+                if pool.slabs[s] is not None:
+                    continue
+                if target - self.capacity < len(pool._slab_range(s)) + slack:
+                    break
+                self.capacity += pool.unpark_slab(s)
 
     def _decode_capacity(self) -> int:
         return self.capacity + self.decode_borrow
