@@ -742,3 +742,28 @@ def test_warm_stops_when_cancelled(index):
     cancel.set()
     assert store.warm([index[(1, e)] for e in range(3)], cancel) == (0, 0)
     assert sorted(_resident_keys(store)) == [(0, 0), (0, 1), (0, 2)]
+
+
+def test_prefetch_after_demand_waits_for_the_layers_misses_and_keeps_one_per_layer(index, monkeypatch):
+    """HANDOFF 18.9: with DECODE_PREFETCH_AFTER_DEMAND the predicted loads are submitted only once the layer's
+    own misses have arrived, and DECODE_PREFETCH_LIMIT counts non-resident predictions per layer."""
+    monkeypatch.setattr(resident_store, "DECODE_PREFETCH_AFTER_DEMAND", 1)
+    monkeypatch.setattr(resident_store, "DECODE_PREFETCH_LIMIT", 1)
+    store, _ = make_store(slots=8, latency=0.02, transient=24)
+    store.get(index[(2, 0)])  # the best-ranked prediction is resident: the next one is read instead
+    submitted_while_demand = []
+    orig = store.prefetch_decode
+
+    def spy(entries):
+        submitted_while_demand.append(store.is_resident((1, 3)))
+        return orig(entries)
+
+    monkeypatch.setattr(store, "prefetch_decode", spy)
+    store.get_many([index[(1, 3)]], prefetch=[index[(2, 0)], index[(2, 1)], index[(2, 2)], index[(3, 5)]])
+    assert submitted_while_demand == [True]  # after the miss (1, 3) was admitted
+    assert _inflight_keys(store) == {(2, 1), (3, 5)}
+    _drain_predictions(store)
+    # an all-hit layer submits too
+    store.get_many([index[(1, 3)]], prefetch=[index[(2, 4)]])
+    assert (2, 4) in _inflight_keys(store)
+    _drain_predictions(store)

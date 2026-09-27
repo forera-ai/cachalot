@@ -200,7 +200,7 @@ if TF_DECODE:
         alt_mod, alt_name, *alt_vals = alt.split(":")
         alt_mod = importlib.import_module(alt_mod)
         alt_vals = [type(getattr(alt_mod, alt_name))(v) for v in alt_vals]
-    per_token, tf_misses = [], []
+    per_token, tf_misses, tf_pred = [], [], []  # tf_pred: decode prefetch loads and uses per token (HANDOFF 18.9)
     # TF_PROFILE=1: cProfile the teacher-forced decode (where a streaming token's non-read time goes, HANDOFF 18.4)
     tf_prof = None
     if os.environ.get("TF_PROFILE") == "1":
@@ -213,12 +213,14 @@ if TF_DECODE:
         if alt:
             setattr(alt_mod, alt_name, alt_vals[i % 2])
         ti, wi, mi = time.perf_counter(), wait[0], store.stats().cache_misses
+        pl, pu = store.predicted_loads, store.predicted_used
         route_step[0] += 1
         step = m._forward([tf_tokens[i]], cache).astype(mx.float32)
         lp = step - mx.logsumexp(step, axis=-1, keepdims=True)
         mx.eval(lp)
         per_token.append((time.perf_counter() - ti, wait[0] - wi))
         tf_misses.append(store.stats().cache_misses - mi)
+        tf_pred.append((store.predicted_loads - pl, store.predicted_used - pu))
         lps.append(np.array(lp[0]).astype(np.float16))
         nlls.append(-float(lps[-1][tf_tokens[i + 1]]))
     d1, dt = store.stats(), time.perf_counter() - t0
@@ -239,6 +241,11 @@ if TF_DECODE:
             print("TF_ALTERNATE %s=%s wait_ms mean=%.1f misses mean=%.1f wait_per_miss_ms=%.2f" % (
                 alt_name, v, float(np.mean(waits_k)), float(np.mean(miss_k)),
                 float(np.sum(waits_k)) / max(1, sum(miss_k))), flush=True)
+            pred_k = tf_pred[k + 2::2]
+            if any(a for a, _ in pred_k):
+                print("TF_ALTERNATE %s=%s prefetch loads/token=%.1f used/token=%.1f" % (
+                    alt_name, v, float(np.mean([a for a, _ in pred_k])), float(np.mean([b for _, b in pred_k]))),
+                    flush=True)
     hits, misses = d1.cache_hits - d0.cache_hits, d1.cache_misses - d0.cache_misses
     print("TF_DECODE tokens=%d nll=%.5f ms_per_token=%.1f store_wait_ms=%.1f other_ms=%.1f hit_rate=%.3f "
           "misses_per_token=%.1f" % (

@@ -387,6 +387,8 @@ class GlmModel:
 
     def prefill(self, tokens: list[int], cache) -> mx.array:
         logits = None
+        # decode's finished wrong predictions (MiniMax, HANDOFF 18.9) give their transient slots back first
+        self.store.expire_predictions()
         try:
             for start in range(0, len(tokens), self.PREFILL_CHUNK):
                 logits = self._forward(tokens[start:start + self.PREFILL_CHUNK], cache)

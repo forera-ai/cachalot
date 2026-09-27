@@ -124,7 +124,12 @@ def _wanted(name: str) -> bool:
 
 # HANDOFF 18.1: the decode-step overlap and one-layer-early routing prediction
 DECODE_OVERLAP = os.environ.get("CACHALOT_MINIMAX_DECODE_OVERLAP", "1") != "0"
-PREDICT_TOPK = int(os.environ.get("CACHALOT_MINIMAX_PREDICT_TOPK", "0"))
+# HANDOFF 18.9: each decode layer ranks the next layer's experts by that layer's own norm and router applied to this
+# layer's residual (top PREDICT_TOPK), and once its own misses have arrived reads the best-ranked one that is not
+# resident (the store's DECODE_PREFETCH_AFTER_DEMAND / DECODE_PREFETCH_LIMIT, which MiniMaxModel sets to 1 / 1)
+# while the GPU finishes the layer: the drive is otherwise idle ~1.5 ms per layer. Same tokens. 0 turns it off.
+# (18.1 closed this with the prediction beside the misses and a second GPU round trip per layer: both fixed.)
+PREDICT_TOPK = int(os.environ.get("CACHALOT_MINIMAX_PREDICT_TOPK", "2"))
 DECODE_BORROW = os.environ.get("CACHALOT_MINIMAX_DECODE_BORROW", "1") != "0"
 # HANDOFF 18.7: a prefill chunk reads the whole next layer ahead only from this many tokens. GLM's 128 suits top-8
 # of 288; MiniMax's routing is skewed (150 tokens reach ~74 of 128 experts per layer), so below ~750 tokens the
@@ -217,6 +222,13 @@ class MiniMaxModel(GlmModel):
                 n_moe += 1
 
         self._install_decode_hooks()
+        # the store's decode prefetch timing for the prediction above (module ints, so TF_ALTERNATE can flip them)
+        from cachalot.cache import resident_store as _rs
+
+        if "CACHALOT_DECODE_PREFETCH_AFTER_DEMAND" not in os.environ:
+            _rs.DECODE_PREFETCH_AFTER_DEMAND = 1
+        if "CACHALOT_DECODE_PREFETCH_LIMIT" not in os.environ:
+            _rs.DECODE_PREFETCH_LIMIT = 1
 
         weights = load_non_expert_weights(self.model_path, _wanted)
 
@@ -292,23 +304,27 @@ class MiniMaxModel(GlmModel):
         GPU runs it while the misses are read (and, since 0.24.0, the routed hits too: `hit_overlap`), and the routed output is not evaluated at the end of the layer
         (the next layer's routing sync covers it): one GPU round trip per layer instead of two. Bit-identical.
         PREDICT_TOPK > 0: the next MoE layer's routing is predicted from this layer's residual (its own norm,
-        gate and bias) and its misses start reading now, into transient slots (the store's prefetch path).
+        gate and bias, in the same sync, ranked on the host) and its best-ranked non-resident expert is read into
+        a transient slot once this layer's misses have arrived (the store's prefetch path, HANDOFF 18.9).
         """
         layers = self.model.layers
         store, index = self.store, self.expert_index
 
         def make(i, moe, nxt):
             def hook(x, residual, inds, weights):
-                pred = None
+                scores = None
                 if nxt is not None and PREDICT_TOPK > 0 and residual is not None:
+                    # evaluated in the same sync as this layer's routing and ranked on the host: any MLX op on
+                    # the result after the sync (a cast, a sort) is a second GPU round trip, ~21 ms a token
                     scores, _ = nxt.block_sparse_moe.route_scores(nxt.post_attention_layernorm(residual))
-                    pred = mx.argsort(-scores, axis=-1)[..., :PREDICT_TOPK]
-                mx.eval(inds, weights, *([pred] if pred is not None else []))
+                mx.eval(inds, weights, *([scores] if scores is not None else []))
                 shared = moe.shared_experts(x)
                 mx.async_eval(shared)
                 prefetch = None
-                if pred is not None:
-                    prefetch = [index[(i + 1, int(e))] for e in pred.reshape(-1).tolist()]
+                if scores is not None:
+                    sc = np.array(scores).reshape(-1)
+                    top = np.argpartition(-sc, PREDICT_TOPK - 1)[:PREDICT_TOPK]
+                    prefetch = [index[(i + 1, int(e))] for e in top[np.argsort(-sc[top])]]
                 return shared, prefetch
             return hook
 

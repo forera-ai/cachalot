@@ -27,6 +27,9 @@ WARM = os.environ.get("WARM", "0") != "0"
 WARM_SECONDS = float(os.environ.get("WARM_SECONDS", "0"))
 # seconds between turns in every arm (the warming runs inside it, when on): a real pause
 PAUSE = float(os.environ.get("PAUSE", "0"))
+# HANDOFF 18.9 (M17): HEARTBEAT=S evaluates a one-element op every S seconds of the pause, on this thread, as the
+# server's heartbeat does between requests (the model is built with heartbeat_seconds=0 here)
+HEARTBEAT = float(os.environ.get("HEARTBEAT", "0"))
 
 m = MiniMaxModel(MODEL, expert_budget_gib=float(os.environ.get("GLM_BUDGET_GIB", "52")), heartbeat_seconds=0,
                  verbose=False)
@@ -71,6 +74,13 @@ def idle():
     try:
         return _idle()
     finally:
+        if HEARTBEAT > 0:
+            import mlx.core as mx
+
+            probe = mx.zeros((1,))
+            while time.perf_counter() + HEARTBEAT < t_pause:
+                time.sleep(HEARTBEAT)
+                mx.eval(probe + 1)
         time.sleep(max(0.0, t_pause - time.perf_counter()))
 
 

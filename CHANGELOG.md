@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.28.0 (2026-09-27)
+
+HANDOFF section 18.9.
+
+### Changed
+- **MiniMax-M3 decode reads one predicted expert per layer while the drive would idle.** Each decode layer
+  applies the next MoE layer's own norm and router to this layer's residual (evaluated in the same sync as its own
+  routing, ranked on the host) and, once its own misses have arrived, reads the best-ranked of the top-2 that is not
+  resident into a transient slot, while the GPU finishes the layer (~1.5 ms per layer in which the drive did
+  nothing). A correct prediction is awaited instead of read from scratch; a wrong one is dropped at the next layer.
+  Same token ids. In one process, token by token (`TF_ALTERNATE`, 2k context): 216.5 → 203.1 and 205.0 → 202.8 ms
+  per token on two texts; the agent-turn benchmark, ABAB: decode 241.0 / 244.2 → 233.2 / 235.1 ms per token
+  (-3.4 %), short prefills unchanged. `CACHALOT_MINIMAX_PREDICT_TOPK` (default 2, 0 off);
+  the store's `CACHALOT_DECODE_PREFETCH_AFTER_DEMAND` and `CACHALOT_DECODE_PREFETCH_LIMIT` (MiniMax sets 1 / 1;
+  DeepSeek keeps 0 / 0, the old behaviour).
+- A prefill expires decode's leftover predictions first (`GlmModel.prefill`), so they give their transient slots back.
+
+### Fixed
+- **Why 18.1's one-layer-early prediction lost.** It read the prediction back with an MLX op after the routing sync
+  (`argsort` and `reshape`), a second GPU round trip per layer: +21-24 ms per token before a single byte was read,
+  and its reads competed with the layer's own misses. Both are gone.
+
+### Added
+- `benchmarks/glm_prefill_timeline.py`: `TF_ALTERNATE` prints decode prefetch loads and uses per token.
+- `benchmarks/minimax_followup_turns.py`: `HEARTBEAT=S` evaluates a one-element op every S seconds of a `PAUSE`, as
+  the server's heartbeat does.
+
+### Measured, not changed
+- **18.8's two unexplained slow-downs were the benchmark's missing heartbeat (M17 closed).** A 4 s pause without
+  it: short prefills 38.6 / 38.8 s; with it 31.9 / 31.6 s, the same as no pause (32.3 s). The server always had
+  it. Idle warming re-measured with it: decode 227.4 / 228.7 → 212.1 / 211.4 ms (-7 %), short prefills 31.7 /
+  31.8 → 30.1 / 29.8 s (-5 %), no prefill slower after warming.
+- A prefetch that yields the drive to demand reads (piece by piece, promoted when awaited, cancelled when wrong):
+  the same as without. Predicting two layers ahead: no gain (wait 132.2 ms both arms). Top-4 with two per layer:
+  +12 ms (worse). A folded one-matmul predictor: the same as the exact one. Not kept.
+
 ## 0.27.0 (2026-09-26)
 
 HANDOFF section 18.8.

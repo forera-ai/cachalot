@@ -1,12 +1,31 @@
 # Cachalot — Engineering Handoff
 
-**Authoritative state as of 2026-09-26 (eighth MiniMax session), after the session that made MiniMax-M3's prefills
-read ahead only predicted experts and warm its cache between requests (section 18.8), the one that shortened its
+**Authoritative state as of 2026-09-27 (ninth MiniMax session), after the session that made MiniMax-M3's decode read
+the next layer's predicted expert while the drive would idle and closed 18.8's two open slow-downs (section 18.9),
+the one that made its prefills
+read ahead only predicted experts and warm its cache between requests (18.8), the one that shortened its
 mid-sized prefills (18.7), the one that fixed its decode at an agent's context (18.6), the one that made its decode 5.5 % faster with identical outputs (18.5), the one
 that gave it a bias-free expert bank (18.4), the one that gave it a second drive and its own decode attention
 kernel (18.3), the one that cut its per-token overhead and measured it to 64k (18.2), the one that made it faster
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
+
+> ## Start here (2026-09-27, 0.28.0): MiniMax-M3 decode reads ahead into the drive's idle time
+>
+> - **Decode prefetch** (section 18.9): the drive sat idle ~1.5 ms per layer while the GPU finished it (~80 ms a
+>   token). Each decode layer now ranks the next layer's experts with that layer's own norm and router on this
+>   residual (in the same sync, ranked on the host) and, once its own misses are in, reads the best of the top-2
+>   that is not resident. Same tokens. -1 to -6 % per token in one process on two texts; the agent-turn benchmark
+>   -3.4 % decode, ABAB. `CACHALOT_MINIMAX_PREDICT_TOPK` (2; 0 off).
+> - **18.1's "prediction is slower" was a second GPU round trip** (an MLX `argsort`/`reshape` read after the
+>   sync: +21-24 ms a token), plus reads beside the layer's own misses. Both fixed; the rule: read any array you
+>   need on the host from the sync itself, never through a new op after it.
+> - **M17 closed:** 18.8's pause cost and post-warming slow prefills were the benchmark's missing heartbeat (the
+>   server has one). With it, warming is worth -7 % decode and -5 % short prefills with 4 s pauses.
+> - Server end to end: "391", `get_weather`, a tool-result reply reusing 470 of 501 tokens, 5.4-6.3 tok/s.
+> - **Version 0.28.0.** 393 tests pass.
+
+**Previous block, 0.27.0:**
 
 > ## Start here (2026-09-26, 0.27.0): MiniMax-M3 predicts its prefill reads and warms up between requests
 >
@@ -7831,6 +7850,110 @@ unexplained slow-downs of item 2 (a pause without warming, and a prefill right a
 server's heartbeat on, a `PAUSE` sweep says whether the pause cost is real in the server. 3. Warming's ranking: all
 of history counts the same; a decayed count (recent conversations weigh more) for a server shared by several
 sessions. 4. M13b. 5. M12.
+
+### 18.9 MiniMax-M3: decode reads into the drive's idle time, and 18.8's slow-downs explained — 2026-09-27 (0.28.0)
+
+Hamed's goal, a ninth time: MiniMax-M3 as fast as possible at unchanged quality. 0.27.0 was committed at the start
+(tree clean). Tools confirmed first: caveman (session hook), Jev (`jev_verify` answered 1.0 through TypeSafe, the CLI
+`jev check` 0.96) and the codebase-memory graph (ready, 5,435 nodes). Every arm below printed the same `ids_hash`
+as its pair, or teacher-forced the same text. Filler: a fresh 4.5 MB concatenation of the repo's tracked `.md` and
+`.py` files (scratch).
+
+**1. Where the drive is idle during decode.** A scratch trace (`pred_trace.py`: per decode token and MoE layer, the
+next layer's router on this layer's residual, top-8 with their residency at that moment, the actual routing, the
+misses, and `get_many`'s call and return times), 190 greedy tokens after a 2k prefill (@100000): 42.1 misses per
+token; 27.3 of 57 layers per token have no miss, 19.8 have one (3.6 ms), 7.8 two (6.7 ms), 1.9 three (9.8 ms). From
+one layer's reads returning to the next layer's `get_many` the drive does nothing: 1.54 ms per layer (median 1.51,
+p90 1.95), ~80 ms a token. The prediction's precision on the experts that would miss, by the rank of the first
+non-resident prediction: rank 0 0.86 (7.9 per token), rank 1 0.67, rank 2 0.47, rank 3 0.29, rank 4 0.14. Top-2,
+one per layer: 17 per token at 0.76, 13 misses caught. So a correct prediction can save at most the window (~1.5 ms
+of a 3.5 ms read), and only the first one or two ranks are worth reading.
+
+**2. Why 18.1's prediction measured slower.** `PREDICT_TOPK` has existed since 18.1 (top-2 323.6 against 317.9 ms
+off). With every prefetch suppressed (`DECODE_PREFETCH_LIMIT=-1`, a scratch setting) it still cost +21 ms of
+"other" per token (`TF_ALTERNATE=cachalot.minimax.model:PREDICT_TOPK:0:2`, 99.6 against 78.3 ms; reversed order
+98.1 against 73.7). A one-matmul predictor (the next router folded with the ratio of the two norms' weights) cost the
+same, so it was not the kernels: the hook read the prediction back through a new MLX op after the sync (18.1:
+`argsort` then `reshape(...).tolist()`; the fold: `astype`), i.e. a second GPU round trip per layer, exactly the 17 ms
+trap 18.1 had fixed for the routing cast. With the scores evaluated in the routing's own `mx.eval` and ranked with
+NumPy, the prediction costs +1.3 ms a token (75.8 against 74.5). The folded and the exact predictor then tie (wait
+127.7 against 127.4 ms): the exact one ships (no approximation, no extra matrices).
+
+**3. The prefetch, timed into the idle window (shipped).** `ResidentExpertStore.get_many` submitted the predicted
+loads right after the layer's own misses, so they shared the drive with them. `DECODE_PREFETCH_AFTER_DEMAND=1`
+submits them once the misses have arrived (or at once for an all-hit layer), and `DECODE_PREFETCH_LIMIT` caps the
+non-resident ones per layer. Everything else is the existing path (transient slots, awaited when the layer asks,
+dropped at the next sweep). `TF_ALTERNATE` on `PREDICT_TOPK`, 2k context, 300 teacher-forced tokens, mean ms per
+token (other + store wait):
+
+| text | top / per layer | off | on | prefetch loads / used per token |
+|---|---|---|---|---|
+| @200000 | 2 / 1 | 216.5 (74.4 + 142.1) | **203.1** (75.6 + 127.5) | 16.8 / 13.7 |
+| @200000 | 3 / 1 | 215.6 | 202.4 | |
+| @200000 | 2 / 2 | 216.2 | 204.6 | |
+| @200000 | 4 / 2 | 213.7 | 225.6 | |
+| @200000 | 1 / 1 | 212.1 | 203.7 | 8.4 / 7.6 |
+| @300000 | 2 / 1 | 205.0 (72.9 + 132.1) | **202.8** (76.1 + 126.7) | 14.9 / 9.9 |
+| @300000 | 1 / 1 | 204.0 | 202.4 | 6.5 / 5.1 |
+
+Top-2, one per layer ships (MiniMax sets `AFTER_DEMAND`/`LIMIT` to 1/1 in `MiniMaxModel.__init__` unless the
+environment names them; DeepSeek, which also passes `prefetch`, keeps 0/0). The gain depends on the text (how many
+of its misses the prediction sees in time) and is capped by the window: each used prefetch saves ~0.5-1.1 ms.
+End to end, `minimax_followup_turns.py` (@1,200,000, 2k then 30/60/120/30/250/30-token turns, 48-token replies),
+ABAB, same `ids_hash` in all four:
+
+| arm | short prefills | decode mean | turn pairs faster |
+|---|---|---|---|
+| off (`CACHALOT_MINIMAX_PREDICT_TOPK=0`) | 31.63 / 32.40 s | 241.0 / 244.2 ms | |
+| on | 32.31 / 32.43 s | **233.2 / 235.1 ms** (-3.4 %) | 13 of 14 |
+
+A prefill now starts with `store.expire_predictions()`, so decode's finished wrong predictions give back their
+transient slots before the scan wants them. `glm_prefill_timeline.py`'s `TF_ALTERNATE` lines print prefetch loads
+and uses per token.
+
+**4. Tried to widen the window, not kept.** (a) A yielding prefetch (`PrefetchGate`: the bank reader reads a
+predicted record one projection at a time and pauses while any demand read is active; a layer that asks for it
+promotes it, a wrong one is cancelled at its layer and frees its own slot): first slower, because a promoted read
+went on piece by piece with its head last (wait 125 → 142 ms); with promotion submitting the rest at once, the same
+as without yielding (200.4 against 200.9 ms). Wrong predictions were not what limits it. (b) Predicting two layers
+ahead (layer i+2's router on layer i's residual, read through window i, paused in i+1, resumed in window i+1):
+wait 132.2 ms in both arms. With one prefetch worker the yielding design deadlocked (a paused i+2 read held the only
+worker while the awaited i+1 read queued behind it). Both removed.
+
+**5. M17: 18.8's two slow-downs were the benchmark's missing heartbeat.** `minimax_followup_turns.py` builds the
+model with `heartbeat_seconds=0`; `HEARTBEAT=S` now evaluates a one-element op every S seconds of the pause, as the
+server does. Same text, 0.28.0, warming off:
+
+| arm | short prefills |
+|---|---|
+| no pause | 32.27 s |
+| 4 s pause, no heartbeat | 38.64 / 38.81 s (every turn +0.9-1.2 s) |
+| 4 s pause, heartbeat 0.5 s | **31.87 / 31.64 s** |
+
+The Metal queue going idle costs the next prefill ~1 s; the server never had that cost. Idle warming re-measured
+under the server's conditions (4 s pause, heartbeat, `WARM_SECONDS=3.5`), ABAB, same `ids_hash`:
+
+| arm | short prefills | decode mean | warming |
+|---|---|---|---|
+| warm off | 31.65 / 31.84 s | 227.4 / 228.7 ms | |
+| warm on | **30.11 / 29.75 s** (-5 %) | **212.1 / 211.4 ms** (-7 %) | 544-817 experts in 1.8-2.6 s per pause |
+
+No prefill after warming is slower any more (18.8's 4.6-5.1 ms per miss right after a burst was the idle queue
+too). 18.8's -12 % decode was measured against a pause without heartbeat; -7 % is the number to quote.
+
+**6. Server, end to end** (`serve-minimax.sh`, scratch snapshot directory): "391" for 17 x 23 (177-token cold
+prefill 14.9 s), `get_weather({"city": "Paris"})` with thinking (409-token prefill 11.7 s, 5.42 tok/s), then the
+tool result answered reusing 470 of 501 tokens (31 prefilled in 3.8 s, 6.11 tok/s); `idle warm: 422 / 816 experts
+in 1.4 / 2.6 s` between requests. Without thinking the model declines the tool, as in 18.4. 393 tests pass.
+
+**Where a decode token goes now, 2k context:** ~40 misses at ~3.5 ms, of which ~10-14 are partly read ahead;
+store wait ~125-130 ms, other ~75 ms, all-hit floor ~53.
+
+**What remains, ranked.** 1. M1b, a Hermes Desktop session on 0.28.0 (Hamed): `[request]` and `idle warm:` lines.
+2. M13b, codes in the slot (+127 slots, net 2-4 %; cut the launch cost first). 3. M18, a decayed ranking for
+warming when several sessions share the server (price on a trace first). 4. M12, the ~20 ms of GPU slowdown that
+reads cause. 5. A longer idle window for the prefetch would need the layer's GPU work to take longer or the reads to
+be split differently; the two ways tried here gave nothing.
 
 ### 16.4 Piece 4 — images through the server, end to end, and three things piece 3 had missed — 2026-09-23
 

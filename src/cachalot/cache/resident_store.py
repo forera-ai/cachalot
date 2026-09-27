@@ -46,6 +46,12 @@ EVICT_SAMPLE = int(os.environ.get("CACHALOT_EVICT_SAMPLE", "64"))
 # LRU on the 3-bit bank at a 44 GiB budget, against 0.7 for frequency+decay.
 SLRU_PROTECTED_FRACTION = float(os.environ.get("CACHALOT_SLRU_PROTECTED", "0.8"))
 PREDICT_SLOT_RESERVE = 16   # transient slots kept free for prefill bypass loads
+# Decode prefetch timing (HANDOFF 18.9): 1 submits a layer's predicted loads only after its own misses have
+# arrived, into the drive's idle window while the GPU finishes the layer, instead of beside those misses (where
+# they compete with them). Ints so TF_ALTERNATE can flip them; 0 keeps the old behaviour (DeepSeek's path).
+DECODE_PREFETCH_AFTER_DEMAND = int(os.environ.get("CACHALOT_DECODE_PREFETCH_AFTER_DEMAND", "0"))
+# at most this many non-resident predicted experts per layer and call, in the caller's (ranked) order; 0 = no limit
+DECODE_PREFETCH_LIMIT = int(os.environ.get("CACHALOT_DECODE_PREFETCH_LIMIT", "0"))
 # a prefill gives back all of decode's borrow at once (the 0.20.0 behaviour), not just what it reads (HANDOFF 18.2)
 PREFILL_SHRINK_ALL = os.environ.get("CACHALOT_PREFILL_SHRINK_ALL", "0") != "0"
 # A read of one expert faster than this came from the page cache, not the drive:
@@ -229,8 +235,11 @@ class ResidentExpertStore:
         loads nobody asked for return their slot at the next sweep.
         """
         submitted = 0
+        per_layer: dict[int, int] = defaultdict(int)
         with self._lock:
             for entry in entries:
+                if DECODE_PREFETCH_LIMIT and per_layer[entry.layer] >= DECODE_PREFETCH_LIMIT:
+                    continue
                 key = (entry.layer, entry.expert)
                 if key in self._items or key in self._inflight:
                     continue
@@ -245,6 +254,7 @@ class ResidentExpertStore:
                 self._inflight_deadline[key] = (self._decode_pass, entry.layer)
                 self.predicted_loads += 1
                 submitted += 1
+                per_layer[entry.layer] += 1
         return submitted
 
     def preload(
@@ -707,7 +717,8 @@ class ResidentExpertStore:
             if key not in futures:
                 futures[key] = self._load_pool.submit(self._read_into, entry, slot)
 
-        if prefetch:
+        after = bool(DECODE_PREFETCH_AFTER_DEMAND)
+        if prefetch and not after:
             self.prefetch_decode(prefetch)
 
         if on_hits is not None and (pending or awaited):
@@ -745,6 +756,8 @@ class ResidentExpertStore:
                 self._items.move_to_end(key)
 
         if not pending:
+            if prefetch and after:
+                self.prefetch_decode(prefetch)
             return results
 
         loaded = {key: fut.result() for key, fut in futures.items()}
@@ -762,6 +775,8 @@ class ResidentExpertStore:
                 self._record_miss(nbytes, read_seconds)
                 results[i] = resident
 
+        if prefetch and after:
+            self.prefetch_decode(prefetch)
         return results
 
     # ------------------------------------------------------------------
