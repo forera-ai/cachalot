@@ -34,6 +34,9 @@ The first block below is new; the blocks after it still hold.
 >   GLM/MiniMax chat never attaches the snapshot directory, so no warm-set restore (first turn 21 % hits, 14.3 s)
 >   and no disk snapshots; `/stats` (and any unknown slash command) goes to the model as a user turn and stays in
 >   the history; `idle warm:` prints into the line being typed. Fix before the next speed work.
+> - **Splash (incoai/splash) reviewed (section 18.11):** not usable as an engine (resident models, no MiniMax draft,
+>   Q4/GGUF kernels), but its GPU-side MoE selection over one packed expert buffer is the pattern that could remove
+>   the ~22 ms per-layer sync; plus a memory governor, INT8 KV and concurrent decode batching. Plan in prompt v59.
 > - **Version 0.29.0.** 400 tests pass.
 
 **Previous block, 0.28.0:**
@@ -8093,6 +8096,54 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.11 Splash (incoai/splash) reviewed for Cachalot — 2026-09-27
+
+Hamed asked whether https://github.com/incoai/splash helps Cachalot. Read at `c64a578` (2026-09-26), Apache-2.0
+(its GGUF kernels include MIT-licensed llama.cpp material; anything copied needs a NOTICE entry).
+
+**What it is.** A native C++/Objective-C++ Metal engine with a Python HTTP front end, for two model families that
+fit in memory (Qwen3.8-27B, Qwen3.6-35B-A3B; 4-bit MLX or Unsloth GGUF). Its speed comes from DFlash2
+speculative decoding with a trained draft per model, Metal kernels specialised per model shape, weights prepared
+once and mapped, prefix-cache reuse, and batching of concurrent requests. Its MoE is fully resident: routing,
+selection, grouping and the expert matmuls all run on the GPU, the routed experts sitting at a stride in one packed
+buffer (`runtime/metal/kernels/common/moe_expert_slab.h`, `kernels/shared/moe.metal`), so a decode token never
+waits for the host between layers.
+
+**What does not carry over.** Cachalot's decode is ~70 % SSD reads; Splash never reads weights during decode.
+DFlash2 has no MiniMax-M3 draft, and speculation on a streamed MoE was closed in 18.7 (a verify pass's misses scale
+with its width). Its Q4 and GGUF kernels do not take MLX 3-bit group-64 affine weights. The native runtime as a
+whole assumes a resident model; adopting it would be a rewrite, not an integration.
+
+**What does, ranked by what it could be worth here:**
+
+1. **GPU-side expert selection over one stacked slot slab (S1).** Splash's pattern is the only known way past the
+   ~22 ms of per-layer host round trips measured in 18.10 item 1 (59.3 ms all-hit floor against 37.1 with no
+   sync, identical logits). With every slot of a tensor in one array (the largest, `w1.weight`, ~17.5 GiB for 2,650
+   slots; this M3 Ultra's `max_buffer_length` is 58.3 GiB), a GPU table maps (layer, expert) to a slot or to a
+   miss, and the layer runs from the table without the host. Misses still need the host: run layers ahead
+   optimistically, let the host check each layer's routing a step behind, and on a miss rewind the KV offsets of the
+   layers from there (the floor benchmark's rewind) and rerun them once the read lands; the GPU was idle during
+   the read anyway. `gather_qmm` over stacked experts is already known bit-identical to the per-expert matmuls
+   (18.10 item 2); the codes kernel would take a slot index the same way. Worth most at chat hit rates: Hamed's
+   prose turns ran at ~91 % hits and ~110 ms a token, where ~45 of 57 layers per token have no miss. Costs: the slot
+   pool becomes a few large arrays (parking in 18.6 must move to chunks of slots, or a slab per chunk), the
+   in-process rewind, and an honest price before building.
+2. **A memory governor (S2).** `runtime/engine/MemoryGovernor.cpp` estimates what macOS can hand out
+   (`host_statistics64` free, file-backed, purgeable and compressible pages) and reads
+   `kern.memorystatus_vm_pressure_level`, pausing growth at warning and shrinking at critical. Cachalot's expert
+   budget is a fixed 52 GiB because 56 collapsed (18.1, 18.5) and the display-on stalls were memory (18.6). A
+   governor could size the budget at startup and park slots on pressure instead of a fixed number.
+3. **INT8 KV cache (S3).** Splash's default; its own agreement measurement moves 99.30 → 99.23-99.25 % top-1. For
+   MiniMax (~120 KB of bf16 KV per token) it would halve the cache at an agent's 20-25k context, ~1.4 GiB more for
+   experts there. A rounding change: needs the quality gate (TF log-probs against the chunking-noise reference,
+   18.2).
+4. **Batching concurrent decodes (S4).** Splash puts concurrent requests in one decode batch, each lane with its own
+   sampler. Hermes's `delegate_task` subagents are concurrent requests that Cachalot serialises; lanes decoding
+   together would share each layer's expert reads. Price the union of misses of two to four concurrent decode
+   streams on a trace first.
+5. **Smaller things (S5).** llama-server-style `timings` in chat responses, `POST /tokenize`, `return_progress` for
+   long prefills; Splash's sampling keeps per-lane `top_p` and the checkpoint's defaults (see M21).
 
 ### 16.4 Piece 4 — images through the server, end to end, and three things piece 3 had missed — 2026-09-23
 
