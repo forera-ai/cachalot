@@ -1,6 +1,7 @@
 # Cachalot — Engineering Handoff
 
-**Authoritative state as of 2026-09-28 (eighteenth MiniMax session), after the session that measured where MiniMax's
+**Authoritative state as of 2026-09-28 (nineteenth MiniMax session), after the session that put MiniMax's prefill at the GPU's FLOP
+wall and measured three levers without a gain (section 18.20), the one that measured where MiniMax's
 remaining time goes and shipped two bit-identical kernel fusions switched off (section 18.19), the one that raised the GPU's working
 set to 86 GiB with Hamed and grew MiniMax's expert cache to 68 GiB (section 18.18), the one that found the GPU's
 shared memory ceiling and made MiniMax's memory governor count every process's GPU memory (section 18.17), the one
@@ -22,6 +23,20 @@ that gave it a bias-free expert bank (18.4), the one that gave it a second drive
 kernel (18.3), the one that cut its per-token overhead and measured it to 64k (18.2), the one that made it faster
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
+
+> ## Start here (2026-09-28, 0.38.1): MiniMax prefill is at the GPU's FLOP wall; decode at the drives'
+>
+> - **Prefill (section 18.20 items 2-3):** an 8k chunk is 30.0 s (36.4 at 8-16k) with 0-0.5 s of store wait; MLX's
+>   3-bit matmul runs 17.5 TFLOPS, the bf16 peak. ~10 % is overhead: the per-expert (scale, bias) rebuild 4 %
+>   (1.44 s a chunk), small experts 0.5 s.
+> - **Measured, not shipped (items 4-5):** the shared expert queued early (no change), rebuilds batched first
+>   (+2.4 %), M27b (closed: at 68 GiB the free slots already take back 1,911 of 3,176 saved experts).
+> - **Benchmark:** `glm_prefill_timeline.py FIT_PREFILL=1` (without it 16k OOMs at 68 GiB).
+> - **Hamed's rule:** nothing puts the Mac or its display to sleep; benchmarks run with the display as it is.
+> - **Next:** M28 with Hamed, M19 (his purchase), the pair-index prefill `qmm` kernel (-4 % at most), GLM G6 + S1c.
+> - **Version 0.38.1.** 439 tests pass.
+
+**Previous block, 0.38.0:**
 
 > ## Start here (2026-09-28, 0.38.0): MiniMax's remaining time is the drives; two fusions ship switched off
 >
@@ -8277,6 +8292,84 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.20 MiniMax-M3: prefill is at the GPU's FLOP wall, and three levers measured without a gain — 2026-09-28 (0.38.1)
+
+Hamed's brief (prompt v67, the nineteenth "MiniMax-M3 as fast as possible at the same quality"): confirm caveman,
+Jev and the codebase-memory graph first, then plan, build, measure and document. Tools: caveman active (session
+hook); Jev and the graph only answered after three rounds of the permission classifier failing (no verdict), then
+`jev_verify` 0.99 and the graph ready (5,923 nodes, one partial file outside the code). 0.38.0 committed, tree
+clean, `iogpu.wired_limit_mb` 88064. Filler: 18.18's 5.09 MB concatenation @1,300,000 (scratch). **Hamed asked
+mid-session that nothing put his Mac or its display to sleep any more**: the first arms below slept the display
+(`pmset displaysleepnow`), the M27b arms did too; from now on benchmarks run with the display as it is (check
+`pgrep -f Flurry.appex` and compare arms within one display state).
+
+Since 18.19 put decode at the drives' wall, this session looked at prefill, which was about half the server time
+in Hamed's Hermes session (18.18 item 7: ~987 s of prefill, ~904 s of decode).
+
+**1. A 16k prefill through the direct benchmark ran out of Metal memory** at 68 GiB: `glm_prefill_timeline.py`
+never ran the server's `_fit_prefill`, so an 8,192-token chunk met the full 3,300 slots. The benchmark now takes
+`FIT_PREFILL=1` (the server's give-back, 3,300 → 2,521 slots before the prompt). Use it, with
+`CACHALOT_MINIMAX_PREFILL_FULL_TOKENS=512` (the shipped value; 18.19's `tf.sh` sets 4096 for decode arms).
+
+**2. Prefill is compute-bound at the GPU's peak.** 16,384 tokens, two 8k chunks:
+
+| chunk | seconds | store wait | read | GiB/s |
+|---|---|---|---|---|
+| 0-8,192 | 30.0 | 0.5 s | 150.2 GiB | 5.0 |
+| 8,192-16,384 | 36.4 | 0.0 s | 98.4 GiB | 2.7 |
+
+The reads hide behind the compute. MLX's 3-bit `quantized_matmul` at MiniMax's shapes (6144 x 3072) runs **17.5
+TFLOPS from M = 128 rows up, the same as a bf16 matmul** (`qmm_bench.py`, scratch): the GPU's practical peak.
+A token is ~47 GFLOP of weights (routed 4 x 3 projections, shared expert, attention projections, 60 layers), so an
+8k chunk's matmuls are ~384 TFLOP = ~22 s, plus causal attention (~3.9 s at 0-8k, ~11.6 s at 8-16k). Timers
+around the routed switch (`pfprof.py`, scratch), chunk 8-16k: 21.7 s waiting for attention and routing (~20.8 s
+predicted), 14.7 s in the routed experts (12.1 s at 17.5 TFLOPS). **~3.5 s (~10 %) of a chunk is overhead; the
+rest is at the wall.**
+
+**3. Where the routed experts' 2.5 s of overhead goes.** Tokens per expert in an 8k chunk (`pfcounts.py`,
+scratch): median 100, 41 % of used experts under 64 tokens, but those carry only 8 % of the rows. `quantized_matmul`
+costs 31 µs at M = 1, ~105 µs from 12 to 32 rows, 180 µs at 48-64 (`qmm_small.py`): with the real counts the
+matmuls predict 12.58 s against 12.09 s ideal, **so small experts cost 0.5 s**. A timing-only ablation that
+replaces the per-expert (scale, bias) rebuild (`codes_qmv.rebuild_pair`, three launches an expert, 20,856 a chunk)
+with constant arrays (`pfablate.py`, outputs wrong on purpose), ABAB: switch 14.59 / 14.58 → 13.14 / 13.14 s, chunk
+36.40 / 36.39 → 34.97 / 34.95 s: **the rebuild costs 1.44 s an 8k chunk (4.0 %)**, ~69 µs a launch although the
+kernel alone takes ~6 µs (`rb_bench.py`: 366 rebuilds 2.3 ms): each matmul waits for its rebuild.
+
+**4. Two bit-identical reorderings, neither faster** (16k, ABAB, `LOGITS_OUT` `cmp`-equal in all arms):
+
+| change | off | on |
+|---|---|---|
+| the shared expert queued right after the routing, before the routed switch's sync (the GPU busy while the host builds the experts' graphs) | 66.5 / 66.5 s | 66.3 / 66.4 s |
+| every expert's rebuild of a layer queued first as one batch, then the matmuls (in `rb_bench.py`, uniform 100 rows: 110.3 → 104.0 ms a layer against 102.2 with no rebuild) | 66.6 / 66.5 s | **68.1 / 68.1 s** |
+
+The host's graph building is not a gap on the GPU, and the batched rebuilds lose in the model (+2.4 %) what they
+win in isolation. Neither shipped. What would remove the 4 %: a prefill `qmm` kernel that reads the byte pair index
+itself (MLX's steel affine `qmm_t` loader copied, the way 0.29.0 copied `qmv` into `codes_qmv`); priced at most -4 %
+on long prefills, less on Hermes's short follow-ups (read-bound) and nothing on the system block (reused from disk).
+Not built (Jev's `jev_decide` over the evidence: document the walls, 0.66).
+
+**5. M27b, the resumed warm set, closed.** A switch (not kept) made the warm set a request interrupted also evict
+the request's own experts for the rest of the saved set (`store.warm` on the saved keys, after the free-slot
+preload). `first_turn.py` (18.16's, scratch; budget 68, the live server's saved set of 3,176 experts, the chat head
+snapshot), "Hi" at once, then after 15 s a 200-token story, ABAB:
+
+| arm | resumed after "Hi" | story prefill | story decode | story wall | story hits |
+|---|---|---|---|---|---|
+| free slots only (shipped) | 1,911 experts, 5.8 s | 2.57 / 2.72 s | 17.25 / 15.83 tok/s | 14.17 / 15.59 s | 0.948 |
+| evict for the rest | 2,343 experts, 7.1 s | 5.26 / 3.00 s | 16.68 / 16.66 tok/s | 17.25 / 15.00 s | 0.951 |
+
+The same tokens in all four. At 68 GiB the free slots already take back 1,911 of the saved experts, so the 18.16
+gap (+0.9 s at 56 GiB) is gone; evicting for 432 more lifts hits by 0.3 points and does not shorten the turn.
+
+**Shipped (0.38.1):** `glm_prefill_timeline.py` `FIT_PREFILL=1`. Nothing in `src/`; 439 tests pass.
+
+**Where MiniMax stands on this Mac.** Decode waits on the two drives' bandwidth (18.19 item 1); prefill runs at the
+GPU's matmul peak with ~10 % overhead, of which 4 % is the rebuild (a custom kernel, above) and ~0.5 % small
+experts. Every software lever left is single-digit. **What moves it now:** M28 (Hermes Desktop's visible window
+halves long replies' decode, 18.18 item 8: the largest Hermes lever; needs Hamed at the machine), M19 (a
+Thunderbolt NVMe for the mirror: reads are ~63 % of a decode token), and for prefill only the pair-index `qmm`
+kernel (-4 % of long prefills). GLM's G6 + S1c + S1e remain the largest open work on the other model.
 
 ### 18.19 MiniMax-M3: where the remaining time goes, and two bit-identical fusions that do not move the server — 2026-09-28 (0.38.0)
 

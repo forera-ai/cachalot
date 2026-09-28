@@ -137,6 +137,9 @@ for rnd in range(ROUNDS):
     rows = []
     t_all = time.perf_counter()
     logits = None
+    if os.environ.get("FIT_PREFILL") == "1" and hasattr(m, "_fit_prefill"):
+        # the server path's slot give-back before a long prefill (HANDOFF 18.15); without it 16k OOMs at 68 GiB
+        m._fit_prefill(len(tokens))
     for start in range(0, N, chunk):
         s0, w0, t0 = store.stats(), wait[0], time.perf_counter()
         if NLL_LAST and start + chunk >= N:

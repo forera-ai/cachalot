@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.38.1 (2026-09-28)
+
+HANDOFF section 18.20 (the nineteenth MiniMax-M3 speed session).
+
+### Added
+- `benchmarks/glm_prefill_timeline.py` `FIT_PREFILL=1`: the server's slot give-back before a long prefill
+  (without it a 16k MiniMax prefill runs out of Metal memory at the 68 GiB cache).
+
+### Measured and closed
+- MiniMax prefill is compute-bound: an 8k chunk is 30.0 s (36.4 s at 8-16k) with 0-0.5 s of store wait; MLX's
+  3-bit `quantized_matmul` runs 17.5 TFLOPS at MiniMax's shapes, the bf16 peak; ~10 % of a chunk is overhead.
+- The per-expert (scale, bias) rebuild costs 1.44 s an 8k chunk (4.0 %, timing-only ablation, ABAB); experts
+  with few tokens 0.5 s.
+- Queuing the shared expert before the routed experts' sync: no change (bit-identical). Queuing a layer's
+  rebuilds first as one batch: +2.4 % slower (bit-identical). Neither shipped.
+- M27b (the interrupted warm set evicting the first request's experts): at 68 GiB the free slots already take
+  back 1,911 of 3,176 saved experts; evicting for the rest lifts hits 0.948 -> 0.951 and does not shorten the
+  next turn. Closed.
+
 ## 0.38.0 (2026-09-28)
 
 HANDOFF section 18.19 (the eighteenth MiniMax-M3 speed session).
