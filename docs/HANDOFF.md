@@ -1,7 +1,8 @@
 # Cachalot — Engineering Handoff
 
-**Authoritative state as of 2026-09-28 (fifteenth MiniMax session), after the session that rewrote MiniMax's
-bank as slot images, grew its expert cache to 62 GiB and let the first turn after a restart start at once (section
+**Authoritative state as of 2026-09-28 (sixteenth MiniMax session), after the session that found the GPU's
+shared memory ceiling and made MiniMax's memory governor count every process's GPU memory (section 18.17), the one
+that rewrote MiniMax's bank as slot images, grew its expert cache to 62 GiB and let the first turn after a restart start at once (section
 18.16), the one that grew MiniMax's expert
 cache to 56 GiB under a memory governor (section 18.15), the one that made MiniMax's decode
 read the next two layers' missing experts from the speculative routing its GPU loop already computes (section
@@ -19,6 +20,22 @@ that gave it a bias-free expert bank (18.4), the one that gave it a second drive
 kernel (18.3), the one that cut its per-token overhead and measured it to 64k (18.2), the one that made it faster
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
+
+> ## Start here (2026-09-28, 0.36.0): the GPU's memory is shared, and MiniMax's governor now counts all of it
+>
+> - **The cliff (section 18.17 items 2-3):** 62 GiB of slots is ~1 GiB under the point where the GPU driver starts
+>   paging: 63 GiB decoded 120-139 ms against 62's 110-114, 64 GiB 192 (same tokens, 8 % fewer misses). Anyone's
+>   GPU memory counts: a second process holding 2 GiB made agent turns 55 → 79-86 s (short prefills 2.3x) and hit
+>   Metal OOM itself. The driver's "Alloc system memory" (all processes) sees it; "In use" stays pinned while it
+>   pages.
+> - **Shipped (item 4):** `_host_capacity` caps MiniMax's capacity so all processes' GPU allocations stay under
+>   Metal's recommended working set + 1 GiB (78.76 GiB; `CACHALOT_GPU_ALLOC_SLACK_GIB`). Beside the 2 GiB holder:
+>   **57.6 s instead of 78.8-86.1**, the holder no longer fails; alone unchanged (3,009 slots, same `ids_hash`).
+> - **Closed (items 2, 5):** budgets above 62 GiB on this Mac; regrowing the partial last slab after a long prefill.
+> - **Next:** M1b with the driver's counters beside Hermes Desktop (is the slow window this ceiling?).
+> - **Version 0.36.0.** 432 tests pass.
+
+**Previous block, 0.35.0:**
 
 > ## Start here (2026-09-28, 0.35.0): MiniMax-M3 reads slot images, caches 62 GiB, starts the first turn at once
 >
@@ -8219,6 +8236,86 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.17 MiniMax-M3: the GPU's shared memory ceiling, and a governor that counts every process — 2026-09-28 (0.36.0)
+
+Hamed's brief (prompt v64, the sixteenth "MiniMax-M3 as fast as possible at the same quality"): confirm caveman,
+Jev and the codebase-memory graph first, then plan, build, measure and document. Tools: caveman active (session
+hook), Jev answered (`jev check` CLI 0.96, `jev_classify` MCP auto), the graph ready (5,727 nodes, one partial file
+outside the code). 0.35.0 committed, tree clean. Filler: a fresh 5.03 MB concatenation of the repo's tracked `.md`
+and `.py` files (scratch), so absolute numbers differ from 18.16's. Two benchmarks: `minimax_followup_turns.py`
+@1,300,000 (the direct path, as before) and a new scratch `stream_agent.py`, the same agent turns through
+`GlmModel.stream` (the server path: `_fit_prefill` before each prompt, `_fit_memory` at the first decode token;
+each turn's prompt is the previous prompt, the reply and N new filler tokens, so the snapshot is reused). Both
+print the same `ids_hash` (-4628252980437640267) on every arm below.
+
+**1. Where a token goes now.** Direct path at 62 GiB, display asleep, two runs: decode 124.1 / 125.3 ms, short
+prefills 74.0 (disturbed: the display woke) / 24.3 s. `glm_prefill_timeline.py 2048 TF_DECODE=200`: 168.4 ms a
+token = 113.0 store wait + 55.4 other, 39.1 misses, 2.9 ms of wait a miss: 21.1 MiB at ~7 GiB/s, the two drives'
+wall. With 18.5's policy replay (recency is what pays; Belady's 2.3x needs the future) and 18.14's closed byte
+levers, the only mechanism left for the wait was more slots.
+
+**2. Budgets above 62 GiB: a cliff.** Through `stream()` (it parks for a 2k prompt and unparks at decode, which the
+direct path never does), display asleep:
+
+| budget | decode slots | decode ms | turns s | note |
+|---|---|---|---|---|
+| 62 (0.35.0: parks 81 slots for the 2k prompt) | 2,928 | 114.7-115.1 | 55.7-55.8 | three runs |
+| 62, no parking (`PREFILL_FULL_TOKENS` 4096) | 3,009 | 110.1 / 113.7 / 112.8 / 112.1 | 53.6-55.8 | |
+| 63, no parking, 26 slabs | 3,057 | **138.5 / 138.2 / 120.3** | 64.4-64.9 / 58.3 | |
+| 64 | 3,056 | **193.4 / 192.0** (144.0 with a 0.5 GiB MLX cache) | 84.0 / 83.8 | 27 slabs |
+| 66 | — | Metal cannot build the slab kernel: 28 slabs + 4 buffers > 31 | | |
+
+Misses fell 8 % at 63-64, but every token paid ~25-75 ms more, from turn 1 on. The 26-slab 63 GiB arm rules out
+the slab count. MLX active 73.26 GiB at 3,009 slots, 74.25 at 3,057; Metal's `max_recommended_working_set_size` is
+77.76 GiB (the wired limit `min(80, recommended)` is that). The driver's `PerformanceStatistics` (`ioreg -c
+AGXAccelerator`): "In use system memory" 74.0-74.6 GiB at 62, 74.6-75.1 at 63; "Alloc system memory" (every
+process's GPU allocations, resident or not) 78.1-78.7 at 62, 79.0-79.2 at 63. At idle other processes allocate
+~5.0 GiB, of which ~0.5-0.8 in use.
+
+**3. It is shared with every other process.** 62 GiB (no parking, 3,009 slots) beside a second process holding
+2 GiB of GPU memory (`gpuhog.py`, scratch: an MLX array, wired, touched every second): **short prefills 22.6 →
+51.7 s, the 2k prompt 19.4 → 37.5 s, decode 112 → 119.5 ms**, turns 86.1 s; a repeat 78.8 s; the holder itself
+failed with `kIOGPUCommandBufferCallbackErrorOutOfMemory` in two of four runs. At 60 GiB beside the same holder:
+23.6 s of prefills, 118.5 ms, 57.7 s of turns. With the holder alive the driver's "in use" stays pinned at ~74.2-74.4
+GiB while "alloc" rises 78.7 → 81.4: the driver pages instead of growing the resident set, so "in use" cannot see
+the problem and "alloc" can. This fits 15.7/15.8's slow window (compute, only with the display on, triggered by a
+visible Hermes Desktop window) and 18.16 item 7's screensaver: all of them allocate GPU memory next to a cache that
+fills the working set. Not proven for those cases here.
+
+**4. The governor counts the GPU (shipped).** `glm.model.gpu_allocated()` reads "Alloc system memory" through IOKit
+(ctypes, ~20 µs); `gpu_ceiling()` is the recommended working set plus `CACHALOT_GPU_ALLOC_SLACK_GIB` (1.0: 78.76
+GiB here). `_host_capacity` (MiniMax only: it runs where `_prefill_budget` is set) clears MLX's buffer cache, then
+caps the capacity at `capacity + (ceiling − max(alloc, ours)) // slot`, so the prefill fit and the decode fit both
+give back slabs when anyone's GPU allocations cross the ceiling and never grow past it. A first version read "in
+use" with a 3 GiB headroom and never fired (empty slots after loading are not in use, and under paging "in use" is
+pinned). Measured, same text, `ids_hash` equal:
+
+| arm | slots | turns s | short prefills s | decode ms |
+|---|---|---|---|---|
+| 62 alone, governed | 3,009 | 55.5 | 22.96 | 112.8 |
+| 62 + 2 GiB holder, 0.35.0 | 3,009 | 86.1 / 78.8 | 51.7 / 43.6 | 119.5 / 122.2 |
+| 62 + 2 GiB holder, governed (slack 1.0) | 2,928 | **57.6** | 23.4 | 118.7 |
+| 62 + 2 GiB holder, slack 2.0 | 2,800 | 61.4 | 24.5 | 128.0 |
+
+The holder never failed beside the governed runtime. With the display on and idle (`caffeinate -u`): governor off
+57.6 s at 3,009 slots, slack 1.0 parked 81 slots at turn 1, 60.5 s: a false alarm costs ~5 %, the cliff 30-200 %,
+so the slack stays 1.0. A slack-2.0 display-on arm ran while the machine was in use (Finder, `top`, a save panel;
+system wired 79-81 GiB) and decoded at 420 ms a token without parking: not an A/B, but the kind of window the
+governor is for. Tests: three new cases in `tests/test_memory_governor.py` (432 pass).
+
+**5. Closed.** Budgets above 62 GiB on this Mac (item 2): more slots need GPU memory from elsewhere (non-expert
+weights, the 272 transient slots) or a larger working set (`sysctl iogpu.wired_limit_mb`, a system setting only
+Hamed can change; it would move the ceiling, not remove it). Taking back the partial last slab (81 slots) after a
+long prefill: it works (a slab reaching the full capacity exactly may unpark) but decoded 114.0 / 117.0 against
+114.7-115.1 ms and put decode back at the edge; not shipped. M27b not built (the +0.9 s once per restart).
+
+**What remains, ranked.** 1. M1b (Hamed): a Hermes Desktop session on 0.36.0 with the sampler and the driver's
+counters beside it (`ioreg -r -c AGXAccelerator -d 1 -w0 | grep -o '"Alloc system memory"=[0-9]*'`): does the
+governor park when Hermes Desktop's window is up, and does that remove the slow window? 2. The screensaver and a
+visible Hermes window as GPU allocations: measure their "alloc" growth. 3. Hamed's call: `iogpu.wired_limit_mb`
+above the default (e.g. 84 GiB) and then the budget sweep again. 4. GLM: G6 + S1c + S1e; the GPU term applies to
+GLM once it has `_prefill_budget`. 5. M19 (Thunderbolt mirror), M27b, S3-S5.
 
 ### 18.16 MiniMax-M3: a slot-image bank, a 62 GiB expert cache, and a first turn that does not wait — 2026-09-28 (0.35.0)
 

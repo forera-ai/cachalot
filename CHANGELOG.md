@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.36.0 (2026-09-28)
+
+HANDOFF section 18.17.
+
+### Changed
+- **MiniMax-M3's memory governor now counts every process's GPU memory.** The GPU's memory is shared: with the
+  62 GiB expert cache, 1 GiB more of anyone's GPU allocations falls off a cliff. Another process holding 2 GiB of
+  GPU memory slowed agent turns from 55 to 79-86 s (short prefills 2.3x, decode +6 %, same tokens) and itself hit
+  Metal's out-of-memory error. The governor reads the GPU driver's "Alloc system memory" (all processes, ~20 µs
+  through IOKit) and gives back slots, or refuses to grow, while it exceeds Metal's recommended working set plus
+  1 GiB (78.76 GiB on the 96 GiB M3 Ultra). Beside the same 2 GiB holder, agent turns take **57.6 s instead of
+  78.8-86.1**, and the holder no longer fails; alone, nothing changes (55.5 s, 3,009 slots, same `ids_hash`).
+  `CACHALOT_GPU_ALLOC_SLACK_GIB` (1.0; negative turns it off).
+
+### Found
+- **Expert budgets above 62 GiB are closed by the same cliff, not by prefill memory.** Through the server path,
+  63 GiB (26 slabs) decoded 138.5 / 138.2 / 120.3 ms against 62's 110-114; 64 GiB 192-193 ms (144 with a 0.5 GiB
+  MLX buffer cache). Misses fell 8 %, but every token paid for GPU paging. 66 GiB also exceeds Metal's 31 kernel
+  buffers (28 slabs).
+- Taking back the partial last slab (81 slots) after a long prefill works but decodes no faster (114-117 against
+  114.7-115.1 ms); not shipped.
+
 ## 0.35.0 (2026-09-28)
 
 HANDOFF section 18.16.

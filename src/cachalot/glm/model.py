@@ -134,6 +134,78 @@ def host_available() -> int:
     return total * level // 100
 
 
+# HANDOFF 18.17: the GPU's memory is shared by every process. With 62 GiB of MiniMax slots, 1 GiB more of anyone's
+# GPU memory (48 more slots, or another process holding 2 GiB) slowed decode 6-25 % and short prefills up to 2.3x,
+# the same tokens: the driver pages (its "In use system memory" stays pinned near 74.3 GiB while "Alloc system
+# memory", every process's GPU allocations, grows). 62 GiB alone allocates 78.1-78.7 GiB, 63 GiB 79.0-79.2. The
+# capacity may only grow, and gives back slots, so that the allocated total stays under Metal's recommended working
+# set plus this slack. Negative turns it off.
+GPU_ALLOC_SLACK = int(float(os.environ.get("CACHALOT_GPU_ALLOC_SLACK_GIB", "1.0")) * 1024**3)
+
+_GPU_STATS = None
+
+
+def gpu_allocated() -> int:
+    """Bytes of GPU system memory allocated by all processes (the AGX driver's PerformanceStatistics "Alloc system
+    memory"); -1 when the driver does not say. ~20 µs a read."""
+    global _GPU_STATS
+    if _GPU_STATS is None:
+        _GPU_STATS = False
+        try:
+            import ctypes
+            import ctypes.util
+
+            iokit = ctypes.cdll.LoadLibrary(ctypes.util.find_library("IOKit"))
+            cf = ctypes.cdll.LoadLibrary(ctypes.util.find_library("CoreFoundation"))
+            iokit.IOServiceMatching.restype = ctypes.c_void_p
+            iokit.IOServiceMatching.argtypes = [ctypes.c_char_p]
+            iokit.IOServiceGetMatchingService.restype = ctypes.c_uint
+            iokit.IOServiceGetMatchingService.argtypes = [ctypes.c_uint, ctypes.c_void_p]
+            iokit.IORegistryEntryCreateCFProperty.restype = ctypes.c_void_p
+            iokit.IORegistryEntryCreateCFProperty.argtypes = [ctypes.c_uint, ctypes.c_void_p, ctypes.c_void_p,
+                                                              ctypes.c_uint]
+            cf.CFStringCreateWithCString.restype = ctypes.c_void_p
+            cf.CFStringCreateWithCString.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_uint]
+            cf.CFDictionaryGetValue.restype = ctypes.c_void_p
+            cf.CFDictionaryGetValue.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+            cf.CFNumberGetValue.restype = ctypes.c_bool
+            cf.CFNumberGetValue.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p]
+            cf.CFRelease.argtypes = [ctypes.c_void_p]
+            service = iokit.IOServiceGetMatchingService(0, iokit.IOServiceMatching(b"AGXAccelerator"))
+            if service:
+                utf8 = 0x08000100
+                keys = (cf.CFStringCreateWithCString(None, b"PerformanceStatistics", utf8),
+                        cf.CFStringCreateWithCString(None, b"Alloc system memory", utf8))
+                _GPU_STATS = ctypes, iokit, cf, service, keys
+        except (OSError, AttributeError):
+            pass
+    if not _GPU_STATS:
+        return -1
+    ctypes, iokit, cf, service, (k_stats, k_alloc) = _GPU_STATS
+    stats = iokit.IORegistryEntryCreateCFProperty(service, k_stats, None, 0)
+    if not stats:
+        return -1
+    try:
+        value = cf.CFDictionaryGetValue(stats, k_alloc)
+        out = ctypes.c_int64(-1)
+        if not value or not cf.CFNumberGetValue(value, 4, ctypes.byref(out)):  # kCFNumberSInt64Type
+            return -1
+        return out.value
+    finally:
+        cf.CFRelease(stats)
+
+
+def gpu_ceiling() -> int:
+    """The GPU memory all processes together may allocate before the governor gives back slots; -1 when off."""
+    if GPU_ALLOC_SLACK < 0:
+        return -1
+    try:
+        recommended = int(mx.device_info()["max_recommended_working_set_size"])
+    except (AttributeError, KeyError, TypeError):
+        return -1
+    return recommended + GPU_ALLOC_SLACK
+
+
 class _NoProjectedCache(KVCache):
     """Stands in for the MLA layers' projected prefill cache, which mlx-vlm keeps per head:
     ~720 KB per token over the 11 MLA layers (64 heads x 256 x K and V), ~14 GB at Hermes's
@@ -494,7 +566,8 @@ class GlmModel:
 
     def _host_capacity(self, capacity: int) -> int:
         """The capacity the machine's memory allows (S2): a slab less at warning pressure or under half the floor
-        available, else whatever keeps HOST_AVAILABLE_FLOOR available."""
+        available, else whatever keeps HOST_AVAILABLE_FLOOR available; and (18.17) at most what keeps every
+        process's GPU allocations under gpu_ceiling()."""
         _, level = host_memory()
         available = host_available()
         if available < 0:
@@ -503,7 +576,16 @@ class GlmModel:
         step = getattr(pool, "slab_slots", MEMORY_FIT_MIN_SLOTS)
         if level >= 2 or available < HOST_AVAILABLE_FLOOR // 2:
             return capacity - step
-        return capacity + max(0, available - HOST_AVAILABLE_FLOOR) // self.store.expert_bytes
+        allowed = capacity + max(0, available - HOST_AVAILABLE_FLOOR) // self.store.expert_bytes
+        ceiling = gpu_ceiling()
+        if ceiling > 0:
+            mx.clear_cache()  # MLX's cached free buffers count in the driver's total, and are not needed
+        allocated = gpu_allocated()
+        if ceiling > 0 and allocated >= 0:
+            ours = mx.get_active_memory() + mx.get_cache_memory()
+            # floor division: a negative room gives back whole slots rounded up
+            allowed = min(allowed, capacity + (ceiling - max(allocated, ours)) // self.store.expert_bytes)
+        return allowed
 
     def _fit_prefill(self, n: int) -> None:
         """Before prefilling `n` tokens (S2): give back the slots a long chunk's activations need; the first decode

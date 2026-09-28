@@ -34,9 +34,13 @@ def governed(capacity=2718, slot=21 * 2**20, prefill_gib=52):
 
 @pytest.fixture
 def host(monkeypatch):
-    state = {"level": 1, "available": 20 * GIB}
+    state = {"level": 1, "available": 20 * GIB, "gpu": -1, "ours": 0}
     monkeypatch.setattr(glm_model, "host_memory", lambda: (1 * GIB, state["level"]))
     monkeypatch.setattr(glm_model, "host_available", lambda: state["available"])
+    monkeypatch.setattr(glm_model, "gpu_allocated", lambda: state["gpu"])
+    monkeypatch.setattr(glm_model, "gpu_ceiling", lambda: 78 * GIB)
+    monkeypatch.setattr(glm_model.mx, "get_active_memory", lambda: state["ours"])
+    monkeypatch.setattr(glm_model.mx, "get_cache_memory", lambda: 0)
     monkeypatch.setattr(glm_model.mx, "clear_cache", lambda: None)
     return state
 
@@ -90,3 +94,22 @@ def test_host_readers_answer_on_macos():
         pytest.skip("not macOS")
     assert free > 0 and level in (1, 2, 4)
     assert glm_model.host_available() > 0
+
+
+def test_other_processes_gpu_memory_gives_back_slots(host):
+    # HANDOFF 18.17: 1 GiB allocated above the GPU ceiling, whoever holds it, costs ceil(1 GiB / slot) slots
+    m, slot = governed(), 21 * 2**20
+    host["ours"], host["gpu"] = 72 * GIB, 79 * GIB
+    assert m._host_capacity(2718) == 2718 - -(-GIB // slot)
+
+
+def test_gpu_room_caps_growth(host):
+    m, slot = governed(), 21 * 2**20
+    host["ours"], host["gpu"] = 70 * GIB, 77 * GIB  # 1 GiB under the ceiling, 12 GiB available
+    assert m._host_capacity(2718) == 2718 + GIB // slot
+
+
+def test_unknown_gpu_memory_leaves_the_host_rule(host):
+    m, slot = governed(), 21 * 2**20
+    host["gpu"] = -1
+    assert m._host_capacity(2718) == 2718 + 12 * GIB // slot
