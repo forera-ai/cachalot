@@ -18,6 +18,7 @@ Text only: image parts are passed to the template as text parts (the vision towe
 from __future__ import annotations
 
 import json
+import os
 import re
 import threading
 import time
@@ -29,6 +30,25 @@ from cachalot.server.engine import ChatOutput, ChatRequest, Delta, _first_stop, 
 
 THINK_END = "</think>"
 TOOL_START = "<tool_call>"
+# HANDOFF 18.21 item 9: a reply whose last LOOP_GUARD_REPEATS blocks of 10-200 tokens are the same block, back to back,
+# is a runaway loop (sampled at temperature 1.0 MiniMax-M3 fell into four in Hermes sessions, 1-6k tokens each, two
+# of them Hermes's compression summaries); the reply stops there. 0 turns the guard off.
+LOOP_GUARD_REPEATS = int(os.environ.get("CACHALOT_LOOP_GUARD_REPEATS", "6"))
+
+
+def repeating_tail(tokens: list[int], repeats: int, min_block: int = 10, max_block: int = 200) -> int:
+    """The length of a block that `tokens` ends with `repeats` times in a row, or 0."""
+    n = len(tokens)
+    if repeats < 2:
+        return 0
+    last = tokens[-1] if tokens else None
+    for p in range(min_block, min(max_block, n // repeats) + 1):
+        if tokens[-1 - p] != last:
+            continue
+        block = tokens[n - p:]
+        if all(tokens[n - (k + 1) * p:n - k * p] == block for k in range(1, repeats)):
+            return p
+    return 0
 _TOOL_RE = re.compile(r"<tool_call>(.*?)</tool_call>", re.S)
 _ARG_RE = re.compile(r"<arg_key>(.*?)</arg_key>\s*<arg_value>(.*?)</arg_value>", re.S)
 
@@ -218,6 +238,9 @@ class GlmEngine:
             splitter = self.model.splitter_cls(self.tokenizer, req.thinking_mode == "thinking")
             reused, prefill_s, finish, stop_hit, emitted = 0, 0.0, "length", False, 0
             decode_start = None
+            if cancel is None:
+                cancel = threading.Event()  # the stop-string and loop paths below end generation through it
+            looped = 0
             for event in self.model.stream(
                 prompt,
                 max_new_tokens=params.max_new_tokens,
@@ -236,6 +259,12 @@ class GlmEngine:
                     if token in self.model.eos_ids:
                         continue
                     delta = splitter.push(token)
+                    if LOOP_GUARD_REPEATS and not looped and not stop_hit:
+                        looped = repeating_tail(splitter.tokens, LOOP_GUARD_REPEATS)
+                        if looped:
+                            print(f"[loop guard] reply stopped after {len(splitter.tokens)} tokens: a {looped}-token "
+                                  f"block repeated {LOOP_GUARD_REPEATS} times", flush=True)
+                            cancel.set()
                     if req.stop and not stop_hit:
                         full = splitter.content_so_far()
                         cut = _first_stop(full, req.stop)

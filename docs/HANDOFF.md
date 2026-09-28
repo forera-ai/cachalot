@@ -39,7 +39,9 @@ The first block below is new; the blocks after it still hold.
 >   `docs/studio/briefs/2026-09-28-runtime-0.39.0.md`. Every UI-affecting runtime change gets such a brief.
 > - **0.39.2 fix (item 7):** Hermes's bad answers came from a lost tool call: MiniMax sometimes opens a call with a
 >   plain `<tool_call>` token (no namespace token); the splitter now accepts it. The model and kernels were fine.
-> - **Version 0.39.2.** 445 tests pass.
+> - **0.40.0 (item 9):** MiniMax replies that loop (same block six times in a row) stop; four Hermes replies had
+>   looped for 1-6k tokens, two of them compression summaries (hence the timeouts). Not the switch.
+> - **Version 0.40.0.** 449 tests pass.
 
 **Previous block, 0.38.1:**
 
@@ -8467,6 +8469,27 @@ misses a token at short context against 10), and the Hermes context adds more (3
 and the in-memory snapshots take ~500 of 3,300). The first Hermes session today ran with the switch on, which is
 why it decoded 9.4-11.5 tok/s: at the Hermes context the switch is +24-33 %, the largest single lever measured for
 Hermes decode.
+
+**9. Loops, and the loop guard (0.40.0).** Hamed's fourth session (0.39.3 with the switch on, dump on; export
+`list-files-on-desktop-2-20260928.json`) looped twice: a table repeating a `Pasports 2024-2029.pdf` row until he
+interrupted it (reply 238, 1,866 tokens), and after it "Other | 1 | forge-session-report..." rows (reply 242). With
+item 6's 1,227-token runaway, two switch-on sessions had looped and two exact ones had not, so the switch looked
+guilty. It is not: a repetition detector over all 112 dumped replies (the last six blocks of 10-200 tokens equal,
+back to back) fires on four, 238 and 242 and **both compression summaries**, 230 (3,768 tokens, the exact-path
+session: one PDF line repeated ~3,000 tokens) and 244 (7,305 tokens: `~$hn32` repeated ~6,000). Those two loops are
+why compression timed out at Hermes's 600 s. Replaying the looping request (row 235, 23.5k context) at Hermes's
+sampling (temperature 1.0, top_p 0.95, 900 tokens, `loops.py`, scratch): 0 of 24 samples looped with the switch
+off and 0 of 24 with it on (two switch-on samples ran to 900 tokens listing every screenshot, not looping). The
+loops are MiniMax-M3 runaway repetition at temperature 1.0 (its `generation_config.json` sets no repetition
+penalty), rare per reply, and far more costly than their rate suggests: minutes of decode, and a looped reply
+poisons the history. A first replay run was void: Hamed's server was still up and my process ran as a second
+runtime (1.3 tok/s, then Metal OOM); it was rerun after he stopped it.
+**Shipped:** `repeating_tail` and `LOOP_GUARD_REPEATS` (`CACHALOT_LOOP_GUARD_REPEATS`, 6; 0 off) in
+`glm/engine.py`: the reply stops at the sixth back-to-back copy (`finish_reason: stop`, a `[loop guard]` line). On
+the 112 dumped replies: exactly the four, at 839 / 1,592 / 578 / 1,175 tokens. A guard stop keeps no reply
+snapshot (the model stream was cancelled), so the next turn prefills the shortened reply. Also fixed on the way:
+the stop-string path created its cancel event after `model.stream` had started, so stop strings never ended
+generation. Studio brief: `docs/studio/briefs/2026-09-29-runtime-0.40.0.md`. 449 tests pass.
 
 **What is open after this.** 1. Hamed's call on the default, ideally after a Hermes session with the switch on
 (`CACHALOT_SERVER_DUMP` set) and one without, reading answer quality as well as `[request]` lines. 2. A longer

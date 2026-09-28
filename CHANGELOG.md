@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.40.0 (2026-09-29)
+
+HANDOFF section 18.21 item 9.
+
+### Added
+- **Runaway-loop guard for GLM/MiniMax replies** (`CACHALOT_LOOP_GUARD_REPEATS`, default 6, 0 off): a reply whose
+  last six blocks of 10-200 tokens are the same block, back to back, ends there with `finish_reason: stop` and a
+  `[loop guard]` log line. In Hamed's Hermes sessions four MiniMax replies looped (1-6k tokens each; two were the
+  compression summary, 3,768 and 7,305 tokens, which is why compression timed out); on all 112 dumped replies the
+  guard stops exactly those four (at 839 / 1,592 / 578 / 1,175 tokens) and no other.
+
+### Fixed
+- The GLM engine's stop-string path created its cancel event after the model stream had started, so a stop string
+  did not end generation; the event now exists before the stream.
+
+### Measured
+- Loops are not the miss substitution: one of the four was on the exact path, and 24 samples per arm of the
+  looping request (temperature 1.0, top_p 0.95, 23.5k context) looped in neither arm.
+
 ## 0.39.3 (2026-09-28)
 
 ### Documented
