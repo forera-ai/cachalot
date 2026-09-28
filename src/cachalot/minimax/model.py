@@ -29,6 +29,7 @@ from cachalot.glm.engine import _GlmSplitter
 from cachalot.glm.experts import StreamingSwitchGLU, tensor_sizes
 from cachalot.glm.model import GlmModel, host_available, load_non_expert_weights
 from cachalot.minimax.coded_bank import index_from_bank, layout_from_sizes, reader_from_env, slot_format
+from cachalot.minimax import gpu_select
 from cachalot.minimax.experts import build_minimax_expert_index
 from cachalot.minimax.language import FAST_NORM as _FAST_NORM
 from cachalot.minimax.language import Model, ModelArgs, MiniMaxM3SparseMoeBlock
@@ -201,7 +202,9 @@ def _mapped_tensors(model_path: Path, prefix: str) -> dict[str, np.ndarray]:
 
 class MiniMaxModel(GlmModel):
     # the fused RMSNorm rounds differently (HANDOFF 18.2): snapshots written without it do not match
-    NUMERICS_TAG = "-fastnorm" if _FAST_NORM else ""
+    # HANDOFF 18.21: with miss substitution on, a reply's decode KV differs from the exact path's; key it apart
+    NUMERICS_TAG = ("-fastnorm" if _FAST_NORM else "") + (
+        f"-missdrop{gpu_select.MISS_DROP:g}-sub{gpu_select.MISS_SUB}" if gpu_select.MISS_DROP > 0 else "")
     # A 2,048-token chunk already reads nearly every routed expert (168 GiB), so a longer chunk reads the same
     # bytes for more tokens: 8,192 prefills at ~230 tok/s against ~74-85 at 2,048, same NLL (HANDOFF 18.1).
     PREFILL_CHUNK = int(os.environ.get("CACHALOT_MINIMAX_PREFILL_CHUNK", "8192"))

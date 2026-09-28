@@ -1,6 +1,7 @@
 # Cachalot — Engineering Handoff
 
-**Authoritative state as of 2026-09-28 (nineteenth MiniMax session), after the session that put MiniMax's prefill at the GPU's FLOP
+**Authoritative state as of 2026-09-28 (twentieth MiniMax session), after the session that let MiniMax's decode
+substitute its lightest missing experts, opt-in and measured inside the rounding noise (section 18.21), the one that put MiniMax's prefill at the GPU's FLOP
 wall and measured three levers without a gain (section 18.20), the one that measured where MiniMax's
 remaining time goes and shipped two bit-identical kernel fusions switched off (section 18.19), the one that raised the GPU's working
 set to 86 GiB with Hamed and grew MiniMax's expert cache to 68 GiB (section 18.18), the one that found the GPU's
@@ -23,6 +24,20 @@ that gave it a bias-free expert bank (18.4), the one that gave it a second drive
 kernel (18.3), the one that cut its per-token overhead and measured it to 64k (18.2), the one that made it faster
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
+
+> ## Start here (2026-09-28, 0.39.0): MiniMax decode can skip its lightest misses (opt-in, not bit-identical)
+>
+> - **The switch (section 18.21):** `CACHALOT_MINIMAX_MISS_DROP=0.20 CACHALOT_MINIMAX_MISS_SUB=4` in front of
+>   `./serve-minimax.sh` / `./chat-minimax.sh`. A missing expert under 20 % of its layer's routing weight is not
+>   read; the best-scored resident expert of the next four ranks replaces it, with the router's own weights.
+> - **Speed:** misses a token -37 to -40 %; teacher-forced decode -14 to -21 %; server path decode 104.2 -> 94.6 ms
+>   (-9 %; -13.5 % within one display state).
+> - **Quality:** KL to exact and paired NLL inside the band of a numerically equivalent change (prefill chunk 1024
+>   against 8192) on three texts; 24/24 checkable tasks either way. Plain drops and threshold 0.25 closed (KL spikes).
+> - **Off by default** (Jev `jev_decide`: opt-in 0.66): the first non-bit-identical speed lever; Hamed's call.
+> - **Version 0.39.0.** 443 tests pass.
+
+**Previous block, 0.38.1:**
 
 > ## Start here (2026-09-28, 0.38.1): MiniMax prefill is at the GPU's FLOP wall; decode at the drives'
 >
@@ -8292,6 +8307,108 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.21 MiniMax-M3: decode skips its lightest missing experts, opt-in, quality inside the rounding noise — 2026-09-28 (0.39.0)
+
+Hamed's brief (prompt v68, the twentieth "MiniMax-M3 as fast as possible at the same quality"): confirm caveman,
+Jev and the codebase-memory graph first, then plan, build, measure and document. Tools: caveman active (session
+hook), `jev_verify` answered (1.0), the graph ready (5,941 nodes, one partial file outside the code). 0.38.1
+committed, tree clean, `iogpu.wired_limit_mb` 88064. Other processes held ~7.6 GiB of GPU memory at idle (Chrome,
+Claude). Filler: 18.18's concatenation (scratch copy, offsets 1,300,000 / 2,300,000 / 3,300,000). Nothing slept
+the display; arms where the screensaver was running are marked.
+
+**Why this lever.** Since 18.19 every exact lever is single-digit: decode waits on the drives' bandwidth
+(~63 % of a token) and prefill runs at the GPU's matmul peak. Every shipped change so far was bit-identical. The
+one lever never measured on MiniMax is to not read some misses at all. DeepSeek's miss budget (dropping every
+miss) had failed badly (KL 0.64, section 11, "The miss-budget approximation"), so this session priced a
+gentle form: skip only misses with a small share of the layer's routing weight, and replace them with a resident
+runner-up.
+
+**1. How much weight the misses carry.** `CACHALOT_MINIMAX_MISS_DROP_ARMED=1` copies each layer's routed weights
+(float32, inside the sync) and logs each missing expert's share (`MISS_SHARES`). 2k context, 300 teacher-forced
+tokens, 6,639 misses: median share 0.219, 10th percentile 0.134; under 0.10: 3.8 %, under 0.15: 14.8 %, under
+0.20: 38.6 %. MiniMax's top-4 sigmoid weights are flat, so there is no long light tail to cut for free.
+
+**2. The noise floor.** The same text with prefill chunk 1,024 instead of 8,192 (the same math summed in another
+order, a choice 18.1 made on speed): mean KL to exact 0.013 / 0.018 / 0.030 on three texts, max per position
+0.25 / 1.1 / 4.2, top-1 agreement 92-96 %, paired NLL +0.009 / -0.007 / +0.013. Teacher-forced decode is chaotic:
+any change in rounding moves every later position.
+
+**3. Variants** (`glm_prefill_timeline.py 2048`, `TF_DECODE=300`, one process an arm; `--compare` against exact,
+now with the paired per-token NLL difference and a 2,000-sample bootstrap interval):
+
+| text | arm | ms/token | misses/token | mean KL | max KL | paired NLL [95 %] |
+|---|---|---|---|---|---|---|
+| T1 | exact | 120.8 | 22.1 | — | — | — |
+| T1 | drop < 0.15 | 113.4 | 19.2 | 0.014 | 0.39 | +0.001 |
+| T1 | drop < 0.20 | 101.2 | 14.5 | 0.019 | 0.65 | +0.009 |
+| T1 | sub < 0.15 | 111.8 | 19.2 | 0.014 | 0.55 | -0.005 [-0.024, +0.015] |
+| T1 | **sub < 0.20** | **100.5** | **14.0** | **0.016** | 0.42 | **-0.005 [-0.022, +0.011]** |
+| T1 | sub < 0.25 | 96.9 | 8.6 | 0.028 | 0.92 | -0.001 |
+| T2 | exact | 123.5 | 22.8 | — | — | — |
+| T2 | drop < 0.20 | 99.0 | 13.5 | 0.087 | **15.7** | -0.018 |
+| T2 | sub < 0.15 | 110.3 | 18.8 | 0.016 | 0.36 | -0.010 [-0.031, +0.011] |
+| T2 | **sub < 0.20** | **97.0** | **13.8** | **0.025** | 0.86 | **-0.002 [-0.028, +0.025]** |
+| T2 | sub < 0.25 | — | — | 0.084 | **14.6** | — |
+| T3 | exact | 164.0 | 34.7 | — | — | — |
+| T3 | drop < 0.20 | 130.6 | 20.8 | 0.028 | 1.09 | +0.017 |
+| T3 | sub < 0.15 | (slow window) | 29.3 | 0.055 | **10.8** | +0.028 [-0.026, +0.113] |
+| T3 | **sub < 0.20** | 137.2 * | **20.3** | **0.019** | 0.68 | **+0.017 [-0.006, +0.040]** |
+| T3 | sub < 0.25 | 111.9 | 10.9 | 0.072 | **9.0** | +0.085 |
+
+(* the T3 arms of the second sweep ran in a slow window, 254-445 ms; the first sweep's T3 numbers are shown.)
+"drop" leaves the expert out and rescales the others to the same total; "sub" replaces it with the best-scored
+resident expert among the next four ranks (`MISS_SUB=4`) and takes the router's own sigmoid weights over the new
+set (left out only if none of the four is resident). Plain drops put a KL 15.7 position into T2 (a token whose
+distribution flipped); 0.25 does it on two texts. Sub < 0.20 stayed below KL 0.9 on all three and its mean KL
+and NLL are inside the noise arm's. Sub < 0.15 saves only a third as many misses and still spiked once on T3
+(the noise arm spiked to 4.2 there too: single-position spikes are chaotic, not monotone in the threshold).
+
+**4. Generation.** `gen_battery.py` (scratch): 24 prompts with checkable answers through `GlmModel.stream`,
+greedy, thinking off (arithmetic and word problems, 11 Python functions executed against tests, extraction to
+JSON, a short explanation). One answer key of mine was wrong (x·y is 12) and was rescored from the saved texts.
+
+| arm | passed | answers byte-identical to exact |
+|---|---|---|
+| exact | 24/24 | — |
+| rounding noise (`CACHALOT_MINIMAX_FAST_NORM=0`) | 24/24 | 17/24 |
+| sub < 0.20 | 24/24 | 16/24 |
+
+(A first 12-task run: sub < 0.20 wrote a correct `merge_intervals` that returns tuples instead of lists, which that
+checker failed; counted as a pass functionally.)
+
+**5. Through the server path** (`stream_agent.py`, 68 GiB, a 2k prompt and six short agent turns of 48 tokens,
+ABAB; the screensaver started before the fourth arm):
+
+| arm | decode ms | misses/token (turns 1-6) | turns s | short prefills s |
+|---|---|---|---|---|
+| exact | 106.3 / 102.0 | 10.8-24.6 | 53.0 / 50.5 | 22.41 / 21.16 |
+| sub < 0.20 | 92.0 / 97.1 (screensaver) | 6.0-16.2 | 48.7 / 50.2 | 22.16 / 22.20 |
+
+-9 % on the mean, -13.5 % between the two arms in one display state; prefill unchanged (the switch is decode
+only). The exact arms kept their `ids_hash` (-5547788358133786130, as in 18.19).
+
+**Shipped (0.39.0), off by default:** `CACHALOT_MINIMAX_MISS_DROP` (share threshold, 0 = exact) and
+`CACHALOT_MINIMAX_MISS_SUB` (runner-up window) in `gpu_select.py`, the plan in `miss_plan` (four tests); the
+speculative prefetch (18.14) skips predicted misses under the threshold; `MiniMaxModel.NUMERICS_TAG` gains
+`-missdrop0.2-sub4` so disk snapshots written with the switch are never read by an exact server and back.
+`glm_prefill_timeline.py`: `TF_OUT` saves target ids beside the log-probs, `--compare` prints `PAIRED_NLL`,
+`MISS_SHARES`. It is off because it is the first speed lever that changes outputs (Jev's `jev_decide` over the
+evidence: opt-in 0.66); Hamed turns it on per launch:
+
+```bash
+cd /Users/hamedprooshani/Projects/deepseek-v41-mac && CACHALOT_MINIMAX_MISS_DROP=0.20 CACHALOT_MINIMAX_MISS_SUB=4 ./serve-minimax.sh
+```
+
+443 tests pass.
+
+**What is open after this.** 1. Hamed's call on the default, ideally after a Hermes session with the switch on
+(`CACHALOT_SERVER_DUMP` set) and one without, reading answer quality as well as `[request]` lines. 2. A longer
+quality gate if it is to become the default: long-context texts (the switch has only been measured at 2k), a
+thinking-mode battery, tool calls. 3. Other forms of the same lever, priced on the `MISS_SHARES` trace first:
+a score-margin rule (substitute only when the runner-up's selection score is within a margin of the missing
+expert's, independent of its weight share) and applying it to the predicted prefetch's order. 4. Everything in
+18.20's ranking stays: M28 with Hamed, M19 (a Thunderbolt mirror drive), GLM G6 + S1c + S1e.
 
 ### 18.20 MiniMax-M3: prefill is at the GPU's FLOP wall, and three levers measured without a gain — 2026-09-28 (0.38.1)
 

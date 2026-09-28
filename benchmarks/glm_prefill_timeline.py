@@ -33,6 +33,15 @@ def compare(a_path, b_path):
         agree = (a.argmax(-1) == b.argmax(-1)).mean()
         print(f"COMPARE positions={a.shape[0]} mean_kl={kl.mean():.3e} p99_kl={np.quantile(kl, 0.99):.3e} "
               f"max_kl={kl.max():.3e} top1_agree={agree:.4f}")
+        ids = a_path.replace(".npy", "") + ".ids.npy"
+        if os.path.exists(ids):
+            # teacher-forced targets saved beside TF_OUT (HANDOFF 18.21): the paired per-token NLL difference b - a
+            t = np.load(ids)[-n:]
+            d = -b[np.arange(n), t] + a[np.arange(n), t]
+            rng = np.random.default_rng(0)
+            boot = [d[rng.integers(0, n, n)].mean() for _ in range(2000)]
+            print(f"PAIRED_NLL delta={d.mean():+.4f} ci95=[{np.quantile(boot, 0.025):+.4f}, {np.quantile(boot, 0.975):+.4f}] "
+                  f"worse_tokens={(d > 0.1).mean():.3f} better_tokens={(d < -0.1).mean():.3f}")
         return
     a = a.astype(np.float64).ravel()
     b = b.astype(np.float64).ravel()
@@ -254,8 +263,20 @@ if TF_DECODE:
           "misses_per_token=%.1f" % (
               TF_DECODE, float(np.mean(nlls)), 1000 * dt / TF_DECODE, 1000 * (wait[0] - w0) / TF_DECODE,
               1000 * (dt - (wait[0] - w0)) / TF_DECODE, hits / max(1, hits + misses), misses / TF_DECODE), flush=True)
+    try:
+        from cachalot.minimax import gpu_select as _gs
+
+        if _gs.MISS_SHARES:
+            sh = np.array(_gs.MISS_SHARES)
+            # HANDOFF 18.21: every missing expert's share of its layer's routing weight (MISS_DROP_ARMED)
+            print("MISS_SHARES n=%d q10=%.3f q25=%.3f q50=%.3f below .05=%.3f .10=%.3f .15=%.3f .20=%.3f" % (
+                len(sh), *np.quantile(sh, [0.1, 0.25, 0.5]), *[(sh < t).mean() for t in (0.05, 0.10, 0.15, 0.20)]),
+                flush=True)
+    except ImportError:
+        pass
     if os.environ.get("TF_OUT"):
         np.save(os.environ["TF_OUT"], np.stack(lps))
+        np.save(os.environ["TF_OUT"].replace(".npy", "") + ".ids.npy", np.array(tf_tokens[1:TF_DECODE + 1], np.int64))
 if ROUTE_TRACE:
     np.save(ROUTE_TRACE, np.array(route_log, dtype=np.int32))
 m.close()

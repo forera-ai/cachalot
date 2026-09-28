@@ -54,6 +54,9 @@ export CACHALOT_SNAPSHOT_PRELOAD=${CACHALOT_SNAPSHOT_PRELOAD:-2}
 # the memory ceiling (CACHALOT_MINIMAX_KV_ALLOWANCE_GIB, default 1.0; -1 turns it off), and a conversation's snapshot
 # is handed to its next turn instead of copied (CACHALOT_MINIMAX_CONSUME_SNAPSHOTS=0 restores the copy).
 
+# 0.39.0 (HANDOFF 18.21), opt-in and not bit-identical: CACHALOT_MINIMAX_MISS_DROP=0.20 CACHALOT_MINIMAX_MISS_SUB=4 in
+# front of this script skips missing experts under 20 % of a layer's routing weight and computes the best resident
+# runner-up instead (decode -9 to -13.5 % through the server, quality inside the rounding noise).
 # MiniMax's generation_config: temperature 1.0, top_p 0.95
 exec ~/venvs/deepseek-v41/bin/python -m cachalot.cli serve \
     --model "$CACHALOT_MODEL_PATH" \

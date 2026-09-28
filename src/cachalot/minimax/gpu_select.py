@@ -56,6 +56,17 @@ SPEC_DEPTH = int(os.environ.get("CACHALOT_MINIMAX_SPEC_DEPTH", "2"))
 # kernel instead of ~12 dependent ones on the path to the layer's experts; bit-identical. -0.65 ms a token in one
 # process, nothing measurable through the server path, so off by default. An int so TF_ALTERNATE can flip it.
 FUSED_ROUTE = int(os.environ.get("CACHALOT_MINIMAX_FUSED_ROUTE", "0"))
+# HANDOFF 18.21: a missing expert whose share of the layer's routing weight is below MISS_DROP is not read; its row
+# stays zero and the other experts' weights are rescaled to the same total (top-k over the rest). NOT bit-identical:
+# 0 (default) keeps the exact path. A float so TF_ALTERNATE can flip it; MISS_DROP_ARMED makes the host see the
+# weights (a float32 copy inside the sync) so a TF_ALTERNATE arm at 0 costs the same.
+MISS_DROP = float(os.environ.get("CACHALOT_MINIMAX_MISS_DROP", "0"))
+MISS_DROP_ARMED = MISS_DROP > 0 or os.environ.get("CACHALOT_MINIMAX_MISS_DROP_ARMED", "0") == "1"
+# MISS_SUB > 0: a dropped expert is replaced by the best resident one of the next MISS_SUB by selection score (its own
+# sigmoid weight, all four renormalised as the router would), instead of leaving the layer with k - 1 experts
+MISS_SUB = int(os.environ.get("CACHALOT_MINIMAX_MISS_SUB", "0"))
+# with MISS_DROP_ARMED, every missing expert's weight share is appended here (instruments only)
+MISS_SHARES: list = []
 
 _ROUTE_TAIL = """
     // One threadgroup of E threads. Expert t's selection score and its rank among all E: MLX's argpartition of
@@ -110,6 +121,43 @@ def route_tail(raw: mx.array, bias: mx.array, table: mx.array, layer: int, k: in
                        grid=(e, 1, 1), threadgroup=(e, 1, 1),
                        output_shapes=[(1, 1, k), (1, 1, k), (k,)],
                        output_dtypes=[mx.uint32, mx.bfloat16, mx.int32])
+
+
+def miss_plan(w, miss, threshold, window, sc, og, resident, routes, scale):
+    """HANDOFF 18.21: which of a layer's missing experts to skip, and what replaces them.
+
+    `w` the routed weights as the layer computed them (float32 [k], summing to the scaling factor), `miss` the
+    positions whose expert is not resident, `threshold` the weight share under which a missing expert is not read.
+    With `window` > 0 and the selection scores `sc`, plain sigmoid scores `og` and a residency mask over all experts,
+    a skipped expert is replaced by the best-scored resident expert among the next `window` ranks not already
+    routed (the heaviest skipped one first), and the weights are the router's own over the new set; without a
+    replacement it is left out and the others are rescaled to the same total. Returns None when nothing changes,
+    else (left out positions, {position: replacement expert}, routes, weights float32 [k])."""
+    total = float(w.sum())
+    skip = [j for j in miss if w[j] < threshold * total]
+    if not skip:
+        return None
+    subs = {}
+    routes = np.array(routes).copy()
+    if window > 0 and sc is not None:
+        chosen = set(int(e) for e in routes)
+        order = np.argsort(-sc, kind="stable")[:len(routes) + window]
+        cand = [int(e) for e in order if int(e) not in chosen and resident[int(e)]]
+        for j in sorted(skip, key=lambda j: -w[j]):
+            if cand:
+                subs[j] = cand.pop(0)
+        for j, e in subs.items():
+            routes[j] = e
+    gone = [j for j in skip if j not in subs]
+    if subs:
+        w2 = og[routes].astype(np.float32)
+        w2[gone] = 0.0
+        w2 = w2 / float(w2.sum()) * scale
+    else:
+        w2 = w.astype(np.float32).copy()
+        w2[gone] = 0.0
+        w2 = w2 / float(w2.sum()) * total
+    return gone, subs, routes, w2
 
 
 def _slot_base(n_slabs: int, slab_slots: int, record_bytes: int) -> str:
@@ -235,6 +283,8 @@ class GpuSelectDecoder:
         self.miss_layers = 0
         self.hit_layers = 0
         self.spec_predicted = 0
+        self.dropped = 0
+        self.substituted = 0
 
     def _slot_table(self) -> mx.array:
         version = self.store.slot_table_version
@@ -256,12 +306,17 @@ class GpuSelectDecoder:
                                               moe.routed_scaling_factor)
         else:
             scores, orig = moe.route_scores(xn)
+            if MISS_DROP_ARMED:
+                sc32, og32 = scores.reshape(-1), orig.reshape(-1)
             inds = mx.argpartition(-scores, kth=k - 1, axis=-1)[..., :k]
             weights = mx.take_along_axis(orig, inds, axis=-1)
             weights = weights / (mx.sum(weights, axis=-1, keepdims=True) + 1e-20)
             weights = (weights * moe.routed_scaling_factor).astype(xn.dtype)
             slots = self._slot_table()[i][inds.reshape(-1)]
-        rec = {"i": i, "r": r, "xn": xn, "inds": inds, "weights": weights, "slots": slots, "k": k, "pred": None}
+        rec = {"i": i, "r": r, "xn": xn, "inds": inds, "weights": weights, "slots": slots, "k": k, "pred": None,
+               "w32": weights.astype(mx.float32) if MISS_DROP_ARMED else None}
+        if MISS_DROP_ARMED and "sc32" in locals():
+            rec["sc32"], rec["og32"] = sc32, og32
         t = i + PREFETCH_AHEAD
         if PREFETCH_TOPK > 0 and t < len(self.layers) and self.layers[t].is_sparse:
             nxt = self.layers[t]
@@ -320,8 +375,12 @@ class GpuSelectDecoder:
         slots = np.array(spec["slots"])
         routes = np.array(spec["inds"]).reshape(-1)
         t = spec["i"]
-        self.spec_predicted += int((slots < 0).sum())
-        return [self.index[(t, int(e))] for e in routes[slots < 0][:SPEC_PREFETCH]]
+        want = slots < 0
+        if MISS_DROP > 0 and spec.get("w32") is not None:
+            w = np.array(spec["w32"]).reshape(-1)
+            want &= w >= MISS_DROP * w.sum()
+        self.spec_predicted += int(want.sum())
+        return [self.index[(t, int(e))] for e in routes[want][:SPEC_PREFETCH]]
 
     def _speculate_deeper(self, spec):
         """SPEC_DEPTH > 1: layer i+1's predicted reads first, then its hit experts and the next layer's attention and
@@ -343,7 +402,7 @@ class GpuSelectDecoder:
             if not nl.is_sparse:
                 break
             spec = self._route(t, nl, r2)
-            mx.async_eval(spec["slots"], spec["inds"])
+            mx.async_eval(spec["slots"], spec["inds"], *([spec["w32"]] if spec["w32"] is not None else []))
         return None
 
     def _fix(self, rec, spec=None):
@@ -354,10 +413,34 @@ class GpuSelectDecoder:
         if pred is None and spec is not None and SPEC_PREFETCH > 0:
             pred = partial(self._speculate_deeper if "cache" in spec else self._speculated, spec)
             limit, after = SPEC_PREFETCH, bool(SPEC_AFTER_DEMAND)
-        residents = self.store.get_many([self.index[(i, int(e))] for e in routes], prefetch=pred,
-                                        prefetch_limit=limit, prefetch_after=after)
         miss = [j for j in range(len(routes)) if slots[j] < 0]
+        keep = range(len(routes))
+        subs = {}
+        if rec["w32"] is not None:
+            w = np.array(rec["w32"]).reshape(-1)
+            MISS_SHARES.extend(float(w[j]) / float(w.sum()) for j in miss)
+            if MISS_DROP > 0:
+                sc = og = resident = None
+                if MISS_SUB > 0 and "sc32" in rec:
+                    sc, og = np.array(rec["sc32"]), np.array(rec["og32"])
+                    with self.store._lock:
+                        resident = self.table[i] >= 0
+                plan = miss_plan(w, miss, MISS_DROP, MISS_SUB, sc, og, resident, routes,
+                                 self.layers[i].block_sparse_moe.routed_scaling_factor)
+                if plan is not None:
+                    gone, subs, routes, w2 = plan
+                    self.dropped += len(gone) + len(subs)
+                    self.substituted += len(subs)
+                    miss = [j for j in miss if j not in gone and j not in subs]
+                    keep = [j for j in range(len(routes)) if j not in gone]
+                    rec = {**rec, "weights": mx.array(w2.reshape(1, 1, -1)).astype(rec["weights"].dtype)}
+        got = self.store.get_many([self.index[(i, int(routes[j]))] for j in keep], prefetch=pred,
+                                  prefetch_limit=limit, prefetch_after=after)
+        residents = dict(zip(keep, got))
         moe = self.layers[i].block_sparse_moe
+        miss = sorted(miss + list(subs))
+        if not miss:
+            return self._output(rec, rec["y"])
         fresh = self.experts(rec["xn"].reshape(1, -1),
                              mx.array(np.array([residents[j].slot.index for j in miss], np.int32)), moe.activation)
         rows = [fresh[miss.index(j):miss.index(j) + 1] if j in miss else rec["y"][j:j + 1] for j in range(len(routes))]
@@ -380,7 +463,9 @@ class GpuSelectDecoder:
             r = h + layer.self_attn(layer.input_layernorm(h), None, cache[i])
             if layer.is_sparse:
                 rec = self._route(i, layer, r)
-                mx.async_eval(rec["slots"], rec["inds"], *([rec["pred"]] if rec["pred"] is not None else []))
+                mx.async_eval(rec["slots"], rec["inds"], *([rec["pred"]] if rec["pred"] is not None else []),
+                              *([rec["w32"]] if rec["w32"] is not None else []),
+                              *([rec["sc32"], rec["og32"]] if "sc32" in rec else []))
             else:
                 rec = None
                 out = r + layer.mlp(layer.post_attention_layernorm(r))

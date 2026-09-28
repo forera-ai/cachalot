@@ -10,6 +10,7 @@ from cachalot.cache.resident import ResidentExpert
 from cachalot.cache.resident_store import ResidentExpertStore
 from cachalot.cache.slots import SlabSlotPool
 from cachalot.minimax import codes_qmv
+from cachalot.minimax import gpu_select
 from cachalot.minimax.gpu_select import SlabExperts
 
 D, INTER = 512, 512
@@ -270,3 +271,39 @@ def test_the_fused_routing_tail_matches_the_mlx_ops_bit_for_bit():
         for a, b in zip(got, (inds, w, slots)):
             assert a.dtype == b.dtype and a.shape == b.shape
             assert mx.array_equal(a, b).item()
+
+
+def test_miss_plan_leaves_heavy_misses_alone():
+    w = np.array([0.5, 0.4, 0.35, 0.3], np.float32)  # every share above 0.2 of 1.55
+    assert gpu_select.miss_plan(w, [1, 3], 0.15, 0, None, None, None, np.array([4, 9, 2, 7]), 1.55) is None
+
+
+def test_miss_plan_drops_a_light_miss_and_keeps_the_total():
+    w = np.array([0.8, 0.5, 0.1, 0.2], np.float32)
+    gone, subs, routes, w2 = gpu_select.miss_plan(w, [2, 3], 0.1, 0, None, None, None, np.array([4, 9, 2, 7]), 1.6)
+    assert gone == [2] and subs == {} and list(routes) == [4, 9, 2, 7]
+    assert w2[2] == 0 and abs(float(w2.sum()) - 1.6) < 1e-6
+    assert np.allclose(w2[[0, 1, 3]], w[[0, 1, 3]] * 1.6 / 1.5)
+
+
+def test_miss_plan_substitutes_the_best_resident_runner_up():
+    e = 16
+    sc = np.linspace(1.0, 0.0, e, dtype=np.float32)  # expert 0 best ... 15 worst
+    og = np.full(e, 0.5, np.float32)
+    resident = np.ones(e, bool)
+    resident[4] = False  # the best runner-up is not resident: expert 5 replaces
+    routes = np.array([0, 1, 2, 3])
+    w = np.array([0.4, 0.4, 0.4, 0.1], np.float32)
+    gone, subs, new, w2 = gpu_select.miss_plan(w, [3], 0.15, 4, sc, og, resident, routes, 2.0)
+    assert gone == [] and subs == {3: 5} and list(new) == [0, 1, 2, 5] and list(routes) == [0, 1, 2, 3]
+    assert np.allclose(w2, 0.5)  # the router's own weights over the new set, times the scale
+
+
+def test_miss_plan_drops_when_no_runner_up_is_resident():
+    e = 8
+    sc = np.linspace(1.0, 0.0, e, dtype=np.float32)
+    resident = np.zeros(e, bool)
+    w = np.array([0.4, 0.4, 0.4, 0.1], np.float32)
+    gone, subs, _, w2 = gpu_select.miss_plan(w, [3], 0.15, 2, sc, np.ones(e, np.float32), resident,
+                                             np.array([0, 1, 2, 3]), 1.3)
+    assert gone == [3] and subs == {} and w2[3] == 0 and abs(float(w2.sum()) - 1.3) < 1e-6

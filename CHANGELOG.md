@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.39.0 (2026-09-28)
+
+HANDOFF section 18.21 (the twentieth MiniMax-M3 speed session).
+
+### Added (off by default; not bit-identical)
+- **MiniMax decode miss substitution:** `CACHALOT_MINIMAX_MISS_DROP=0.20 CACHALOT_MINIMAX_MISS_SUB=4`. A missing
+  routed expert whose share of its layer's routing weight is under the threshold is not read; the best-scored
+  resident expert among the next `MISS_SUB` ranks replaces it with the router's own renormalised weights (without
+  one it is left out and the others rescaled). The speculative prefetch skips experts that would be skipped.
+  Misses per token -37 to -40 %; teacher-forced decode -14 to -21 % a token, server path (`stream_agent.py`, six
+  agent turns, ABAB) decode 104.2 -> 94.6 ms mean (-9 %; -13.5 % within one display state).
+- Quality, three texts x 300 teacher-forced tokens: mean KL to exact 0.016 / 0.025 / 0.019 against 0.013 /
+  0.018 / 0.030 for a numerically equivalent prefill-chunk change; paired NLL -0.005 / -0.002 / +0.017 (95 %
+  bootstrap intervals all include 0). A 24-task greedy battery: 24/24 exact, 24/24 substitution, 24/24 the
+  rounding-noise arm; 16 vs 17 of 24 answers byte-identical to exact.
+- `cachalot.minimax.gpu_select.miss_plan` (tested) and `CACHALOT_MINIMAX_MISS_DROP_ARMED=1` (weights to the host
+  at 0, for `TF_ALTERNATE` arms and the `MISS_SHARES` histogram). Disk snapshots are keyed by the setting.
+- `glm_prefill_timeline.py`: `TF_OUT` also saves the target ids; `--compare` prints the paired per-token NLL
+  difference with a bootstrap interval; `MISS_SHARES` line.
+
+### Measured and closed
+- Dropping missing experts without substitution: a KL 15.7 position on one text. Threshold 0.25 with
+  substitution: KL 9-15 positions and NLL +0.085 on one text. Threshold 0.15: fewer misses saved (-13 %) and one
+  KL 10.8 position (the rounding-noise arm itself had one of 4.2).
+
 ## 0.38.1 (2026-09-28)
 
 HANDOFF section 18.20 (the nineteenth MiniMax-M3 speed session).
