@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.37.2 (2026-09-28)
+
+HANDOFF section 18.18 item 8 (Hamed's second Hermes Desktop session, replayed from its dump).
+
+### Fixed
+- **MiniMax's server no longer over-commits memory at startup.** With 0.37.1's 8 GiB prefix budget, startup kept
+  the four most recently used snapshots (two 21k-token system blocks, one of them stale: 2.5 GiB) and the whole
+  68 GiB expert pool before the first request fitted the capacity: every process's GPU memory peaked at 91.3 GiB,
+  swap grew 2.6 GiB, warning pressure. `serve-minimax.sh` now preloads two snapshots
+  (`CACHALOT_SNAPSHOT_PRELOAD`, new for every server; the rest load from disk when a prompt starts with them), and
+  the capacity is fitted right after they load, before the warm set: startup peak 87.2 GiB, swap flat, normal
+  pressure; the first request reused the 21,318-token system block as before.
+- **A GPU overshoot smaller than a quarter slab now gives back a slab.** The slab pool keeps up to a quarter slab
+  (0.66 GiB) of excess, so the governor's GPU term (18.17) never corrected an overshoot of a few hundred MiB; it
+  now asks for at least one whole slab.
+
+### Found
+- Three turns of the live session decoded at 2.85-3.51 tok/s (the others 5.2-7.7). Replaying the session's nine
+  requests with the display asleep, on 0.37.1 and on this version, decoded them at 5.5-10.7 tok/s: the slow turns
+  were not the memory configuration. They were long streamed replies with Hermes Desktop's window on screen, the
+  slow window of HANDOFF 15.7/15.8 (not proven here).
+
 ## 0.37.1 (2026-09-28)
 
 HANDOFF section 18.18 item 7 (Hamed's Hermes Desktop session on 0.37.0).

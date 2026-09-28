@@ -97,10 +97,14 @@ def test_host_readers_answer_on_macos():
 
 
 def test_other_processes_gpu_memory_gives_back_slots(host):
-    # HANDOFF 18.17: 1 GiB allocated above the GPU ceiling, whoever holds it, costs ceil(1 GiB / slot) slots
+    # HANDOFF 18.17: 1 GiB allocated above the GPU ceiling, whoever holds it, costs ceil(1 GiB / slot) slots,
+    # rounded up to a whole slab since 18.18 item 8
     m, slot = governed(), 21 * 2**20
     host["ours"], host["gpu"] = 72 * GIB, 79 * GIB
-    assert m._host_capacity(2718) == 2718 - -(-GIB // slot)
+    assert -(-GIB // slot) < 128
+    assert m._host_capacity(2718) == 2718 - 128
+    host["gpu"] = 78 * GIB + 3 * GIB  # a larger overshoot: its own count, more than a slab
+    assert m._host_capacity(2718) == 2718 - -(-3 * GIB // slot)
 
 
 def test_gpu_room_caps_growth(host):
@@ -113,3 +117,11 @@ def test_unknown_gpu_memory_leaves_the_host_rule(host):
     m, slot = governed(), 21 * 2**20
     host["gpu"] = -1
     assert m._host_capacity(2718) == 2718 + 12 * GIB // slot
+
+
+def test_a_small_gpu_overshoot_still_gives_back_a_whole_slab(host):
+    """HANDOFF 18.18 item 8: 0.5 GiB over the ceiling is ~24 slots, under a slab pool's quarter-slab tolerance;
+    the GPU term asks for a whole slab so the pool actually parks one."""
+    m = governed(capacity=2920)
+    host["gpu"] = 78 * GIB + GIB // 2
+    assert m._host_capacity(2920) <= 2920 - 128

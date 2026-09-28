@@ -584,7 +584,12 @@ class GlmModel:
         if ceiling > 0 and allocated >= 0:
             ours = mx.get_active_memory() + mx.get_cache_memory()
             # floor division: a negative room gives back whole slots rounded up
-            allowed = min(allowed, capacity + (ceiling - max(allocated, ours)) // self.store.expert_bytes)
+            gpu = capacity + (ceiling - max(allocated, ours)) // self.store.expert_bytes
+            if gpu < capacity:
+                # HANDOFF 18.18 item 8: any overshoot pages (0.3-1.2 GiB over held decode at 2.9-3.5 tok/s), and a
+                # slab pool keeps up to a quarter slab of excess, so the GPU term asks for at least a whole slab
+                gpu = min(gpu, capacity - step)
+            allowed = min(allowed, gpu)
         return allowed
 
     def _fit_prefill(self, n: int) -> None:
@@ -648,6 +653,10 @@ class GlmModel:
         for snap in loaded:
             self._add_prefix(snap)
         self.disk = store
+        if loaded and self._prefill_budget is not None:
+            # HANDOFF 18.18 item 8: the preloaded snapshots count against the GPU ceiling before the first request
+            # would fit the capacity (0.37.1 at startup: all processes' GPU memory 91.3 GiB, swap +2.6 GiB)
+            self._fit_memory()
         warm = self.start_warm_set(Path(directory) / "resident-set.json") if WARM_SET else "warm set off"
         return (f"prefix snapshots: {len(loaded)} loaded from {directory} "
                 f"({', '.join(str(len(s.tokens)) for s in loaded) + ' tokens' if loaded else 'none'}), "

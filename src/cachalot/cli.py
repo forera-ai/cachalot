@@ -218,7 +218,9 @@ def cmd_serve(args) -> None:
         family = _family(args)
         model = _load_minimax(args) if family == "minimax" else _load_glm(args)
         if args.snapshot_dir:
-            print(model.attach_snapshot_store(args.snapshot_dir), file=sys.stderr, flush=True)
+            # HANDOFF 18.18 item 8: a preloaded snapshot takes expert slots until it is evicted
+            preload = int(os.environ.get("CACHALOT_SNAPSHOT_PRELOAD", "4"))
+            print(model.attach_snapshot_store(args.snapshot_dir, preload=preload), file=sys.stderr, flush=True)
         default_id = "minimax-m3" if family == "minimax" else "glm-5.3-flash"
         if args.default_top_p is None:
             args.default_top_p = model.generation_defaults().get("top_p", 1.0)

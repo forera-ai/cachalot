@@ -37,7 +37,11 @@ The first block below is new; the blocks after it still hold.
 > - **M1b done (item 7):** Hermes Desktop beside 68 GiB: GPU alloc max 86.4 of 87.0, swap flat, 5.5-8.8 tok/s at
 >   42-49k. Found: a 43-49k conversation's snapshot (5.0-5.7 GiB) fell out of the 5 GiB prefix budget at each short
 >   side request, and three turns re-prefilled for 169-219 s. **0.37.1: budget 8 GiB; the same turn 8.4 s.**
-> - **Version 0.37.1.** 437 tests pass.
+> - **Second Hermes session (item 8):** three long streamed replies at 2.85-3.51 tok/s, but a replay of its dump with
+>   the display asleep decodes them at 5.5-10.7 on 0.37.1 and 0.37.2 alike: the slow window, not memory. What was
+>   memory: startup kept 4 snapshots (one stale 2.5 GiB) plus the 68 GiB pool before any fit (GPU 91.3 GiB, swap
+>   +2.6). **0.37.2:** preload 2, fit after loading, GPU overshoot parks a whole slab: startup 87.2 GiB, swap flat.
+> - **Version 0.37.2.** 438 tests pass.
 
 **Previous block, 0.36.0:**
 
@@ -8371,6 +8375,39 @@ Answers: the model spent most of the session doubting that the attached `@file:`
 attachments), and ran many `wc`/`diff` tool calls to prove it; coherent, tool calls well formed, no runtime fault
 seen (outputs are byte-identical to 0.36.0's by construction).
 
+**8. Hamed's second Hermes Desktop session, on 0.37.1** (18 messages, ~11 minutes: a greeting, a Desktop listing
+through `search_files`, a C# JSON/CSV importer, a 200-word story, a PDF read with `pdftotext` and a request to
+save its text; export `~/Downloads/list-files-on-desktop-folder-20260928.json`, which holds Hamed's personal data:
+do not copy it into the repo; request dump `~/m1b-dump.jsonl`, 9 requests). No side requests this time, so item 7's
+fix was not exercised; every turn reused the conversation (prefill 3.9-17.9 s). Decode: 1.86 (10 tokens, cold), 6.57,
+6.96, **3.51** (554 tokens of C#), 6.62, 5.18, **3.22**, **2.85**, 7.70 tok/s. Every process's GPU memory stood above
+86.0 GiB in 205 of 355 samples (max 88.19), swap flat at 4.5 GiB. The model's last reply said it had saved the text
+file but made no tool call, and the file does not exist: a model fault (claiming an action it did not take), worth
+knowing for Hermes use.
+
+Replaying the dump's nine request bodies in order against the server (`replay.py`, scratch; a clone of the
+snapshot directory; display asleep; T = 1 as in the session, so replies differ):
+
+| server | decode tok/s, requests 0-8 | startup: GPU alloc max, swap | GPU alloc > 87.0 GiB |
+|---|---|---|---|
+| 0.37.1 (4 snapshots preloaded) | 5.7 / 5.5 / 7.2 / 6.6 / 10.5 / 9.0 / 7.0 / 7.4 / 7.2 | 91.3 GiB, **+2.6 GiB**, warning pressure | 26 of 211 |
+| 2 preloaded + slab-rounded GPU term | 7.9 / 5.6 / 7.3 / 6.4 / 10.7 / 5.9 / 7.4 / 7.6 / 7.7 | 88.7 GiB, +0.85 GiB, warning once | 133 of 264 |
+| + a fit after the snapshots load (0.37.2) | startup and request 0 only: 7.9 | **87.2 GiB, swap flat, normal** | — |
+
+**The slow turns were not memory:** both versions decode the same requests at 5.5-10.7 tok/s with the display
+asleep. The three slow ones were the long streamed replies (253-554 tokens) while Hermes Desktop's window was on
+screen and rendering them: 15.7/15.8's slow window (compute, display on, Hermes window visible), not proven here.
+The GPU alloc samples above 87 in the decode phase are MLX's 2 GiB buffer cache refilling after the governor clears
+it before measuring (the alloc swings 85.2 ↔ 87.9 between requests); decode did not slow in the replay, so the
+cache is left as it is. **What was memory is startup:** 0.37.1's 8 GiB prefix budget kept all four preloaded
+snapshots (two 21k-token system blocks; `21907` is a stale Hermes prompt that matched in neither session), and
+they, the 68 GiB pool and the warm set were all resident before the first request's fit.
+
+Shipped (0.37.2): `CACHALOT_SNAPSHOT_PRELOAD` (every server; `serve-minimax.sh` 2), a `_fit_memory` right after the
+preloaded snapshots join the prefix cache (MiniMax only: `_prefill_budget` set), and the GPU term of `_host_capacity`
+asks for at least a whole slab when it is negative (a slab pool keeps a quarter slab of excess, so a smaller ask
+parked nothing; `tests/test_memory_governor.py`). 438 tests pass.
+
 **Shipped.** Budget 68 in `serve-minimax.sh` / `chat-minimax.sh` and `MiniMaxModel`'s default; MLX's wired limit
 the whole working set (`CACHALOT_MLX_WIRED_LIMIT_GIB` default 96, capped by it); startup budget capped at the working
 set − `GPU_RESERVE_GIB` (15.75: 62.0 at the default 77.76, 70.25 at 86; checked with the reserve at 24: "Metal
@@ -8378,8 +8415,10 @@ working set 86.0 GiB: expert budget 68.0 -> 62.0 GiB", 2,928 slots, 109.4 ms) an
 the host embedding; `SlabSlotPool.MAX_SLABS` 27 (larger pools get larger slabs; a 27-slab kernel is tested bit for
 bit). 435 tests pass.
 
-**What remains, ranked.** 1. A second Hermes session on 0.37.1 to confirm no turn re-prefills after a side request
-(with `CACHALOT_SERVER_DUMP` set, so it can be replayed). 2. Whether Hamed makes the
+**What remains, ranked.** 1. M28, now the main Hermes lever: the slow window with Hermes Desktop's window on screen
+(three long replies at 2.85-3.51 against 5.5-10.7 tok/s replayed with the display asleep). Measure the GPU driver's
+counters and WindowServer while Hermes streams a long reply, window visible against hidden. 2. A Hermes session with
+side requests on 0.37.2 (item 7's fix, live). 3. Whether Hamed makes the
 sysctl permanent (a LaunchDaemon running `sysctl iogpu.wired_limit_mb=88064` at boot; his machine, his call).
 3. M28 (screensaver and visible windows as GPU allocations). 4. GLM: G6 + S1c + S1e, and the same working-set
 budget for GLM. 5. M19, M27b, S3-S5.

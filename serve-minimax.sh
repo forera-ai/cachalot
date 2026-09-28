@@ -47,6 +47,9 @@ export CACHALOT_SNAPSHOT_DIR=${CACHALOT_MINIMAX_SNAPSHOT_DIR-$HOME/.cache/cachal
 # is ~2.4 GB. Eight files on disk (~20 GB at most), 8 GiB of snapshots in memory (0.37.1: a 45k-token conversation is 5.2 GiB and must survive a side request).
 export CACHALOT_SNAPSHOT_KEEP=${CACHALOT_SNAPSHOT_KEEP:-8}
 export CACHALOT_GLM_PREFIX_GIB=${CACHALOT_GLM_PREFIX_GIB:-8}
+# 0.37.2: only the two most recently used snapshots are read at startup (a stale 21k-token system block held
+# 2.5 GiB of GPU memory for nothing); the others load from disk when a prompt starts with them
+export CACHALOT_SNAPSHOT_PRELOAD=${CACHALOT_SNAPSHOT_PRELOAD:-2}
 # Since 0.25.0 (HANDOFF 18.6) the expert cache gives slots back as the KV cache grows, so a long context stays below
 # the memory ceiling (CACHALOT_MINIMAX_KV_ALLOWANCE_GIB, default 1.0; -1 turns it off), and a conversation's snapshot
 # is handed to its next turn instead of copied (CACHALOT_MINIMAX_CONSUME_SNAPSHOTS=0 restores the copy).
