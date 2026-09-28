@@ -102,6 +102,8 @@ class _GlmSplitter:
 
     THINK_END = THINK_END
     TOOL_START = TOOL_START
+    # every string that opens a tool-call block; the earliest match wins (MiniMax: with and without its namespace)
+    TOOL_STARTS: tuple[str, ...] = ()
 
     def __init__(self, tokenizer, thinking: bool):
         self.tokenizer = tokenizer
@@ -137,13 +139,15 @@ class _GlmSplitter:
         if self.in_tool_block:
             return d
         start = self.think_end + len(self.THINK_END)
-        rel = text.find(self.TOOL_START, start)
-        if rel >= 0:
+        starts = self.TOOL_STARTS or (self.TOOL_START,)
+        found = [i for i in (text.find(t, start) for t in starts) if i >= 0]
+        if found:
+            rel = min(found)
             d.content = text[self.emitted_content:rel]
             self.emitted_content = rel
             self.in_tool_block = True
             return d
-        safe = max(len(text) - len(self.TOOL_START), self.emitted_content)
+        safe = max(len(text) - max(len(t) for t in starts), self.emitted_content)
         d.content = text[self.emitted_content:safe]
         self.emitted_content = safe
         return d

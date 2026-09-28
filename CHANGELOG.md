@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.39.2 (2026-09-28)
+
+HANDOFF section 18.21 item 7.
+
+### Fixed
+- **MiniMax tool calls opened with a plain `<tool_call>` were lost.** Sampled at temperature 1.0, MiniMax-M3
+  sometimes writes the `<tool_call>` token without its `]<]minimax[>[` namespace token in front (one of the two
+  tool calls in Hamed's Hermes session). The server only opened a tool block on the namespaced form, so the call
+  streamed out as text, Hermes read an empty reply and injected "You just executed tool calls but returned an
+  empty response", and every later turn answered that nudge ("I haven't run any tools for that request..."). The
+  splitter now opens the block on either form (`TOOL_STARTS`); the parser already accepted both. Two tests, one
+  built from the dumped reply.
+
 ## 0.39.1 (2026-09-28)
 
 ### Added

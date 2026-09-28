@@ -54,6 +54,28 @@ def test_splitter_separates_reasoning_content_and_tool_block():
     assert s.in_tool_block
 
 
+def test_splitter_opens_the_tool_block_on_a_plain_tool_call_tag():
+    # HANDOFF 18.21 item 7: the dumped Hermes reply that reached the client as an empty message
+    s = MiniMaxSplitter(_Tok(), thinking=False)
+    pieces = ["Let me look.", "<tool_call>", "\n", NS + "<invoke name=\"terminal\">", NS + "<command>", "ls -la ~/Desktop",
+              NS + "</command>", NS + "</invoke>", "\n", NS + "</tool_call>"]
+    out = [s.push(c) for c in pieces]
+    out.append(s.flush())
+    assert "".join(d.content for d in out) == "Let me look."
+    assert s.in_tool_block
+    calls = parse_minimax_tool_calls(s.text, [{"type": "function", "function": {"name": "terminal", "parameters": {
+        "type": "object", "properties": {"command": {"type": "string"}}}}}])
+    assert calls == [{"type": "function", "function": {"name": "terminal", "arguments": {"command": "ls -la ~/Desktop"}}}]
+
+
+def test_splitter_cuts_before_the_namespace_of_a_namespaced_tool_call():
+    s = MiniMaxSplitter(_Tok(), thinking=False)
+    out = [s.push(c) for c in ["Sure. ", NS, "<tool_call>", "x"]]
+    out.append(s.flush())
+    assert "".join(d.content for d in out) == "Sure. "
+    assert s.in_tool_block
+
+
 def test_causal_mask_is_aligned_to_the_end_of_the_keys():
     mx.random.seed(1)
     q = mx.random.normal((1, 2, 3, 8))

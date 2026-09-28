@@ -44,6 +44,9 @@ TOOL_START = NS + "<tool_call>"
 class MiniMaxSplitter(_GlmSplitter):
     THINK_END = THINK_END
     TOOL_START = TOOL_START
+    # HANDOFF 18.21 item 7: sampled at temperature 1.0 the model sometimes opens a call with a plain-text
+    # `<tool_call>` instead of the namespace token; that call was streamed out as text and Hermes saw an empty reply
+    TOOL_STARTS = (TOOL_START, "<tool_call>")
 
 
 _INVOKE_RE = re.compile(r'<invoke name="([^"]*)">(.*?)</invoke>', re.S)

@@ -37,7 +37,9 @@ The first block below is new; the blocks after it still hold.
 > - **Off by default** (Jev `jev_decide`: opt-in 0.66): the first non-bit-identical speed lever; Hamed's call.
 > - **Studio (0.39.1):** `docs/studio/` shipped (Hamed's Cachalot Studio brief); the Codex brief for these knobs is
 >   `docs/studio/briefs/2026-09-28-runtime-0.39.0.md`. Every UI-affecting runtime change gets such a brief.
-> - **Version 0.39.1.** 443 tests pass.
+> - **0.39.2 fix (item 7):** Hermes's bad answers came from a lost tool call: MiniMax sometimes opens a call with a
+>   plain `<tool_call>` token (no namespace token); the splitter now accepts it. The model and kernels were fine.
+> - **Version 0.39.2.** 445 tests pass.
 
 **Previous block, 0.38.1:**
 
@@ -8403,6 +8405,46 @@ cd /Users/hamedprooshani/Projects/deepseek-v41-mac && CACHALOT_MINIMAX_MISS_DROP
 ```
 
 443 tests pass.
+
+**6. Hamed's first Hermes Desktop session with the switch on** (0.39.0 through Cachalot Studio, no request dump;
+the session export `list-files-in-desktop-folder-4-20260928.json` and the server's `[request]` lines).
+Speed: the 21,328-token system block prefilled in 103.7 s; follow-up prefills 2.3-6.5 s, a 3,512-token one 25.9 s;
+decode 6.6-11.5 tok/s at 21-28k context (a 1,227-token reply at 11.5), 5.7-17.8 misses a token. Hermes's two
+title requests (539 tokens, no shared prefix) prefilled in 55.5 s (a cold unrelated prompt above
+`PREFILL_FULL_TOKENS` 512, so slabs parked: 84 % hits); pointing Hermes's `auxiliary.*` at a hosted provider still
+removes that. Memory (sampled every 10 s): pressure normal throughout except one warning at idle after the last
+reply, swap 5.7 -> 4.9 GiB, all processes' GPU allocation 84-89.7 GiB with the governor pulling it back each time.
+Quality, four defects in seven replies: (a) "What files are in my home directory's Desktop folder? Use a tool."
+ran 1,227 tokens without a tool call until Hamed stopped it (the loop; the text was not kept); (b) the C# request
+announced a version lookup and ended without a tool call or code; (c) a request to read a file and write a copy
+was refused with a muddled reply that mixed in earlier turns ("C# story", "story-collection"); (d) the Desktop
+listing (the retried question, whose tool call was right) said 75 screenshots from May-Sep 2026 against 98 from
+October 2025 to September 2026, left out the folder `X33` and called `$RECYCLE.BIN` a dotfile. **Not attributed
+yet:** one session, sampled at temperature 1.0, no exact-path session on the same prompts. The attribution test:
+the same Hermes prompts with `CACHALOT_SERVER_DUMP` set, then each dumped request replayed several times per arm
+(switch on, off) at the request's own sampling, counting tool calls made, loops and replies stopped by length.
+Until then the switch stays off for Hermes work.
+
+**7. The cause of the bad Hermes answers: a lost tool call (0.39.2).** Hamed ran a second session on the exact path
+(0.39.1, switch off, `CACHALOT_SERVER_DUMP=/tmp/cachalot-requests.jsonl`; export `greeting-20260928.json`) and the
+answers read worse. The dump shows why. The reply to "write a C# code to import json and csv files." (70 tokens)
+was a tool call that began with the `<tool_call>` token (200052) **without** the `]<]minimax[>[` namespace token
+(200058) the model writes before it at other times (the Desktop listing's call, same session). Both are single
+special tokens; the model skipped 200058 in sampling (Hermes sends no temperature, so 1.0 / top_p 0.95).
+`MiniMaxSplitter` opened a tool block only on the namespaced form, so the call streamed out as text; Hermes
+strips `<tool_call>` text and saw an empty reply, recorded the assistant turn as "(empty)" and sent a hidden user
+message "You just executed tool calls but returned an empty response. Please process the tool results above and
+continue with the task." The next three replies answer that nudge and the confusion it left in the history ("I
+haven't run any tools for that request", "your previous C# request isn't being executed (I told you so)"). The
+model itself was fine: the same request replayed greedily from a fresh cache wrote a clean C# importer with the
+shipped kernels and with reference kernels alike (MLX SDPA, plain RMSNorm, host routing, unfused QKV and shared
+expert: `replay.py`, scratch). The rendered prompt matches the checkpoint's template. **Fix:** the splitter takes
+`TOOL_STARTS` (the earliest match wins), MiniMax's is (namespaced, plain); `parse_minimax_tool_calls` already
+stripped the namespace. Replayed through the real tokenizer, the dumped reply now yields the `terminal` call
+(`ls -la ~/Desktop | grep ...`) and no content; the namespaced call and the plain-text summary are unchanged. The
+first session's defects (item 6: a reply that announced a lookup and stopped, a muddled refusal after it) fit
+the same failure; that session had no dump, so this is not proven. Item 6's question about the switch is open but
+nothing in either session points at it. 445 tests pass.
 
 **What is open after this.** 1. Hamed's call on the default, ideally after a Hermes session with the switch on
 (`CACHALOT_SERVER_DUMP` set) and one without, reading answer quality as well as `[request]` lines. 2. A longer
