@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.39.1 (2026-09-28)
+
+### Added
+- `docs/studio/`: the build brief for Cachalot Studio, the desktop app for this runtime
+  (`CODEX-STUDIO-PROMPT.md`, runtime contract as of 0.38.1), and `docs/studio/briefs/2026-09-28-runtime-0.39.0.md`,
+  the Codex brief for 0.39.0's MiniMax miss-substitution knobs (contract edits, UI changes).
+
 ## 0.39.0 (2026-09-28)
 
 HANDOFF section 18.21 (the twentieth MiniMax-M3 speed session).

@@ -35,7 +35,9 @@ The first block below is new; the blocks after it still hold.
 > - **Quality:** KL to exact and paired NLL inside the band of a numerically equivalent change (prefill chunk 1024
 >   against 8192) on three texts; 24/24 checkable tasks either way. Plain drops and threshold 0.25 closed (KL spikes).
 > - **Off by default** (Jev `jev_decide`: opt-in 0.66): the first non-bit-identical speed lever; Hamed's call.
-> - **Version 0.39.0.** 443 tests pass.
+> - **Studio (0.39.1):** `docs/studio/` shipped (Hamed's Cachalot Studio brief); the Codex brief for these knobs is
+>   `docs/studio/briefs/2026-09-28-runtime-0.39.0.md`. Every UI-affecting runtime change gets such a brief.
+> - **Version 0.39.1.** 443 tests pass.
 
 **Previous block, 0.38.1:**
 
