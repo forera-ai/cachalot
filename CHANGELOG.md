@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.39.3 (2026-09-28)
+
+### Documented
+- HANDOFF 18.21 item 8: Hermes compresses early because of `compression.threshold_tokens: 30000` in the Hermes
+  config (the system block alone is 21.3k tokens), and the local summary (3,768 tokens, 583 s) hits Hermes's
+  timeout. Decode at Hermes's 30k context measured: 5.8-6.2 tok/s exact, 7.7 with miss substitution; short
+  prose 13.5-14.0 (no regression against 0.33.0's 12.7-12.9).
+
 ## 0.39.2 (2026-09-28)
 
 HANDOFF section 18.21 item 7.

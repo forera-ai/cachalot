@@ -8446,6 +8446,28 @@ first session's defects (item 6: a reply that announced a lookup and stopped, a 
 the same failure; that session had no dump, so this is not proven. Item 6's question about the switch is open but
 nothing in either session points at it. 445 tests pass.
 
+**8. Hamed's third session (0.39.2, exact, dump on; export `list-files-on-desktop-20260928.json`): clean answers,
+two complaints.** Tool calls, the listing and the C# answer were right. (a) "Lack of context space": Hamed's
+`~/.hermes/config.yaml` has `compression.threshold_tokens: 30000` while Hermes's system block alone is 21,318 tokens,
+so Hermes compressed after ~9k tokens of conversation; the summary ran on Cachalot (`auxiliary.compression.provider:
+auto`), wrote 3,768 tokens in 583 s at 6.5 tok/s, and Hermes gave up at 600 s ("Context compression timed out").
+The fix is in Hermes's config, which is Hamed's: a higher `threshold_tokens` (64k is measured to fit, 18.2) and a
+hosted model for `auxiliary.compression`. (b) "Decode half as fast as two sessions ago (12.9-13.3)": those numbers
+were the terminal chat's prose at short context (18.14 item 9). Measured now, one process an arm, 400 greedy tokens
+(`speed.py`, scratch):
+
+| prompt | exact | switch on (0.20, 4) |
+|---|---|---|
+| prose, short context | 13.5-14.0 tok/s, 8-10 misses a token | 16.1, 5.3 |
+| "write a C# code to import json and csv files.", short context | 7.6, 26.5 | 8.3, 13.2 |
+| the same inside the session's 29,917-token Hermes context | 5.8-6.2, 33-36 | 7.7, 13.5 |
+
+No regression: short prose is faster than 0.33.0's chat. Code routes to far more distinct experts than prose (26
+misses a token at short context against 10), and the Hermes context adds more (33-36) with fewer slots (the KV cache
+and the in-memory snapshots take ~500 of 3,300). The first Hermes session today ran with the switch on, which is
+why it decoded 9.4-11.5 tok/s: at the Hermes context the switch is +24-33 %, the largest single lever measured for
+Hermes decode.
+
 **What is open after this.** 1. Hamed's call on the default, ideally after a Hermes session with the switch on
 (`CACHALOT_SERVER_DUMP` set) and one without, reading answer quality as well as `[request]` lines. 2. A longer
 quality gate if it is to become the default: long-context texts (the switch has only been measured at 2k), a
