@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.37.1 (2026-09-28)
+
+HANDOFF section 18.18 item 7 (Hamed's Hermes Desktop session on 0.37.0).
+
+### Fixed
+- **An agent conversation's snapshot no longer falls out of the MiniMax server's prefix cache when a short side
+  request arrives.** MiniMax's KV cache is ~120 KiB a token, so a 43-49k-token Hermes conversation's snapshot
+  (5.0-5.7 GiB) alone exceeded the 5 GiB in-memory budget; each of Hermes's short side requests (1,871, 736 and 801
+  tokens) evicted it, and the next turn re-prefilled everything after the system block: 169, 211 and 219 s, ~600 s
+  of a 33-minute session. `serve-minimax.sh` now keeps 8 GiB (`CACHALOT_GLM_PREFIX_GIB`). Checked through
+  `stream()`: 45,000 tokens, a 1,871-token side request, then the next turn reused 45,064 tokens and prefilled in
+  8.4 s; normal pressure, no swap. `tests/test_prefix_budget.py` replays the session's order.
+
+### Measured
+- 0.37.0 beside Hermes Desktop (M1b): every process's GPU memory peaked at 86.4 GiB against the 87.0 ceiling,
+  available memory at 6 %, swap flat, pressure normal. The governor parked to 2,521 slots for every long prefill
+  and decoded at 2,654-3,186; decode 5.5-8.8 tok/s at 42-49k context, 8.0 tok/s on a 1,469-token reply.
+
 ## 0.37.0 (2026-09-28)
 
 HANDOFF section 18.18.

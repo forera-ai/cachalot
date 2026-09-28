@@ -34,8 +34,10 @@ The first block below is new; the blocks after it still hold.
 > - **Embedding in host memory (item 1):** the 0.5 GiB table is a map of the checkpoint (bit-identical rows):
 >   +24 slots of GPU room; with other apps holding 7.3 GiB of GPU memory at the default working set, decode -5 %.
 > - **Slabs:** pools above 27 slabs grow their slabs (Metal's 31 buffers per kernel).
-> - **Next:** M1b with Hamed on 0.37.0 (Hermes Desktop beside a 68 GiB cache: does the governor park, and how far?).
-> - **Version 0.37.0.** 435 tests pass.
+> - **M1b done (item 7):** Hermes Desktop beside 68 GiB: GPU alloc max 86.4 of 87.0, swap flat, 5.5-8.8 tok/s at
+>   42-49k. Found: a 43-49k conversation's snapshot (5.0-5.7 GiB) fell out of the 5 GiB prefix budget at each short
+>   side request, and three turns re-prefilled for 169-219 s. **0.37.1: budget 8 GiB; the same turn 8.4 s.**
+> - **Version 0.37.1.** 437 tests pass.
 
 **Previous block, 0.36.0:**
 
@@ -8336,6 +8338,39 @@ weather tool is called (`finish=tool_calls`, `{"city": "Paris"}`), MLX 78.7 GiB 
 term binds (all processes' alloc 85.5-87.7 against the 87.0 ceiling). More needs the ceiling higher still, and the
 host has ~8 GiB left at 68, so 88064 is about the useful maximum on this Mac with Hamed's usual apps open.
 
+**7. M1b: Hamed's Hermes Desktop session on 0.37.0** (2026-09-28, sysctl set, `./serve-minimax.sh`, one Hermes
+session of 26 messages over ~33 minutes: a greeting, a Desktop listing through the terminal tool, then two repo docs
+attached with `@file:` and asked about, answered with many terminal tool calls; the export is
+`~/Downloads/list-home-directory-desktop-files-20260928.json`). Memory logged every 2 s beside it (990 samples):
+**every process's GPU memory peaked at 86.44 GiB against the 87.0 ceiling, available memory at 6 % at the lowest,
+swap flat at 3.23 GiB, pressure normal throughout.** The warm set (2,974 experts, 61.3 GiB) came back in 9.3 s.
+
+| what | numbers |
+|---|---|
+| first request, the 21,328-token system block (the disk snapshot's 21,907 did not match: Hermes changed) | prefill 103.7 s (206 tok/s) |
+| follow-ups reusing the conversation (26-2,122 new tokens) | 4.1-16.5 s |
+| decode at 42-49k context (tool-call turns, 45-927 tokens) | 5.5-8.8 tok/s, 83-94 % hits |
+| a 1,871-token side request (reused 157), 1,469 tokens | 8.02 tok/s, 3,186 slots |
+| capacity | 2,521 slots for every long prefill, 2,654-3,186 at decode |
+| **re-prefills after a side request** | **169.2, 211.1, 218.7 s** (22,606-28,185 tokens each) |
+| a re-prefill after Hermes shortened the history (43,611 → 41,519 tokens, reused 23,784) | 134.6 s |
+
+Server time: ~987 s of prefill and ~904 s of decode. **The three re-prefills (~600 s, ~30 % of the session) were a
+defect:** MiniMax's KV cache is ~120 KiB a token, so the 43-49k conversation's snapshot (5.0-5.7 GiB) alone was over
+`serve-minimax.sh`'s 5 GiB in-memory prefix budget. `_add_prefix` drops the oldest snapshots until the total fits
+(keeping at least one), so each short side request (1,871, 736, 801 tokens: Hermes's auxiliary work, pointed at
+the local model) evicted the conversation, and the next turn could only reuse the 21,318-token system block from
+disk. **Fixed in 0.37.1:** the budget is 8 GiB (a conversation up to ~65k tokens plus a side request). Checked
+(`side.py`, scratch): a 45,000-token prompt (prefill 257.9 s), a 1,871-token side request, then the next turn:
+**reused 45,064, prefill 8.4 s**; prefix 5.45 GiB, 2,920 slots, normal pressure, no swap, GPU alloc max 85.9.
+`tests/test_prefix_budget.py` replays the order (the old 5 GiB loses the conversation). Hermes's `auxiliary.*` on a
+hosted provider would also avoid the side requests (Hamed's call).
+
+Answers: the model spent most of the session doubting that the attached `@file:` text matched the files on disk
+(Hermes had replaced an earlier reply with a "[PRIOR CONTEXT — for reference only ...]" summary and truncated the
+attachments), and ran many `wc`/`diff` tool calls to prove it; coherent, tool calls well formed, no runtime fault
+seen (outputs are byte-identical to 0.36.0's by construction).
+
 **Shipped.** Budget 68 in `serve-minimax.sh` / `chat-minimax.sh` and `MiniMaxModel`'s default; MLX's wired limit
 the whole working set (`CACHALOT_MLX_WIRED_LIMIT_GIB` default 96, capped by it); startup budget capped at the working
 set − `GPU_RESERVE_GIB` (15.75: 62.0 at the default 77.76, 70.25 at 86; checked with the reserve at 24: "Metal
@@ -8343,9 +8378,8 @@ working set 86.0 GiB: expert budget 68.0 -> 62.0 GiB", 2,928 slots, 109.4 ms) an
 the host embedding; `SlabSlotPool.MAX_SLABS` 27 (larger pools get larger slabs; a 27-slab kernel is tested bit for
 bit). 435 tests pass.
 
-**What remains, ranked.** 1. M1b (Hamed, today if he can): a Hermes Desktop session on 0.37.0 with the sysctl set,
-`memlog`-style sampling and the `[request]` lines' `mlx=` and `memory fit:`: how far does the governor park with
-Hermes Desktop's window and its memory beside 68 GiB, and is decode still ahead of 62? 2. Whether Hamed makes the
+**What remains, ranked.** 1. A second Hermes session on 0.37.1 to confirm no turn re-prefills after a side request
+(with `CACHALOT_SERVER_DUMP` set, so it can be replayed). 2. Whether Hamed makes the
 sysctl permanent (a LaunchDaemon running `sysctl iogpu.wired_limit_mb=88064` at boot; his machine, his call).
 3. M28 (screensaver and visible windows as GPU allocations). 4. GLM: G6 + S1c + S1e, and the same working-set
 budget for GLM. 5. M19, M27b, S3-S5.
