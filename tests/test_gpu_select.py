@@ -87,6 +87,26 @@ def test_slab_kernels_match_codes_qmv_bit_for_bit():
     assert np.array_equal(np.array(again.view(mx.uint16)), np.array(got[1:3].view(mx.uint16)))
 
 
+def test_a_large_pool_keeps_to_the_kernel_buffer_limit_and_its_last_slab_still_works():
+    """Metal binds at most 31 buffers: a pool that would need more than MAX_SLABS slabs gets larger slabs, and a
+    kernel over MAX_SLABS slabs builds and reads the last one bit for bit (budgets above 66 GiB)."""
+    assert len(SlabSlotPool(_sizes(), 4 * SlabSlotPool.MAX_SLABS + 1, slab_slots=4).slabs) <= SlabSlotPool.MAX_SLABS
+    pool = SlabSlotPool(_sizes(), 2 * SlabSlotPool.MAX_SLABS, slab_slots=2)
+    assert len(pool.slabs) == SlabSlotPool.MAX_SLABS and pool.slab_slots == 2
+    rng = np.random.default_rng(4)
+    last = pool.capacity - 1
+    for i in (0, last):
+        _fill(pool, i, rng)
+    act = lambda up, gate: up * mx.sigmoid(gate)  # noqa: E731
+    x = mx.array(rng.standard_normal((1, D)).astype(np.float32)).astype(mx.bfloat16)
+    got = SlabExperts(pool, _fmt())(x, mx.array(np.array([last, 0], np.int32)), act)
+    for j, i in enumerate((last, 0)):
+        s = pool._slots[i]
+        g, u = codes_qmv.gate_up(x, _typed(s, "w1", INTER, D), _typed(s, "w3", INTER, D))
+        want = codes_qmv.qmv(act(u, g), *_typed(s, "w2", D, INTER))
+        assert np.array_equal(np.array(got[j:j + 1].view(mx.uint16)), np.array(want.view(mx.uint16))), j
+
+
 def test_a_missing_expert_slot_gives_zero_rows_and_leaves_the_others_alone():
     """HANDOFF 18.14: slot -1 (a miss the host has not read yet) yields zero rows from the slab kernels, so a
     speculative layer output leaves the expert out; the hit experts' rows are unchanged."""

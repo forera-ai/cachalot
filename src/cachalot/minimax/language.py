@@ -20,6 +20,7 @@ from dataclasses import dataclass
 
 import mlx.core as mx
 import mlx.nn as nn
+import numpy as np
 
 
 @dataclass
@@ -59,6 +60,52 @@ class ModelArgs:
 FAST_NORM = os.environ.get("CACHALOT_MINIMAX_FAST_NORM", "1") != "0"
 FUSE_QKV = os.environ.get("CACHALOT_MINIMAX_FUSE_QKV", "1") != "0"
 FUSE_SHARED = os.environ.get("CACHALOT_MINIMAX_FUSE_SHARED", "1") != "0"
+# HANDOFF 18.18: the quantized embedding table lives in host memory (a token needs one row of it), so its 0.5 GiB
+# of GPU memory goes to ~24 more expert slots; 0 keeps it on the GPU
+HOST_EMBED = os.environ.get("CACHALOT_MINIMAX_HOST_EMBED", "1") != "0"
+
+
+class HostEmbedding(nn.Module):
+    """A QuantizedEmbedding whose table is kept in numpy: the rows a call needs are gathered on the host and
+    dequantized on the GPU by the same `mx.dequantize` QuantizedEmbedding.__call__ runs, so the output is
+    bit-identical. The indices must be host values (token ids), which every MiniMax caller passes."""
+
+    def __init__(self, q: nn.QuantizedEmbedding, mapped: dict | None = None) -> None:
+        super().__init__()
+        # numpy attributes are not module parameters: nothing here is on the GPU
+        arrays = {"weight": np.array(q["weight"])}
+        for name in ("scales", "biases"):
+            if q.get(name) is not None:
+                arrays[name] = np.array(q[name].view(mx.uint16))
+        # read-only maps of the checkpoint's own bytes, when they hold the same table: file pages macOS can
+        # reclaim, so the table counts as available memory too (the governor keeps 8 GiB available)
+        if mapped is not None and set(mapped) == set(arrays) and all(
+                mapped[k].shape == arrays[k].shape and np.array_equal(mapped[k].view(arrays[k].dtype), arrays[k])
+                for k in arrays):
+            arrays = {k: mapped[k].view(arrays[k].dtype) for k in arrays}
+        self.mapped = all(isinstance(a, np.memmap) or isinstance(a.base, np.memmap) for a in arrays.values())
+        self.table = _HostTable(arrays)
+        self.group_size, self.bits, self.mode = q.group_size, q.bits, q.mode
+
+    def __call__(self, x):
+        idx = np.array(x)
+        t = self.table.arrays
+        biases = mx.array(t["biases"][idx]).view(mx.bfloat16) if "biases" in t else None
+        return mx.dequantize(
+            mx.array(t["weight"][idx]),
+            scales=mx.array(t["scales"][idx]).view(mx.bfloat16),
+            biases=biases,
+            group_size=self.group_size,
+            bits=self.bits,
+            mode=self.mode,
+        )
+
+
+class _HostTable:
+    """Holds numpy arrays out of nn.Module's parameter tree (a plain dict attribute would be walked)."""
+
+    def __init__(self, arrays: dict) -> None:
+        self.arrays = arrays
 # HANDOFF 18.3: one decode token's attention through cachalot.minimax.gqa_decode (each KV head read once for its 16
 # query heads) once the cache holds at least this many tokens; below ~3k MLX's kernel is as fast. 0 turns it off.
 GQA_DECODE_MIN = int(os.environ.get("CACHALOT_MINIMAX_GQA_DECODE_MIN", "4096"))

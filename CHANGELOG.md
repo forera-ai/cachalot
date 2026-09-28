@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.37.0 (2026-09-28)
+
+HANDOFF section 18.18.
+
+### Changed
+- **MiniMax-M3 caches 68 GiB of experts when macOS's GPU working set is raised to 86 GiB.** With
+  `sudo sysctl iogpu.wired_limit_mb=88064` (Hamed's setting; it resets at reboot) Metal's recommended working set
+  is 86 GiB instead of 77.76, and the budget can grow past 18.17's 62 GiB ceiling. Agent turns through the server
+  path, same `ids_hash` in every arm: **decode 104.7 → 93.0 / 93.6 ms a token (-11 %), turns 53.1 → 46.7 / 47.0 s
+  (-12 %), short prefills 23.0 → 19.9 s (-13 %)**; 64 GiB 99.0-99.2, 66 GiB 97.8. 70 GiB grew swap and 72 hit
+  warning pressure, so 68 is where the GPU ceiling and host memory meet. Long contexts (8k → 33k through one
+  conversation) stay at normal pressure with no swap (peak 75.3 GiB), decode -1 to -7.5 %.
+- The scripts pass `--expert-budget-gib 68` and the whole working set as MLX's wired limit
+  (`CACHALOT_MLX_WIRED_LIMIT_GIB` 96, capped at the working set). Without the sysctl the startup budget is capped
+  at the working set minus 15.75 GiB (`CACHALOT_MINIMAX_GPU_RESERVE_GIB`), i.e. 62 GiB as before; the startup
+  reserve of available memory is 16 GiB (was 20).
+- **MiniMax's embedding table lives in host memory.** A token needs one row of the 0.5 GiB quantized table, so it
+  is read from a map of the checkpoint's own bytes and dequantized by the same `mx.dequantize` (bit-identical).
+  At the default working set, with other apps holding 7.3 GiB of GPU memory, this kept the governor from parking
+  a slab: decode 113.0 / 112.1 → 107.1 / 104.1 ms, turns 58.2 / 60.5 → 54.5 / 52.9 s (direct benchmark, same
+  `ids_hash`). `CACHALOT_MINIMAX_HOST_EMBED=0` keeps it on the GPU.
+- Slab pools grow their slabs instead of their count past 27 slabs (Metal binds at most 31 buffers per kernel), so
+  any budget builds the GPU-select kernels.
+
+### Found
+- A lower available-memory floor (6 GiB instead of 8) changes nothing at 68: the GPU ceiling binds first.
+
 ## 0.36.0 (2026-09-28)
 
 HANDOFF section 18.17.

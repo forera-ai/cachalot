@@ -19,7 +19,7 @@ export CACHALOT_MODEL_FAMILY=minimax
 # a direct read is ~4 % faster per miss and the non-read part of a token ~5 ms shorter (HANDOFF 18.5); prefill
 # is unchanged. CACHALOT_PAGE_CACHE=1 restores the old path.
 export CACHALOT_PAGE_CACHE=${CACHALOT_PAGE_CACHE:-0}
-export CACHALOT_MLX_WIRED_LIMIT_GIB=${CACHALOT_MLX_WIRED_LIMIT_GIB:-80}
+export CACHALOT_MLX_WIRED_LIMIT_GIB=${CACHALOT_MLX_WIRED_LIMIT_GIB:-96}
 export PYTHONPATH=src
 export MLX_METAL_FAST_SYNCH=${MLX_METAL_FAST_SYNCH:-1}
 # The routed experts come from the bias-free bank (HANDOFF 18.4): one contiguous 22.2 MiB record per expert, the
@@ -41,7 +41,7 @@ export CACHALOT_SNAPSHOT_DIR=${CACHALOT_MINIMAX_SNAPSHOT_DIR-$HOME/.cache/cachal
 
 exec ~/venvs/deepseek-v41/bin/python -m cachalot.cli chat \
     --model "$CACHALOT_MODEL_PATH" \
-    --expert-budget-gib 62 \
+    --expert-budget-gib 68 \
     --max-seq-len 131072 \
     --max-new-tokens 2000 \
     --temperature 1.0 \

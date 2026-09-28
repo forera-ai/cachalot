@@ -1,6 +1,7 @@
 # Cachalot — Engineering Handoff
 
-**Authoritative state as of 2026-09-28 (sixteenth MiniMax session), after the session that found the GPU's
+**Authoritative state as of 2026-09-28 (seventeenth MiniMax session), after the session that raised the GPU's working
+set to 86 GiB with Hamed and grew MiniMax's expert cache to 68 GiB (section 18.18), the one that found the GPU's
 shared memory ceiling and made MiniMax's memory governor count every process's GPU memory (section 18.17), the one
 that rewrote MiniMax's bank as slot images, grew its expert cache to 62 GiB and let the first turn after a restart start at once (section
 18.16), the one that grew MiniMax's expert
@@ -20,6 +21,23 @@ that gave it a bias-free expert bank (18.4), the one that gave it a second drive
 kernel (18.3), the one that cut its per-token overhead and measured it to 64k (18.2), the one that made it faster
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
+
+> ## Start here (2026-09-28, 0.37.0): a larger GPU working set, and MiniMax caches 68 GiB of experts
+>
+> - **Hamed's setting (section 18.18 item 2):** `sudo sysctl iogpu.wired_limit_mb=88064` raises Metal's recommended
+>   working set from 77.76 to 86.0 GiB. **It resets at reboot**; without it MiniMax starts at 62 GiB on its own
+>   (`CACHALOT_MINIMAX_GPU_RESERVE_GIB` 15.75). Making it permanent is Hamed's call.
+> - **Budget 68 GiB (items 3-5):** through the server path, same `ids_hash`, decode **104.7 → 93.0 / 93.6 ms
+>   (-11 %)**, turns 53.1 → 46.7 / 47.0 s (-12 %), short prefills -13 %. 70 grew swap, 72 hit warning pressure;
+>   at 68 the GPU ceiling (86 + 1 GiB) and host memory meet (a 6 GiB available floor changes nothing). 8k → 33k
+>   contexts: normal pressure, no swap, decode -1 to -7.5 %. Server tool call checked.
+> - **Embedding in host memory (item 1):** the 0.5 GiB table is a map of the checkpoint (bit-identical rows):
+>   +24 slots of GPU room; with other apps holding 7.3 GiB of GPU memory at the default working set, decode -5 %.
+> - **Slabs:** pools above 27 slabs grow their slabs (Metal's 31 buffers per kernel).
+> - **Next:** M1b with Hamed on 0.37.0 (Hermes Desktop beside a 68 GiB cache: does the governor park, and how far?).
+> - **Version 0.37.0.** 435 tests pass.
+
+**Previous block, 0.36.0:**
 
 > ## Start here (2026-09-28, 0.36.0): the GPU's memory is shared, and MiniMax's governor now counts all of it
 >
@@ -8236,6 +8254,101 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.18 MiniMax-M3: an 86 GiB GPU working set, a 68 GiB expert cache, and the embedding off the GPU — 2026-09-28 (0.37.0)
+
+Hamed's brief (prompt v65, the seventeenth "MiniMax-M3 as fast as possible at the same quality"): confirm caveman,
+Jev and the codebase-memory graph first, then plan, build, measure and document. Tools: caveman active (session
+hook), Jev answered (`jev_verify` through TypeSafe, 0.99), the graph ready (5,850 nodes, one partial file outside
+the code). 0.36.0 committed and pushed, tree clean. Filler: a fresh 5.09 MB concatenation of the repo's tracked
+`.md` and `.py` files (scratch, @1,300,000; the stress run @2,600,000), so absolute numbers and `ids_hash`
+(-5547788358133786130, equal in every arm below) differ from 18.17's. Every arm slept the display
+(`pmset displaysleepnow`) with a 2 s logger of `kern.memorystatus_level`, pressure, swap and the GPU driver's
+"Alloc"/"In use" beside it (`memlog.py`, scratch). Idle apps held **7.3 GiB of GPU memory** today (Claude desktop,
+Mail, Preview, iStatistica; 18.17 saw 5.0), so at 62 GiB the governor was already parking.
+
+The plan, from 18.17: the reads run at the two drives' wall (2.9 ms a 21.1 MiB miss) and every byte lever is
+closed, so only more slots move the wait, and slots sat at the GPU ceiling. Two ways to more slots: take GPU memory
+from the non-expert side, or raise the ceiling (a system setting, so Hamed's call: asked at the start, he ran
+`sudo sysctl iogpu.wired_limit_mb=88064`). Non-expert weights by kind: attention 2.62 GiB, shared experts 1.32,
+lm_head 0.50, **embedding 0.50** (one row a token), dense MLPs 0.28, routers 0.05. KV is 120 KiB a token (0.23 GiB
+at 2k, 2.9 at 25k).
+
+**1. The embedding in host memory (shipped).** `language.HostEmbedding` holds the quantized table (weight, scales,
+biases) as numpy and, per call, gathers the rows on the host and runs the same `mx.dequantize` as
+`QuantizedEmbedding.__call__`: bit-identical (`tests/test_minimax_host_embed.py`). The arrays are read-only maps of
+the checkpoint's own bytes (`model._mapped_tensors`, checked equal at load), so the pages are file cache macOS can
+reclaim and count as available memory. Every caller passes host token ids (`np.array(x)` costs nothing); with
+`DECODE_ASYNC_OUT` (off) a token would be a GPU result and this would sync. At the default working set, direct
+benchmark (`minimax_followup_turns.py`), ABAB:
+
+| arm | slots at decode | decode ms | turns s | short prefills s |
+|---|---|---|---|---|
+| embedding on the GPU | 2,800 (a slab parked: GPU alloc 81.8) | 113.0 / 112.1 | 58.2 / 60.5 | 25.7 / 28.2 |
+| host embedding | 2,928 | 107.1 / 104.1 | 54.5 / 52.9 | 23.7 / 22.9 |
+
+The gain is a threshold: the 0.5 GiB kept the governor from parking a 128-slot slab beside today's 7.3 GiB of other
+apps. Alone at 18.17's 5.0 GiB it would be ~24 slots, ~1 %. (The second host arm may have started as Hamed ran the
+sysctl; the first pair is clean.) `CACHALOT_MINIMAX_HOST_EMBED=0` keeps the table on the GPU.
+
+**2. The sysctl.** `iogpu.wired_limit_mb` 0 → 88064: `mx.device_info()["max_recommended_working_set_size"]` 77.76 →
+**86.0 GiB**, so `gpu_ceiling()` becomes 87.0 on its own. The direct benchmark cannot show larger budgets: it parks
+for its 2k prompt (`PREFILL_FULL_TOKENS` 512) and never unparks (62 and 66 both decoded at 2,928 slots, 106.4 and
+103.5 ms). 18.17's scratch `stream_agent.py` was rebuilt (the same turns through `GlmModel.stream`, whose first
+decode tokens run `_fit_memory`; each prompt is the previous prompt, the reply and N new filler tokens).
+
+**3. The budget sweep, server path** (`CACHALOT_MLX_WIRED_LIMIT_GIB=86`, startup reserve 12 so the load is not
+capped):
+
+| budget | slots: load → 2k prefill → decode | decode ms | turns s | min available | swap | GPU alloc max |
+|---|---|---|---|---|---|---|
+| 62 | 3,009 → 2,928 → 2,928 | 104.8 | 53.3 | 10 % | flat | 81.8 |
+| 64 | 3,106 → 2,928 → 3,056 | 99.2 | 50.0 | 8 % | flat | 84.1 |
+| 66 | 3,203 → 3,082 → 3,082 | 97.8 / 97.9 | 49.2 / 49.3 | 6 % | flat | 85.3-85.7 |
+| 68 | 3,300 → 3,053 → 3,186 | **93.3** | **46.9** | 7 % | flat | 85.7 |
+| 70 | 3,397 → 3,128 → 3,128 | 97.6 | 49.3 | 6 % | **+0.43 GiB** | 87.7 |
+| 72 | 3,494 → 3,228 → 3,228 | 96.0 | 49.6 | 3 %, **warning** | **+0.96 GiB** | 89.9 |
+
+70 and 72 over-commit at load, before any fit runs. Repeated with the shippable startup reserve of 16 GiB,
+interleaved 68 / 62 / 68 / 64: **68 at 93.0 / 93.6 ms, 46.7 / 47.0 s, short prefills 19.9 / 20.0 s; 62 at 104.7,
+53.1, 23.0; 64 at 99.0, 49.8, 21.3** (-11 % decode, -12 % turns, -13 % short prefills at 68). No swap growth, pressure
+normal, 9-12 % available at the lowest. With the shipped defaults (no environment): 95.1 ms, 47.9 s, 3,186 slots.
+
+**4. Long contexts** (`stress.py`, scratch: one conversation grown 8,192 → 16,534 → 24,876 → 33,218 tokens
+through `stream()`, 150 greedy tokens each), 68 against 62:
+
+| context | 68: prefill s / decode ms / slots / peak GiB | 62: prefill s / decode ms / slots / peak GiB |
+|---|---|---|
+| 8,192 | 30.1 / **141.4** / 3,053 / 74.4 | 30.1 / 146.1 / 2,928 / 73.4 |
+| 16,534 | 37.4 / **129.8** / 3,053 / 75.3 | 37.2 / 140.3 / 2,928 / 72.8 |
+| 24,876 | 45.2 / **135.3** / 2,920 / 73.6 | 45.0 / 139.1 / 2,800 / 71.1 |
+| 33,218 | 53.1 / **99.3** / 2,920 / 74.6 | 52.9 / 100.4 / 2,800 / 72.0 |
+
+Normal pressure, no swap in either; the governor parks to 52 GiB's 2,521 slots for every 8k chunk and gives back
+more as the KV cache grows. One run each: -1 to -7.5 % decode, prefill unchanged.
+
+**5. The server.** `serve-minimax.sh` (scratch snapshot directory) at the shipped 68: a 396-token prompt at T = 0
+without thinking answers in prose (as 18.16 saw: the model), 10.67 tok/s cold; with `reasoning_effort` "high" the
+weather tool is called (`finish=tool_calls`, `{"city": "Paris"}`), MLX 78.7 GiB of 79.1 peak.
+
+**6. What 68 is bounded by.** At 68 the decode capacity stops at 3,186 of 3,300 slots. A 6 GiB available floor
+(`CACHALOT_HOST_AVAILABLE_FLOOR_GIB`) against 8, 6 / 8 / 6: 3,186 slots in all three, 93.8 / 95.2 / 94.4 ms: the GPU
+term binds (all processes' alloc 85.5-87.7 against the 87.0 ceiling). More needs the ceiling higher still, and the
+host has ~8 GiB left at 68, so 88064 is about the useful maximum on this Mac with Hamed's usual apps open.
+
+**Shipped.** Budget 68 in `serve-minimax.sh` / `chat-minimax.sh` and `MiniMaxModel`'s default; MLX's wired limit
+the whole working set (`CACHALOT_MLX_WIRED_LIMIT_GIB` default 96, capped by it); startup budget capped at the working
+set − `GPU_RESERVE_GIB` (15.75: 62.0 at the default 77.76, 70.25 at 86; checked with the reserve at 24: "Metal
+working set 86.0 GiB: expert budget 68.0 -> 62.0 GiB", 2,928 slots, 109.4 ms) and at available − 16 GiB (was 20);
+the host embedding; `SlabSlotPool.MAX_SLABS` 27 (larger pools get larger slabs; a 27-slab kernel is tested bit for
+bit). 435 tests pass.
+
+**What remains, ranked.** 1. M1b (Hamed, today if he can): a Hermes Desktop session on 0.37.0 with the sysctl set,
+`memlog`-style sampling and the `[request]` lines' `mlx=` and `memory fit:`: how far does the governor park with
+Hermes Desktop's window and its memory beside 68 GiB, and is decode still ahead of 62? 2. Whether Hamed makes the
+sysctl permanent (a LaunchDaemon running `sysctl iogpu.wired_limit_mb=88064` at boot; his machine, his call).
+3. M28 (screensaver and visible windows as GPU allocations). 4. GLM: G6 + S1c + S1e, and the same working-set
+budget for GLM. 5. M19, M27b, S3-S5.
 
 ### 18.17 MiniMax-M3: the GPU's shared memory ceiling, and a governor that counts every process — 2026-09-28 (0.36.0)
 

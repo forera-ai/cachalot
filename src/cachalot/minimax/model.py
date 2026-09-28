@@ -171,12 +171,33 @@ PREFILL_PREDICT_STATS = {"predicted": 0, "actual": 0, "overlap": 0}
 # prefills at PREFILL_BUDGET_GIB (the capacity is parked down before it and taken back at the first decode token),
 # and the startup budget leaves STARTUP_RESERVE_GIB of what macOS reports available for everything else.
 PREFILL_BUDGET_GIB = float(os.environ.get("CACHALOT_MINIMAX_PREFILL_BUDGET_GIB", "52"))
-STARTUP_RESERVE_GIB = float(os.environ.get("CACHALOT_MINIMAX_STARTUP_RESERVE_GIB", "20"))
+STARTUP_RESERVE_GIB = float(os.environ.get("CACHALOT_MINIMAX_STARTUP_RESERVE_GIB", "16"))
+# HANDOFF 18.18: the startup budget also leaves this much of Metal's recommended working set for the non-expert
+# weights, the 272 transient slots, the KV cache and other processes' GPU memory. 62 GiB was the most the default
+# working set (77.76 GiB on 96 GiB) held without paging (18.17); with `sysctl iogpu.wired_limit_mb=88064` (86 GiB)
+# the budget may be 68 (70 swapped), and a restart that loses the sysctl falls back to 62 instead of over-allocating.
+GPU_RESERVE_GIB = float(os.environ.get("CACHALOT_MINIMAX_GPU_RESERVE_GIB", "15.75"))
 # HANDOFF 18.16: 62 GiB of slots decode 15 % faster than 56 (agent benchmark, same tokens) and 64 ran out of Metal
 # memory in a 2,048-token chunk at full capacity, so from 0.35.0 chunks above PREFILL_FULL_TOKENS already give back
 # slots (linearly down to PREFILL_BUDGET_GIB at 8,192): a 2,048-token chunk prefills at ~60.7 GiB of 62.
 PREFILL_FULL_TOKENS = int(os.environ.get("CACHALOT_MINIMAX_PREFILL_FULL_TOKENS", "512"))
 
+
+
+def _mapped_tensors(model_path: Path, prefix: str) -> dict[str, np.ndarray]:
+    """Read-only numpy maps of the checkpoint tensors named `prefix` + name (HANDOFF 18.18), by their byte range."""
+    from cachalot.storage.index import read_safetensors_header
+
+    out = {}
+    for shard in sorted(Path(model_path).glob("model-*.safetensors")):
+        header, data_start = read_safetensors_header(shard)
+        for name, meta in header.items():
+            if name.startswith(prefix) and meta["dtype"] in ("U32", "BF16"):
+                a, b = meta["data_offsets"]
+                dtype = np.uint32 if meta["dtype"] == "U32" else np.uint16
+                out[name[len(prefix):]] = np.memmap(shard, dtype=dtype, mode="r", offset=data_start + a,
+                                                    shape=tuple(meta["shape"]))
+    return out
 
 class MiniMaxModel(GlmModel):
     # the fused RMSNorm rounds differently (HANDOFF 18.2): snapshots written without it do not match
@@ -190,7 +211,7 @@ class MiniMaxModel(GlmModel):
         self,
         model_path,
         *,
-        expert_budget_gib: float = 62.0,
+        expert_budget_gib: float = 68.0,
         wired_limit_gib: float | None = None,
         load_workers: int = 8,
         heartbeat_seconds: float = 0.5,
@@ -228,11 +249,12 @@ class MiniMaxModel(GlmModel):
         # the same memory rules as GLM (HANDOFF 17.1): a capped MLX buffer cache, a wired set
         mx.set_cache_limit(int(float(os.environ.get("CACHALOT_GLM_MLX_CACHE_GIB", "2")) * 1024**3))
         if wired_limit_gib is None:
-            wired_limit_gib = float(os.environ.get("CACHALOT_MLX_WIRED_LIMIT_GIB", "80"))
-        if wired_limit_gib > 0:
-            from cachalot.config import device_memory
+            # capped at Metal's recommended working set below: by default the whole of it (HANDOFF 18.18)
+            wired_limit_gib = float(os.environ.get("CACHALOT_MLX_WIRED_LIMIT_GIB", "96"))
+        from cachalot.config import device_memory
 
-            _, recommended = device_memory()
+        _, recommended = device_memory()
+        if wired_limit_gib > 0:
             mx.set_wired_limit(int(min(wired_limit_gib * 1024**3, recommended)))
 
         n_experts = self.config.num_local_experts
@@ -244,6 +266,11 @@ class MiniMaxModel(GlmModel):
                 print(f"[minimax] {available / 1024**3:.1f} GiB available: expert budget {expert_budget_gib:.1f} "
                       f"-> {capped:.1f} GiB", flush=True)
                 expert_budget_gib = capped
+        gpu_cap = recommended / 1024**3 - GPU_RESERVE_GIB
+        if recommended > 0 and expert_budget_gib > gpu_cap:
+            print(f"[minimax] Metal working set {recommended / 1024**3:.1f} GiB: expert budget {expert_budget_gib:.1f} "
+                  f"-> {gpu_cap:.1f} GiB", flush=True)
+            expert_budget_gib = gpu_cap
         budget = int(expert_budget_gib * 1024**3)
         self._prefill_budget = int(min(PREFILL_BUDGET_GIB, expert_budget_gib) * 1024**3)
         # HANDOFF 18.12: with the codes kernel, the slots live in slabs so decode can pick its experts on the GPU
@@ -325,6 +352,10 @@ class MiniMaxModel(GlmModel):
                 layer.self_attn.fuse()
             if _lang.FUSE_SHARED:
                 (layer.block_sparse_moe.shared_experts if layer.is_sparse else layer.mlp).fuse()
+        inner = self.model.model
+        if _lang.HOST_EMBED and isinstance(inner.embed_tokens, nn.QuantizedEmbedding) \
+                and not self.config.tie_word_embeddings:
+            inner.embed_tokens = _lang.HostEmbedding(inner.embed_tokens, _mapped_tensors(self.model_path, "model.embed_tokens."))
         mx.clear_cache()
 
         from transformers import AutoTokenizer

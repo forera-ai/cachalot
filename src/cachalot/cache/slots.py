@@ -196,6 +196,9 @@ class SlabSlotPool(ExpertSlotPool):
     """
 
     PAGE = 16384
+    # a slab kernel binds every slab plus its slot index, input and outputs; Metal allows 31 buffers, and 28
+    # slabs failed to build (HANDOFF 18.17 item 2), so a larger pool gets larger slabs instead of more of them
+    MAX_SLABS = 27
 
     def __init__(self, tensor_sizes: dict[str, int], n_slots: int, *, slab_slots: int = 128,
                  verbose: bool = False) -> None:
@@ -204,7 +207,7 @@ class SlabSlotPool(ExpertSlotPool):
         self.tensor_sizes = dict(tensor_sizes)
         self.tensor_names = tuple(self.tensor_sizes)
         self.slot_bytes = sum(self.tensor_sizes.values())
-        self.slab_slots = int(slab_slots)
+        self.slab_slots = max(int(slab_slots), -(-n_slots // self.MAX_SLABS))
         self.offsets: dict[str, int] = {}
         pos = 0
         for name in self.tensor_names:

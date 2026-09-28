@@ -4,7 +4,7 @@
 # Same port and API as serve.sh (DeepSeek V4.1 Flash) and serve-glm.sh (GLM-5.3-Flash): an agent harness
 # switches models by restarting the server. Model id here: minimax-m3. Only one runtime runs at a time.
 #
-# The routed experts (7,296 x 23.6 MiB, 3-bit; 22.2 MiB each read from the bias-free bank, 22.4 MiB a slot with 4-bit bias codes since 0.29.0) stream from the internal SSD into a 62 GiB wired cache (0.35.0; parked down to 52 for long prefills and under memory pressure; read from slot-image records, 21.1 MiB each, since 0.35.0); the
+# The routed experts (7,296 x 23.6 MiB, 3-bit; 22.2 MiB each read from the bias-free bank, 22.4 MiB a slot with 4-bit bias codes since 0.29.0) stream from the internal SSD into a 68 GiB wired cache (0.37.0, with `sudo sysctl iogpu.wired_limit_mb=88064`; 62 without it; parked down to 52 for long prefills and under memory pressure; read from slot-image records, 21.1 MiB each, since 0.35.0); the
 # rest of the model (6.0 GiB) stays resident. Text only (the conversion has no vision tower or MTP).
 # MiniMax Sparse Attention runs as full causal attention (exact to 2,048 tokens). HANDOFF section 18.
 #
@@ -26,7 +26,7 @@ export CACHALOT_MODEL_FAMILY=minimax
 # a direct read is ~4 % faster per miss and the non-read part of a token ~5 ms shorter (HANDOFF 18.5); prefill
 # is unchanged. CACHALOT_PAGE_CACHE=1 restores the old path.
 export CACHALOT_PAGE_CACHE=${CACHALOT_PAGE_CACHE:-0}
-export CACHALOT_MLX_WIRED_LIMIT_GIB=${CACHALOT_MLX_WIRED_LIMIT_GIB:-80}
+export CACHALOT_MLX_WIRED_LIMIT_GIB=${CACHALOT_MLX_WIRED_LIMIT_GIB:-96}
 export PYTHONPATH=src
 export MLX_METAL_FAST_SYNCH=${MLX_METAL_FAST_SYNCH:-1}
 # The routed experts come from the bias-free bank (HANDOFF 18.4): one contiguous 22.2 MiB record per expert, the
@@ -54,7 +54,7 @@ export CACHALOT_GLM_PREFIX_GIB=${CACHALOT_GLM_PREFIX_GIB:-5}
 # MiniMax's generation_config: temperature 1.0, top_p 0.95
 exec ~/venvs/deepseek-v41/bin/python -m cachalot.cli serve \
     --model "$CACHALOT_MODEL_PATH" \
-    --expert-budget-gib 62 \
+    --expert-budget-gib 68 \
     --max-seq-len 131072 \
     --port 8011 \
     --model-id minimax-m3 \
