@@ -52,6 +52,64 @@ SPEC_AFTER_DEMAND = int(os.environ.get("CACHALOT_MINIMAX_SPEC_AFTER_DEMAND", "0"
 # 2 (default): also run layer i+1's hit experts and layer i+2's attention and routing on the speculative output and
 # read layer i+2's predicted misses too (-3 % against 1; 3 was +1.7 %)
 SPEC_DEPTH = int(os.environ.get("CACHALOT_MINIMAX_SPEC_DEPTH", "2"))
+# HANDOFF 18.19: the routing after the gate matmul (sigmoid, correction bias, top-k, weights, slot lookup) as one
+# kernel instead of ~12 dependent ones on the path to the layer's experts; bit-identical. -0.65 ms a token in one
+# process, nothing measurable through the server path, so off by default. An int so TF_ALTERNATE can flip it.
+FUSED_ROUTE = int(os.environ.get("CACHALOT_MINIMAX_FUSED_ROUTE", "0"))
+
+_ROUTE_TAIL = """
+    // One threadgroup of E threads. Expert t's selection score and its rank among all E: MLX's argpartition of
+    // -score is its stable merge sort, so the larger score comes first and a tie goes to the lower index. The top K
+    // are written in rank order, their weights summed in order (as MLX's sum over four), divided, scaled and cast.
+    const uint t = thread_position_in_threadgroup.x;
+    const int E = meta[0];
+    const int K = meta[1];
+    const int layer = meta[2];
+    threadgroup float neg[256];
+    threadgroup float sig[256];
+    threadgroup int top[8];
+    const float x = raw[t];
+    const float y = 1 / (1 + metal::exp(metal::abs(x)));  // MLX's Sigmoid
+    const float s = (x < 0) ? y : 1 - y;
+    const float me = -(s + bias[t]);
+    neg[t] = me;
+    sig[t] = s;
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    int rank = 0;
+    for (int j = 0; j < E; ++j) {
+        const float o = neg[j];
+        rank += (o < me || (o == me && j < int(t))) ? 1 : 0;
+    }
+    if (rank < K) top[rank] = int(t);
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    if (t == 0) {
+        float sum = sig[top[0]];
+        for (int r = 1; r < K; ++r) sum += sig[top[r]];
+        const float den = sum + 1e-20f;
+        for (int r = 0; r < K; ++r) {
+            inds[r] = uint(top[r]);
+            weights[r] = static_cast<bfloat16_t>((sig[top[r]] / den) * scale[0]);
+            slots[r] = table[layer * E + top[r]];
+        }
+    }
+"""
+_route_tail = None
+
+
+def route_tail(raw: mx.array, bias: mx.array, table: mx.array, layer: int, k: int, scale: float):
+    """`raw` the gate's float32 output [1, 1, E]; `bias` float32 [E]; `table` int32 [layers, E]. Returns the
+    routed indices [1, 1, k] (uint32), their bfloat16 weights [1, 1, k] and slots [k] (int32), bit for bit what
+    `_route`'s MLX ops give."""
+    global _route_tail
+    if _route_tail is None:
+        _route_tail = mx.fast.metal_kernel(name="minimax_route_tail", input_names=["raw", "bias", "table", "meta", "scale"],
+                                           output_names=["inds", "weights", "slots"], source=_ROUTE_TAIL)
+    e = raw.shape[-1]
+    meta = mx.array([e, k, layer], dtype=mx.int32)
+    return _route_tail(inputs=[raw.reshape(-1), bias, table, meta, mx.array([scale], mx.float32)],
+                       grid=(e, 1, 1), threadgroup=(e, 1, 1),
+                       output_shapes=[(1, 1, k), (1, 1, k), (k,)],
+                       output_dtypes=[mx.uint32, mx.bfloat16, mx.int32])
 
 
 def _slot_base(n_slabs: int, slab_slots: int, record_bytes: int) -> str:
@@ -173,6 +231,7 @@ class GpuSelectDecoder:
         self.table = self.store.track_slots(len(self.layers), model.config.num_local_experts)
         self.experts = SlabExperts(self.store.pool, model.slot_format)
         self._gpu_table, self._version = None, -1
+        self._bias = {}
         self.miss_layers = 0
         self.hit_layers = 0
         self.spec_predicted = 0
@@ -188,13 +247,20 @@ class GpuSelectDecoder:
     def _route(self, i, layer, r) -> dict:
         moe = layer.block_sparse_moe
         xn = layer.post_attention_layernorm(r)
-        scores, orig = moe.route_scores(xn)
         k = moe.num_experts_per_tok
-        inds = mx.argpartition(-scores, kth=k - 1, axis=-1)[..., :k]
-        weights = mx.take_along_axis(orig, inds, axis=-1)
-        weights = weights / (mx.sum(weights, axis=-1, keepdims=True) + 1e-20)
-        weights = (weights * moe.routed_scaling_factor).astype(xn.dtype)
-        slots = self._slot_table()[i][inds.reshape(-1)]
+        if FUSED_ROUTE and xn.dtype == mx.bfloat16 and k <= 8 and moe.gate.weight.shape[0] <= 256:
+            bias = self._bias.get(i)
+            if bias is None:
+                bias = self._bias[i] = moe.e_score_correction_bias.astype(mx.float32)
+            inds, weights, slots = route_tail(moe.gate(xn.astype(mx.float32)), bias, self._slot_table(), i, k,
+                                              moe.routed_scaling_factor)
+        else:
+            scores, orig = moe.route_scores(xn)
+            inds = mx.argpartition(-scores, kth=k - 1, axis=-1)[..., :k]
+            weights = mx.take_along_axis(orig, inds, axis=-1)
+            weights = weights / (mx.sum(weights, axis=-1, keepdims=True) + 1e-20)
+            weights = (weights * moe.routed_scaling_factor).astype(xn.dtype)
+            slots = self._slot_table()[i][inds.reshape(-1)]
         rec = {"i": i, "r": r, "xn": xn, "inds": inds, "weights": weights, "slots": slots, "k": k, "pred": None}
         t = i + PREFETCH_AHEAD
         if PREFETCH_TOPK > 0 and t < len(self.layers) and self.layers[t].is_sparse:

@@ -1,6 +1,7 @@
 # Cachalot — Engineering Handoff
 
-**Authoritative state as of 2026-09-28 (seventeenth MiniMax session), after the session that raised the GPU's working
+**Authoritative state as of 2026-09-28 (eighteenth MiniMax session), after the session that measured where MiniMax's
+remaining time goes and shipped two bit-identical kernel fusions switched off (section 18.19), the one that raised the GPU's working
 set to 86 GiB with Hamed and grew MiniMax's expert cache to 68 GiB (section 18.18), the one that found the GPU's
 shared memory ceiling and made MiniMax's memory governor count every process's GPU memory (section 18.17), the one
 that rewrote MiniMax's bank as slot images, grew its expert cache to 62 GiB and let the first turn after a restart start at once (section
@@ -21,6 +22,22 @@ that gave it a bias-free expert bank (18.4), the one that gave it a second drive
 kernel (18.3), the one that cut its per-token overhead and measured it to 64k (18.2), the one that made it faster
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
+
+> ## Start here (2026-09-28, 0.38.0): MiniMax's remaining time is the drives; two fusions ship switched off
+>
+> - **Where a token goes (section 18.19 item 1):** at 68 GiB, 2k context, display asleep: 115.6 ms = 72.8 ms of
+>   read wait (23 misses x 21.1 MiB at ~6.5 GiB/s, the two drives' wall) + 42.8 ms of GPU and host work.
+> - **Closed on measurements (items 2-5):** the GQA decode kernel is matrix-multiply bound (staging-free fragments
+>   bit-identical, no faster); INT8 KV (S3) cannot speed attention and buys ~2.5 % at 45k; prefill attention at 45k
+>   is at 17 TFLOPS; partial disk-block reuse would have saved 1,966 tokens.
+> - **Built, off by default (items 6-8):** `CACHALOT_MINIMAX_FUSED_ROUTE=1` (routing tail as one kernel) and
+>   `CACHALOT_MINIMAX_COMPILE_SWIGLU=1` (compiled activation): bit-identical, -0.65 / -1.25 ms in one process,
+>   nothing through the server path (99.3 / 95.5 ms against 94.9 / 94.7, same `ids_hash`).
+> - **Next:** M28 with Hamed (the visible Hermes window, the largest Hermes lever), M19 (a Thunderbolt mirror drive,
+>   his purchase), GLM G6 + S1c + S1e.
+> - **Version 0.38.0.** 439 tests pass.
+
+**Previous block, 0.37.0:**
 
 > ## Start here (2026-09-28, 0.37.0): a larger GPU working set, and MiniMax caches 68 GiB of experts
 >
@@ -8260,6 +8277,72 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.19 MiniMax-M3: where the remaining time goes, and two bit-identical fusions that do not move the server — 2026-09-28 (0.38.0)
+
+Hamed's brief (the eighteenth "MiniMax-M3 as fast as possible at the same quality"): confirm caveman, Jev and the
+codebase-memory graph first, then plan, build, measure and document. Tools: caveman active (session hook), Jev
+answered (`jev_verify` through TypeSafe), the graph ready (5,894 nodes, one partial file outside the code). 0.37.2
+pushed, tree clean, `iogpu.wired_limit_mb` 88064. Other processes held 6.9 GiB of GPU memory at idle (Hermes Desktop
+open). Filler: 18.18's 5.09 MB concatenation @1,300,000. Every arm slept the display with `memlog.py` beside it
+(scratch instruments copied from 18.18: `arm.sh`, `stream_agent.py`, `memlog.py`, plus a new `tf.sh` wrapping
+`glm_prefill_timeline.py` with `CACHALOT_MINIMAX_PREFILL_FULL_TOKENS=4096` so the direct path keeps 3,300 slots).
+
+**1. Where a token goes at 68 GiB.** `glm_prefill_timeline.py 2048`, `TF_DECODE=200`: **115.6 ms = 72.8 store wait
++ 42.8 other**, 23.0 misses, 3.2 ms of wait a miss, hit rate 0.899. With speculative reads (14 loads a token, 12.6
+used) the wait still equals the bytes over the drives' rate (23 x 21.1 MiB / ~6.5 GiB/s): the reads are bandwidth-
+bound and the speculation only reorders them. cProfile (`TF_PROFILE=1`): the main thread spends ~33 ms a token
+blocked in `np.array` on GPU results and ~7 ms building graphs; the host is not the limit.
+
+**2. The GQA decode kernel is matrix-multiply bound.** `minimax_gqa_decode.py`: 4.3 / 10.5 / 17.5 ms for 60 layers at
+2k / 24k / 45k (~300 GB/s of KV at 45k). Threadgroups per KV head 20-120: none faster than 32 (40 gave 15.6 at 45k,
+12.2 at 24k: not better overall). Loading K (as S^T = K Q^T) and V fragments straight from device memory into
+`thread_elements()` instead of staging through threadgroup memory: **bit-identical** outputs and partials
+(`gqa2.py`, scratch), 17.4 → 18.9 (K) / 17.5 (V) ms at 45k. Ablations at 45k: QK alone 8.3 ms, PV ~7.8, softmax
+~1.5: ~89 GFLOP a token at ~5 TFLOPS fp32 with only 16 query rows per KV head. 18.3 already tried Q in registers.
+Closed.
+
+**3. INT8 KV (S3) priced and closed.** The attention kernel is compute-bound, so halving the KV bytes does not speed
+it; at 45k the saving is ~2.6 GiB (~125 slots, ~2.5 % of a token) against a quality risk.
+
+**4. Prefill attention at long context.** `mx.fast.scaled_dot_product_attention`, 64 query / 4 KV heads, causal:
+2,048 queries over 45,056 keys 177.6 ms a layer (10.7 s for 60 layers, 17.0 TFLOPS), 256 over 45k 27.7 ms, 2,048
+over 8,192 28.6 ms (19.2 TFLOPS). A 2k tool result at Hermes's 45k context spends ~11 s in attention alone, near the
+GPU's peak: fundamental.
+
+**5. Partial reuse of on-disk system blocks.** The disk store reuses a block only when the whole block is a prefix
+(`SnapshotStore.fetch`). Hermes's two stored blocks (21,318 and 21,907 tokens) share only their first 1,966 tokens:
+Hermes inserted a section ("Active Hermes profile...") there, and the rest reappears shifted, which a causal KV
+cannot reuse. Not built.
+
+**6. The routing tail as one kernel (`CACHALOT_MINIMAX_FUSED_ROUTE`, off).** After MLX's 8-bit gate matmul,
+`gpu_select.route_tail` does sigmoid (MLX's formula), the correction bias, a rank-based top-4 that reproduces
+MLX's argpartition (a stable merge sort of -score: larger first, ties to the lower index), the weights summed in
+order (MLX sums four floats sequentially: 0 of 200,000 cases differ), divided, scaled, cast, and the slot lookup,
+in one threadgroup of 128 threads. Bit-identical on 3,000 random cases with ties (test: 400). A 57-layer chain of
+gate + routing: 4.54 → 3.14 ms. In the model, `TF_ALTERNATE` swapped pairs (300 tokens each): per-arm NLL and
+misses equal across both processes; "other" 41.3 against 41.95 ms mean (-0.65).
+
+**7. The activation compiled (`CACHALOT_MINIMAX_COMPILE_SWIGLU`, off).** `swiglu_oai` (routed and shared experts)
+through `mx.compile(shapeless=True)`: bit-identical at decode and prefill shapes (120 cases), a 114-call chain
+2.9 → 1.1 ms. In the model, swapped pairs: "other" 40.1 against 41.35 ms mean (-1.25), medians -1.5, same NLL.
+
+**8. Through the server path: nothing.** `stream_agent.py` at 68, ABAB, both switches on against both off:
+
+| arm | decode ms | turns s | short prefills s | `ids_hash` |
+|---|---|---|---|---|
+| on | 99.3 / 95.5 | 49.5 / 48.1 | 20.85 / 20.56 | -5547788358133786130 |
+| off | 94.9 / 94.7 | 48.0 / 47.7 | 20.66 / 20.41 | same |
+
+Same outputs, pressure normal, swap flat. The 1.9 ms seen in one process does not show against the run-to-run noise
+of this path (the first "on" arm is the outlier; the second is inside the noise). Shipped as switches, off, at
+Hamed's call; 439 tests pass.
+
+**What remains, ranked.** 1. M28 with Hamed: the long streamed replies with Hermes Desktop's window on screen
+(2.85-3.51 tok/s against 5.5-10.7 replayed with the display asleep); the largest Hermes lever. 2. M19: a
+Thunderbolt NVMe for the mirror (reads are ~63 % of a token and bandwidth-bound; only more bandwidth or more slots
+move them). 3. GLM: G6 + S1c + S1e and a working-set budget. 4. M27b, S4, S5. A future A/B of the two switches
+must use the server path (`stream_agent.py`), not only `TF_ALTERNATE`.
 
 ### 18.18 MiniMax-M3: an 86 GiB GPU working set, a 68 GiB expert cache, and the embedding off the GPU — 2026-09-28 (0.37.0)
 

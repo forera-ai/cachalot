@@ -245,3 +245,28 @@ def test_slab_kernels_with_pair_slots_match_codes_qmv_bit_for_bit():
         g, u = codes_qmv.gate_up(x, typed("w1", INTER, D), typed("w3", INTER, D))
         want = codes_qmv.qmv(act(u, g), *typed("w2", D, INTER))
         assert mx.array_equal(got[j:j + 1], want).item(), j
+
+
+def test_the_fused_routing_tail_matches_the_mlx_ops_bit_for_bit():
+    from cachalot.minimax.gpu_select import route_tail
+
+    rng = np.random.default_rng(3)
+    E, K, layers = 128, 4, 6
+    table = mx.array(rng.integers(-1, 3000, size=(layers, E)).astype(np.int32))
+    bias = mx.array((rng.standard_normal(E) * 0.05).astype(np.float32))
+    for it in range(400):
+        raw = (rng.standard_normal((1, 1, E)) * [0.5, 2, 6, 20][it % 4]).astype(np.float32)
+        if it % 10 == 0:
+            raw = np.round(raw * 2) / 2  # ties in the selection score
+        raw = mx.array(raw)
+        layer = it % layers
+        scores = mx.sigmoid(raw)
+        sel = scores + bias
+        inds = mx.argpartition(-sel, kth=K - 1, axis=-1)[..., :K]
+        w = mx.take_along_axis(scores, inds, axis=-1)
+        w = ((w / (mx.sum(w, axis=-1, keepdims=True) + 1e-20)) * 2.0).astype(mx.bfloat16)
+        slots = table[layer][inds.reshape(-1)]
+        got = route_tail(raw, bias, table, layer, K, 2.0)
+        for a, b in zip(got, (inds, w, slots)):
+            assert a.dtype == b.dtype and a.shape == b.shape
+            assert mx.array_equal(a, b).item()

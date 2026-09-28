@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.38.0 (2026-09-28)
+
+HANDOFF section 18.19 (the eighteenth MiniMax-M3 speed session).
+
+### Added (off by default)
+- **`CACHALOT_MINIMAX_FUSED_ROUTE=1`:** MiniMax decode's routing after the gate matmul (sigmoid, correction bias,
+  top-4 in MLX's stable-sort order, weights, slot lookup) as one Metal kernel instead of ~12. Bit-identical
+  (`tests/test_gpu_select.py`, 400 random cases with ties; the same NLL and misses per arm in the model).
+- **`CACHALOT_MINIMAX_COMPILE_SWIGLU=1`:** the clamped SwiGLU's seven elementwise ops through `mx.compile`
+  (bit-identical at decode and prefill shapes).
+- In one process (`TF_ALTERNATE`, swapped pairs, 2k context, 68 GiB) they cut the non-read part of a decode token
+  by 0.65 and 1.25 ms; through the server path (agent turns, ABAB) decode was 99.3 / 95.5 ms against 94.9 / 94.7
+  with the same `ids_hash`: no measurable gain, so both stay off.
+
+### Measured and closed
+- Decode read wait is the drives' bandwidth (misses x 21.1 MiB / ~6.5 GiB/s); speculative reads only reorder it.
+- The GQA decode kernel is limited by its matrix multiplies (~5 TFLOPS fp32 at 45k); fragments loaded straight
+  from device memory are bit-identical and no faster; more or fewer threadgroups no faster.
+- INT8 KV (S3): no attention speedup (compute-bound), ~125 slots at 45k (~2.5 %), a quality risk: closed.
+- Prefill attention at 45k context runs at 17 TFLOPS in MLX's kernel (a 2k tool result: ~11 s of attention).
+- Partial reuse of on-disk system blocks: Hermes's two stored blocks share only their first 1,966 tokens.
+
 ## 0.37.2 (2026-09-28)
 
 HANDOFF section 18.18 item 8 (Hamed's second Hermes Desktop session, replayed from its dump).

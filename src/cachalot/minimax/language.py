@@ -151,11 +151,28 @@ class GemmaRMSNorm(nn.Module):
         return (x * (1.0 + self.weight.astype(mx.float32))).astype(ot)
 
 
-def swiglu_oai(x_gate, x_up, alpha: float, limit: float):
-    """(clamp(up)+1) * gate*sigmoid(alpha*gate), gate clamped from above."""
+def _swiglu_oai(x_gate, x_up, alpha: float, limit: float):
     gate = mx.minimum(x_gate, limit)
     up = mx.clip(x_up, -limit, limit)
     return (up + 1.0) * (gate * mx.sigmoid(gate * alpha))
+
+
+# HANDOFF 18.19: the activation's elementwise ops as one compiled kernel (mx.compile keeps every intermediate's dtype,
+# so the output is bit-identical). -1.25 ms a token in one process, nothing measurable through the server path, so
+# off by default; an int so TF_ALTERNATE can flip it.
+COMPILE_SWIGLU = int(os.environ.get("CACHALOT_MINIMAX_COMPILE_SWIGLU", "0"))
+_swiglu_compiled: dict = {}
+
+
+def swiglu_oai(x_gate, x_up, alpha: float, limit: float):
+    """(clamp(up)+1) * gate*sigmoid(alpha*gate), gate clamped from above."""
+    if not COMPILE_SWIGLU:
+        return _swiglu_oai(x_gate, x_up, alpha, limit)
+    fn = _swiglu_compiled.get((alpha, limit))
+    if fn is None:
+        fn = _swiglu_compiled[(alpha, limit)] = mx.compile(
+            lambda g, u: _swiglu_oai(g, u, alpha, limit), shapeless=True)
+    return fn(x_gate, x_up)
 
 
 
