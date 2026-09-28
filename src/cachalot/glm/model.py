@@ -34,6 +34,10 @@ from cachalot.third_party.mlx_vlm.models.glm5_next.language import Glm5NextMoE, 
 
 # the resident expert set survives a restart (HANDOFF 18.2); CACHALOT_WARM_SET=0 turns it off
 WARM_SET = os.environ.get("CACHALOT_WARM_SET", "1") != "0"
+# HANDOFF 18.16 (M27): a request no longer waits for the whole warm set; it stops the reads (one batch at most)
+# and the rest is read back after the request, while idle. 0 restores the wait. An int, so TF_ALTERNATE-style
+# scripts can flip it.
+WARM_SET_YIELD = int(os.environ.get("CACHALOT_WARM_SET_YIELD", "1"))
 
 _NP_DTYPE = {"F32": np.float32, "F16": np.float16, "BF16": np.uint16, "U32": np.uint32, "I32": np.int32,
              "U8": np.uint8, "I64": np.int64}
@@ -587,16 +591,30 @@ class GlmModel:
         # oldest first, so the preload keeps their recency order; only the newest that fit
         keys = keys[-self.store.capacity:]
         entries = [self.expert_index[k] for k in keys]
+        self._warm_pending = entries
+        cancel = threading.Event()
 
         def run():
             t0 = time.perf_counter()
-            n = self.store.preload(entries, reserve_fraction=0.0)
+            n = self._read_warm_set(cancel)
             self._notify(f"warm set: {n} experts ({n * self.store.expert_bytes / 2**30:.1f} GiB) "
-                         f"read back in {time.perf_counter() - t0:.1f}s")
+                         f"read back in {time.perf_counter() - t0:.1f}s"
+                         f"{'; the rest after the request' if cancel.is_set() else ''}")
 
+        self._warm_cancel = cancel
         self._warm_thread = threading.Thread(target=run, daemon=True, name="warm-set")
         self._warm_thread.start()
         return f"warm set: reading {len(entries)} experts back in the background"
+
+    def _read_warm_set(self, cancel: threading.Event) -> int:
+        """Preload what is left of the warm set into free slots; it is done unless `cancel` stopped it."""
+        pending = getattr(self, "_warm_pending", None)
+        if not pending:
+            return 0
+        n = self.store.preload(pending, reserve_fraction=0.0, cancel=cancel)
+        if not cancel.is_set():
+            self._warm_pending = None
+        return n
 
     # -- idle-time warming (HANDOFF 18.8) ------------------------------------------------------------------
     # After a request, while the server waits for the next one (an agent's tool, a user typing), the resident
@@ -612,13 +630,22 @@ class GlmModel:
         return self.store.warm([self.expert_index[k] for k in ranked], cancel)
 
     def _start_idle_warm(self) -> None:
-        if not self.IDLE_WARM:
+        if not self.IDLE_WARM and not getattr(self, "_warm_pending", None):
             return
         cancel = threading.Event()
 
         def run():
             if cancel.wait(self.IDLE_WARM_DELAY):
                 return
+            if getattr(self, "_warm_pending", None):
+                # M27: the warm set a request interrupted, first
+                t0 = time.perf_counter()
+                n = self._read_warm_set(cancel)
+                if n:
+                    self._notify(f"warm set: {n} more experts in {time.perf_counter() - t0:.1f}s"
+                                 f"{' (cancelled)' if cancel.is_set() else ''}")
+                if cancel.is_set() or not self.IDLE_WARM:
+                    return
             t0 = time.perf_counter()
             read, _ = self.warm_now(cancel)
             if read:
@@ -636,8 +663,11 @@ class GlmModel:
             self._idle_warm = None
 
     def _wait_warm_set(self) -> None:
+        """Before a request: stop the startup warm set's reads (M27; WARM_SET_YIELD=0 waits for all of them)."""
         thread = getattr(self, "_warm_thread", None)
         if thread is not None:
+            if WARM_SET_YIELD:
+                self._warm_cancel.set()
             thread.join()
             self._warm_thread = None
 
@@ -804,6 +834,7 @@ class GlmModel:
             self._busy = True
             try:
                 self._stop_idle_warm()
+                self._wait_warm_set()
                 s0 = self.store.stats()
                 cache = self.new_cache()
                 t0 = time.perf_counter()

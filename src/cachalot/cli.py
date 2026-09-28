@@ -147,7 +147,7 @@ def _load_minimax(args):
     from cachalot.minimax.model import MiniMaxModel
 
     print(f"cachalot {__version__}: loading MiniMax-M3 from {args.model}", file=sys.stderr, flush=True)
-    budget = args.expert_budget_gib or 56.0
+    budget = args.expert_budget_gib or 62.0
     model = MiniMaxModel(args.model, expert_budget_gib=budget, load_workers=max(8, args.io_workers), verbose=args.verbose)
     model.max_seq_len = args.max_seq_len
     return model

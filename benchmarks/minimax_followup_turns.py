@@ -111,5 +111,5 @@ for i, n in enumerate(SHORT, 1):
     print(f"TURN {i} prefill={n} {dt:.2f}s misses={miss} decode {ms:.1f} ms/token misses/token {mpt:.1f} "
           f"ids_head={ids[:6]}{predicted()}{idle()}", flush=True)
 print(f"RESULT short_prefill_total_s={sum(pre_s):.2f} decode_mean_ms={statistics.mean(dec_ms):.1f} "
-      f"turns_total_s={sum(pre_s) + sum(dec_ms) * D / 1000:.1f} ids_hash={hash(tuple(all_ids))}", flush=True)
+      f"turns_total_s={sum(pre_s) + sum(dec_ms) * D / 1000:.1f} slots={m.store.capacity} ids_hash={hash(tuple(all_ids))}", flush=True)
 m.close()

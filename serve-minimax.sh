@@ -4,7 +4,7 @@
 # Same port and API as serve.sh (DeepSeek V4.1 Flash) and serve-glm.sh (GLM-5.3-Flash): an agent harness
 # switches models by restarting the server. Model id here: minimax-m3. Only one runtime runs at a time.
 #
-# The routed experts (7,296 x 23.6 MiB, 3-bit; 22.2 MiB each read from the bias-free bank, 22.4 MiB a slot with 4-bit bias codes since 0.29.0) stream from the internal SSD into a 56 GiB wired cache (0.34.0: parked down to 52 for long prefills and under memory pressure); the
+# The routed experts (7,296 x 23.6 MiB, 3-bit; 22.2 MiB each read from the bias-free bank, 22.4 MiB a slot with 4-bit bias codes since 0.29.0) stream from the internal SSD into a 62 GiB wired cache (0.35.0; parked down to 52 for long prefills and under memory pressure; read from slot-image records, 21.1 MiB each, since 0.35.0); the
 # rest of the model (6.0 GiB) stays resident. Text only (the conversion has no vision tower or MTP).
 # MiniMax Sparse Attention runs as full causal attention (exact to 2,048 tokens). HANDOFF section 18.
 #
@@ -33,7 +33,7 @@ export MLX_METAL_FAST_SYNCH=${MLX_METAL_FAST_SYNCH:-1}
 # biases rebuilt exactly from 2-bit codes; the internal checkpoint holds only the non-expert weights since 0.23.0.
 # Same outputs, 6 % fewer bytes, ~9 % less read wait per token. The download on the X10Pro is the full original.
 export CACHALOT_MINIMAX_BANK=${CACHALOT_MINIMAX_BANK-$HOME/MiniMax-M3-coded-bank}
-# Mirror striping (HANDOFF 18.3-18.5): the tail 13 % (10 % before 0.24.0's direct reads) of each expert's weight pieces comes from the bank's copy on
+# Mirror striping (HANDOFF 18.3-18.5; a tail-only mirror since 0.35.0, 18.16): the tail 13 % (10 % before 0.24.0's direct reads) of each expert's weight pieces comes from the bank's copy on
 # the X10Pro at the same time as the rest from the internal SSD. Off when the X10Pro is not mounted;
 # CACHALOT_MINIMAX_MIRROR= (empty) turns it off.
 MIRROR=${CACHALOT_MINIMAX_MIRROR-/Volumes/X10Pro/models/MiniMax-M3-coded-bank}
@@ -54,7 +54,7 @@ export CACHALOT_GLM_PREFIX_GIB=${CACHALOT_GLM_PREFIX_GIB:-5}
 # MiniMax's generation_config: temperature 1.0, top_p 0.95
 exec ~/venvs/deepseek-v41/bin/python -m cachalot.cli serve \
     --model "$CACHALOT_MODEL_PATH" \
-    --expert-budget-gib 56 \
+    --expert-budget-gib 62 \
     --max-seq-len 131072 \
     --port 8011 \
     --model-id minimax-m3 \

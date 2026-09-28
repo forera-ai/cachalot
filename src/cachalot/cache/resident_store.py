@@ -322,6 +322,7 @@ class ResidentExpertStore:
         *,
         max_experts: int | None = None,
         reserve_fraction: float = 0.25,
+        cancel: threading.Event | None = None,
     ) -> int:
         """
         Admit a recorded hot set as residents before the first prompt arrives.
@@ -342,6 +343,8 @@ class ResidentExpertStore:
 
         Returns the number of experts admitted. Hit and miss counters are not
         touched; see `preloaded_experts`, `preload_bytes` and `preload_seconds`.
+        `cancel` is checked between batches of reads (one per load worker), so
+        a request that sets it waits for one batch at most (HANDOFF 18.16, M27).
         """
         if not entries:
             return 0
@@ -355,6 +358,8 @@ class ResidentExpertStore:
         batch = max(1, self._load_pool._max_workers)
 
         for start in range(0, len(entries), batch):
+            if cancel is not None and cancel.is_set():
+                break
             chunk: list[tuple[ExpertEntry, ExpertSlot]] = []
             with self._lock:
                 if len(self._items) + self._reserved >= room:

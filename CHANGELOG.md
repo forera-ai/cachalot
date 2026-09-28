@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.35.0 (2026-09-28)
+
+HANDOFF section 18.16.
+
+### Changed
+- **MiniMax-M3 reads its experts from a slot-image bank (M24).** Each record now holds exactly what a slot holds
+  (one byte per weight group indexing a per-projection table of (scale, bias) pairs, then the weights): 21.11 MiB
+  instead of 22.16, byte-identical outputs (checked against the original download). Agent benchmark with the
+  display asleep, three runs each: **decode 126.9 → 120.5 ms a token (-5.0 %)**, turns -3.3 %, same `ids_hash`.
+  The head goes through a scratch buffer (`CACHALOT_MINIMAX_SLOT_HEAD_SCRATCH`, default 1): read straight into the
+  slab it cost 3.33 instead of 2.84 ms a miss. `heads.zst` shrank from 4.0 to 3.2 GiB.
+  `benchmarks/minimax_coded_bank.py --to-slot BANK` rewrites a bank in place, layer by layer, each layer checked
+  byte for byte before the old file goes; `--to-coded` goes back.
+- **The X10Pro mirror only holds what the reader takes from it.** `--mirror-tail BANK MIRROR --tail 0.25` writes
+  sparse layer files with the last 25 % of each weight piece (36 GiB in a minute instead of a 154 GiB copy);
+  the reader caps its mirror fraction at the mirror's `tail` and skips records the mirror does not hold at the
+  same place.
+- **MiniMax-M3's expert cache is 62 GiB (was 56).** Agent benchmark: 56 → 58 → 60 → 62 GiB decode 119.6 → 111.6 →
+  105.5 → **101.7 ms** (-15 %), same `ids_hash`, normal memory pressure; 64 ran out of GPU memory. Prefill chunks
+  above 512 tokens (was 2,048) now hand slots back first, down to 52 GiB at 8,192 tokens. Through the server path
+  agent turns decode 105 against 122 ms at 56; prompts up to 33k tokens peak at 74.8 GiB of the 80 GiB limit.
+  `./serve-minimax.sh` and `./chat-minimax.sh` pass 62; `CACHALOT_MINIMAX_PREFILL_FULL_TOKENS` (512).
+- **The first turn after a restart no longer waits for the whole warm set (M27).** A request stops the startup
+  reads (one batch at most) and the rest is read after it, while idle: the chat's first "Hi" 11.8 → 4.8 s.
+  `CACHALOT_WARM_SET_YIELD=0` restores the wait.
+
+### Found
+- macOS's screensaver (Flurry, after 10 idle minutes) renders on the GPU and slows decode ~13 %. Benchmarks sleep
+  the display per arm; for long unattended agent runs, set the screen saver to Never.
+
 ## 0.34.1 (2026-09-28)
 
 Documentation only (HANDOFF section 18.15 item 9).

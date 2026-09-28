@@ -1,6 +1,8 @@
 # Cachalot — Engineering Handoff
 
-**Authoritative state as of 2026-09-28 (fourteenth MiniMax session), after the session that grew MiniMax's expert
+**Authoritative state as of 2026-09-28 (fifteenth MiniMax session), after the session that rewrote MiniMax's
+bank as slot images, grew its expert cache to 62 GiB and let the first turn after a restart start at once (section
+18.16), the one that grew MiniMax's expert
 cache to 56 GiB under a memory governor (section 18.15), the one that made MiniMax's decode
 read the next two layers' missing experts from the speculative routing its GPU loop already computes (section
 18.14), the one that shrank MiniMax's expert
@@ -17,6 +19,29 @@ that gave it a bias-free expert bank (18.4), the one that gave it a second drive
 kernel (18.3), the one that cut its per-token overhead and measured it to 64k (18.2), the one that made it faster
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
+
+> ## Start here (2026-09-28, 0.35.0): MiniMax-M3 reads slot images, caches 62 GiB, starts the first turn at once
+>
+> - **M24 shipped (section 18.16 items 1-4):** the bank's 7,296 records are rewritten in place as slot images (each
+>   group's byte (scale, bias) index and the per-projection pair table, then the weights: 21.11 MiB instead of
+>   22.16), byte-identical (64 random experts and 16 former raw ones against the original download; every layer
+>   in a pair slot during the rewrite). A slot head read straight into the slab views waited 3.33 ms a miss against
+>   2.84 through a scratch buffer, so it goes through one (`SLOT_HEAD_SCRATCH`). Agent benchmark, display asleep:
+>   **decode 126.9 → 120.5 ms (-5.0 %)**, turns -3.3 %, same `ids_hash`. `heads.zst` 4.0 → 3.2 GiB. The X10Pro
+>   mirror is now tail-only (sparse, 25 % of each weight piece, 36 GiB written in 57 s); the old full bank is kept
+>   there as `MiniMax-M3-coded-bank-v1`.
+> - **Budget 62 GiB (item 6):** agent benchmark 56 → 58 → 60 → 62: 119.6 → 111.6 → 105.5 → **101.7 ms**, same
+>   `ids_hash`, normal pressure, no swap; 64 ran out of Metal memory in a 2,048-token chunk. Prefill chunks above
+>   512 tokens now give back slots (a 2k chunk at ~60.7 GiB, 8k at 52). Through `stream()`: 104.6 / 106.2 against
+>   122.2 / 143.3 ms at 56 (the governor holds decode at 2,928 slots = 60.3 GiB to keep 8 GiB available); 1k-33k
+>   prompts peak at 74.8 GiB of MLX memory (limit 80). Scripts pass 62.
+> - **M27 shipped (item 5):** a request stops the startup warm set (one batch at most) and the rest is read while
+>   idle: the chat's first turn after a restart **11.8 → 4.8 s**, the next one +0.9 s.
+> - **The macOS screensaver slows decode ~13 % (item 7):** Flurry starts after 10 min idle and renders on the GPU;
+>   benchmarks now sleep the display per arm. Recommend Hamed set the screen saver to Never (display sleep only).
+> - **Version 0.35.0.** 429 tests pass.
+
+**Previous block, 0.34.0:**
 
 > ## Start here (2026-09-28, 0.34.0): MiniMax-M3 caches experts in 56 GiB under a memory governor
 >
@@ -8194,6 +8219,117 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.16 MiniMax-M3: a slot-image bank, a 62 GiB expert cache, and a first turn that does not wait — 2026-09-28 (0.35.0)
+
+Hamed's brief (prompt v63, the fifteenth "MiniMax-M3 as fast as possible at the same quality"): confirm caveman,
+Jev and the codebase-memory graph first, then plan, build, measure and document. Tools: caveman active (session
+hook), Jev answered (`jev_verify` through TypeSafe, 0.95 supports), the graph ready (5,727 nodes, one partial file
+outside the code). 0.34.1 committed, tree clean. Hamed approved M24 (the bank rewrite) at the start. Filler: a fresh
+4.96 MB concatenation of the repo's tracked `.md` and `.py` files (scratch); the agent benchmark is
+`minimax_followup_turns.py` @1,300,000 (2k, then 30/60/120/30/250/30-token turns, 48-token replies).
+
+**1. M24, the bank as slot images.** A new record kind `slot`: the head is what a pair slot holds (`w1/w3/w2.pidx`,
+one byte per group, then `w1/w3/w2.plut`, 256 bf16 (scale, bias) pairs), 0.85 MiB padded to 16 KiB, then the three
+weight pieces: **21.11 MiB a record instead of 22.16** (coded) or 23.63 (raw). `coded_bank.slot_head_from` builds
+the head with the same `codes_qmv.pair_from` the read path used, so a pair slot gets the same bytes; a slot of any
+other kind gets the raw head the record stands for (`raw_head_from_slot`: scales and biases from the table).
+`benchmarks/minimax_coded_bank.py --to-slot BANK` rewrites a bank in place, a layer at a time: the new
+`layer-NNN-slot.bin` beside the old file, every expert read into a pair slot through both records and compared,
+then `bank.json` (version 2) points at it and the old file goes. 56 layers in ~2-3 min on the internal SSD.
+`--to-coded` goes back byte for byte (layer 3's file `cmp`-equal to the X10Pro's copy of the old bank), which is
+what made an A/B across formats possible. Checks: 64 random experts and 16 of the 109 former raw ones read in the
+checkpoint's own format against the original download on the X10Pro, all equal; 200 reads with the mirror and 100
+with compressed heads equal to plain reads. `heads.zst` rewritten from the slot heads (version 2 records each
+head's kind; a version 1 file next to slot records is ignored): **4.0 → 3.2 GiB**, so prefill reads 20.70 MiB a
+record instead of 20.8.
+
+Two pitfalls on the way: (a) the converter's check reader kept every old layer file open, so the deleted files
+stayed allocated until the process exited and the disk filled on a second conversion (`reader.close()` before the
+unlink; the converter also waits for room for two layers). (b) The first A/B was run while macOS's screensaver
+(item 7) was on: all numbers from before item 3 were discarded.
+
+**2. The X10Pro mirror, tail only.** The reader takes only the last `CACHALOT_MIRROR_FRACTION` (0.13) of each weight
+piece from the mirror, so a full 154 GiB copy over USB (~3 h) is not needed. `write_mirror_tail` (`--mirror-tail BANK
+MIRROR --tail 0.25`) writes every layer file at full length but sparse, holding the last 25 % of each piece from the
+4 KiB boundary the reader cuts at, and a `bank.json` with `"tail": 0.25`; the reader caps its fraction there.
+36.1 GiB written in 57 s. The reader also serves from a mirror only the records it holds at the same place
+(`mirror_same`), so a mirror that lags a rewrite is never read wrongly. The old full bank stays on the X10Pro as
+`MiniMax-M3-coded-bank-v1` (162 GiB): `--to-coded` of the current bank reproduces it, so Hamed may delete it.
+
+**3. Where the first slot numbers went wrong: the head read into the slab.** Direct reads in isolation, slot records:
+3.35-3.45 ms a miss at depth 1, 2.96-2.98 at depth 4, 6.4-7.4 GiB/s at depth 16, into numpy buffers or real slab
+views alike (18.15 priced 3.30 / 3.02). But the agent benchmark with the display asleep ran 139 ms against the coded
+bank's 126. In one process (`glm_prefill_timeline.py 2048`, `TF_DECODE=300`, swapped pairs of
+`TF_ALTERNATE=cachalot.minimax.coded_bank:SLOT_HEAD_SCRATCH`): the head `preadv`'d straight into the six slab views
+(three of them 1 KiB tables) waited **3.33 ms a miss**, read into one scratch buffer and copied **2.84 ms**; arm means
+162.3 → 142.3 ms a token, the same log-probs. The old path always read its heads into scratch buffers. Shipped:
+`SLOT_HEAD_SCRATCH` = 1.
+
+**4. M24 measured.** Agent benchmark, display asleep (`pmset displaysleepnow` before each arm), the bank switched
+between formats with `--to-slot` / `--to-coded` (and the matching `heads.json` and mirror):
+
+| format | runs, decode ms/token | turns s | short prefills s |
+|---|---|---|---|
+| coded (0.34.0) | 126.4 / 127.0 / 127.2 | 60.6 / 60.9 / 60.9 | 24.2 / 24.3 / 24.3 |
+| slot (0.35.0) | 121.5 / 120.2 / 119.7 | 59.6 / 58.5 / 58.4 | 24.6 / 23.9 / 23.9 |
+
+**Decode -5.0 %, turns -3.3 %**, short prefills -0.6 %, the same `ids_hash` in every run (two of the coded runs had
+2 of 56 layers in slot form after an interrupted conversion; the three runs on a mostly mixed bank are not in the
+table). Better than 18.15's -3 % estimate: the scratch copy costs less than the old head conversion did.
+
+**5. M27, the first turn after a restart.** `stream` joined the startup warm-set thread before prefilling, so the
+chat's first "Hi" waited for all 2,718 experts (8.1-8.8 s). Now `_wait_warm_set` sets the warm set's cancel event
+(`ResidentExpertStore.preload(cancel=)`, checked between batches) and waits for one batch at most; what is left is
+read into free slots after the request, by the idle thread, before idle warming. `CACHALOT_WARM_SET_YIELD=0`
+restores the wait. Measured (`first_turn.py`, scratch: a fresh model, the chat's resident set and head snapshot,
+"Hi" at once, then after 15 s a 200-token story, greedy), ABAB:
+
+| arm | "Hi" wall | "Hi" prefill / decode | story wall | story hits |
+|---|---|---|---|---|
+| wait (0.34.0) | 11.79 / 11.81 s | 2.27 / 1.42 s, after 8.1 s of warm set | 14.35 / 14.43 s | 0.946 |
+| yield (0.35.0) | **4.79 / 4.82 s** | 2.81 / 1.96 s | 15.34 / 15.34 s | 0.940 |
+
+The same reply tokens in both. The second turn pays +0.9 s: the resumed warm set only fills free slots (1,330 of
+them after the first turn), it never evicts what the request brought in. The server shows it: "warm set: 216
+experts (4.5 GiB) read back in 0.7s; the rest after the request".
+
+**6. The budget, again: 62 GiB.** With the slot bank, agent benchmark, display asleep, memory logged every 2 s:
+
+| budget | decode ms/token | turns s | short prefills s | min available | pressure |
+|---|---|---|---|---|---|
+| 56 | 119.7 / 119.5 | 58.4 / 58.3 | 23.9 / 23.9 | — | normal |
+| 58 | 111.4 / 111.7 / 111.8 | 55.1 / 55.2 / 55.2 | 23.0 | 12 % | normal |
+| 60 | 105.5 | 52.5 | 22.1 | 12 % | normal |
+| 62 (3,009 slots) | **101.7** | **50.5** | 21.2 | 10 % | normal |
+| 64 | Metal out of memory in turn 0's 2,048-token chunk | | | 8 % | normal |
+
+Same `ids_hash` throughout, no swap growth. Because 64 failed in a 2,048-token chunk that keeps full capacity
+under 0.34.0's rule, MiniMax's `PREFILL_FULL_TOKENS` is now 512: longer chunks give back slots linearly to 52 GiB at
+8,192 (a 2k chunk at ~60.7 GiB). Through `stream()` (`stress.py`, scratch): fresh 1k/2k/4k prompts, then one
+conversation grown 8k → 16.5k → 25k → 33k, 150 greedy tokens each: peak MLX memory 74.8 GiB against the 80 GiB
+wired limit, pressure normal, no swap, `memory fit:` parking and unparking as designed. The governor keeps decode at
+2,928 slots (60.3 GiB) in that path, holding 8 GiB available. Agent turns through `stream()` (`stream_agent.py`,
+scratch), 62/56 ABAB: decode **104.6 / 106.2 against 122.2 / 143.3 ms**, prefills 21.9 / 22.4 against 24.4 / 27.0 s,
+the same `ids_hash` as the direct path. Server end to end (`serve-minimax.sh` with a scratch snapshot directory):
+the weather tool call with thinking at T = 0 (`finish=tool_calls`, 7.06 tok/s, MLX 73.1 GiB). Without thinking the
+greedy reply answers without the tool, as 18.15 saw at T = 1: the model, not the runtime (outputs byte-identical).
+18.1's "above 52 is slower" and 18.15's 56 ceiling are both superseded: the slots shrank (0.32.0), reads bypass
+the page cache and the governor parks for prefills.
+
+**7. The screensaver is a slow window.** The first slot-bank run started after Hamed had been idle 10 minutes;
+macOS's Flurry screensaver was running (WindowServer 54 % CPU) and the agent benchmark decoded ~13 % slower than
+with the display asleep (145-146 against 120-121 ms on the same bank, read times unaffected). It renders on the GPU,
+like 18.x's visible Hermes Desktop window. For benchmarks: sleep the display per arm. For Hamed's long agent
+runs while away: set the screen saver to Never so the display just sleeps (System Settings, Lock Screen / Screen
+Saver); nothing in Cachalot can stop it.
+
+**What remains, ranked.** 1. M1b (Hamed): a Hermes session on 0.35.0 with the sampler beside it; watch `memory fit:`
+lines with Hermes Desktop's memory beside a 62 GiB cache. 2. The resumed warm set could evict towards the saved
+set instead of only filling free slots (M27b, the +0.9 s of the second turn). 3. GLM: G6 + S1c + S1e, S2's
+`_prefill_budget` for GLM. 4. M19 (a Thunderbolt mirror; the tail-only mirror makes a 0.3-0.5 fraction sweep a
+~40-70 GiB write). 5. S3-S5. Budgets above 62 need memory from elsewhere (the 6 GiB of non-expert weights, MLX's
+activation peak in a prefill chunk).
 
 ### 18.15 MiniMax-M3: a 56 GiB expert cache under a memory governor, and the decode floor measured — 2026-09-28 (0.34.0)
 

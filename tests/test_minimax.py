@@ -194,17 +194,20 @@ def test_fast_gemma_norm_matches_the_reference_at_decode_shapes(monkeypatch):
     assert mx.array_equal(norm(x), ref).item()
 
 
-def test_warm_set_round_trip(tmp_path):
+def test_warm_set_round_trip(tmp_path, monkeypatch):
     """The resident set is saved after a request and read back at startup (HANDOFF 18.2)."""
     from cachalot.cache.resident_store import ResidentExpertStore
+    from cachalot.glm import model as gm
     from cachalot.glm.model import GlmModel
     from fakes import EXPERT_BYTES, FAKE_TENSOR_SIZES, FakeReader, make_index
+
+    monkeypatch.setattr(gm, "WARM_SET_YIELD", 0)  # wait for the whole set, as before 0.35.0
 
     idx = make_index(2, 4)
 
     def model():
         m = GlmModel.__new__(GlmModel)
-        m.model_path, m.expert_index, m.expert_format = tmp_path, idx, "fmt"
+        m.model_path, m.expert_index, m.expert_format, m.notice = tmp_path, idx, "fmt", lambda s: None
         m.store = ResidentExpertStore(budget_bytes=3 * EXPERT_BYTES, reader=FakeReader(),
                                       tensor_sizes=FAKE_TENSOR_SIZES, transient_slots=2)
         return m
@@ -222,6 +225,33 @@ def test_warm_set_round_trip(tmp_path):
     c = model()
     c.expert_format = "other"
     assert "another model" in c.start_warm_set(tmp_path / "resident-set.json")
+
+
+def test_a_request_stops_the_warm_set_and_idle_time_reads_the_rest(tmp_path):
+    """HANDOFF 18.16 (M27): a request waits for one batch of warm-set reads at most, not the whole set; the rest is
+    read into free slots after the request, before idle warming."""
+    import json
+
+    from cachalot.cache.resident_store import ResidentExpertStore
+    from cachalot.glm.model import GlmModel
+    from fakes import EXPERT_BYTES, FAKE_TENSOR_SIZES, FakeReader, make_index
+
+    idx = make_index(4, 8)
+    keys = sorted(idx)[:24]
+    m = GlmModel.__new__(GlmModel)
+    m.model_path, m.expert_index, m.expert_format, m.notice = tmp_path, idx, "fmt", lambda s: None
+    m.store = ResidentExpertStore(budget_bytes=24 * EXPERT_BYTES, reader=FakeReader(latency_s=0.02),
+                                  tensor_sizes=FAKE_TENSOR_SIZES, transient_slots=2, load_workers=2)
+    path = tmp_path / "resident-set.json"
+    path.write_text(json.dumps({"identity": m._warm_identity(), "keys": [list(k) for k in keys]}))
+    m.start_warm_set(path)
+    m._wait_warm_set()  # what stream() does first
+    early = len(m.store.resident_keys())
+    assert early < len(keys) and m._warm_pending
+    m.IDLE_WARM, m.IDLE_WARM_DELAY = False, 0.0
+    m._start_idle_warm()  # what stream() does last
+    m._idle_warm[1].join()
+    assert sorted(m.store.resident_keys()) == keys and not m._warm_pending
 
 
 def test_snapshot_at_shares_buffers_and_a_restore_never_writes_into_them():

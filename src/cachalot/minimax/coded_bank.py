@@ -47,8 +47,10 @@ import numpy as np
 from cachalot.storage.index import ExpertEntry, ExpertFormat
 from cachalot.storage.reader import ExpertReader
 
-BANK_VERSION = 1
+BANK_VERSION = 2  # 2 may hold slot records (M24); 1 holds only coded and raw ones
+BANK_VERSIONS = (1, 2)
 ALIGN = 16384
+PLUT_BYTES = 1024  # a projection's table of 256 (scale, bias) pairs of bf16
 PROJS = ("w1", "w3", "w2")
 K_BASE = -6  # code c in 0..3 means k = c - 6
 ENABLED = int(os.environ.get("CACHALOT_MINIMAX_BANK_ENABLED", "1"))  # an int, so TF_ALTERNATE can flip it
@@ -57,7 +59,11 @@ MIRROR_FRACTION = -1.0
 # 1: compressed heads for bulk (prefill) reads only; 2: for every read; 0: never. An int, so TF_ALTERNATE can flip
 # it. Decode waits on each expert, and the ~1.5 ms decompression is on that path: 18.7 measured it slower there.
 ZHEADS = int(os.environ.get("CACHALOT_MINIMAX_ZHEADS", "1"))
-ZHEADS_VERSION = 1
+# M24 (HANDOFF 18.16): a slot record's head is read into a scratch buffer and copied into the slot (1); read straight into
+# the slab views (0) a miss waited 3.33 instead of 2.84 ms in the decode loop. An int, so TF_ALTERNATE can flip it.
+SLOT_HEAD_SCRATCH = int(os.environ.get("CACHALOT_MINIMAX_SLOT_HEAD_SCRATCH", "1"))
+ZHEADS_VERSION = 2  # 2 records each head's kind; 1 held only coded and raw heads
+ZHEADS_VERSIONS = (1, 2)
 
 try:
     from compression import zstd as _zstd  # Python 3.14+
@@ -128,6 +134,41 @@ def decode_biases(scales: np.ndarray, packed: np.ndarray, out: np.ndarray | None
     return out
 
 
+def slot_head_from(kind: str, payload: bytes, lay: "BankLayout") -> bytes:
+    """A coded or raw record's head payload -> a slot record's (M24): pidx w1 | w3 | w2, then plut w1 | w3 | w2,
+    exactly what the read path's pair conversion (codes_qmv.pair_from) puts into a pair slot."""
+    from cachalot.minimax import codes_qmv
+
+    g = lay.groups
+    s = np.frombuffer(payload, np.uint16, 3 * g)
+    if kind == "coded":
+        packed = np.frombuffer(payload, np.uint8, 3 * lay.codes, 3 * lay.scales)
+        n = lay.codes
+        cs = [codes_qmv.codes_from_packed(packed[i * n:(i + 1) * n], K_BASE) for i in range(3)]
+    elif kind == "raw":
+        b = np.frombuffer(payload, np.uint16, 3 * g, 3 * lay.scales)
+        cs = [codes_qmv.codes_from_biases(s[i * g:(i + 1) * g], b[i * g:(i + 1) * g]) for i in range(3)]
+    else:
+        raise ValueError(f"no slot head from a {kind} record")
+    pidx = np.empty(3 * g, np.uint8)
+    plut = np.empty(3 * PLUT_BYTES // 2, np.uint16)
+    half = PLUT_BYTES // 2
+    for i in range(3):
+        codes_qmv.pair_from(s[i * g:(i + 1) * g], cs[i], pidx[i * g:(i + 1) * g], plut[i * half:(i + 1) * half])
+    return pidx.tobytes() + plut.tobytes()
+
+
+def raw_head_from_slot(payload: bytes, lay: "BankLayout") -> bytes:
+    """A slot record's head payload -> the raw head (bf16 scales w1 | w3 | w2, then biases) it stands for, for a
+    slot that is not a pair slot."""
+    g, half = lay.groups, PLUT_BYTES // 2
+    pidx = np.frombuffer(payload, np.uint8, 3 * g).astype(np.intp)
+    plut = np.frombuffer(payload, np.uint16, 3 * half, 3 * g)
+    scales = np.concatenate([plut[i * half:(i + 1) * half][2 * pidx[i * g:(i + 1) * g]] for i in range(3)])
+    biases = np.concatenate([plut[i * half:(i + 1) * half][2 * pidx[i * g:(i + 1) * g] + 1] for i in range(3)])
+    return scales.tobytes() + biases.tobytes()
+
+
 @dataclass(frozen=True)
 class BankLayout:
     """Byte sizes of one expert's pieces (from the checkpoint's ExpertFormat)."""
@@ -147,12 +188,31 @@ class BankLayout:
     def raw_head(self) -> int:
         return _align(6 * self.scales)
 
+    @property
+    def groups(self) -> int:
+        return self.scales // 2
+
+    @property
+    def slot_payload(self) -> int:
+        """A slot record's head: a byte (scale, bias) index per group, then a 256-pair table, per projection."""
+        return 3 * (self.groups + PLUT_BYTES)
+
+    @property
+    def slot_head(self) -> int:
+        return _align(self.slot_payload)
+
     def head_payload(self, kind: str) -> int:
         """The head's bytes before padding: what heads.zst compresses."""
+        if kind == "slot":
+            return self.slot_payload
         return 3 * (self.scales + self.codes) if kind == "coded" else 6 * self.scales
 
+    def head(self, kind: str) -> int:
+        """The head's bytes on disk, padded."""
+        return {"coded": self.coded_head, "raw": self.raw_head, "slot": self.slot_head}[kind]
+
     def record(self, kind: str) -> int:
-        return (self.coded_head if kind == "coded" else self.raw_head) + 3 * self.weight
+        return self.head(kind) + 3 * self.weight
 
 
 def layout_from_sizes(sizes: dict[str, int]) -> BankLayout:
@@ -170,17 +230,30 @@ class CodedBankReader(ExpertReader):
         super().__init__(**kwargs)
         self.bank_dir = Path(bank_dir)
         meta = json.loads((self.bank_dir / "bank.json").read_text())
-        if meta.get("version") != BANK_VERSION:
-            raise ValueError(f"{self.bank_dir}: bank version {meta.get('version')}, expected {BANK_VERSION}")
+        if meta.get("version") not in BANK_VERSIONS:
+            raise ValueError(f"{self.bank_dir}: bank version {meta.get('version')}, expected one of {BANK_VERSIONS}")
         self.layout = BankLayout(**meta["layout"])
         self.records: dict[tuple[int, int], tuple[str, int, str]] = {
             (r[0], r[1]): (r[2], r[3], r[4]) for r in meta["records"]
         }
         self.checkpoint = meta.get("checkpoint")
         self.bank_mirror = Path(mirror_dir) if mirror_dir else None
+        # the mirror serves only the records it holds at the same place (a bank rewritten record by record, M24,
+        # has a mirror that lags until it is copied)
+        self.mirror_same: set[tuple[int, int]] = set()
+        self.mirror_tail = 1.0  # a tail-only mirror (write_mirror_tail) holds this fraction of each weight piece
         if self.bank_mirror is not None and not (self.bank_mirror / "bank.json").is_file():
             print(f"[bank] mirror {self.bank_mirror} has no bank.json; bank mirror off", flush=True)
             self.bank_mirror = None
+        if self.bank_mirror is not None:
+            mirror = json.loads((self.bank_mirror / "bank.json").read_text())
+            self.mirror_tail = float(mirror.get("tail", 1.0))
+            if mirror.get("layout") == meta["layout"]:
+                self.mirror_same = {(r[0], r[1]) for r in mirror["records"]
+                                    if self.records.get((r[0], r[1])) == (r[2], r[3], r[4])}
+            if len(self.mirror_same) < len(self.records):
+                print(f"[bank] mirror {self.bank_mirror} matches {len(self.mirror_same)} of {len(self.records)} "
+                      f"records; the rest read from the bank alone", flush=True)
         self.coded_reads = 0
         self.zhead_reads = 0
         self.bulk = False  # set by the store: True while a prefill reads (bandwidth-bound)
@@ -189,9 +262,15 @@ class CodedBankReader(ExpertReader):
         zmeta = self.bank_dir / "heads.json"
         if _zstd is not None and zmeta.is_file():
             z = json.loads(zmeta.read_text())
-            if z.get("version") == ZHEADS_VERSION and (self.bank_dir / z["file"]).is_file():
+            if z.get("version") in ZHEADS_VERSIONS and (self.bank_dir / z["file"]).is_file():
                 self.zheads_file = self.bank_dir / z["file"]
-                self.zheads = {(r[0], r[1]): (r[2], r[3]) for r in z["records"]}
+                # a head compressed from another kind of record than the bank now holds is ignored (version 1
+                # heads are coded or raw ones)
+                for r in z["records"]:
+                    rec = self.records.get((r[0], r[1]))
+                    kind = r[4] if len(r) > 4 else None
+                    if rec is not None and (kind == rec[2] or (kind is None and rec[2] != "slot")):
+                        self.zheads[(r[0], r[1])] = (r[2], r[3])
         bias_table()
 
     def covers(self, layer: int, expert: int) -> bool:
@@ -228,11 +307,11 @@ class CodedBankReader(ExpertReader):
         fname, offset, kind = rec
         lay = self.layout
         fd = self._fd(self.bank_dir / fname)
-        head = lay.coded_head if kind == "coded" else lay.raw_head
+        head = lay.head(kind)
         pool = self._piece_executor()
         mfd = None
-        frac = self.mirror_fraction if MIRROR_FRACTION < 0 else MIRROR_FRACTION
-        if self.bank_mirror is not None and frac > 0:
+        frac = min(self.mirror_fraction if MIRROR_FRACTION < 0 else MIRROR_FRACTION, self.mirror_tail)
+        if self.bank_mirror is not None and frac > 0 and key in self.mirror_same:
             mfile = self.bank_mirror / fname
             if mfile.exists():
                 mfd = self._fd(mfile)
@@ -250,6 +329,26 @@ class CodedBankReader(ExpertReader):
             pos += lay.weight
         scales = [np.asarray(views[f"{p}.scales"]).view(np.uint16) for p in PROJS] if "w1.scales" in views else None
         zhead = self._head(key, kind, fd, offset) if key is not None else None
+        if kind == "slot":
+            # M24: the head is the pair slot's own bytes; any other slot gets the raw head it stands for
+            if "w1.pidx" in views:
+                bufs = [memoryview(views[f"{p}.pidx"]).cast("B") for p in PROJS] + [
+                    memoryview(views[f"{p}.plut"]).cast("B") for p in PROJS]
+                if zhead is None and SLOT_HEAD_SCRATCH:
+                    zhead = os.pread(fd, lay.slot_payload, offset)
+                if zhead is not None:
+                    _scatter(zhead, bufs)
+                    got = lay.slot_payload
+                else:
+                    got = os.preadv(fd, bufs, offset)
+                if got != lay.slot_payload:
+                    raise OSError(f"short head read from {fname}@{offset}: {got}")
+                return self._finish(futures, fname, offset, got)
+            if zhead is None:
+                zhead = os.pread(fd, lay.slot_payload, offset)
+                if len(zhead) != lay.slot_payload:
+                    raise OSError(f"short head read from {fname}@{offset}: {len(zhead)}")
+            zhead, kind = raw_head_from_slot(zhead, lay), "raw"
         if "w1.codes" in views or "w1.pidx" in views:
             # a slot of 4-bit bias codes (HANDOFF 18.10): the bank's 2-bit codes widened, a raw record's biases coded
             total = self._read_head_codes(kind, fd, offset, fname, views, scales, zhead, pool)
@@ -284,6 +383,10 @@ class CodedBankReader(ExpertReader):
             if got != 6 * lay.scales:
                 raise OSError(f"short head read from {fname}@{offset}: {got}")
             total = got
+        return self._finish(futures, fname, offset, total)
+
+    def _finish(self, futures, fname, offset, total) -> int:
+        """Wait for the weight pieces (a failed mirror piece is read again from the bank); the bytes read."""
         for future, size, from_mirror, pfd, pbuf, poff in futures:
             try:
                 got = future.result()
@@ -449,7 +552,7 @@ def write_zheads(bank_dir, level: int = 19, threads: int = 16) -> tuple[int, int
         with ThreadPoolExecutor(threads) as pool:
             for r, (blob, n) in zip(meta["records"], pool.map(job, meta["records"]), strict=True):
                 os.pwrite(fd, blob, offset)
-                recs.append([r[0], r[1], offset, len(blob)])
+                recs.append([r[0], r[1], offset, len(blob), r[4]])
                 raw_bytes += n
                 offset += (len(blob) + 4095) // 4096 * 4096
         os.fsync(fd)
@@ -462,6 +565,56 @@ def write_zheads(bank_dir, level: int = 19, threads: int = 16) -> tuple[int, int
     tmp.write_text(json.dumps({"version": ZHEADS_VERSION, "file": "heads.zst", "level": level, "records": recs}))
     os.replace(tmp, bank / "heads.json")
     return len(recs), raw_bytes, offset, time.perf_counter() - t0
+
+
+def write_mirror_tail(bank_dir, mirror_dir, tail: float = 0.25, threads: int = 8) -> tuple[int, int, float]:
+    """A tail-only mirror of a bank (HANDOFF 18.16): every layer file at its full length but sparse, holding only
+    the last `tail` of each record's three weight pieces (from the 4 KiB boundary the reader cuts at), and a
+    bank.json that records `tail`, so a reader never asks it for more. The reader takes the tail 13 % of each piece
+    from the mirror: a full copy (~154 GiB over USB, ~3 h) is not needed. bank.json is written last, so a partial
+    mirror is never used. Returns (records, bytes written, seconds)."""
+    import fcntl
+    import time
+    from concurrent.futures import ThreadPoolExecutor
+
+    bank, mirror = Path(bank_dir), Path(mirror_dir)
+    meta = json.loads((bank / "bank.json").read_text())
+    lay = BankLayout(**meta["layout"])
+    cut = int(lay.weight * (1.0 - tail)) // 4096 * 4096
+    files: dict[str, list] = {}
+    for r in meta["records"]:
+        files.setdefault(r[2], []).append(r)
+    mirror.mkdir(parents=True, exist_ok=True)
+    (mirror / "bank.json").unlink(missing_ok=True)
+    written, t0 = 0, time.perf_counter()
+    with ThreadPoolExecutor(threads) as pool:
+        for fname, recs in sorted(files.items()):
+            src = os.open(bank / fname, os.O_RDONLY)
+            fcntl.fcntl(src, fcntl.F_NOCACHE, 1)
+            part = mirror / (fname + ".part")
+            dst = os.open(part, os.O_CREAT | os.O_WRONLY | os.O_TRUNC, 0o644)
+            fcntl.fcntl(dst, fcntl.F_NOCACHE, 1)
+            os.ftruncate(dst, os.fstat(src).st_size)
+
+            def job(r, src=src, dst=dst):
+                n = 0
+                for i in range(3):
+                    off = r[3] + lay.head(r[4]) + i * lay.weight + cut
+                    data = os.pread(src, lay.weight - cut, off)
+                    if len(data) != lay.weight - cut:
+                        raise OSError(f"short read of {r} at {off}")
+                    n += os.pwrite(dst, data, off)
+                return n
+
+            written += sum(pool.map(job, recs))
+            os.fsync(dst)
+            os.close(dst)
+            os.close(src)
+            os.replace(part, mirror / fname)
+    tmp = mirror / "bank.json.part"
+    tmp.write_text(json.dumps({**meta, "tail": tail}))
+    os.replace(tmp, mirror / "bank.json")
+    return len(meta["records"]), written, time.perf_counter() - t0
 
 
 def format_to_json(fmt: ExpertFormat) -> dict:

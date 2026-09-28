@@ -172,6 +172,10 @@ PREFILL_PREDICT_STATS = {"predicted": 0, "actual": 0, "overlap": 0}
 # and the startup budget leaves STARTUP_RESERVE_GIB of what macOS reports available for everything else.
 PREFILL_BUDGET_GIB = float(os.environ.get("CACHALOT_MINIMAX_PREFILL_BUDGET_GIB", "52"))
 STARTUP_RESERVE_GIB = float(os.environ.get("CACHALOT_MINIMAX_STARTUP_RESERVE_GIB", "20"))
+# HANDOFF 18.16: 62 GiB of slots decode 15 % faster than 56 (agent benchmark, same tokens) and 64 ran out of Metal
+# memory in a 2,048-token chunk at full capacity, so from 0.35.0 chunks above PREFILL_FULL_TOKENS already give back
+# slots (linearly down to PREFILL_BUDGET_GIB at 8,192): a 2,048-token chunk prefills at ~60.7 GiB of 62.
+PREFILL_FULL_TOKENS = int(os.environ.get("CACHALOT_MINIMAX_PREFILL_FULL_TOKENS", "512"))
 
 
 class MiniMaxModel(GlmModel):
@@ -180,12 +184,13 @@ class MiniMaxModel(GlmModel):
     # A 2,048-token chunk already reads nearly every routed expert (168 GiB), so a longer chunk reads the same
     # bytes for more tokens: 8,192 prefills at ~230 tok/s against ~74-85 at 2,048, same NLL (HANDOFF 18.1).
     PREFILL_CHUNK = int(os.environ.get("CACHALOT_MINIMAX_PREFILL_CHUNK", "8192"))
+    PREFILL_FULL_TOKENS = PREFILL_FULL_TOKENS
 
     def __init__(
         self,
         model_path,
         *,
-        expert_budget_gib: float = 56.0,
+        expert_budget_gib: float = 62.0,
         wired_limit_gib: float | None = None,
         load_workers: int = 8,
         heartbeat_seconds: float = 0.5,
