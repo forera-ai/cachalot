@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.43.0 (2026-09-29)
+
+HANDOFF section 18.23 item 7.
+
+### Changed
+- **MiniMax miss substitution is on by default, decode and prefill** (Hamed's call after the gates in HANDOFF
+  18.21-18.23): `CACHALOT_MINIMAX_MISS_DROP` 0.20, `CACHALOT_MINIMAX_MISS_SUB` 4, `CACHALOT_MINIMAX_PREFILL_MISS_DROP`
+  0.20. Not bit-identical. `CACHALOT_MINIMAX_MISS_DROP=0 CACHALOT_MINIMAX_PREFILL_MISS_DROP=0` restores the exact
+  path. The numerics tag changes, so the first request after upgrading re-prefills a system block once (snapshots
+  written by the exact path stay on disk for it). Benchmark arms that need the exact path must now set both to 0.
+
 ## 0.42.0 (2026-09-29)
 
 HANDOFF section 18.23.

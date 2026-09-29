@@ -25,7 +25,7 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
-> ## Start here (2026-09-29, 0.42.0): short follow-up prefills -20 % with an opt-in prefill miss substitution
+> ## Start here (2026-09-29, 0.42.0-0.43.0): short follow-up prefills -20 %; miss substitution on by default
 >
 > - **Decode miss substitution, gated further (section 18.23 item 1):** 36 greedy tasks with thinking on and tool
 >   calls (thinking off and on): exact 31/36, a rounding-noise arm 31/36,
@@ -39,7 +39,10 @@ The first block below is new; the blocks after it still hold.
 >   three texts: two inside the rounding-noise band, one +0.0055 [-0.0007, +0.0114] (noise +0.0016). **Off by
 >   default**, Hamed's call.
 > - **Closed on paper (item 6):** a finer governor grain (a slab cannot shrink without a 2.7 GiB copy peak).
-> - **Version 0.42.0.** 455 tests pass.
+> - **0.43.0 (item 7): both switches on by default** (Hamed's call). `CACHALOT_MINIMAX_MISS_DROP=0
+>   CACHALOT_MINIMAX_PREFILL_MISS_DROP=0` is the exact path; benchmark arms meaning "exact" must set both. The first
+>   Hermes request after upgrading re-prefills its system block once (new numerics tag).
+> - **Version 0.43.0.** 455 tests pass.
 
 **Previous block, 0.41.0:**
 
@@ -8465,6 +8468,17 @@ cd /Users/hamedprooshani/Projects/deepseek-v41-mac && CACHALOT_MINIMAX_MISS_DROP
 ```
 
 455 tests pass. Studio brief: `docs/studio/briefs/2026-09-29-runtime-0.42.0.md`.
+
+**7. Both switches on by default (0.43.0), Hamed's call.** After reading items 1-5 Hamed asked for both on: the
+defaults are now `CACHALOT_MINIMAX_MISS_DROP` 0.20, `CACHALOT_MINIMAX_MISS_SUB` 4 and
+`CACHALOT_MINIMAX_PREFILL_MISS_DROP` 0.20 (`gpu_select.py`); 0 on both drop switches is the exact path. The numerics
+tag becomes `-fastnorm-missdrop0.2-sub4-pfdrop0.2-sub4`, so the server's saved system blocks (written exact) are not
+reused: the first Hermes request after the upgrade re-prefills its ~21k block once (~100-130 s), and the exact files
+stay on disk for an exact launch. **Every benchmark arm that means "exact" must now set both to 0** (the quality
+rule's exact and noise arms included). Smoke test with the defaults: 57 prefill-plan hooks, a coherent reply; it ran
+with other apps holding memory (12.5 GiB available, 22.8 GiB swap: budget 68 -> 39 GiB at load) and printed
+`memory fit: expert slots 1892 -> -16`, an older governor bug (whole-slab parking can subtract more than the
+capacity when the pool also holds transient slots), filed as its own task. 455 tests pass.
 
 **6. A finer governor grain, priced on paper and not built** (18.22 "what is open" 3). An MLX array cannot give
 back part of its buffer, so shrinking a slab means either allocating the smaller slab and copying the kept rows

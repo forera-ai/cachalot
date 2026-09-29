@@ -39,9 +39,10 @@ fi
 # after every turn, and the prompt head's snapshot survives a restart. Empty disables it.
 export CACHALOT_SNAPSHOT_DIR=${CACHALOT_MINIMAX_SNAPSHOT_DIR-$HOME/.cache/cachalot/prefix-snapshots-minimax}
 
-# 0.39.0 (HANDOFF 18.21), opt-in and not bit-identical: CACHALOT_MINIMAX_MISS_DROP=0.20 CACHALOT_MINIMAX_MISS_SUB=4 in
-# front of this script skips missing experts under 20 % of a layer's routing weight and computes the best resident
-# runner-up instead (decode -9 to -13.5 % through the server, quality inside the rounding noise).
+# 0.43.0: miss substitution is on by default (Hamed's call; HANDOFF 18.21-18.23), not bit-identical. Decode skips missing
+# experts under 20 % of a layer's routing weight and computes the best resident runner-up instead; prefill does the
+# same only where it saves a read. CACHALOT_MINIMAX_MISS_DROP=0 CACHALOT_MINIMAX_PREFILL_MISS_DROP=0 in front of this
+# script restores the exact path (its disk snapshots are kept apart by the numerics tag).
 exec ~/venvs/deepseek-v41/bin/python -m cachalot.cli chat \
     --model "$CACHALOT_MODEL_PATH" \
     --expert-budget-gib 68 \

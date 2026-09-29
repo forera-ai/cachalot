@@ -58,20 +58,22 @@ SPEC_DEPTH = int(os.environ.get("CACHALOT_MINIMAX_SPEC_DEPTH", "2"))
 FUSED_ROUTE = int(os.environ.get("CACHALOT_MINIMAX_FUSED_ROUTE", "0"))
 # HANDOFF 18.21: a missing expert whose share of the layer's routing weight is below MISS_DROP is not read; its row
 # stays zero and the other experts' weights are rescaled to the same total (top-k over the rest). NOT bit-identical:
-# 0 (default) keeps the exact path. A float so TF_ALTERNATE can flip it; MISS_DROP_ARMED makes the host see the
-# weights (a float32 copy inside the sync) so a TF_ALTERNATE arm at 0 costs the same.
-MISS_DROP = float(os.environ.get("CACHALOT_MINIMAX_MISS_DROP", "0"))
+# 0 keeps the exact path; 0.20 (with MISS_SUB 4) is the default since 0.43.0, Hamed's call after HANDOFF 18.21-18.23's
+# gates. A float so TF_ALTERNATE can flip it; MISS_DROP_ARMED makes the host see the weights (a float32 copy inside
+# the sync) so a TF_ALTERNATE arm at 0 costs the same.
+MISS_DROP = float(os.environ.get("CACHALOT_MINIMAX_MISS_DROP", "0.20"))
 MISS_DROP_ARMED = MISS_DROP > 0 or os.environ.get("CACHALOT_MINIMAX_MISS_DROP_ARMED", "0") == "1"
 # MISS_SUB > 0: a dropped expert is replaced by the best resident one of the next MISS_SUB by selection score (its own
 # sigmoid weight, all four renormalised as the router would), instead of leaving the layer with k - 1 experts
-MISS_SUB = int(os.environ.get("CACHALOT_MINIMAX_MISS_SUB", "0"))
+MISS_SUB = int(os.environ.get("CACHALOT_MINIMAX_MISS_SUB", "4"))
 # with MISS_DROP_ARMED, every missing expert's weight share is appended here (instruments only)
 MISS_SHARES: list = []
 # HANDOFF 18.23: the same rule in a prefill chunk, but only where it saves a read: a missing expert is left unread
 # when every row routed to it has it under PREFILL_MISS_DROP of the row's weight and a resident runner-up among the
-# next MISS_SUB ranks (or 4 when MISS_SUB is 0); only those rows change. NOT bit-identical; 0 (default) is exact.
+# next MISS_SUB ranks (or 4 when MISS_SUB is 0); only those rows change. NOT bit-identical; 0 is exact, 0.20 the
+# default since 0.43.0 (Hamed's call).
 # Experts routed to more than PREFILL_SUB_MAX_ROWS rows are always read (the rule rarely holds for all of them).
-PREFILL_MISS_DROP = float(os.environ.get("CACHALOT_MINIMAX_PREFILL_MISS_DROP", "0"))
+PREFILL_MISS_DROP = float(os.environ.get("CACHALOT_MINIMAX_PREFILL_MISS_DROP", "0.20"))
 PREFILL_SUB_MAX_ROWS = int(os.environ.get("CACHALOT_MINIMAX_PREFILL_SUB_MAX_ROWS", "32"))
 PREFILL_SUB_STATS = {"missing": 0, "skipped": 0, "rows": 0}
 

@@ -5,7 +5,7 @@
 
 | version | written | produced by | what changed |
 |---|---|---|---|
-| **v71** | 2026-09-29 | Hamed asked a twenty-second time for MiniMax-M3 as fast as possible at unchanged quality, tools (caveman, Jev, codebase-memory) confirmed first | **0.42.0: the decode miss substitution passes a thinking-on and tool-call battery (exact 31/36, rounding noise 31/36, switch 33/36 at +26 % decode). The same rule in prefill, only where it saves a read (`CACHALOT_MINIMAX_PREFILL_MISS_DROP=0.20`, opt-in): 200-token follow-ups 5.80 → 4.61 s (-20.5 %) through the server path; NLL inside the noise band on two texts, +0.0055 [-0.0007, +0.0114] on the third. Both switches off by default: Hamed's call. A finer governor grain closed on paper.** §18.23 |
+| **v71** | 2026-09-29 | Hamed asked a twenty-second time for MiniMax-M3 as fast as possible at unchanged quality, tools (caveman, Jev, codebase-memory) confirmed first | **0.42.0: the decode miss substitution passes a thinking-on and tool-call battery (exact 31/36, rounding noise 31/36, switch 33/36 at +26 % decode). The same rule in prefill, only where it saves a read (`CACHALOT_MINIMAX_PREFILL_MISS_DROP=0.20`, opt-in): 200-token follow-ups 5.80 → 4.61 s (-20.5 %) through the server path; NLL inside the noise band on two texts, +0.0055 [-0.0007, +0.0114] on the third. 0.43.0: both on by default (Hamed's call). A finer governor grain closed on paper.** §18.23 |
 | v70 | 2026-09-29 | Hamed asked a twenty-first time for MiniMax-M3 as fast as possible at unchanged quality, tools (caveman, Jev, codebase-memory) confirmed first | **0.41.0: MiniMax decodes with a 0.25 GiB MLX buffer cache (was 2 GiB, uncounted by the governor, putting the GPU over its working set): 200-token follow-ups at 30k context 17.2 → 6.1 s mean (12 of 35 slow against 0 of 20), decode unchanged, same tokens. Persisted system blocks leave memory after each request (2.4 GiB back; reload 0.42 s). Miss substitution gated at 24k on three texts: every NLL interval spans zero, misses -30 to -55 %; still off (Hamed's call).** §18.22 |
 | v69 | 2026-09-28 | Hamed asked a twentieth time for MiniMax-M3 as fast as possible at unchanged quality, tools (caveman, Jev, codebase-memory) confirmed first | **0.39.0: MiniMax decode miss substitution, opt-in (`CACHALOT_MINIMAX_MISS_DROP=0.20 CACHALOT_MINIMAX_MISS_SUB=4`): a missing expert under 20 % of its layer's routing weight is not read, the best resident expert of the next four ranks replaces it. Misses -40 %, server decode -9 to -13.5 %. Not bit-identical: KL and paired NLL inside a rounding change's band on three texts, 24/24 checkable tasks either way. Plain drops and 0.25 closed (KL 9-16 spikes). Off by default: Hamed's call.** §18.21 |
 | v68 | 2026-09-28 | Hamed asked a nineteenth time for MiniMax-M3 as fast as possible at unchanged quality, tools (caveman, Jev, codebase-memory) confirmed first; mid-session he asked that nothing sleep his Mac or display | **0.38.1: MiniMax prefill is compute-bound at the GPU's peak: an 8k chunk 30.0 s (36.4 at 8-16k) with 0-0.5 s of store wait, MLX's 3-bit matmul at 17.5 TFLOPS (= bf16). ~10 % overhead: the per-expert (scale, bias) rebuild 4 % (1.44 s a chunk), small experts 0.5 s. Measured, not shipped: shared expert queued early (no change), rebuilds batched first (+2.4 %), M27b (closed at 68 GiB). `glm_prefill_timeline.py FIT_PREFILL=1` added.** §18.20 |
@@ -45,11 +45,12 @@ sections **18.23**, **18.22**, **18.21**, **18.20**, **18.19**, **18.18**, **18.
 
 **Hamed's standing priority order: Hermes usage first, vision second, speed/performance third.**
 
-**New in 0.42.0 (§18.23), read first:** the first job with Hamed is his call on the two substitution switches, both
-off by default and both measured: decode (`CACHALOT_MINIMAX_MISS_DROP=0.20 CACHALOT_MINIMAX_MISS_SUB=4`: NLL/KL at 2k
+**New in 0.42.0-0.43.0 (§18.23), read first:** Hamed turned both substitution switches on by default in 0.43.0
+(item 7); **an exact benchmark arm must now set `CACHALOT_MINIMAX_MISS_DROP=0 CACHALOT_MINIMAX_PREFILL_MISS_DROP=0`**. What
+they rest on: decode (`CACHALOT_MINIMAX_MISS_DROP=0.20 CACHALOT_MINIMAX_MISS_SUB=4`: NLL/KL at 2k
 and 24k inside the noise band, 33/36 against exact's 31/36 on thinking-on and tool-call tasks, +26 % decode) and
 prefill (`CACHALOT_MINIMAX_PREFILL_MISS_DROP=0.20`: short follow-ups -20 %, NLL at or just above the noise band on
-one text of three). The live test is a Hermes session with both on and `CACHALOT_SERVER_DUMP` set; compare its
+one text of three). The first live check is a Hermes session on 0.43.0 with `CACHALOT_SERVER_DUMP` set; compare its
 `[request]` `prefill=` for 100-1,500-token tool results against 0.41.0's. Open on the prefill switch: Hermes's real
 shape (21k block, tool results at 25-45k context; §18.23 traced 10-12k) and a prefill battery (checkable tasks
 whose prompts carry a long tool result). Instruments (scratch, rebuild from §18.23's description):

@@ -54,15 +54,13 @@ export CACHALOT_SNAPSHOT_PRELOAD=${CACHALOT_SNAPSHOT_PRELOAD:-2}
 # the memory ceiling (CACHALOT_MINIMAX_KV_ALLOWANCE_GIB, default 1.0; -1 turns it off), and a conversation's snapshot
 # is handed to its next turn instead of copied (CACHALOT_MINIMAX_CONSUME_SNAPSHOTS=0 restores the copy).
 
-# 0.39.0 (HANDOFF 18.21), opt-in and not bit-identical: CACHALOT_MINIMAX_MISS_DROP=0.20 CACHALOT_MINIMAX_MISS_SUB=4 in
-# front of this script skips missing experts under 20 % of a layer's routing weight and computes the best resident
-# runner-up instead (decode -9 to -13.5 % through the server, quality inside the rounding noise).
+# 0.43.0: miss substitution is on by default (Hamed's call; HANDOFF 18.21-18.23), not bit-identical. Decode skips missing
+# experts under 20 % of a layer's routing weight and computes the best resident runner-up instead; prefill does the
+# same only where it saves a read. CACHALOT_MINIMAX_MISS_DROP=0 CACHALOT_MINIMAX_PREFILL_MISS_DROP=0 in front of this
+# script restores the exact path (its disk snapshots are kept apart by the numerics tag).
 # 0.41.0 (HANDOFF 18.22), both bit-identical and on: decode runs with a 0.25 GiB MLX buffer cache
 # (CACHALOT_MINIMAX_DECODE_CACHE_GIB; -1 keeps 2 GiB) so the GPU stays under its working set, and system blocks saved
 # on disk leave memory after each request (CACHALOT_MINIMAX_SPILL_BLOCKS=0 keeps them).
-# 0.42.0 (HANDOFF 18.23), opt-in and not bit-identical: CACHALOT_MINIMAX_PREFILL_MISS_DROP=0.20 applies the same rule to
-# prefill chunks, only where it saves a read (every token routed to a missing expert is light and has a resident
-# runner-up): 200-token follow-up prefills -11 to -12 %.
 # MiniMax's generation_config: temperature 1.0, top_p 0.95
 exec ~/venvs/deepseek-v41/bin/python -m cachalot.cli serve \
     --model "$CACHALOT_MODEL_PATH" \
