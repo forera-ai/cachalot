@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.43.1 (2026-09-29)
+
+### Fixed
+- `cachalot.__version__` (the server's startup line) still said 0.41.0 through 0.42.0 and 0.43.0; it now follows
+  `pyproject.toml`.
+
 ## 0.43.0 (2026-09-29)
 
 HANDOFF section 18.23 item 7.
