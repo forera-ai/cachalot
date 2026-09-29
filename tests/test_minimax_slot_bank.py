@@ -127,3 +127,31 @@ def test_a_tail_only_mirror_fills_the_slot_like_the_bank(tmp_path):
         for e in (0, 1):
             va, vb = _fill(ref, e, SLOTS["pair"]), _fill(reader, e, SLOTS["pair"])
             assert all(np.array_equal(va[k], vb[k]) for k in va), (frac, e)
+
+
+def test_the_mirror_share_follows_the_slower_drive_and_keeps_the_bytes(tmp_path, monkeypatch):
+    # HANDOFF 18.24: the share moves towards the split where both drives finish together, capped at the configured
+    # fraction, floored so the mirror keeps being measured; the bytes are the bank's whatever the split
+    old, new, tail = tmp_path / "old", tmp_path / "new", tmp_path / "tail"
+    old.mkdir()
+    new.mkdir()
+    _tiny_bank(old, LAY, distinct=50)
+    _slot_bank(old, new)
+    cb.write_mirror_tail(new, tail, tail=0.5, threads=2)
+    ref = cb.CodedBankReader(new, bypass_page_cache=False)
+    reader = cb.CodedBankReader(new, tail, bypass_page_cache=False)
+    reader.mirror_fraction = 0.3
+    for _ in range(200):  # a mirror a tenth as fast as the bank
+        reader._adapt_share(1.0, 10.0)
+    assert abs(reader.mirror_share - 1 / 11) < 1e-3
+    for _ in range(400):  # a stalled mirror: down to the floor, not to zero
+        reader._adapt_share(1e-3, 10.0)
+    assert reader.mirror_share == cb.MIRROR_ADAPT_FLOOR
+    for _ in range(400):  # a mirror faster than the bank: back up, but never above the configured fraction
+        reader._adapt_share(100.0, 1.0)
+    assert reader.mirror_share == 0.3
+    reader.mirror_share = 0.05
+    for e in (0, 1):
+        va, vb = _fill(ref, e, SLOTS["pair"]), _fill(reader, e, SLOTS["pair"])
+        assert all(np.array_equal(va[k], vb[k]) for k in va), e
+    assert cb.MIRROR_ADAPT_FLOOR <= reader.mirror_share <= 0.3

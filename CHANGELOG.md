@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.45.0 (2026-09-29)
+
+HANDOFF section 18.25.
+
+### Changed
+- **The X10Pro mirror's share of each MiniMax expert read follows both drives' speed.** Every record's weight
+  pieces are timed, and the share moves towards the split where the internal SSD's and the mirror's pieces finish
+  together: never above the configured 13 % (the optimum on an idle X10Pro), never below 2 %. With another reader
+  on the X10Pro (Spotlight, a copy), a fixed 13 % made every read wait for its USB piece; now decode reads are 12-17 %
+  shorter and decode 7 % faster in that case, and nothing changes on an idle drive. Same bytes, same outputs.
+  `CACHALOT_MINIMAX_MIRROR_ADAPT=0` keeps the share fixed; a `[bank] mirror share A -> B` line appears at most once a
+  minute when it moves.
+
+### Fixed
+- HANDOFF's 0.44.0 "Start here" block had lost the name of `CACHALOT_HOST_GROW_QUIET_S=0`.
+
+### Documented
+- Hamed's first Hermes session on 0.44.0: the first request after the restart reused the saved block (7.2 s),
+  short follow-ups 1.9-7.2 s, decode 7.3-10.2 tok/s at 21-33k. Hermes's approval check (2,207 tokens) took 86.8 s
+  live against 12-16 s in replays, and Hermes timed out on it; part of that reproduces with the X10Pro busy.
+
 ## 0.44.0 (2026-09-29)
 
 HANDOFF section 18.24.

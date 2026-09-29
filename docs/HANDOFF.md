@@ -1,6 +1,6 @@
 # Cachalot — Engineering Handoff
 
-**Authoritative state as of 2026-09-29 (twenty-third MiniMax session), after the session that made a restart reuse the agent's system block again and taught the memory governor to watch memory pressure (section 18.24), the one that gated the decode miss substitution on thinking-on and tool-call tasks and applied its rule to prefill, opt-in, short follow-ups -20 % (section 18.23), the one that capped MLX's buffer cache during MiniMax's decode, moved persisted system blocks off the GPU and gated the miss substitution at 24k (section 18.22), the one that let MiniMax's decode
+**Authoritative state as of 2026-09-29 (twenty-third MiniMax session), after the session that read Hamed's first Hermes session on 0.44.0 and made the mirror's share follow the X10Pro's speed (section 18.25), the one that made a restart reuse the agent's system block again and taught the memory governor to watch memory pressure (section 18.24), the one that gated the decode miss substitution on thinking-on and tool-call tasks and applied its rule to prefill, opt-in, short follow-ups -20 % (section 18.23), the one that capped MLX's buffer cache during MiniMax's decode, moved persisted system blocks off the GPU and gated the miss substitution at 24k (section 18.22), the one that let MiniMax's decode
 substitute its lightest missing experts, opt-in and measured inside the rounding noise (section 18.21), the one that put MiniMax's prefill at the GPU's FLOP
 wall and measured three levers without a gain (section 18.20), the one that measured where MiniMax's
 remaining time goes and shipped two bit-identical kernel fusions switched off (section 18.19), the one that raised the GPU's working
@@ -25,6 +25,24 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-09-29, 0.45.0): Hamed's first session on 0.44.0; the mirror follows the X10Pro's speed
+>
+> - **Live (section 18.25 item 1):** the restart fix held (first request reused 21,333 tokens, 7.2 s), short
+>   follow-ups 1.9-7.2 s, decode 7.3-10.2 tok/s at 21-33k. Three slow prefills: 405 and 315 tokens in 28-31 s, and
+>   Hermes's approval check (2,207 tokens, no shared prefix) in 86.8 s, which Hermes timed out on, so a tool call
+>   ended "BLOCKED".
+> - **Replayed (items 2-3):** the same requests run fast (approval check 11.9 s); with the X10Pro busy (another
+>   reader on the mirror drive) reads 4.5 -> 6.3 ms, decode -10-20 %, the approval check 14-41 s. Spotlight indexes
+>   the X10Pro.
+> - **Shipped (item 4):** the mirror's share follows both drives' measured speed (at most the configured 0.13, at
+>   least 0.02): busy X10Pro, reads -12 to -17 %, decode +7 %; idle, no change. Bit-identical.
+>   `CACHALOT_MINIMAX_MIRROR_ADAPT=0` keeps it fixed.
+> - **Open:** the rest of the live 86.8 s (next session: `iostat` per drive beside the sampler); Hamed's calls:
+>   exclude the X10Pro's `models` from Spotlight, and point Hermes's approval model at a hosted provider.
+> - **Version 0.45.0.** 462 tests pass.
+
+**Previous block, 0.44.0:**
+
 > ## Start here (2026-09-29, 0.44.0): a restart reuses the agent's system block again; the governor watches memory pressure
 >
 > - **Restart (section 18.24 item 2):** snapshot files were named by their tokens only, so the block saved under
@@ -36,7 +54,7 @@ The first block below is new; the blocks after it still hold.
 >   "Alloc" under its ceiling. A fit after a long prefill read a momentary high availability and took back 13.6 GiB at
 >   once. A pressure watcher (0.5 s samples; growth only after 60 s quiet, by the window's lowest availability; a slab
 >   back per event) is on: pressure samples halved in 4 of 4 pairs, total decode -5.6 to -10.6 % in 3 (+10.4 % in
->   1), the stall gone. Inert without pressure.  restores 0.43.
+>   1), the stall gone. Inert without pressure. `CACHALOT_HOST_GROW_QUIET_S=0` restores 0.43.
 > - **Not symptoms (item 1):** `read=` 4.5-5.3 ms and "Alloc" 86-88 GiB are normal here; a clean replay shows both.
 > - **Also (items 5-6):** slab parking stops at capacity 1 (it took the transient slots); the sixth session's runaway
 >   replays 0/8 with the switches on and 0/8 exact.
@@ -8375,6 +8393,72 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.25 MiniMax-M3: Hamed's first session on 0.44.0; the mirror's share follows the X10Pro's speed — 2026-09-29 (0.45.0)
+
+**1. The live session (Hamed, 0.44.0, 19:05-19:31, `CACHALOT_SERVER_DUMP=/tmp/cachalot-requests-0.44.jsonl`, log
+`/tmp/cachalot-serve-0.44.log`, `benchmarks/slow_window_sampler.py` beside it: `sampler_20260929-190449.csv`;
+Hermes export `hola-20260929.json`).** 12 requests, the Hermes Desktop window visible, Codex, ChatGPT and others open:
+
+| # | prompt | reused | new | prefill s | completion | decode tok/s | note |
+|---|---|---|---|---|---|---|---|
+| 1 | 21,343 | 21,333 | 10 | **7.2** | 26 | 6.45 | the saved block loaded at startup (18.24 item 2, live) |
+| 2 | 21,394 | 21,368 | 26 | 2.0 | 126 | 7.39 | |
+| 3 | 24,998 | 21,519 | 3,479 | 22.9 | 816 | 9.81 | |
+| 4 | 25,836 | 25,813 | 23 | 1.9 | 153 | 8.29 | |
+| 5 | 26,063 | 25,988 | 75 | 4.4 | 2,029 | 8.08 | |
+| 6 | 28,282 | 26,063 | 2,219 | 21.3 | 750 | 7.95 | |
+| 7 | 29,436 | 29,031 | 405 | **30.8** | 463 | 8.00 | |
+| 8 | 30,213 | 29,898 | 315 | **28.3** | 2,068 | 7.31 | |
+| 9 | 2,207 | 0 | 2,207 | **86.8** | 4 | 7.00 | Hermes's approval check; re-sent twice, both reused |
+| 12 | 32,404 | 32,280 | 124 | 4.9 | 680 | 10.24 | |
+| 13 | 33,108 | 33,083 | 25 | 7.2 | 293 | 9.59 | a slab back for pressure first |
+
+Tool calls parsed, the answers read sensibly, decode 7.3-10.2 tok/s at 21-33k. Three prefills were slow, and the
+third cost a tool call: Hermes's approval check (a 2,207-token request with no shared prefix, asked whether a
+heredoc command was safe) took 86.8 s, Hermes timed out and sent it twice more, and the command ended as
+"BLOCKED: Command timed out without user response".
+
+**2. The same requests replay fast.** The eleven distinct bodies (dump rows 1, 3, ... 17, 23, 25) through
+`serve-minimax.sh` in order (`replay2.py`: temperature 0, replies capped at 300 tokens), no holders: the approval
+check 1,874 new tokens (333 reused from a saved block) in **11.9 s**, follow-ups of 777-1,154 tokens in 9.7-12.3 s,
+decode 7.6-10.6 tok/s. The live slowness came from the machine, not the requests. The sampler's wired memory swung
+between ~20 and ~84 GiB every 10 s during the live session, but the replay's did too (p10 65 GiB): not the signal.
+
+**3. A busy X10Pro reproduces part of it.** 13 % of every expert read comes from the X10Pro mirror, and Spotlight
+indexes that drive (`mdutil -s`: enabled); `mds_stores`, `mdworker`, `fseventsd` and Autoupdate were busy in the
+live slow windows. The replay again with a loop `cat`-ing GLM's shards from the X10Pro (the mirror drive shared with
+another reader): decode reads 4.3-4.8 → 6.1-7.4 ms a miss, decode -10 to -20 %, the approval check **11.9 → 41.4 s**,
+the first request 2.0 → 11.7 s. A second busy run put the approval check at 14.1 s: the effect is real and
+variable, and not the whole of the live 86.8 s.
+
+**4. The mirror's share follows the drives (shipped, on).** `CodedBankReader` times each record's weight pieces
+(`_timed_preadv`), estimates each drive's bytes per second from its slowest piece, and moves the mirror's share
+towards `rm / (rm + rb)` (the split where both finish together) by `MIRROR_ADAPT_ALPHA` (0.05) a record, never
+above the configured fraction (0.13, the measured optimum on an idle X10Pro) and never below `MIRROR_ADAPT_FLOOR`
+(0.02, so the mirror keeps being measured). `CACHALOT_MINIMAX_MIRROR_ADAPT=0` keeps the share fixed. Bit-identical
+(the split changes which drive serves a byte, not the byte). Server path, the replay above:
+
+| arm | read ms a miss | decode | all prefill | approval check |
+|---|---|---|---|---|
+| X10Pro idle, fixed | 4.3-5.8 | — | 118.9 s | 11.9 s |
+| X10Pro idle, adaptive | 4.3-5.6 | same | 115.8 s | 11.6 s (share never left 0.13) |
+| X10Pro busy, fixed (two runs) | 6.1-7.4 / 5.6-7.2 | 8.24 tok/s (run 2) | 176.7 / 137.2 s | 41.4 / 14.1 s |
+| X10Pro busy, adaptive | 4.8-6.2 | 8.81 tok/s | 141.1 s | 16.0 s |
+
+Under a busy X10Pro the share settles around 0.08-0.11 (a shared USB link halves the mirror's rate): reads -12 to
+-17 %, decode +7 %, prefill unchanged. On an idle one it does nothing. A `[bank] mirror share A -> B` line appears
+at most once a minute when the share moves by 0.03 or more. Test:
+`test_the_mirror_share_follows_the_slower_drive_and_keeps_the_bytes`.
+
+**What is open after this.** 1. The rest of the live slowness: Hermes's approval check at 86.8 s against 12-41 s in
+every replay, and two follow-ups at 28-31 s against 8-12. The next Hermes session needs per-drive I/O beside the
+sampler (`iostat -d -w 2 disk0 disk6`) and the driver's "Alloc" (§18.24's `drv.sh`), so a slow prefill can be
+matched to the internal SSD, the X10Pro or the GPU. 2. Hamed's call: exclude the X10Pro's `models` folder from
+Spotlight (System Settings → Spotlight → Search Privacy) so indexing never competes with the mirror. 3. Hermes's
+approval check has a ~30 s timeout; a cold 2k prefill fits it only when nothing else is slowing the machine
+(11.6-16 s in replays). Pointing Hermes's `auxiliary` approval model at a hosted provider (Hamed's config) removes
+it from the runtime entirely.
 
 ### 18.24 MiniMax-M3: a restart reuses the agent's system block again; the governor stops growing into memory pressure — 2026-09-29 (0.44.0)
 

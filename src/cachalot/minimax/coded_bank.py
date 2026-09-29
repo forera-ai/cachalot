@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -56,6 +57,21 @@ K_BASE = -6  # code c in 0..3 means k = c - 6
 ENABLED = int(os.environ.get("CACHALOT_MINIMAX_BANK_ENABLED", "1"))  # an int, so TF_ALTERNATE can flip it
 # Experiment knob: a mirror fraction that overrides the reader's own when >= 0 (TF_ALTERNATE A/Bs, HANDOFF 18.5)
 MIRROR_FRACTION = -1.0
+# HANDOFF 18.24: the mirror's share follows how fast each drive answers. Each record's weight pieces are timed; the
+# share that would make the bank's and the mirror's pieces finish together, rm / (rm + rb) from their bytes per
+# second, is averaged over reads (MIRROR_ADAPT_ALPHA) and used for the next record, never above the configured
+# fraction (the measured optimum on an idle X10Pro, 18.3-18.14) and never below MIRROR_ADAPT_FLOOR (a small piece
+# keeps measuring the mirror). With the X10Pro busy (Spotlight, a copy), a fixed 13 % made every expert wait for its
+# USB piece: a 1,874-token side request 11.9 -> 41.4 s, decode reads 4.5 -> 6.3 ms. 0 keeps the share fixed.
+MIRROR_ADAPT = int(os.environ.get("CACHALOT_MINIMAX_MIRROR_ADAPT", "1"))
+MIRROR_ADAPT_ALPHA = 0.05
+MIRROR_ADAPT_FLOOR = 0.02
+
+
+def _timed_preadv(fd, bufs, pos):
+    t0 = time.perf_counter()
+    got = os.preadv(fd, bufs, pos)
+    return got, time.perf_counter() - t0
 # 1: compressed heads for bulk (prefill) reads only; 2: for every read; 0: never. An int, so TF_ALTERNATE can flip
 # it. Decode waits on each expert, and the ~1.5 ms decompression is on that path: 18.7 measured it slower there.
 ZHEADS = int(os.environ.get("CACHALOT_MINIMAX_ZHEADS", "1"))
@@ -256,6 +272,7 @@ class CodedBankReader(ExpertReader):
                       f"records; the rest read from the bank alone", flush=True)
         self.coded_reads = 0
         self.zhead_reads = 0
+        self.mirror_share = None  # the adaptive share (MIRROR_ADAPT); None until the first timed record
         self.bulk = False  # set by the store: True while a prefill reads (bandwidth-bound)
         self.zheads: dict[tuple[int, int], tuple[int, int]] = {}
         self.zheads_file = None
@@ -311,6 +328,8 @@ class CodedBankReader(ExpertReader):
         pool = self._piece_executor()
         mfd = None
         frac = min(self.mirror_fraction if MIRROR_FRACTION < 0 else MIRROR_FRACTION, self.mirror_tail)
+        if MIRROR_ADAPT and MIRROR_FRACTION < 0 and self.mirror_share is not None:
+            frac = min(frac, self.mirror_share)
         if self.bank_mirror is not None and frac > 0 and key in self.mirror_same:
             mfile = self.bank_mirror / fname
             if mfile.exists():
@@ -322,10 +341,10 @@ class CodedBankReader(ExpertReader):
             buf = memoryview(views[f"{p}.weight"]).cast("B")
             if mfd is not None:
                 cut = int(lay.weight * (1.0 - frac)) // 4096 * 4096
-                futures.append((pool.submit(os.preadv, mfd, [buf[cut:]], pos + cut), lay.weight - cut, True, fd, buf[cut:], pos + cut))
-                futures.append((pool.submit(os.preadv, fd, [buf[:cut]], pos), cut, False, fd, None, 0))
+                futures.append((pool.submit(_timed_preadv, mfd, [buf[cut:]], pos + cut), lay.weight - cut, True, fd, buf[cut:], pos + cut))
+                futures.append((pool.submit(_timed_preadv, fd, [buf[:cut]], pos), cut, False, fd, None, 0))
             else:
-                futures.append((pool.submit(os.preadv, fd, [buf], pos), lay.weight, False, fd, None, 0))
+                futures.append((pool.submit(_timed_preadv, fd, [buf], pos), lay.weight, False, fd, None, 0))
             pos += lay.weight
         scales = [np.asarray(views[f"{p}.scales"]).view(np.uint16) for p in PROJS] if "w1.scales" in views else None
         zhead = self._head(key, kind, fd, offset) if key is not None else None
@@ -387,9 +406,13 @@ class CodedBankReader(ExpertReader):
 
     def _finish(self, futures, fname, offset, total) -> int:
         """Wait for the weight pieces (a failed mirror piece is read again from the bank); the bytes read."""
+        spent = {True: [0, 0.0], False: [0, 0.0]}  # bytes and the slowest piece's seconds, per drive
         for future, size, from_mirror, pfd, pbuf, poff in futures:
             try:
-                got = future.result()
+                got, dt = future.result()
+                side = spent[from_mirror]
+                side[0] += got
+                side[1] = max(side[1], dt)
             except OSError as exc:
                 if not from_mirror:
                     raise
@@ -400,7 +423,23 @@ class CodedBankReader(ExpertReader):
                 raise OSError(f"short weight read from {fname}@{offset}: {got} of {size}")
             total += got
         self.coded_reads += 1
+        if MIRROR_ADAPT and spent[True][0] and spent[False][0]:
+            self._adapt_share(spent[True][0] / max(spent[True][1], 1e-6), spent[False][0] / max(spent[False][1], 1e-6))
         return total
+
+    def _adapt_share(self, mirror_rate: float, bank_rate: float) -> None:
+        """Move the mirror's share towards the split that has both drives' pieces finish together."""
+        cap = min(self.mirror_fraction, self.mirror_tail)
+        target = mirror_rate / (mirror_rate + bank_rate)
+        share = cap if self.mirror_share is None else self.mirror_share
+        share += MIRROR_ADAPT_ALPHA * (target - share)
+        self.mirror_share = min(cap, max(min(MIRROR_ADAPT_FLOOR, cap), share))
+        # one line a minute at most, and only when the share has moved: it wanders ±0.03 around its level per record
+        shown, when = getattr(self, "_share_shown", (cap, 0.0))
+        now = time.monotonic()
+        if abs(self.mirror_share - shown) >= 0.03 and now - when >= 60:
+            print(f"[bank] mirror share {shown:.2f} -> {self.mirror_share:.2f} (configured {cap:.2f})", flush=True)
+            self._share_shown = (self.mirror_share, now)
 
     def _read_head_codes(self, kind, fd, offset, fname, views, scales, zhead, pool) -> int:
         """A record's head into a codes slot: scales into the scale views (or, in a scale-index slot, a byte index
