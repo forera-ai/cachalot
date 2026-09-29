@@ -5,7 +5,7 @@
 
 | version | written | produced by | what changed |
 |---|---|---|---|
-| **v74** | 2026-09-29 | Hamed asked a twenty-fourth time for MiniMax-M3 as fast as possible at unchanged quality, tools (caveman, Jev, codebase-memory) confirmed first | **0.45.1: MiniMax's prefill expert kernels priced and closed, nothing in `src/`. The per-expert (scale, bias) rebuild costs 0.15-0.2 s of a 128-2,048-token chunk. MLX's four matmul kernels copied to read the pair index: bit-identical for every row count 1-130, faster alone, 4-7 % slower inside a layer. One grouped `gather_qmm_rhs` launch over the slabs: -10 to -13 % at 1-2k tokens, slower below 400, not bit-identical. Instruments in `benchmarks/minimax_prefill_kernels/`.** §18.26 |
+| **v74** | 2026-09-29 | Hamed asked a twenty-fourth time for MiniMax-M3 as fast as possible at unchanged quality, tools (caveman, Jev, codebase-memory) confirmed first; then he ran a Hermes session on 0.45.1 and asked for it read | **0.45.1: MiniMax's prefill expert kernels priced and closed, nothing in `src/`. The per-expert (scale, bias) rebuild costs 0.15-0.2 s of a 128-2,048-token chunk. MLX's four matmul kernels copied to read the pair index: bit-identical for every row count 1-130, faster alone, 4-7 % slower inside a layer. One grouped `gather_qmm_rhs` launch over the slabs: -10 to -13 % at 1-2k tokens, slower below 400, not bit-identical. Instruments in `benchmarks/minimax_prefill_kernels/`. 0.45.2: Hamed's Hermes session on 0.45.1 ran clean (first request 1.75 s, short turns 1.9-3.1 s, a 6k tool result at 148 tok/s, decode 6.8-9.5 tok/s, no stalls); one 25-token follow-up at 7.35 s and a listing summary with invented names are open, and the session had no dump.** §18.27, §18.26 |
 | v73 | 2026-09-29 | Hamed ran a Hermes session on 0.44.0 and asked for the dump and log read | **0.45.0: the restart fix held live (first request 7.2 s, block reused); short follow-ups 1.9-7.2 s. Three slow prefills live (405/315 tokens in 28-31 s; Hermes's 2,207-token approval check in 86.8 s, which Hermes timed out on) replay at 10-12 s. A busy X10Pro reproduces part of it (approval check 14-41 s): the mirror's share now follows both drives' measured speed (busy: reads -12 to -17 %, decode +7 %; idle: no change; bit-identical).** §18.25 |
 | v72 | 2026-09-29 | Hamed asked a twenty-third time for MiniMax-M3 as fast as possible at unchanged quality, tools (caveman, Jev, codebase-memory) confirmed first | **0.44.0: the sixth session's stalls replayed through the server path. A restart never reused Hermes's system block since 0.43.0 (snapshot files named by tokens only; a file of another numerics tag blocked the write): first request after a restart 98-133 s → 2-10 s. Follow-up stalls (30-41 s) reproduced with 12 GiB of host memory held by other processes, not the GPU ceiling: a fit after a long prefill regrew 13.6 GiB into swap. A pressure watcher (growth only after 60 s quiet) is on: pressure samples halved, decode -5.6 to -10.6 % in 3 of 4 pairs. Slab parking stops at capacity 1. The runaway replays 0/8 either arm.** §18.24 |
 | v71 | 2026-09-29 | Hamed asked a twenty-second time for MiniMax-M3 as fast as possible at unchanged quality, tools (caveman, Jev, codebase-memory) confirmed first | **0.42.0: the decode miss substitution passes a thinking-on and tool-call battery (exact 31/36, rounding noise 31/36, switch 33/36 at +26 % decode). The same rule in prefill, only where it saves a read (`CACHALOT_MINIMAX_PREFILL_MISS_DROP=0.20`, opt-in): 200-token follow-ups 5.80 → 4.61 s (-20.5 %) through the server path; NLL inside the noise band on two texts, +0.0055 [-0.0007, +0.0114] on the third. 0.43.0: both on by default (Hamed's call). 0.43.2: Hamed's sixth session read (§18.23 item 8): short follow-ups stalled 28-66 s with the GPU at 86.5 GiB of an 86.0 working set; an unclosed tool call at a loop-guard stop is now dropped instead of sent as text. A finer governor grain closed on paper.** §18.23 |
@@ -43,8 +43,8 @@ You are continuing work on **Cachalot**, an MLX runtime that runs DeepSeek V4.1 
 96 GiB Mac Studio M3 Ultra by streaming routed experts from SSD. The user is Hamed; he runs the interactive model
 himself in a separate terminal and expects terse replies in chat, complete prose in files.
 
-**Read this first.** `docs/HANDOFF.md`'s "Start here (2026-09-29, 0.45.1)", "0.45.0", "0.44.0", "0.42.0", "0.41.0", "0.39.0", "0.38.1", "0.38.0" and "0.37.0" blocks, then
-sections **18.26**, **18.25**, **18.24**, **18.23**, **18.22**, **18.21**, **18.20**, **18.19**, **18.18**, **18.17**, **18.16**, **18.15**, **18.14**, **18.13**, **18.12** (item 5 first), **18.11**, **18.10**, **18.9**, **18.8**, **18.7**, **18.6**, **18.5**, **18.4**, **18.3**, **18.2**, **18.1**, **18**, **17.1** and **15.13**, then 17 and 15.12.
+**Read this first.** `docs/HANDOFF.md`'s "Start here (2026-09-29, 0.45.2)", "0.45.1", "0.45.0", "0.44.0", "0.42.0", "0.41.0", "0.39.0", "0.38.1", "0.38.0" and "0.37.0" blocks, then
+sections **18.27**, **18.26**, **18.25**, **18.24**, **18.23**, **18.22**, **18.21**, **18.20**, **18.19**, **18.18**, **18.17**, **18.16**, **18.15**, **18.14**, **18.13**, **18.12** (item 5 first), **18.11**, **18.10**, **18.9**, **18.8**, **18.7**, **18.6**, **18.5**, **18.4**, **18.3**, **18.2**, **18.1**, **18**, **17.1** and **15.13**, then 17 and 15.12.
 
 **Hamed's standing priority order: Hermes usage first, vision second, speed/performance third.**
 
@@ -73,6 +73,12 @@ memory; swap 6 → 19 GiB), not the GPU ceiling; `read=` 4.5-5.3 ms and "Alloc" 
 rebuild from there): the sixth session's nine bodies (dump rows 282-298) replayed in order, a driver/pressure sampler
 every 2 s, optional GPU and host memory holders. It is the method for any governor or memory change.
 
+**New in 0.45.2 (§18.27), read first:** Hamed's first Hermes session on 0.45.1 ran clean and he found the answers
+much better: first request after the restart 1.75 s (the warm set back before his first message), short turns
+1.9-3.1 s, a 5,988-token tool result at 148 tok/s, decode 6.8-9.5 tok/s at 21-29k, no stalls. Two things are open
+and both need a dump, which that session did not write: a 25-token follow-up at 7.35 s (7.2 s in §18.25 too), and a
+summary of a 134-entry `ls` listing that invented four file names and a count ("180+" for 98 screenshots).
+
 **New in 0.45.1 (§18.26), read first:** no runtime change. The last priced software lever for MiniMax prefill
 (the per-expert (scale, bias) rebuild, a pair-index `qmm`) was built bit-identically and closed: the kernels win
 alone and lose inside a layer. A grouped launch per projection closed too. Prefill compute left over is expert
@@ -87,7 +93,21 @@ priced so far are closed; what is left is the live Hermes slowness, M28 and M19.
 minute). Hamed's first 0.44.0 session is read there: the restart fix held; three prefills were 3-7x slower live
 than in any replay, one of them Hermes's approval check, which Hermes timed out on.
 
-**First job (§18.25 "what is open" 1):** the next Hermes session with, beside the sampler, per-drive I/O
+**First job (§18.27 "what is open" 1-2):** ask Hamed for the next Hermes session **started with a dump**:
+
+```bash
+cd /Users/hamedprooshani/Projects/deepseek-v41-mac && CACHALOT_SERVER_DUMP=/tmp/cachalot-requests-0.45.jsonl ./serve-minimax.sh
+```
+
+with, beside it, the sampler (`benchmarks/slow_window_sampler.py`), per-drive I/O (`iostat -d -w 2 disk0 disk6`)
+and the GPU driver's "Alloc" (§18.24's `drv.sh`). Then, with his server stopped: replay any short follow-up above
+~4 s and any prefill slower than ~140 tok/s (§18.25 item 2's `replay2.py`, rebuild in scratch); and replay a long
+tool-result summary at temperature 0, default against exact (`CACHALOT_MINIMAX_MISS_DROP=0
+CACHALOT_MINIMAX_PREFILL_MISS_DROP=0`), a few seeds each, counting invented names against the tool output. Ask
+Hamed too: exclude the X10Pro's `models` from Spotlight, and point Hermes's approval model at a hosted provider
+(§18.25).
+
+**Previous first job (§18.25 "what is open" 1), still wanted inside the one above:** the next Hermes session with, beside the sampler, per-drive I/O
 (`iostat -d -w 2 disk0 disk6`) and the GPU driver's "Alloc" (§18.24's `drv.sh`), so a slow live prefill can be
 matched to the internal SSD, the X10Pro or the GPU; replay any slow request from the dump afterwards (§18.25 item 2's
 `replay2.py`) to confirm it is the machine. Ask Hamed first: exclude the X10Pro's `models` from Spotlight, and point

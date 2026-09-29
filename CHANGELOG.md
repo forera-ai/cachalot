@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.45.2 (2026-09-29)
+
+HANDOFF section 18.27.
+
+### Documented
+- Hamed's first Hermes session on 0.45.1: the first request after a restart reused the saved system block in 1.75 s
+  (the warm set was back in 10 s, before the first message), short turns 1.9-3.1 s, a 5,988-token tool result
+  prefilled at 148 tok/s, decode 6.8-9.5 tok/s at 21-29k context, no stalls. One 25-token follow-up took 7.35 s
+  (open). The tool call, code and story were clean; the summary of a 134-entry directory listing invented a few
+  names and counts. The session ran without `CACHALOT_SERVER_DUMP`, so nothing could be replayed; the next one
+  should set it.
+
 ## 0.45.1 (2026-09-29)
 
 HANDOFF section 18.26.

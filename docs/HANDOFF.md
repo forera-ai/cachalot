@@ -1,6 +1,6 @@
 # Cachalot — Engineering Handoff
 
-**Authoritative state as of 2026-09-29 (twenty-fourth MiniMax session), after the session that priced MiniMax's prefill expert kernels and closed them (section 18.26), the one that read Hamed's first Hermes session on 0.44.0 and made the mirror's share follow the X10Pro's speed (section 18.25), the one that made a restart reuse the agent's system block again and taught the memory governor to watch memory pressure (section 18.24), the one that gated the decode miss substitution on thinking-on and tool-call tasks and applied its rule to prefill, opt-in, short follow-ups -20 % (section 18.23), the one that capped MLX's buffer cache during MiniMax's decode, moved persisted system blocks off the GPU and gated the miss substitution at 24k (section 18.22), the one that let MiniMax's decode
+**Authoritative state as of 2026-09-29 (twenty-fourth MiniMax session), after the session that read Hamed's first Hermes session on 0.45.1 (section 18.27), the one that priced MiniMax's prefill expert kernels and closed them (section 18.26), the one that read Hamed's first Hermes session on 0.44.0 and made the mirror's share follow the X10Pro's speed (section 18.25), the one that made a restart reuse the agent's system block again and taught the memory governor to watch memory pressure (section 18.24), the one that gated the decode miss substitution on thinking-on and tool-call tasks and applied its rule to prefill, opt-in, short follow-ups -20 % (section 18.23), the one that capped MLX's buffer cache during MiniMax's decode, moved persisted system blocks off the GPU and gated the miss substitution at 24k (section 18.22), the one that let MiniMax's decode
 substitute its lightest missing experts, opt-in and measured inside the rounding noise (section 18.21), the one that put MiniMax's prefill at the GPU's FLOP
 wall and measured three levers without a gain (section 18.20), the one that measured where MiniMax's
 remaining time goes and shipped two bit-identical kernel fusions switched off (section 18.19), the one that raised the GPU's working
@@ -24,6 +24,21 @@ that gave it a bias-free expert bank (18.4), the one that gave it a second drive
 kernel (18.3), the one that cut its per-token overhead and measured it to 64k (18.2), the one that made it faster
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
+
+> ## Start here (2026-09-29, 0.45.2): Hamed's first Hermes session on 0.45.1 ran clean; no dump was written
+>
+> - **Performance (section 18.27):** the first request after the restart reused the saved 21,333-token block in
+>   **1.75 s** (7.2 s on 0.44.0; the warm set was back in 10 s, before the first message); short turns 1.9-3.1 s;
+>   a 5,988-token tool result prefilled at 148 tok/s (40.5 s); decode 6.8-9.5 tok/s at 21-29k; no stall, no
+>   pressure event; the mirror share dipped to 0.10 once and came back.
+> - **Open:** one 25-token follow-up took 7.35 s at 29k (1.9-3.1 s elsewhere; 7.2 s at 33k last session too).
+> - **Quality:** tool call, C# code and story clean; the summary of a 134-entry `ls` listing invented four
+>   `~$` lock files, "180+" screenshots (98 in the output) and a date range, and left out three entries. Whether the
+>   miss substitution plays a part needs the request replayed exact and default: **the session had no
+>   `CACHALOT_SERVER_DUMP`**, so nothing could be replayed.
+> - **Version 0.45.2** (documentation only).
+
+**Previous block, 0.45.1:**
 
 > ## Start here (2026-09-29, 0.45.1): MiniMax's prefill expert kernels priced and closed; nothing in `src/` changed
 >
@@ -8409,6 +8424,57 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.27 MiniMax-M3: Hamed's first Hermes session on 0.45.1 — 2026-09-29 (0.45.2)
+
+**What was read.** Hamed ran Hermes Agent Desktop against `./serve-minimax.sh` on 0.45.1 (session
+`20260929_222826_c8d88c`, 22:28-22:35, exported as `list-files-on-desktop-3-20260929.json`) and pasted the server
+log. **No `CACHALOT_SERVER_DUMP` was set** (the newest dumps in `/tmp` are from 16:09 and 19:31), so the reading
+below rests on the log's `[request]` lines and the export; no request could be replayed. Hamed's verdict: "the
+answers look much better now".
+
+**1. Startup and the first request.** `memory fit: expert slots 3300 -> 3186`, `prefix snapshots: 2 loaded (21333,
+333 tokens), 6 more on disk, in 0.64s`, the warm set of 3,043 experts (62.7 GiB) back in 10.0 s, before the first
+message. The first request reused 21,333 of 21,343 tokens: **prefill 1.75 s** (7.2 s in §18.25's session, where the
+first request arrived while the warm set was still loading).
+
+**2. The five requests.**
+
+| # | turn | prompt | reused | new | prefill | completion | decode | miss/tok | hit | note |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | "Hi" | 21,343 | 21,333 | 10 | 1.75 s | 10 | 7.92 tok/s | 13.6 | 93 % | |
+| 2 | Desktop listing, tool call | 21,378 | 21,352 | 26 | 1.92 s | 30 | 6.75 | 20.2 | 91 % | `finish=tool_calls` |
+| 3 | the `ls` result | 27,395 | 21,407 | 5,988 | 40.50 s | 533 | 7.66 | 13.5 | 94 % | 148 tok/s; slots 3053 -> 2654 -> 2920 |
+| 4 | C# JSON/CSV importer | 27,950 | 27,927 | 23 | 3.13 s | 1,307 | 7.45 | 10.8 | 95 % | mirror share 0.13 -> 0.10 -> 0.13 |
+| 5 | 200-word story | 29,281 | 29,256 | 25 | **7.35 s** | 269 | 9.54 | 9.2 | 96 % | |
+
+The 5,988-token prefill ran at 148 tok/s, the same rate as §18.25's 2-3.5k tool results (152 tok/s): its 40 s is the
+listing's length, not a stall. No `memory pressure` line, no slab given back for pressure, `read=` 4.4-5.1 ms
+(normal, §18.24 item 1). After the long prefill the governor regrew only to 2,920 slots (3,053 before it), so
+decode ran with ~130 fewer cached experts; hit rates stayed 94-96 %. The mirror's share dipped to 0.10 during turn 4
+and returned (§18.25 item 4 working as designed; the X10Pro briefly busy). None of §18.25's slow prefills recurred;
+Hermes sent no approval check.
+
+**3. One unexplained short prefill.** Turn 5 prefilled 25 tokens in 7.35 s where turns 2 and 4 took 1.9-3.1 s at
+21-28k; §18.25's session showed the same (25 tokens in 7.2 s at 33k). The idle warming before it had finished (1,090
+experts in 3.4 s, 33 s before the request); no fit line was printed. Replaying it needs the body.
+
+**4. Quality.** The tool call was clean (`terminal`, `ls -la ~/Desktop`). The C# importer is sound (JSON through
+`System.Text.Json` with a first-array fallback, a quote-aware CSV splitter, format by extension); minor: an unused
+`using System.Globalization`, CSV fields spanning lines are not handled, one garbled phrase ("Add `, optional`
+flags"). The story is 211 words for 200 asked, coherent, with one repeated phrase ("not from the felt, but from the
+felt"). **The listing summary (turn 3) invented details:** four `~$` lock/temporary files that are not in the output,
+"180+ Screenshot 2026-*.png" (the output has 134 entries, 98 screenshots, 68 of them from 2026) and a "Mar 2022-May
+2026" range for `Parshan`; it left out `$RECYCLE.BIN`, the `Unsloth Studio` link and a `.fileloc` file. Summaries
+of long listings are a known weakness of models this size, but the miss substitution (on by default since 0.43.0)
+is not ruled out: that needs the turn-3 body replayed at temperature 0 on the default and the exact path
+(`CACHALOT_MINIMAX_MISS_DROP=0 CACHALOT_MINIMAX_PREFILL_MISS_DROP=0`), a few seeds each, counting invented names.
+
+**Shipped (0.45.2):** documentation only.
+
+**What is open after this.** 1. The next Hermes session **with `CACHALOT_SERVER_DUMP` set** (and §18.25's per-drive
+`iostat` and sampler beside it). 2. From that dump: the 25-token follow-ups at 7+ s, and a long-listing summary
+replayed default against exact. 3. §18.25's open items stand (Spotlight on the X10Pro, Hermes's approval model).
 
 ### 18.26 MiniMax-M3: the prefill expert kernels, priced and closed — 2026-09-29 (0.45.1)
 
