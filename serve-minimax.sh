@@ -57,6 +57,9 @@ export CACHALOT_SNAPSHOT_PRELOAD=${CACHALOT_SNAPSHOT_PRELOAD:-2}
 # 0.39.0 (HANDOFF 18.21), opt-in and not bit-identical: CACHALOT_MINIMAX_MISS_DROP=0.20 CACHALOT_MINIMAX_MISS_SUB=4 in
 # front of this script skips missing experts under 20 % of a layer's routing weight and computes the best resident
 # runner-up instead (decode -9 to -13.5 % through the server, quality inside the rounding noise).
+# 0.41.0 (HANDOFF 18.22), both bit-identical and on: decode runs with a 0.25 GiB MLX buffer cache
+# (CACHALOT_MINIMAX_DECODE_CACHE_GIB; -1 keeps 2 GiB) so the GPU stays under its working set, and system blocks saved
+# on disk leave memory after each request (CACHALOT_MINIMAX_SPILL_BLOCKS=0 keeps them).
 # MiniMax's generation_config: temperature 1.0, top_p 0.95
 exec ~/venvs/deepseek-v41/bin/python -m cachalot.cli serve \
     --model "$CACHALOT_MODEL_PATH" \

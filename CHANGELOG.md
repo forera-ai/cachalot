@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.41.0 (2026-09-29)
+
+HANDOFF section 18.22.
+
+### Changed
+- **MiniMax decodes with a 0.25 GiB MLX buffer cache** (`CACHALOT_MINIMAX_DECODE_CACHE_GIB`; prefill keeps 2 GiB,
+  a negative value restores 2 during decode). The memory governor sizes the expert cache with the buffer cache
+  emptied, and decode refilled it to 2 GiB, which put all processes' GPU memory above the 86 GiB working set: at a
+  30k agent context the next 200-token follow-up prefill took 15-32 s instead of 5-7 in 12 of 35 turns, and in 0
+  of 20 with the cap. Mean follow-up prefill 17.2 -> 6.1 s, decode unchanged, same tokens.
+- **MiniMax drops persisted system blocks from memory after each request** (`CACHALOT_MINIMAX_SPILL_BLOCKS`, 0
+  keeps them): a Hermes session held a 2.4 GiB copy of its system block through every decode token; a new
+  conversation now reloads it from disk in ~0.4 s. Bit-identical.
+
+### Measured
+- Miss substitution (`CACHALOT_MINIMAX_MISS_DROP=0.20 CACHALOT_MINIMAX_MISS_SUB=4`) at 24k context on three texts:
+  every paired-NLL interval against exact spans zero (+0.021 / -0.003 / +0.005), mean KL 1.4x a rounding-noise
+  arm's, misses -30 to -55 %, ms a token -14 to -21 %. Still off by default.
+
 ## 0.40.1 (2026-09-29)
 
 ### Documented

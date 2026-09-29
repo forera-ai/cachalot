@@ -1,6 +1,6 @@
 # Cachalot — Engineering Handoff
 
-**Authoritative state as of 2026-09-28 (twentieth MiniMax session), after the session that let MiniMax's decode
+**Authoritative state as of 2026-09-29 (twenty-first MiniMax session), after the session that capped MLX's buffer cache during MiniMax's decode, moved persisted system blocks off the GPU and gated the miss substitution at 24k (section 18.22), the one that let MiniMax's decode
 substitute its lightest missing experts, opt-in and measured inside the rounding noise (section 18.21), the one that put MiniMax's prefill at the GPU's FLOP
 wall and measured three levers without a gain (section 18.20), the one that measured where MiniMax's
 remaining time goes and shipped two bit-identical kernel fusions switched off (section 18.19), the one that raised the GPU's working
@@ -24,6 +24,22 @@ that gave it a bias-free expert bank (18.4), the one that gave it a second drive
 kernel (18.3), the one that cut its per-token overhead and measured it to 64k (18.2), the one that made it faster
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
+
+> ## Start here (2026-09-29, 0.41.0): short follow-ups at an agent's context 3x faster, bit-identical
+>
+> - **Decode buffer cache capped (section 18.22 item 3):** MLX's buffer cache refilled to 2 GiB during decode after
+>   the governor had sized the expert cache without it; all processes' GPU memory sat above the 86 GiB working set
+>   and the next short prefill ran 15-32 s instead of 5-7 in 12 of 35 turns (0 of 20 capped). MiniMax now decodes
+>   with a 0.25 GiB cache (`CACHALOT_MINIMAX_DECODE_CACHE_GIB`): follow-ups at 30k context 17.2 -> 6.1 s on average,
+>   decode unchanged, same tokens.
+> - **System block off the GPU (item 2):** the in-memory copy of a persisted system block (2.4 GiB in a Hermes
+>   session) leaves memory after each request and reloads from disk in 0.42 s when a new conversation needs it
+>   (`CACHALOT_MINIMAX_SPILL_BLOCKS`, on). Bit-identical.
+> - **Miss substitution gated at 24k (item 1):** KL and paired NLL against a rounding-noise arm on three 24k texts:
+>   every NLL interval spans zero, misses -30 to -55 %, ms a token -14 to -21 %. Still off by default: Hamed's call.
+> - **Version 0.41.0.** 452 tests pass.
+
+**Previous block, 0.39.0:**
 
 > ## Start here (2026-09-28, 0.39.0): MiniMax decode can skip its lightest misses (opt-in, not bit-identical)
 >
@@ -8315,6 +8331,96 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.22 MiniMax-M3: short follow-ups at an agent's context 3x faster, a system block off the GPU, miss substitution gated at 24k — 2026-09-29 (0.41.0)
+
+Hamed's brief (prompt v69, the twenty-first "MiniMax-M3 as fast as possible at the same quality"): confirm caveman,
+Jev and the codebase-memory graph first, then plan, build, measure and document. Tools: caveman active (session
+hook), Jev answered (`jev_noul` 0.98 on a probe), the graph ready (6,072 nodes, one partial file outside the code).
+0.40.1 committed, tree clean, `iogpu.wired_limit_mb` 88064, no runtime running. Filler: a fresh 5.41 MB
+concatenation of the repo's tracked `.md` and `.py` files (scratch). Nothing slept the display; the screensaver
+ran during the T2 quality arms (marked). Scratch instruments: `q/arm.sh` + `q/sweep.sh` (quality arms through
+`glm_prefill_timeline.py`), `agent_spill.py` (Hermes-shaped turns through `MiniMaxModel.stream` with a disk snapshot
+store, printing per turn the prefill, decode ms, misses, expert capacity, in-memory prefix GiB, all processes' GPU
+allocation and MLX's buffer cache every 25 decode tokens, and an ids hash).
+
+**Where the plan came from.** Hamed's fifth session log (`/tmp/cachalot-serve.log`, 0.40.0, switch on) at 30-37k
+context: expert capacity 2,521-2,787 of 3,300 slots, decode 5.5-10.4 tok/s, and follow-ups of 144-1,494 new tokens
+at a flat ~18-24 s (35 tokens: 6 s). Three open items were priced: the miss substitution's quality at long context
+(18.21 "what is open" 2), what else holds GPU memory at an agent's context, and the slow short follow-ups.
+
+**1. Miss substitution at 24k context: inside the noise band.** `glm_prefill_timeline.py 24576` (`FIT_PREFILL=1`,
+`PREFILL_FULL_TOKENS=512`, budget 68), `TF_DECODE=300`, three texts (offsets 1,300,000 / 2,500,000 / 3,700,000),
+one process an arm; noise arm = prefill chunk 4,096 + `CACHALOT_MINIMAX_FAST_NORM=0` (chunk 1,024 would take ~20 min
+a 24k prefill); paired NLL is arm minus exact with a 2,000-sample bootstrap interval:
+
+| text | arm | ms/token | misses/token | mean KL | max KL | paired NLL [95 %] |
+|---|---|---|---|---|---|---|
+| T1 | exact | 144.2 | 32.7 | — | — | — |
+| T1 | noise | 153.5 | 32.5 | 0.013 | 0.25 | +0.010 [-0.012, +0.032] |
+| T1 | **sub < 0.20** | **124.4** | **21.4** | 0.023 | 1.11 | +0.021 [-0.004, +0.048] |
+| T2 * | exact | 194.0 | 47.3 | — | — | — |
+| T2 * | noise | 187.7 | 46.8 | 0.023 | 2.87 | +0.007 [-0.009, +0.033] |
+| T2 * | **sub < 0.20** | **163.1** | **32.9** | 0.020 | 4.59 | -0.003 [-0.011, +0.005] |
+| T3 | exact | 124.7 | 27.3 | — | — | — |
+| T3 | noise | 128.8 | 27.2 | 0.008 | 0.09 | -0.001 [-0.014, +0.014] |
+| T3 | **sub < 0.20** | **98.2** | **12.2** | 0.017 | 0.51 | +0.005 [-0.023, +0.032] |
+
+(* screensaver running; T2 is near-verbatim text, NLL 0.08.) Every interval spans zero; the mean paired NLL over the
+three texts is +0.008 against the noise arm's +0.005; mean KL is 1.4x the noise arm's on average (0.020 against
+0.015), max KL below the noise arm's on T2 and above it on T1/T3, where no single position reaches 1.2. Misses -30 to
+-55 %, ms a token -14 to -21 % (this path decodes at 2,521 slots: the benchmark does not take slots back after a fitted
+prefill). With 18.21's 2k results this covers 2k and 24k. Still not measured: a thinking-mode battery and tool calls
+at the switch's default. It stays off by default: Hamed's call (his last two Hermes sessions ran with it on).
+
+**2. The system block's copy held GPU memory through every decode token (shipped, on).** At the end of the first
+turn of an agent conversation, `stream` keeps a copy of the system block (the `boundary` snapshot, `_clone`d) in the
+in-memory prefix cache and persists it to disk. The conversation continues from its own (consumed) snapshots, so the
+copy only serves the next new conversation, yet it held **2.4 GiB** (in-memory prefix 5.8 GiB = the block + the
+live conversation) and, through the governor's GPU term, ~115 expert slots. `SPILL_PERSISTED` (MiniMax,
+`CACHALOT_MINIMAX_SPILL_BLOCKS`, default on; GLM off) drops every in-memory snapshot the disk store holds after each
+request; a prompt that starts with the block loads it back (`SnapshotStore.fetch`): **0.42 s for a 2.5 GiB block**.
+The two startup-preloaded snapshots leave memory after the first request the same way. `agent_spill.py` (21k
+system block, an 8k first message, five 200-token follow-ups, 150 greedy tokens a turn), ABAB: prefix 5.8 → 3.4
+GiB, the same ids hash in all four arms (1089c017815b). The capacity moves in whole slabs (133 slots, 2.7 GiB) under
+the GPU term, so the freed memory became +133 slots one turn earlier in one pair and +61 in the other; decode per
+turn stayed inside the run-to-run noise (a slow window hit the fourth arm). Jev (`jev_decide`): ship on, 0.98.
+
+**3. MLX's buffer cache during decode pushed the GPU over its working set (shipped, on).** The governor sizes the
+expert cache after `mx.clear_cache()`; decode then refills MLX's buffer cache to its 2 GiB cap within a few
+tokens. Sampled every 25 decode tokens, all processes' GPU allocation sat at 86.1-87.6 GiB against a working set of
+86 GiB (`iogpu.wired_limit_mb` 88064; the governor's ceiling is that + 1 GiB), and **the next short prefill ran
+15-32 s instead of 5-7 s in 12 of 30 turns** (every arm with a 2 GiB cache, sections 2 and 3). With the cache capped
+at 0.25 GiB while decoding (the prefill keeps 2 GiB), 0 of 10 turns were slow:
+
+| decode buffer cache | follow-up prefills of 200 tokens at 29-31k context (s) | decode ms (turns 1-5) | GPU alloc max |
+|---|---|---|---|
+| 2 GiB | 19.3 / 31.8 / 8.6 / 6.1 / 5.6; 7.3 / 29.8 / 22.5 / 25.4 / 15.7 | 116.1; 117.2 | 86.1-86.9 |
+| 0.25 GiB | 6.2 / 6.9 / 5.4 / 5.8 / 7.2; 5.8 / 6.6 / 5.1 / 5.5 / 6.1 | 114.9; 108.4 | 84.0-86.8 |
+
+Mean follow-up prefill **17.2 → 6.1 s (-65 %)**, decode unchanged (the capped cache stays at 0.23-0.24 GiB with no
+visible cost), same ids hash. This is the "~20 s short follow-ups at 33-37k context" of Hamed's fifth session
+(18.21 item 10) and plausibly part of every slow window seen near the memory ceiling. Shipped as
+`GlmModel.DECODE_CACHE_BYTES` (set around the decode loop in `stream`, restored in its `finally`), MiniMax 0.25 GiB
+(`CACHALOT_MINIMAX_DECODE_CACHE_GIB`, a negative value keeps 2 GiB), GLM unchanged.
+
+**4. The shipped path, verified** (`src` defaults against `CACHALOT_MINIMAX_DECODE_CACHE_GIB=-1`, `agent_spill.py`
+with the bench's own spill off, so `SPILL_PERSISTED` ran in `stream`): prefix 3.34 GiB after the first turn (the
+block left memory), the decode buffer cache 0.23-0.24 GiB, all processes' GPU allocation at most 85.6 GiB against
+86.5-86.9 with the 2 GiB cache, decode ms per turn equal (145.6 / 108.7 / 117.4 / 92.8 / 98.7 against 146.2 / 110.0 /
+118.2 / 91.7 / 96.1), the same ids hash. This time the 2 GiB arm's five follow-ups were fast too (5.4-7.0 s): the
+slow prefill is intermittent. Over every run this session, **12 of 35 follow-ups with the 2 GiB cache took 15-32 s and
+0 of 20 with 0.25 GiB** (Fisher's exact p = 0.002). The fourth arm died in its first prefill with
+`kIOGPUCommandBufferCallbackErrorInnocentVictim` (a GPU recovery another process caused; the arm was a bystander).
+452 tests pass.
+
+**What is open after this.** 1. Hamed's call on the miss substitution's default (now gated at 2k and 24k; a
+thinking-mode battery and tool calls still unmeasured). 2. A live Hermes session on 0.41.0 with
+`CACHALOT_SERVER_DUMP` set: the follow-up `prefill=` times at 30k+ should now be ~5-8 s for 100-500 new tokens;
+`mlx=` ends at 0.2 GiB of cache after a decode. 3. The governor still rounds to whole 133-slot slabs; a finer grain
+(parking half-slabs, or counting a fixed buffer-cache allowance instead of clearing it) would turn freed memory like
+item 2's into slots every time. 4. Everything in 18.20's ranking: M28 with Hamed, M19 (a Thunderbolt mirror
+drive), the pair-index prefill `qmm` kernel (-4 %), GLM G6 + S1c + S1e (and the decode cache cap for GLM).
 
 ### 18.21 MiniMax-M3: decode skips its lightest missing experts, opt-in, quality inside the rounding noise — 2026-09-28 (0.39.0)
 

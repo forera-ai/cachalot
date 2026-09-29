@@ -806,6 +806,26 @@ class GlmModel:
             self.prefix.append(best)
         return best
 
+    # HANDOFF 18.22: MLX's buffer cache limit while a reply decodes (None keeps the prefill's). The memory governor
+    # sizes the expert cache with the buffer cache emptied; decode then refilled it to its 2 GiB cap, which put all
+    # processes' GPU memory above the working set, and the next short prefill ran 3-5x slower in 12 of 35 turns (0 of
+    # 20 capped).
+    DECODE_CACHE_BYTES: int | None = None
+
+    # HANDOFF 18.22: a system block the disk store holds is dropped from memory after each request (the next prompt
+    # that starts with it loads it back, ~0.4 s); in memory it held ~2.4 GiB (~115 of MiniMax's expert slots) through
+    # every decode token of an agent session. Off for GLM (its blocks are ~0.25 GiB).
+    SPILL_PERSISTED = False
+
+    def _spill_persisted(self) -> None:
+        if not self.SPILL_PERSISTED or self.disk is None:
+            return
+        on_disk = set(self.disk.tokens.values())
+        kept = [p for p in self.prefix if p.tokens not in on_disk]
+        if len(kept) != len(self.prefix):
+            self.prefix = kept
+            mx.clear_cache()
+
     def _add_prefix(self, snap: Snapshot) -> None:
         self.prefix = [p for p in self.prefix if p.tokens != snap.tokens]
         self.prefix.append(snap)
@@ -825,6 +845,7 @@ class GlmModel:
         """Yields ("prefill", reused, seconds), ("token", id) ..., ("done", finish, decode_seconds)."""
         with self._lock:
             self._busy = True
+            restore_cache = None
             try:
                 self._stop_idle_warm()
                 self._wait_warm_set()
@@ -865,6 +886,8 @@ class GlmModel:
                 if reused < len(tokens) and not self.CONSUME_SNAPSHOTS:
                     self._add_prefix(self.snapshot(tokens, cache, logits))
                 yield ("prefill", reused, time.perf_counter() - t0)
+                if self.DECODE_CACHE_BYTES is not None:
+                    restore_cache = mx.set_cache_limit(self.DECODE_CACHE_BYTES)
                 t1 = time.perf_counter()
                 out: list[int] = []
                 finish = "length"
@@ -904,7 +927,10 @@ class GlmModel:
                         self._add_prefix(reply)
                 yield ("done", finish, time.perf_counter() - t1)
             finally:
+                if restore_cache is not None:
+                    mx.set_cache_limit(restore_cache)
                 self.store.release_prefill()
+                self._spill_persisted()
                 self._save_warm_set()
                 self._idle_since = time.perf_counter()
                 self._busy = False
