@@ -43,6 +43,14 @@ sections **18.21**, **18.20**, **18.19**, **18.18**, **18.17**, **18.16**, **18.
 
 **Hamed's standing priority order: Hermes usage first, vision second, speed/performance third.**
 
+**New in 0.39.2-0.40.1 (§18.21 items 7-10), read first:** Hermes's bad sessions were a lost tool call (a plain
+`<tool_call>` without the namespace token; fixed 0.39.2), runaway repetition at temperature 1.0 (loop guard,
+0.40.0; two were compression summaries), Hamed's `compression.threshold_tokens: 30000` (the system block is 21k),
+and one agent flail that replays clean 20 of 20 times. None was the miss-substitution switch. Open: Hermes with
+thinking on, a lower agent temperature, the ~20 s short follow-ups at 33-37k context, side requests costing ~60 s.
+When a Hermes session looks wrong: read the dump (`CACHALOT_SERVER_DUMP`) for injected user messages and run
+`glm.engine.repeating_tail` over its replies before blaming a lever; never replay while Hamed's server runs.
+
 **New in 0.39.0 (§18.21): the first MiniMax speed lever that changes outputs, shipped off.** Ask Hamed first
 whether he ran a Hermes session with `CACHALOT_MINIMAX_MISS_DROP=0.20 CACHALOT_MINIMAX_MISS_SUB=4` and how the
 answers read; the default is his call. Before it becomes the default: a long-context quality gate (only 2k was

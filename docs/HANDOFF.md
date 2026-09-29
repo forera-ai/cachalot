@@ -41,7 +41,9 @@ The first block below is new; the blocks after it still hold.
 >   plain `<tool_call>` token (no namespace token); the splitter now accepts it. The model and kernels were fine.
 > - **0.40.0 (item 9):** MiniMax replies that loop (same block six times in a row) stop; four Hermes replies had
 >   looped for 1-6k tokens, two of them compression summaries (hence the timeouts). Not the switch.
-> - **Version 0.40.0.** 449 tests pass.
+> - **Fifth Hermes session (item 10):** memory healthy, no loops; the C# request flailed over nine tool turns, a
+>   rare sampled branch (0 of 20 replays took a tool, either arm). Thinking-on and a lower agent temperature untested.
+> - **Version 0.40.1.** 449 tests pass.
 
 **Previous block, 0.38.1:**
 
@@ -8490,6 +8492,25 @@ the 112 dumped replies: exactly the four, at 839 / 1,592 / 578 / 1,175 tokens. A
 snapshot (the model stream was cancelled), so the next turn prefills the shortened reply. Also fixed on the way:
 the stop-string path created its cancel event after `model.stream` had started, so stop strings never ended
 generation. Studio brief: `docs/studio/briefs/2026-09-29-runtime-0.40.0.md`. 449 tests pass.
+
+**10. Hamed's fifth session (0.40.0, switch on, dump on; export `list-files-in-desktop-folder-5-20260929.json`),
+supervised live.** Memory: pressure normal except one warning blip while the first 21k prefill parked slabs, swap
+flat (4.4-4.9 GiB), all processes' GPU allocation peaked at 87.6 GiB. 19 requests, no reply looped (the guard never
+fired; no reply had even 4 back-to-back repeats). The first request prefilled cold (the saved system block had
+21,333 tokens, this one 21,357: Hermes's prompt changed) in 127 s. Decode 5.0-10.4 tok/s at 21-37k context. Two
+costs on the list: Hermes's side requests (approval checks, 1,159 and 595 tokens, no shared prefix) prefilled in 59
+and 28 s for a 4-token answer, and short follow-ups at 33-37k context (144-1,494 new tokens) cost a flat ~18-24 s
+(36 tokens: 6 s).
+**What went wrong:** "write a C# code to import json and csv files." became nine tool turns: C# written through a
+Python `execute_code` call, then `write_file` to `/tmp`, `dotnet run` in a missing directory, `dotnet new console`
+in `~/csv_import` (a real project in Hamed's home), a refused overwrite, a heredoc, compile errors, every reply
+opening "I notice..."; Hamed stopped it. Replaying that exact request (row 255, 25.9k context, Hermes's sampling:
+temperature 1.0, top_p 0.95, thinking off as Hermes now sends `reasoning_effort: none`), 10 samples per arm
+(`firstact.py`, scratch): **0 of 10 took a tool with the switch off, 0 of 10 with it on**; every sample answered with
+C# in the reply or asked which library to use (one exact-arm sample answered the previous turn instead). The live
+session took a rare sampled branch (a tool call) and then compounded on its own history: not the runtime, not the
+switch. Not tested and worth a session: Hermes with thinking on (`reasoning_effort` medium, which Hermes sent until
+recently), and a lower temperature for agent turns (the checkpoint says 1.0; Hermes sends none).
 
 **What is open after this.** 1. Hamed's call on the default, ideally after a Hermes session with the switch on
 (`CACHALOT_SERVER_DUMP` set) and one without, reading answer quality as well as `[request]` lines. 2. A longer

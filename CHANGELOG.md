@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.40.1 (2026-09-29)
+
+### Documented
+- HANDOFF 18.21 item 10: Hamed's fifth Hermes session on 0.40.0, supervised (memory healthy, no loops). The C#
+  request that flailed through nine tool turns replays as a direct answer in 20 of 20 samples (10 with miss
+  substitution, 10 without): a rare sampled branch compounding on its own history, not the runtime.
+
 ## 0.40.0 (2026-09-29)
 
 HANDOFF section 18.21 item 9.
