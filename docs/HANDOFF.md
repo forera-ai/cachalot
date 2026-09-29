@@ -1,6 +1,6 @@
 # Cachalot — Engineering Handoff
 
-**Authoritative state as of 2026-09-29 (twenty-fourth MiniMax session), after the session that read Hamed's first Hermes session on 0.45.1 (section 18.27), the one that priced MiniMax's prefill expert kernels and closed them (section 18.26), the one that read Hamed's first Hermes session on 0.44.0 and made the mirror's share follow the X10Pro's speed (section 18.25), the one that made a restart reuse the agent's system block again and taught the memory governor to watch memory pressure (section 18.24), the one that gated the decode miss substitution on thinking-on and tool-call tasks and applied its rule to prefill, opt-in, short follow-ups -20 % (section 18.23), the one that capped MLX's buffer cache during MiniMax's decode, moved persisted system blocks off the GPU and gated the miss substitution at 24k (section 18.22), the one that let MiniMax's decode
+**Authoritative state as of 2026-09-29 (twenty-fourth MiniMax session), after the session that replayed Hamed's second Hermes session on 0.45.x from its dump (section 18.28), the one that read his first Hermes session on 0.45.1 (section 18.27), the one that priced MiniMax's prefill expert kernels and closed them (section 18.26), the one that read Hamed's first Hermes session on 0.44.0 and made the mirror's share follow the X10Pro's speed (section 18.25), the one that made a restart reuse the agent's system block again and taught the memory governor to watch memory pressure (section 18.24), the one that gated the decode miss substitution on thinking-on and tool-call tasks and applied its rule to prefill, opt-in, short follow-ups -20 % (section 18.23), the one that capped MLX's buffer cache during MiniMax's decode, moved persisted system blocks off the GPU and gated the miss substitution at 24k (section 18.22), the one that let MiniMax's decode
 substitute its lightest missing experts, opt-in and measured inside the rounding noise (section 18.21), the one that put MiniMax's prefill at the GPU's FLOP
 wall and measured three levers without a gain (section 18.20), the one that measured where MiniMax's
 remaining time goes and shipped two bit-identical kernel fusions switched off (section 18.19), the one that raised the GPU's working
@@ -24,6 +24,23 @@ that gave it a bias-free expert bank (18.4), the one that gave it a second drive
 kernel (18.3), the one that cut its per-token overhead and measured it to 64k (18.2), the one that made it faster
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
+
+> ## Start here (2026-09-29, 0.45.3): a derailed Hermes session replayed from its dump: sampling, not the runtime
+>
+> - **Live (section 18.28 item 1):** same four prompts as §18.27; the reply to the 5,988-token `ls` result derailed
+>   (it claimed a "DESTRUCTIVE" rule list that is nowhere in the system prompt or tools), and the next two replies
+>   carried the derailment on. The first request prefilled 10 tokens in 44.3 s while the warm set was loading.
+> - **Replayed (items 2-3):** the live prompts are token-identical to the replay's; the first request replays at
+>   3.9-5.8 s. The `ls` turn sampled 8 times at the live temperature (1.0): **default 0/8 derailed; exact path
+>   (substitution off) 3/8** (two runaway lists of invented names, 4,829 and 1,202 tokens, one invented "malware"
+>   file). The live derailment is temperature-1.0 sampling on a long listing, not the miss substitution and not
+>   corrupted state. Nothing in `src/` changed.
+> - **Open:** Hermes sends no temperature, so the server samples at the checkpoint's 1.0; a lower agent temperature
+>   (Hermes's config, or a server default for requests without one) is Hamed's call. The loop guard let a list of
+>   invented names that only repeated at its tail run 4,829 tokens.
+> - **Version 0.45.3** (documentation only).
+
+**Previous block, 0.45.2:**
 
 > ## Start here (2026-09-29, 0.45.2): Hamed's first Hermes session on 0.45.1 ran clean; no dump was written
 >
@@ -8424,6 +8441,57 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.28 MiniMax-M3: Hamed's second Hermes session on 0.45.x, replayed from its dump — 2026-09-29 (0.45.3)
+
+**1. The live session.** Hamed ran the same four prompts as §18.27 through Hermes Desktop on 0.45.2, this time with
+`CACHALOT_SERVER_DUMP=/tmp/cachalot-requests-0.45.jsonl` (export `list-desktop-folder-contents-20260929.json`,
+session `20260929_223941_2256cc`):
+
+| # | turn | new tokens | prefill | completion | decode | reply |
+|---|---|---|---|---|---|---|
+| 1 | "Hi" | 10 | **44.32 s** | 10 | 4.87 tok/s | normal; the warm set had read 1,896 of 3,186 experts when the request came |
+| 2 | Desktop listing | 26 | 2.07 s | 30 | 6.58 | clean `terminal` call, `ls -la ~/Desktop` |
+| 3 | the `ls` result | 5,988 | 39.44 s | 189 | 8.55 | **derailed**: "I have to stop before answering", a list of "DESTRUCTIVE" categories (ssh keys, IPMI/BMC, ...) the system prompt does not contain |
+| 4 | C# importer | 210 | 4.54 s | 1,275 | 7.90 | opens with a confused paragraph about "disguised instructions", then CsvHelper code with a stray `)` and a CSV write through a reader |
+| 5 | 200-word story | 25 | 2.73 s | 419 | 10.74 | a story, then a paragraph about a "`MockCode` policy" |
+
+Hermes sent the same system prompt as the 0.44.0 dump (26,777 characters, identical), no temperature
+(`reasoning_effort: none`), so the server sampled at 1.0, top_p 0.95. None of "DESTRUCTIVE", "MockCode", "ssh" or
+"IPMI" appears in the system prompt or the tool schemas: the model invented them in turn 3, and turns 4-5 continued
+from its own derailed reply in the history.
+
+**2. The prompts were right.** Every request body replayed (scratch `replay45.py`, bodies in order, the tool-result
+body sampled 8 times; servers launched by `arm.sh`, each with its own dump): the prompt tokens of turns 1-3 are
+identical to the live ones, token for token. The first request, sent while the warm set was loading as it was live,
+prefilled in **3.92 s** (default) and 5.83 s (exact), against 44.32 s live: the live 44 s was the machine at that
+moment, not the runtime (no sampler ran).
+
+**3. The derailment is sampling at temperature 1.0.** The `ls` turn (5,988 new tokens at 27k context), eight
+samples each, the server's defaults otherwise:
+
+| arm | derailed | how |
+|---|---|---|
+| default (miss substitution on) | **0 / 8** | every reply a sane summary, 382-638 tokens |
+| exact (`CACHALOT_MINIMAX_MISS_DROP=0 CACHALOT_MINIMAX_PREFILL_MISS_DROP=0`) | **3 / 8** | a runaway list of invented `noto 1-495` entries and repeated `tune-1.tar.gz.icloud` (4,829 tokens); a runaway of invented `Windfal/` folders (1,202 tokens); an invented "leftover malware" file |
+
+The live derailment (1 of 1) is inside what both arms produce at temperature 1.0 on a long listing; the exact
+path, if anything, derails more (the counts are too small to rank the arms). This does not implicate the miss
+substitution, nor any state corruption. Decode in the replays: 8.9-9.9 tok/s (default), 6.9-11.3 (exact, colder
+cache). Unchecked: the live turn-3 reply's first tokens teacher-forced under a clean state (would give the sampling
+probability of the derailment directly).
+
+**4. The loop guard and a runaway list.** The exact arm's 4,829-token reply repeated one line at its tail
+(`tune-1.tar.gz.icloud`), after ~450 lines of an incrementing invented list. §18.21 item 8's loop guard
+(`glm.engine.repeating_tail`) targets exact repetition, so the incrementing part never tripped it.
+
+**Shipped (0.45.3):** documentation only.
+
+**What is open after this.** 1. **An agent temperature** (Hamed's call): Hermes sends none, so every agent turn
+samples at the checkpoint's 1.0. Either Hermes's config sets one (e.g. 0.6-0.7 for its model) or the server takes a
+lower default for requests without a temperature; the second changes outputs for every client and needs the
+quality rule (a checkable battery at both temperatures). 2. The loop guard on incrementing runaway lists (price a
+rule on the replies above first). 3. §18.25's open items stand.
 
 ### 18.27 MiniMax-M3: Hamed's first Hermes session on 0.45.1 — 2026-09-29 (0.45.2)
 

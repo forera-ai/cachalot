@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.45.3 (2026-09-29)
+
+HANDOFF section 18.28.
+
+### Documented
+- Hamed's second Hermes session on 0.45.x, with a server dump: the reply to a long directory listing derailed (it
+  invented a list of forbidden categories) and the next two replies carried it on. Replayed from the dump: the live
+  prompts are token-identical to the replay's, and the same turn sampled eight times at the live temperature 1.0
+  derailed 0 of 8 times with the default settings and 3 of 8 on the exact path. The cause is temperature-1.0
+  sampling on a long tool result, not the miss substitution or the runtime's state. A 44 s first-request prefill
+  replays at 4-6 s. Hermes sends no temperature; a lower agent temperature is open.
+
 ## 0.45.2 (2026-09-29)
 
 HANDOFF section 18.27.
