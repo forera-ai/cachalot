@@ -300,7 +300,15 @@ class MiniMaxM3SparseMoeBlock(nn.Module):
         prefill_hook = getattr(self, "prefill_hook", None)
         if prefill_hook is not None and x.shape[1] > 1:
             # a prefill chunk (cachalot.minimax.model): the next layer's experts predicted from this residual
-            y = self.switch_mlp(x, inds, speculate=prefill_hook(residual, inds))
+            speculate = prefill_hook(residual, inds)
+            plan = getattr(self, "prefill_plan", None)
+            if plan is not None:
+                # HANDOFF 18.23 (opt-in): missing experts only light rows use are not read
+                got = plan(scores, orig_scores, inds)
+                if got is not None:
+                    inds, changed, w2 = got
+                    weights = mx.where(changed, w2.astype(weights.dtype), weights)
+            y = self.switch_mlp(x, inds, speculate=speculate)
             y = (y * weights[..., None]).sum(axis=-2)
             return y + self.shared_experts(x)
         y = self.switch_mlp(x, inds)

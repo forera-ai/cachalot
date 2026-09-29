@@ -307,3 +307,45 @@ def test_miss_plan_drops_when_no_runner_up_is_resident():
     gone, subs, _, w2 = gpu_select.miss_plan(w, [3], 0.15, 2, sc, np.ones(e, np.float32), resident,
                                              np.array([0, 1, 2, 3]), 1.3)
     assert gone == [3] and subs == {} and w2[3] == 0 and abs(float(w2.sum()) - 1.3) < 1e-6
+
+
+def _prefill_rows(t, e=16):
+    sc = np.tile(np.linspace(1.0, 0.0, e, dtype=np.float32), (t, 1))  # expert 0 best ... e-1 worst, every row
+    og = np.full((t, e), 0.5, np.float32)
+    return sc, og
+
+
+def test_prefill_plan_skips_a_missing_expert_only_light_rows_use():
+    sc, og = _prefill_rows(2)
+    og[:, 3] = 0.05  # expert 3 carries 0.05 of 1.55 in both rows
+    resident = np.ones(16, bool)
+    resident[3] = False
+    routes = np.array([[0, 1, 2, 3], [0, 1, 2, 3]])
+    new, changed, w2, skipped = gpu_select.prefill_miss_plan(sc, og, routes, resident, 0.2, 4, 2.0)
+    assert skipped == [3] and changed.tolist() == [True, True]
+    assert new.tolist() == [[0, 1, 2, 4], [0, 1, 2, 4]] and routes.tolist() == [[0, 1, 2, 3]] * 2
+    assert np.allclose(w2, 0.5)  # the router's own weights over the new set, times the scale
+
+
+def test_prefill_plan_reads_an_expert_one_heavy_row_needs():
+    sc, og = _prefill_rows(2)
+    og[0, 3] = 0.05  # light in row 0, heavy (0.5 of 2.0) in row 1: it must be read, so no row changes
+    resident = np.ones(16, bool)
+    resident[3] = False
+    routes = np.array([[0, 1, 2, 3], [0, 1, 2, 3]])
+    assert gpu_select.prefill_miss_plan(sc, og, routes, resident, 0.2, 4, 2.0) is None
+
+
+def test_prefill_plan_leaves_rows_of_read_experts_bit_exact():
+    sc, og = _prefill_rows(3)
+    og[0, 3] = 0.05
+    og[2, 9] = 0.05
+    resident = np.ones(16, bool)
+    resident[[3, 9]] = False
+    resident[[4, 5, 6, 7]] = False  # row 0 has no resident runner-up among the next four ranks: 3 is read
+    sc[2, 10] = 0.95  # row 2's best runner-up is resident expert 10
+    routes = np.array([[0, 1, 2, 3], [0, 1, 2, 8], [0, 1, 2, 9]])
+    new, changed, w2, skipped = gpu_select.prefill_miss_plan(sc, og, routes, resident, 0.2, 4, 2.0)
+    assert skipped == [9] and changed.tolist() == [False, False, True]
+    assert new[:2].tolist() == routes[:2].tolist() and new[2].tolist() == [0, 1, 2, 10]
+    assert (w2[:2] == 0).all()

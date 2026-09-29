@@ -207,7 +207,8 @@ class MiniMaxModel(GlmModel):
     # the fused RMSNorm rounds differently (HANDOFF 18.2): snapshots written without it do not match
     # HANDOFF 18.21: with miss substitution on, a reply's decode KV differs from the exact path's; key it apart
     NUMERICS_TAG = ("-fastnorm" if _FAST_NORM else "") + (
-        f"-missdrop{gpu_select.MISS_DROP:g}-sub{gpu_select.MISS_SUB}" if gpu_select.MISS_DROP > 0 else "")
+        f"-missdrop{gpu_select.MISS_DROP:g}-sub{gpu_select.MISS_SUB}" if gpu_select.MISS_DROP > 0 else "") + (
+        f"-pfdrop{gpu_select.PREFILL_MISS_DROP:g}-sub{gpu_select.MISS_SUB or 4}" if gpu_select.PREFILL_MISS_DROP > 0 else "")
     # A 2,048-token chunk already reads nearly every routed expert (168 GiB), so a longer chunk reads the same
     # bytes for more tokens: 8,192 prefills at ~230 tok/s against ~74-85 at 2,048, same NLL (HANDOFF 18.1).
     PREFILL_CHUNK = int(os.environ.get("CACHALOT_MINIMAX_PREFILL_CHUNK", "8192"))
@@ -443,12 +444,13 @@ class MiniMaxModel(GlmModel):
                     if mine is not None:
                         _count_prediction(mine, inds)
                     return None
-                pred = None
+                pred = scores = orig = None
                 if nxt is not None:
-                    scores, _ = nxt.block_sparse_moe.route_scores(nxt.post_attention_layernorm(residual))
+                    scores, orig = nxt.block_sparse_moe.route_scores(nxt.post_attention_layernorm(residual))
                     pred = mx.argpartition(-scores, kth=PREFILL_PREDICT_TOPK - 1, axis=-1)[..., :PREFILL_PREDICT_TOPK]
                 # one sync for this layer's routing and the prediction (the switch's own sync is then free)
-                mx.eval(inds, *([pred] if pred is not None else []))
+                light = gpu_select.PREFILL_MISS_DROP > 0 and pred is not None
+                mx.eval(inds, *([pred] if pred is not None else []), *([scores, orig] if light else []))
                 mine = predicted.pop(i, None)
                 if mine is not None:
                     _count_prediction(mine, inds)
@@ -456,9 +458,25 @@ class MiniMaxModel(GlmModel):
                     return []
                 counts = np.bincount(np.array(pred).reshape(-1))
                 order = [int(e) for e in np.argsort(-counts, kind="stable") if counts[e] > 0]
+                if light:
+                    # HANDOFF 18.23: the next layer's experts its prefill plan would leave unread are not read ahead
+                    skips = _predicted_skips(i + 1, nxt.block_sparse_moe, scores, orig)
+                    order = [e for e in order if e not in skips]
                 predicted[i + 1] = set(order)
                 return [index[(i + 1, e)] for e in order]
             return hook
+
+        def _predicted_skips(j, moe, scores, orig) -> set[int]:
+            e_n = moe.gate.weight.shape[0]
+            sc = np.array(scores, dtype=np.float32).reshape(-1, e_n)
+            og = np.array(orig, dtype=np.float32).reshape(-1, e_n)
+            k = moe.num_experts_per_tok
+            routes = np.argpartition(-sc, k - 1, axis=-1)[:, :k]
+            resident = np.array([store.is_resident((j, e)) for e in range(e_n)])
+            got = gpu_select.prefill_miss_plan(sc, og, routes, resident, gpu_select.PREFILL_MISS_DROP,
+                                               gpu_select.MISS_SUB or 4, moe.routed_scaling_factor,
+                                               gpu_select.PREFILL_SUB_MAX_ROWS)
+            return set(got[3]) if got is not None else set()
 
         def _count_prediction(mine, inds):
             actual = set(np.unique(np.array(inds)).tolist())
@@ -466,10 +484,37 @@ class MiniMaxModel(GlmModel):
             PREFILL_PREDICT_STATS["actual"] += len(actual)
             PREFILL_PREDICT_STATS["overlap"] += len(mine & actual)
 
+        def make_plan(i, moe):
+            # HANDOFF 18.23 (opt-in): a prefill chunk's missing experts that only light rows use are not read
+            n_experts = moe.gate.weight.shape[0]
+            window = gpu_select.MISS_SUB or 4
+
+            def plan(scores, orig, inds):
+                mx.eval(inds, scores, orig)  # inds is already evaluated by the prefill hook; the scores came with it
+                resident = np.array([store.is_resident((i, e)) for e in range(n_experts)])
+                sc = np.array(scores, dtype=np.float32).reshape(-1, n_experts)
+                og = np.array(orig, dtype=np.float32).reshape(-1, n_experts)
+                routes = np.array(inds).reshape(len(sc), -1)
+                got = gpu_select.prefill_miss_plan(sc, og, routes, resident, gpu_select.PREFILL_MISS_DROP, window,
+                                                   moe.routed_scaling_factor, gpu_select.PREFILL_SUB_MAX_ROWS)
+                stats = gpu_select.PREFILL_SUB_STATS
+                stats["missing"] += len(np.unique(routes[~resident[routes]]))
+                if got is None:
+                    return None
+                new, changed, w2, skipped = got
+                stats["skipped"] += len(skipped)
+                stats["rows"] += int(changed.sum())
+                shape = inds.shape
+                return (mx.array(new.reshape(shape).astype(np.uint32)).astype(inds.dtype),
+                        mx.array(changed.reshape(*shape[:-1], 1)), mx.array(w2.reshape(shape)))
+            return plan
+
         for i, layer in enumerate(layers):
             if layer.is_sparse:
                 nxt = layers[i + 1] if i + 1 < len(layers) and layers[i + 1].is_sparse else None
                 layer.block_sparse_moe.prefill_hook = make_prefill(i, nxt)
+                if gpu_select.PREFILL_MISS_DROP > 0:
+                    layer.block_sparse_moe.prefill_plan = make_plan(i, layer.block_sparse_moe)
             if not layer.is_sparse or not DECODE_OVERLAP:
                 continue
             nxt = layers[i + 1] if i + 1 < len(layers) and layers[i + 1].is_sparse else None

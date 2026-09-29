@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.42.0 (2026-09-29)
+
+HANDOFF section 18.23.
+
+### Added
+- **MiniMax prefill miss substitution, opt-in** (`CACHALOT_MINIMAX_PREFILL_MISS_DROP=0.20`; 0, the default, is
+  exact). In a prefill chunk, a missing expert is not read when every token routed to it gives it under 20 % of its
+  routing weight and has a resident runner-up among the next `CACHALOT_MINIMAX_MISS_SUB` ranks (4 when unset);
+  only those tokens change, and the prefill read-ahead skips the same experts. About 70 % of a short follow-up's
+  prefill waits on reads and a third of its missing experts serve one token. Through the server path, 200-token
+  follow-ups at 10-12k context: **5.80 -> 4.61 s (-20.5 %)**. Teacher-forced NLL on three texts: two inside a
+  rounding-noise arm's band, one +0.0055 [-0.0007, +0.0114] against the noise arm's +0.0016. Off by default
+  because it changes outputs; disk snapshots written with it carry their own numerics tag.
+  `CACHALOT_MINIMAX_PREFILL_SUB_MAX_ROWS` (32): experts routed to more tokens are always read.
+
+### Measured
+- Decode miss substitution (`CACHALOT_MINIMAX_MISS_DROP=0.20 CACHALOT_MINIMAX_MISS_SUB=4`) on 36 greedy tasks with
+  thinking on and tool calls (thinking off and on): exact 31/36, rounding noise 31/36, the switch 33/36 at +26 %
+  decode; it fails no task that both others pass. Still off by default.
+- A finer memory-governor grain (shrinking a slab) priced and closed: it needs a 2.7 GiB copy peak at the GPU
+  ceiling or drops the slab's cached experts.
+
 ## 0.41.0 (2026-09-29)
 
 HANDOFF section 18.22.

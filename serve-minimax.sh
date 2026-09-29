@@ -60,6 +60,9 @@ export CACHALOT_SNAPSHOT_PRELOAD=${CACHALOT_SNAPSHOT_PRELOAD:-2}
 # 0.41.0 (HANDOFF 18.22), both bit-identical and on: decode runs with a 0.25 GiB MLX buffer cache
 # (CACHALOT_MINIMAX_DECODE_CACHE_GIB; -1 keeps 2 GiB) so the GPU stays under its working set, and system blocks saved
 # on disk leave memory after each request (CACHALOT_MINIMAX_SPILL_BLOCKS=0 keeps them).
+# 0.42.0 (HANDOFF 18.23), opt-in and not bit-identical: CACHALOT_MINIMAX_PREFILL_MISS_DROP=0.20 applies the same rule to
+# prefill chunks, only where it saves a read (every token routed to a missing expert is light and has a resident
+# runner-up): 200-token follow-up prefills -11 to -12 %.
 # MiniMax's generation_config: temperature 1.0, top_p 0.95
 exec ~/venvs/deepseek-v41/bin/python -m cachalot.cli serve \
     --model "$CACHALOT_MODEL_PATH" \

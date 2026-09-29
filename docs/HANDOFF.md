@@ -1,6 +1,6 @@
 # Cachalot — Engineering Handoff
 
-**Authoritative state as of 2026-09-29 (twenty-first MiniMax session), after the session that capped MLX's buffer cache during MiniMax's decode, moved persisted system blocks off the GPU and gated the miss substitution at 24k (section 18.22), the one that let MiniMax's decode
+**Authoritative state as of 2026-09-29 (twenty-second MiniMax session), after the session that gated the decode miss substitution on thinking-on and tool-call tasks and applied its rule to prefill, opt-in, short follow-ups -20 % (section 18.23), the one that capped MLX's buffer cache during MiniMax's decode, moved persisted system blocks off the GPU and gated the miss substitution at 24k (section 18.22), the one that let MiniMax's decode
 substitute its lightest missing experts, opt-in and measured inside the rounding noise (section 18.21), the one that put MiniMax's prefill at the GPU's FLOP
 wall and measured three levers without a gain (section 18.20), the one that measured where MiniMax's
 remaining time goes and shipped two bit-identical kernel fusions switched off (section 18.19), the one that raised the GPU's working
@@ -24,6 +24,24 @@ that gave it a bias-free expert bank (18.4), the one that gave it a second drive
 kernel (18.3), the one that cut its per-token overhead and measured it to 64k (18.2), the one that made it faster
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
+
+> ## Start here (2026-09-29, 0.42.0): short follow-up prefills -20 % with an opt-in prefill miss substitution
+>
+> - **Decode miss substitution, gated further (section 18.23 item 1):** 36 greedy tasks with thinking on and tool
+>   calls (thinking off and on): exact 31/36, a rounding-noise arm 31/36,
+>   `MISS_DROP=0.20 MISS_SUB=4` 33/36 at
+>   +26 % decode; it fails no task both others pass. Now gated at 2k and 24k, thinking on, tool calls. Still off:
+>   Hamed's call.
+> - **The rule in prefill (items 2-5):** ~70 % of a 200-token follow-up's prefill waits on reads, and a third of
+>   the missing experts serve one token. `CACHALOT_MINIMAX_PREFILL_MISS_DROP=0.20` leaves a missing expert unread
+>   when every token routed to it is light and has a resident runner-up (only those tokens change; the read-ahead
+>   skips them too). Server path, ABAB: follow-up prefill **5.80 -> 4.61 s (-20.5 %)**. Teacher-forced NLL on
+>   three texts: two inside the rounding-noise band, one +0.0055 [-0.0007, +0.0114] (noise +0.0016). **Off by
+>   default**, Hamed's call.
+> - **Closed on paper (item 6):** a finer governor grain (a slab cannot shrink without a 2.7 GiB copy peak).
+> - **Version 0.42.0.** 455 tests pass.
+
+**Previous block, 0.41.0:**
 
 > ## Start here (2026-09-29, 0.41.0): short follow-ups at an agent's context 3x faster, bit-identical
 >
@@ -8331,6 +8349,137 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.23 MiniMax-M3: miss substitution passes the thinking and tool-call batteries; the same rule in prefill, opt-in, short follow-ups -20 % — 2026-09-29 (0.42.0)
+
+Hamed's brief (prompt v70, the twenty-second "MiniMax-M3 as fast as possible at the same quality"): confirm caveman,
+Jev and the codebase-memory graph first, then plan, build, measure and document. Tools: caveman active (session
+hook), Jev answered (`jev_verify` 0.98 on a probe, the `jev` CLI 0.95), the graph ready (6,105 nodes, one partial
+file outside the code). 0.41.0 committed, tree clean, `iogpu.wired_limit_mb` 88064, no runtime running. Filler:
+18.22's 5.41 MB concatenation (scratch copy). Nothing slept the display; arms where the screensaver ran are marked.
+Scratch instruments: `battery2.py` + `arm.sh` (thinking-on and tool-call tasks through `MiniMaxModel.stream`),
+`prefill_trace.py` (agent turns through `stream` with the server's saved warm set, tracing every prefill MoE call:
+experts touched, misses, rows each miss serves, time waiting in `get_many_prefill`, the prefill-sub counters),
+`pf_nll.py` + `pfarm.sh` (teacher-forced NLL of 25 follow-up chunks of 200 tokens after an 8k context, with the
+server's warm set loaded first; saves per-token NLL and argmax), `pfcmp.py` (paired NLL with a 2,000-sample
+bootstrap interval and top-1 agreement).
+
+**The plan.** Every exact lever left was single-digit (decode at the drives' bandwidth, prefill at the GPU's matmul
+peak, 18.19-18.20). Jev (`jev_decide` over the four candidates below): finish the miss substitution's quality
+gate first, 0.93. Candidates: (a) the substitution's missing gates (thinking mode, tool calls), (b) a finer governor
+grain, (c) the pair-index prefill `qmm` kernel (-4 % of long prefills), (d) other forms of the substitution.
+
+**1. The decode miss substitution passes a thinking-on and a tool-call battery.** 36 greedy tasks a arm through
+`stream` (68 GiB, 2k-scale prompts): 12 reasoning tasks with thinking on (`reasoning_effort` medium, 2,500-token
+limit; arithmetic, combinatorics, three Python functions run against tests, the answer read after `</mm:think>`),
+12 tool tasks with thinking off (Hermes's current setting) and the same 12 with thinking on (five tools in the
+template's own format: `terminal`, `read_file`, `write_file`, `web_search`, `get_weather`; eight first-turn tasks
+checked on the parsed call's name and arguments, three turns after a tool result checked on the answer, one plain
+question that must not call a tool):
+
+| arm | thinking on | tools, thinking off | tools, thinking on | total | replies byte-identical to exact | decode tok/s |
+|---|---|---|---|---|---|---|
+| exact | 10/12 | 10/12 | 11/12 | 31/36 | — | 9.84 |
+| rounding noise (`CACHALOT_MINIMAX_FAST_NORM=0`) * | 11/12 | 9/12 | 11/12 | 31/36 | 11/36 | 10.62 * |
+| **sub < 0.20, window 4** | 11/12 | 10/12 | 12/12 | **33/36** | 11/36 | **12.36 (+26 %)** |
+
+(* screensaver running.) Every exact failure is the model's own, not the checker's: a rectangle's area computed as
+50 (the answer is 60), a palindrome function still being traced when the 2,500 tokens ran out, "Save the text to
+/tmp/greeting.txt" answered "Done." without a call, a web search answered from memory, and `/etc/hosts` printed
+from memory with thinking on. The substitution fails no task that both exact and noise pass, and changes as many
+replies as a rounding change does. With 18.21 (2k) and 18.22 (24k) the switch is now gated on NLL/KL at two
+context lengths, on greedy checkable tasks with thinking off and on, and on tool calls. Still off by default:
+Hamed's call.
+
+**2. Where a short follow-up prefill's time goes.** `prefill_trace.py`, an 8k system block, a 2k first message,
+then 200-token follow-ups at 10.3-11.5k context, 100 greedy tokens a turn: a follow-up prefill is 4.8-6.0 s, of
+which **3.2-4.2 s (~70 %) is waiting for expert reads** in `get_many_prefill`. Each MoE layer touches 76-85 of its
+128 experts and misses 26-33 of them; of the missing experts **34 % serve one token and 20 % two** (per turn,
+~500-660 one-token misses of ~1,700). A third of a follow-up's reads pay for a single token's four-expert mix.
+
+**3. The decode rule, applied to prefill only where it saves a read** (`CACHALOT_MINIMAX_PREFILL_MISS_DROP`, 0 =
+exact). In a prefill chunk, `gpu_select.prefill_miss_plan` leaves a missing expert unread only when, in **every**
+row routed to it, its weight share is under the threshold and a resident expert among the row's next
+`MISS_SUB` ranks (4 when unset) can replace it; experts with few rows are tried first, each replacement is used once
+per row, experts on more than `CACHALOT_MINIMAX_PREFILL_SUB_MAX_ROWS` (32) rows are always read. Only those rows
+change, and they take the router's own weights over the new set (as `miss_plan` does); every other row stays
+bit-exact. The plan reads the selection and plain scores from the sync the prefill hook already runs (no second
+round trip) and residency from the store. The prefill read-ahead (18.8) skips the next layer's experts the same
+plan, run on the predicted routing, would leave unread (without that, the read-ahead fetched many of them anyway:
+15 % of missing experts skipped but misses only -5 %). `NUMERICS_TAG` gains `-pfdrop0.2-sub4`, so disk snapshots
+written with it are never read by an exact server and back. Tests: three plan cases in `tests/test_gpu_select.py`.
+
+A first measurement skipped only 33 of 8,129 missing experts: the benchmark had started cold, the 2k context
+prefill had filled the free slots layer by layer (early layers ~95 % resident, late ones nearly empty), and a
+token routed to a rare expert found no resident runner-up in any window up to 32 ranks. With the server's saved
+warm set (`resident-set.json`, 3,043 experts, ~53 of 128 per layer) loaded first: 1,430 of 7,642 skipped. Every
+arm below loads it.
+
+**4. Quality: teacher-forced NLL of short follow-ups.** `pf_nll.py`: the warm set, an 8k context prefilled the
+server's way, then 25 chunks of 200 tokens (5,000 scored positions a text), each chunk's next-token log-probs
+against the text; three texts (offsets 1,300,000 / 2,500,000 / 3,700,000); paired NLL is arm minus exact:
+
+| text | arm | s a chunk | misses | paired NLL [95 %] | top-1 agreement |
+|---|---|---|---|---|---|
+| T1 | exact | 8.55 | 65,978 | — | — |
+| T1 | noise | — | — | +0.0020 [-0.0049, +0.0092] | 0.956 |
+| T1 | prefill-sub 0.20 | 7.79 | 62,437 | +0.0014 [-0.0056, +0.0081] | 0.949 |
+| T1 | **+ read-ahead skips** | **7.52 (-12 %)** | **59,361** | +0.0023 [-0.0045, +0.0096] | 0.950 |
+| T2 | exact | 9.63 | 75,974 | — | — |
+| T2 | noise | 9.89 * | — | +0.0019 [-0.0027, +0.0068] | 0.983 |
+| T2 | prefill-sub 0.20 | 9.06 * | 72,424 | -0.0023 [-0.0070, +0.0023] | 0.982 |
+| T3 | exact | 10.49 | 82,254 | — | — |
+| T3 | noise | 9.77 | — | +0.0016 [-0.0038, +0.0067] | 0.970 |
+| T3 | prefill-sub 0.20 | 9.25 | 74,592 | **+0.0075 [+0.0010, +0.0139]** | 0.969 |
+| T3 | **+ read-ahead skips** | **9.38 (-11 %)** | **72,062** | +0.0055 [-0.0007, +0.0114] | 0.965 |
+
+(* screensaver running. Exact is deterministic: a second T3 exact arm on the final code was bit-identical to the
+first.) T1 and T2 sit inside the noise band; T3's mean is ~3x the noise arm's, its interval touching zero with the
+final code and just above it without the read-ahead skips: **+0.2 to +0.7 % of NLL on one text in three**. Top-1
+agreement equals the noise arm's everywhere. The decode switch measured +0.021 [-0.004, +0.048] on a 24k text
+(18.22 item 1), the same order.
+
+**5. Through the server path.** `prefill_trace.py` (`stream`, the warm set, an 8k system block + 2k first message,
+six 200-token follow-ups at 10.3-11.8k context, 100 greedy tokens a turn), ABAB, display as is, no screensaver:
+
+| arm | follow-up prefill s (turns 1-6) | mean | misses per layer | ids hash |
+|---|---|---|---|---|
+| exact | 4.86 / 6.04 / 5.45 / 6.80 / 6.10 / 6.23 | 5.91 | 26.5-37.7 | ac3c2d5ed577 |
+| prefill-sub 0.20 | 3.82 / 4.86 / 4.10 / 5.10 / 4.89 / 4.94 | 4.62 | 17.2-25.9 | 1b340988ce7f |
+| exact | 4.84 / 5.77 / 5.27 / 6.58 / 5.90 / 5.75 | 5.69 | 26.5-37.7 | ac3c2d5ed577 |
+| prefill-sub 0.20 | 3.75 / 4.84 / 4.12 / 5.11 / 4.88 / 4.91 | 4.60 | 17.2-25.9 | 1b340988ce7f |
+
+**Follow-up prefill 5.80 → 4.61 s (-20.5 %)**, read wait 3.2-4.9 → 2.1-3.3 s, 395-542 missing experts a turn not
+read. More than the direct benchmark's -11 to -12 %: decode between turns keeps the cache closer to what the next
+chunk routes to, so more light misses find a resident runner-up. Decode is untouched (the switch is prefill only).
+Long prefills gain little: an 8k chunk routes nearly every expert to more than 32 rows.
+
+**Shipped (0.42.0), off by default:** `CACHALOT_MINIMAX_PREFILL_MISS_DROP` (share threshold, 0 = exact),
+`CACHALOT_MINIMAX_PREFILL_SUB_MAX_ROWS` (32), `gpu_select.prefill_miss_plan`, `PREFILL_SUB_STATS`, the MoE block's
+`prefill_plan` hook, the read-ahead filter, the numerics tag. It is off for the reason the decode switch is: it
+changes outputs, and on one text of three it sits at the edge of the noise band. Hamed turns it on per launch,
+alone or with the decode switch:
+
+```bash
+cd /Users/hamedprooshani/Projects/deepseek-v41-mac && CACHALOT_MINIMAX_MISS_DROP=0.20 CACHALOT_MINIMAX_MISS_SUB=4 CACHALOT_MINIMAX_PREFILL_MISS_DROP=0.20 ./serve-minimax.sh
+```
+
+455 tests pass. Studio brief: `docs/studio/briefs/2026-09-29-runtime-0.42.0.md`.
+
+**6. A finer governor grain, priced on paper and not built** (18.22 "what is open" 3). An MLX array cannot give
+back part of its buffer, so shrinking a slab means either allocating the smaller slab and copying the kept rows
+(a 2.7 GiB peak, exactly when the governor is over the GPU ceiling) or dropping the slab's cached experts and
+refilling it smaller. 18.22 item 2 saw +133 slots arrive a turn earlier with no visible decode change; the grain
+would recover ~66 slots on average, only while the GPU term binds. Jev's `jev_decide` put it at 0.02 against the
+gate. Closed unless a slow window is traced to it.
+
+**What is open after this.** 1. Hamed's call on both substitution defaults. The decode switch is now gated at 2k and
+24k, on thinking-on and tool-call tasks; the prefill switch on three texts at 8-13k and the server path. A Hermes
+session with both on (`CACHALOT_SERVER_DUMP` set) is the live test. 2. The prefill rule at Hermes's real shape: a
+21k system block and 100-1,500-token tool results at 25-45k context (the trace here was 10-12k). 3. A prefill
+battery (checkable tasks whose prompts carry a long tool result) if the prefill switch is to become a default.
+4. Unchanged from 18.20: M28 with Hamed, M19 (a Thunderbolt mirror drive), the pair-index prefill `qmm` kernel,
+GLM G6 + S1c + S1e.
 
 ### 18.22 MiniMax-M3: short follow-ups at an agent's context 3x faster, a system block off the GPU, miss substitution gated at 24k — 2026-09-29 (0.41.0)
 

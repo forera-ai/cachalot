@@ -67,6 +67,13 @@ MISS_DROP_ARMED = MISS_DROP > 0 or os.environ.get("CACHALOT_MINIMAX_MISS_DROP_AR
 MISS_SUB = int(os.environ.get("CACHALOT_MINIMAX_MISS_SUB", "0"))
 # with MISS_DROP_ARMED, every missing expert's weight share is appended here (instruments only)
 MISS_SHARES: list = []
+# HANDOFF 18.23: the same rule in a prefill chunk, but only where it saves a read: a missing expert is left unread
+# when every row routed to it has it under PREFILL_MISS_DROP of the row's weight and a resident runner-up among the
+# next MISS_SUB ranks (or 4 when MISS_SUB is 0); only those rows change. NOT bit-identical; 0 (default) is exact.
+# Experts routed to more than PREFILL_SUB_MAX_ROWS rows are always read (the rule rarely holds for all of them).
+PREFILL_MISS_DROP = float(os.environ.get("CACHALOT_MINIMAX_PREFILL_MISS_DROP", "0"))
+PREFILL_SUB_MAX_ROWS = int(os.environ.get("CACHALOT_MINIMAX_PREFILL_SUB_MAX_ROWS", "32"))
+PREFILL_SUB_STATS = {"missing": 0, "skipped": 0, "rows": 0}
 
 _ROUTE_TAIL = """
     // One threadgroup of E threads. Expert t's selection score and its rank among all E: MLX's argpartition of
@@ -158,6 +165,56 @@ def miss_plan(w, miss, threshold, window, sc, og, resident, routes, scale):
         w2[gone] = 0.0
         w2 = w2 / float(w2.sum()) * total
     return gone, subs, routes, w2
+
+
+def prefill_miss_plan(sc, og, routes, resident, threshold, window, scale, max_rows=32):
+    """HANDOFF 18.23: which missing experts a prefill chunk leaves unread, and the rows that change.
+
+    `sc` selection scores and `og` plain sigmoid scores (float32 [T, E]), `routes` the routed experts [T, k],
+    `resident` a mask over the layer's E experts. A missing expert is skipped only when, in every row routed to it,
+    its weight share is under `threshold` and a resident expert among the row's next `window` ranks (not already
+    routed there) can replace it; experts routed to few rows are tried first, and each replacement is used once
+    per row. Changed rows take the router's own weights over their new set, as miss_plan does. Returns None when
+    nothing is skipped, else (routes [T, k], changed rows bool [T], weights float32 [T, k], skipped experts)."""
+    routes = np.asarray(routes).reshape(len(sc), -1)
+    k = routes.shape[1]
+    missing = ~resident[routes]
+    if not missing.any():
+        return None
+    w = og[np.arange(len(routes))[:, None], routes].astype(np.float32)
+    share = w / w.sum(axis=1, keepdims=True)
+    experts, counts = np.unique(routes[missing], return_counts=True)
+    new = routes.copy()
+    cands: dict[int, list[int]] = {}
+    skipped = []
+    for e, n in sorted(zip(experts.tolist(), counts.tolist()), key=lambda t: t[1]):
+        if n > max_rows:
+            break
+        pos = np.argwhere(routes == e)
+        if (share[pos[:, 0], pos[:, 1]] >= threshold).any():
+            continue
+        picks = []
+        for t, j in pos.tolist():
+            c = cands.get(t)
+            if c is None:
+                order = np.argsort(-sc[t], kind="stable")[:k + window]
+                c = cands[t] = [int(x) for x in order if resident[int(x)] and int(x) not in routes[t]]
+            if not c:
+                break
+            picks.append((t, j))
+        if len(picks) < len(pos):
+            continue
+        for t, j in picks:
+            new[t, j] = cands[t].pop(0)
+        skipped.append(e)
+    if not skipped:
+        return None
+    changed = (new != routes).any(axis=1)
+    rows = np.flatnonzero(changed)
+    w2 = np.zeros(routes.shape, np.float32)
+    g = og[rows[:, None], new[rows]].astype(np.float32)
+    w2[rows] = g / g.sum(axis=1, keepdims=True) * scale
+    return new, changed, w2, skipped
 
 
 def _slot_base(n_slabs: int, slab_slots: int, record_bytes: int) -> str:
