@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.45.1 (2026-09-29)
+
+HANDOFF section 18.26.
+
+### Measured, not shipped
+- **Pair-index prefill kernels for MiniMax.** MLX's `qmv_wide`, split-K `qmm_t` and `qmm_t` copied into Metal
+  kernels that read each weight group's (scale, bias) from the slot's one-byte index instead of rebuilding them per
+  expert: bit-identical to `mx.quantized_matmul` for every row count from 1 to 130, 20-30 % faster per matmul at
+  12-64 rows in isolation, but 4-7 % slower over whole layers once the down projection consumes their outputs.
+  The rebuild they would remove costs 0.15-0.2 s of a 128-2,048-token prefill chunk (0.6 s of 8k).
+- **One grouped launch per projection** (MLX's sorted `gather_qmm_rhs` reading slots straight from the slab pool,
+  bit-identical to `mx.gather_qmm`): -13 % at 1,000 tokens, -10 % at 2,048, +23 % at 128, +96 % at 16, 0 % at 8k;
+  not bit-identical to the shipped path.
+
+### Closed
+- Both kernel designs above, and the per-expert (scale, bias) rebuild as a speed lever.
+
+### Added
+- `benchmarks/minimax_prefill_kernels/`: the kernels and the benchmarks that measured them (`rb_price.py`,
+  `pm.py`, `lay2.py`, `qmm_m.py`, `sg_test.py`).
+
 ## 0.45.0 (2026-09-29)
 
 HANDOFF section 18.25.

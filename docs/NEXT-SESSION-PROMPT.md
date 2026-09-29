@@ -1,11 +1,12 @@
-# Next-session prompt — **v73**, written 2026-09-29
+# Next-session prompt — **v74**, written 2026-09-29
 
 **This is the file to paste.** `docs/NEXT-SESSION-PROMPT.md` is always current; superseded ones live in
 `docs/next-session-prompts/`.
 
 | version | written | produced by | what changed |
 |---|---|---|---|
-| **v73** | 2026-09-29 | Hamed ran a Hermes session on 0.44.0 and asked for the dump and log read | **0.45.0: the restart fix held live (first request 7.2 s, block reused); short follow-ups 1.9-7.2 s. Three slow prefills live (405/315 tokens in 28-31 s; Hermes's 2,207-token approval check in 86.8 s, which Hermes timed out on) replay at 10-12 s. A busy X10Pro reproduces part of it (approval check 14-41 s): the mirror's share now follows both drives' measured speed (busy: reads -12 to -17 %, decode +7 %; idle: no change; bit-identical).** §18.25 |
+| **v74** | 2026-09-29 | Hamed asked a twenty-fourth time for MiniMax-M3 as fast as possible at unchanged quality, tools (caveman, Jev, codebase-memory) confirmed first | **0.45.1: MiniMax's prefill expert kernels priced and closed, nothing in `src/`. The per-expert (scale, bias) rebuild costs 0.15-0.2 s of a 128-2,048-token chunk. MLX's four matmul kernels copied to read the pair index: bit-identical for every row count 1-130, faster alone, 4-7 % slower inside a layer. One grouped `gather_qmm_rhs` launch over the slabs: -10 to -13 % at 1-2k tokens, slower below 400, not bit-identical. Instruments in `benchmarks/minimax_prefill_kernels/`.** §18.26 |
+| v73 | 2026-09-29 | Hamed ran a Hermes session on 0.44.0 and asked for the dump and log read | **0.45.0: the restart fix held live (first request 7.2 s, block reused); short follow-ups 1.9-7.2 s. Three slow prefills live (405/315 tokens in 28-31 s; Hermes's 2,207-token approval check in 86.8 s, which Hermes timed out on) replay at 10-12 s. A busy X10Pro reproduces part of it (approval check 14-41 s): the mirror's share now follows both drives' measured speed (busy: reads -12 to -17 %, decode +7 %; idle: no change; bit-identical).** §18.25 |
 | v72 | 2026-09-29 | Hamed asked a twenty-third time for MiniMax-M3 as fast as possible at unchanged quality, tools (caveman, Jev, codebase-memory) confirmed first | **0.44.0: the sixth session's stalls replayed through the server path. A restart never reused Hermes's system block since 0.43.0 (snapshot files named by tokens only; a file of another numerics tag blocked the write): first request after a restart 98-133 s → 2-10 s. Follow-up stalls (30-41 s) reproduced with 12 GiB of host memory held by other processes, not the GPU ceiling: a fit after a long prefill regrew 13.6 GiB into swap. A pressure watcher (growth only after 60 s quiet) is on: pressure samples halved, decode -5.6 to -10.6 % in 3 of 4 pairs. Slab parking stops at capacity 1. The runaway replays 0/8 either arm.** §18.24 |
 | v71 | 2026-09-29 | Hamed asked a twenty-second time for MiniMax-M3 as fast as possible at unchanged quality, tools (caveman, Jev, codebase-memory) confirmed first | **0.42.0: the decode miss substitution passes a thinking-on and tool-call battery (exact 31/36, rounding noise 31/36, switch 33/36 at +26 % decode). The same rule in prefill, only where it saves a read (`CACHALOT_MINIMAX_PREFILL_MISS_DROP=0.20`, opt-in): 200-token follow-ups 5.80 → 4.61 s (-20.5 %) through the server path; NLL inside the noise band on two texts, +0.0055 [-0.0007, +0.0114] on the third. 0.43.0: both on by default (Hamed's call). 0.43.2: Hamed's sixth session read (§18.23 item 8): short follow-ups stalled 28-66 s with the GPU at 86.5 GiB of an 86.0 working set; an unclosed tool call at a loop-guard stop is now dropped instead of sent as text. A finer governor grain closed on paper.** §18.23 |
 | v70 | 2026-09-29 | Hamed asked a twenty-first time for MiniMax-M3 as fast as possible at unchanged quality, tools (caveman, Jev, codebase-memory) confirmed first | **0.41.0: MiniMax decodes with a 0.25 GiB MLX buffer cache (was 2 GiB, uncounted by the governor, putting the GPU over its working set): 200-token follow-ups at 30k context 17.2 → 6.1 s mean (12 of 35 slow against 0 of 20), decode unchanged, same tokens. Persisted system blocks leave memory after each request (2.4 GiB back; reload 0.42 s). Miss substitution gated at 24k on three texts: every NLL interval spans zero, misses -30 to -55 %; still off (Hamed's call).** §18.22 |
@@ -42,8 +43,8 @@ You are continuing work on **Cachalot**, an MLX runtime that runs DeepSeek V4.1 
 96 GiB Mac Studio M3 Ultra by streaming routed experts from SSD. The user is Hamed; he runs the interactive model
 himself in a separate terminal and expects terse replies in chat, complete prose in files.
 
-**Read this first.** `docs/HANDOFF.md`'s "Start here (2026-09-29, 0.45.0)", "0.44.0", "0.42.0", "0.41.0", "0.39.0", "0.38.1", "0.38.0" and "0.37.0" blocks, then
-sections **18.25**, **18.24**, **18.23**, **18.22**, **18.21**, **18.20**, **18.19**, **18.18**, **18.17**, **18.16**, **18.15**, **18.14**, **18.13**, **18.12** (item 5 first), **18.11**, **18.10**, **18.9**, **18.8**, **18.7**, **18.6**, **18.5**, **18.4**, **18.3**, **18.2**, **18.1**, **18**, **17.1** and **15.13**, then 17 and 15.12.
+**Read this first.** `docs/HANDOFF.md`'s "Start here (2026-09-29, 0.45.1)", "0.45.0", "0.44.0", "0.42.0", "0.41.0", "0.39.0", "0.38.1", "0.38.0" and "0.37.0" blocks, then
+sections **18.26**, **18.25**, **18.24**, **18.23**, **18.22**, **18.21**, **18.20**, **18.19**, **18.18**, **18.17**, **18.16**, **18.15**, **18.14**, **18.13**, **18.12** (item 5 first), **18.11**, **18.10**, **18.9**, **18.8**, **18.7**, **18.6**, **18.5**, **18.4**, **18.3**, **18.2**, **18.1**, **18**, **17.1** and **15.13**, then 17 and 15.12.
 
 **Hamed's standing priority order: Hermes usage first, vision second, speed/performance third.**
 
@@ -71,6 +72,15 @@ memory; swap 6 → 19 GiB), not the GPU ceiling; `read=` 4.5-5.3 ms and "Alloc" 
 (3) Slab parking stops at capacity 1. **The server-path replay instrument** (§18.24 "Instruments", scratch,
 rebuild from there): the sixth session's nine bodies (dump rows 282-298) replayed in order, a driver/pressure sampler
 every 2 s, optional GPU and host memory holders. It is the method for any governor or memory change.
+
+**New in 0.45.1 (§18.26), read first:** no runtime change. The last priced software lever for MiniMax prefill
+(the per-expert (scale, bias) rebuild, a pair-index `qmm`) was built bit-identically and closed: the kernels win
+alone and lose inside a layer. A grouped launch per projection closed too. Prefill compute left over is expert
+matmuls with 12-32 rows (~90 us each, 3-8x above the bandwidth and FLOP walls); only a new kernel design (weights
+dequantized once and reused across 12-32 rows) could move it, bounded by ~1.4 s of a 400-token chunk. MLX 0.32.2's
+dispatch for these shapes (for anyone copying kernels): 1 row `qmv_fast`, 2-11 `qmv_wide`, 12-64 split-K `qmm_t`
+(4 or 2 splits by output rows), then `qmm_t`. **Tell Hamed before another pure-speed session: the software levers
+priced so far are closed; what is left is the live Hermes slowness, M28 and M19.**
 
 **New in 0.45.0 (§18.25), read first:** the X10Pro mirror's share of each MiniMax read adapts
 (`CodedBankReader._adapt_share`, `CACHALOT_MINIMAX_MIRROR_ADAPT`, a `[bank] mirror share` line at most once a
@@ -127,9 +137,8 @@ fix, live; `CACHALOT_SERVER_DUMP` set). Then GLM's G6 + S1c + S1e (and a
 working-set budget for GLM), M27b, S4-S5. Making the sysctl permanent is Hamed's call. **MiniMax decode is now
 bandwidth-bound on reads (§18.19 item 1) and prefill compute-bound at the GPU's matmul peak (§18.20): without M19
 (a Thunderbolt mirror drive, Hamed's purchase) or M28, expect single-digit percent at best; say so to Hamed before
-spending a session on it. The one software lever priced and not built: a prefill `qmm` kernel that reads the pair
-index itself (MLX's steel affine `qmm_t` loader copied, as `codes_qmv` copied `qmv`), at most -4 % of long
-prefills, removing the per-expert (scale, bias) rebuild.**
+spending a session on it. The prefill `qmm` kernel that reads the pair index itself was built and closed in
+§18.26.**
 
 **Check the working tree before starting** (`git status --short`); 0.41.0 is committed and pushed. **Since 0.35.0
 the bank's records are slot images** (`bank.json` version 2, `layer-NNN-slot.bin`, `heads.json` version 2 naming
@@ -275,6 +284,10 @@ check `pgrep -f Flurry.appex` before each arm instead.
 ## Jobs 4-7 — the rest of the slow-window trigger and MLX buffer knobs; vision on Desktop-sized screenshots; prefill KL; 54 GiB collapse, Objective-C corpus. Unchanged from v46.
 
 ## What is closed, so nobody spends a session there
+
+- **Pair-index prefill kernels and the per-expert rebuild as a speed lever** (§18.26 item 2): bit-identical copies of
+  MLX's `qmv_wide` / split-K `qmm_t` / `qmm_t`, 4-7 % slower inside a layer. **A grouped `gather_qmm_rhs` prefill
+  over the slabs** (item 3): -10 to -13 % only at 1-2k tokens, slower below 400, not bit-identical. New.
 
 - **The GPU ceiling as the cause of the sixth session's stalls, and `CACHALOT_GPU_ALLOC_SLACK_GIB=0` as its fix**
   (§18.24 items 1, 3): a clean replay runs at "Alloc" 86-88 GiB without a stall; the stall came with host pressure
@@ -475,3 +488,4 @@ check `pgrep -f Flurry.appex` before each arm instead.
 | `benchmarks/decode_fingerprint.py --decode-tokens 24` | bit-identity of a scheduling change | ~1 min per arm |
 | `benchmarks/vision_ablation.sh ARM [--cases ...]` | verifiable image cases per ablation arm | ~1-3 min per arm |
 | `docs/manual-tests/hermes-desktop.md` | Hamed's Desktop test script | ~1-2 h |
+| `benchmarks/minimax_prefill_kernels/` (`rb_price.py`, `pm.py`, `lay2.py`, `qmm_m.py`, `sg_test.py`; run from the directory) | synthetic prefill routed-expert timing at MiniMax's shapes; pair-index and grouped kernels with bit checks | ~2-10 min |

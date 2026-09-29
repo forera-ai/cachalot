@@ -1,6 +1,6 @@
 # Cachalot — Engineering Handoff
 
-**Authoritative state as of 2026-09-29 (twenty-third MiniMax session), after the session that read Hamed's first Hermes session on 0.44.0 and made the mirror's share follow the X10Pro's speed (section 18.25), the one that made a restart reuse the agent's system block again and taught the memory governor to watch memory pressure (section 18.24), the one that gated the decode miss substitution on thinking-on and tool-call tasks and applied its rule to prefill, opt-in, short follow-ups -20 % (section 18.23), the one that capped MLX's buffer cache during MiniMax's decode, moved persisted system blocks off the GPU and gated the miss substitution at 24k (section 18.22), the one that let MiniMax's decode
+**Authoritative state as of 2026-09-29 (twenty-fourth MiniMax session), after the session that priced MiniMax's prefill expert kernels and closed them (section 18.26), the one that read Hamed's first Hermes session on 0.44.0 and made the mirror's share follow the X10Pro's speed (section 18.25), the one that made a restart reuse the agent's system block again and taught the memory governor to watch memory pressure (section 18.24), the one that gated the decode miss substitution on thinking-on and tool-call tasks and applied its rule to prefill, opt-in, short follow-ups -20 % (section 18.23), the one that capped MLX's buffer cache during MiniMax's decode, moved persisted system blocks off the GPU and gated the miss substitution at 24k (section 18.22), the one that let MiniMax's decode
 substitute its lightest missing experts, opt-in and measured inside the rounding noise (section 18.21), the one that put MiniMax's prefill at the GPU's FLOP
 wall and measured three levers without a gain (section 18.20), the one that measured where MiniMax's
 remaining time goes and shipped two bit-identical kernel fusions switched off (section 18.19), the one that raised the GPU's working
@@ -24,6 +24,22 @@ that gave it a bias-free expert bank (18.4), the one that gave it a second drive
 kernel (18.3), the one that cut its per-token overhead and measured it to 64k (18.2), the one that made it faster
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
+
+> ## Start here (2026-09-29, 0.45.1): MiniMax's prefill expert kernels priced and closed; nothing in `src/` changed
+>
+> - **Where a short prefill's routed-expert time goes (section 18.26 item 1):** MLX runs a MiniMax expert matmul as
+>   `qmv_fast` (1 row), `qmv_wide` (2-11 rows), split-K `qmm_t` (12-64 rows) or `qmm_t` (more), all far above the
+>   weight-bandwidth floor at small row counts (12-32 rows: ~90 us for a 7 MB matmul). The per-expert (scale, bias)
+>   rebuild costs 0.15-0.2 s of a 128-2,048-token chunk and 0.6 s of an 8k chunk (1-10 % of routed time).
+> - **Bit-identical pair-index kernels (item 2):** copies of all four MLX kernels that read the pair index
+>   themselves match `mx.quantized_matmul` bit for bit for every row count 1-130; faster alone (-20 to -30 % at 12-64
+>   rows), but 4-7 % slower than today's path inside a real layer (a dependent down projection follows). Closed.
+> - **One grouped launch per projection (item 3):** MLX's sorted `gather_qmm_rhs` over the slabs with the pair
+>   index, bit-identical to `mx.gather_qmm`: +96 % at 16 tokens, +23 % at 128, -2 % at 400, -13 % at 1,000,
+>   -10 % at 2,048, -2 % at 4k, 0 % at 8k, and not bit-identical to today's path. Closed on its price.
+> - **Instruments kept:** `benchmarks/minimax_prefill_kernels/`. **Version 0.45.1.**
+
+**Previous block, 0.45.0:**
 
 > ## Start here (2026-09-29, 0.45.0): Hamed's first session on 0.44.0; the mirror follows the X10Pro's speed
 >
@@ -8393,6 +8409,96 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.26 MiniMax-M3: the prefill expert kernels, priced and closed — 2026-09-29 (0.45.1)
+
+Hamed's brief (the twenty-fourth "MiniMax-M3 as fast as possible at the same quality"): confirm caveman, Jev and the
+codebase-memory graph first, then plan, build, measure and document. Tools: caveman active (session hook); Jev and
+the graph answered only after the permission classifier had returned no verdict on every call for one round (the
+session stopped and Hamed said "retry"); then `jev_decide` over the open levers chose the pair-index prefill kernel
+(0.89 against 0.09 for re-measuring first and 0.02 for waiting on a Hermes session), the graph ready (6,222 nodes, one
+partial file outside the code). 0.45.0 committed, tree clean, `iogpu.wired_limit_mb` 88064, no runtime, no
+screensaver, swap 5.3 GiB. No live Hermes session this time (Hamed not at the desk), so the session took the one
+software lever §18.20 had priced and not built: prefill's per-expert (scale, bias) rebuild.
+
+All measurements are synthetic and in one process (random 3-bit weights and pair tables at MiniMax's shapes,
+6144 x 3072 and 3072 x 6144; routing drawn top-4 of 128 with a Zipf 0.9 skew), no runtime loaded. The instruments
+are in `benchmarks/minimax_prefill_kernels/` (run from that directory with the venv's python; `pq.py` builds the
+kernels' Metal header from the installed MLX's own `quantized.h`, `steel/gemm/*.h` and `quantized_utils.h`).
+
+**1. What the rebuild costs, and where short prefills lose time.** `rb_price.py` (60 layers, one layer's experts
+per `mx.eval`, as prefill runs; ABAB x3): rebuild + `quantized_matmul` (today) against the same matmuls on
+precomputed (scale, bias):
+
+| tokens | experts a layer | today | precomputed | rebuild |
+|---|---|---|---|---|
+| 128 | 108 | 0.785 s | 0.633 s | 0.152 s (19 %) |
+| 400 | 127 | 1.602 s | 1.435 s | 0.167 s (10 %) |
+| 2,048 | 128 | 4.646 s | 4.440 s | 0.206 s (4.4 %) |
+| 8,192 | 128 | 14.914 s | 14.289 s | 0.626 s (4.2 %) |
+
+Against a live 300-1,000-token follow-up of 10-12 s the rebuild is 1.5-2 % (it is 1.44 s of a real 8k chunk,
+§18.20). `qmm_m.py`: one expert matmul (3072 x 6144) takes 25 us at 1 row, 55 at 8, **~88 us at 12-32 rows**, 155-165
+at 48-64, 297 at 128, where the weights alone would take ~10 us at the GPU's bandwidth and 12 rows ~26 us at its
+FLOP peak: small row counts are far from both walls. MLX's dispatch was read off the installed metallib and by
+bit-matching: `qmv_fast` at 1 row, `qmv_wide` (nv 2-5, 8 k-lanes) at 2-11 rows, `qmm_t` split over K at 12-64 rows
+(3072-row outputs: 4 splits at 12-32 rows, 2 at 33-64; 6144-row outputs: 2 splits at 12-32), plain `qmm_t` above.
+
+**2. Four bit-identical pair-index kernels, closed.** `pq.py` / `pq2.py` copy MLX's `qmv_wide_impl`,
+`QuantizedBlockLoader` and `qmm_t_impl` into `mx.fast.metal_kernel`s whose loaders read one byte per group and
+look the (scale, bias) up in the slot's table (the decode `codes_qmv` pair kernel covers one row), with the same
+split-K partitions and `sum(axis=0)`. **Bit-identical to `mx.quantized_matmul` on rebuilt arrays for every row
+count 1-130 on both shapes.** Alone and pipelined (`pm.py`, 48 experts queued, per matmul): 1 row 21 us (today
+35), 12-32 rows 89-93 (today 119-123, MLX with precomputed arrays 92), 48-64 rows 162 (today 201-205), 128 rows 307
+(today 318). But inside a layer where the down projection consumes the gate/up outputs (`lay2.py`, 128 experts, 3
+layers):
+
+| rows an expert | today | pair kernels | pair kernels for gate/up only | precomputed |
+|---|---|---|---|---|
+| 4 | 42.1 ms | 40.2 | 40.0 | 34.9 |
+| 16 | 114.1 | 126.7 | 116.1 | 108.7 |
+| 48 | 208.7 | 240.1 | 238.4 | 204.6 |
+| 128 | 403.5 | 441.3 | 448.2 | 369.3 |
+
+and over whole layers (`rb_price.py`, 30 layers): 128 tokens -6.3 %, 400 tokens +4.1 %, 2,048 tokens +6.7 %.
+Without the dependent down projection the same kernels win (16 rows 80.3 against 85.7 ms). MLX binds custom kernels
+exactly as its own (`CustomKernel::eval_gpu`: `set_input_array`/`set_output_array`, no extra barrier), so the loss is
+in how these kernels overlap with their consumers, not in the dispatch. Two nulls with a correct method: closed.
+Keeping the kernels for the one-row case only (the prefill's experts with a single token) would save ~14 us an
+expert on ~5 % of experts: not worth a change.
+
+**3. One grouped launch per projection, closed.** `sg.py` copies MLX's `affine_gather_qmm_rhs` (rows sorted by
+expert, 16-row tiles, 32 x 32, two simdgroups) to read each row's slot straight from the slab pool (every slot,
+transients included, lives in a `SlabSlotPool` slab) with the pair index: gate and up in one launch, down in a
+second, per layer. `sg_test.py` (a 300-slot pool in 5 slabs, filled at random): **bit-identical to `mx.gather_qmm`
+on the stacked rebuilt arrays from 128 tokens up** (MLX takes another kernel below), max relative difference against
+today's path 3-13e-3 (bf16 rounding of a different tiling). Per layer, ABAB x3:
+
+| tokens | rows | today | grouped |
+|---|---|---|---|
+| 16 | 64 | 3.3 ms | 6.4 ms (+96 %) |
+| 128 | 512 | 15.0 | 18.5 (+23 %) |
+| 400 | 1,600 | 28.1 | 27.6 (-2 %) |
+| 1,000 | 4,000 | 52.3 | 45.7 (-13 %) |
+| 2,048 | 8,192 | 85.9 | 77.8 (-10 %) |
+| 4,096 | 16,384 | 144.6 | 142.2 (-2 %) |
+| 8,192 | 32,768 | 268.6 | 268.6 (0 %) |
+
+A first price (`gq.py`, not kept) had shown the grouped call 25-45 % faster; its per-expert loop indexed a stacked
+array per expert, which is slower than the runtime's slot views, and the gap was that artifact. At its best
+(1-2k tokens) the grouped path saves ~0.4 s of a 2k tool result's ~12 s, loses at Hermes's short follow-ups, and
+changes prefill numerics (a quality gate and a `NUMERICS_VERSION` bump). Closed on its price.
+
+**Shipped (0.45.1):** nothing in `src/`; the instruments in `benchmarks/minimax_prefill_kernels/`.
+
+**Where MiniMax stands.** Unchanged from §18.20 and §18.25: decode waits on the drives, long prefill chunks run at
+the GPU's matmul peak, and short prefills are spread over attention at the agent's context, reads and small
+expert matmuls that no MLX kernel shape here speeds up. The small-row matmuls (12-32 rows at ~90 us, 3-8x above
+either wall) are the one compute gap left; closing it needs a new kernel design (weights dequantized once in
+registers and reused across 12-32 rows, as `qmv_wide` does for up to 5), not a copy of MLX's, and its whole prize
+is bounded by the routed experts' share of a short prefill (~1.4 s of a 400-token chunk). **What moves MiniMax
+now:** the live Hermes slowness (§18.25 "what is open" 1, needs a session with per-drive I/O beside the sampler),
+M28 (the visible Hermes window), M19 (a Thunderbolt drive for the mirror).
 
 ### 18.25 MiniMax-M3: Hamed's first session on 0.44.0; the mirror's share follows the X10Pro's speed — 2026-09-29 (0.45.0)
 
