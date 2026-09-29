@@ -687,6 +687,10 @@ class ResidentExpertStore:
                 if self.capacity - target <= slack or s == 0:  # slab 0 stays: a miss's placeholder slot is there
                     break
                 rows = pool._slab_range(s)
+                if self.capacity - len(rows) < 1:
+                    # the pool also holds the transient slots: parking past the capacity would take the slots a
+                    # prefill's misses load into (0.43.0's smoke test printed "expert slots 1892 -> -16")
+                    break
                 in_slab = {v.slot.index for v in self._items.values() if pool.slab_of(v.slot.index) == s}
                 with pool._cond:
                     free = set(pool._free)

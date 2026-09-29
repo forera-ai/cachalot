@@ -134,6 +134,58 @@ def host_available() -> int:
     return total * level // 100
 
 
+# HANDOFF 18.24: with other apps holding host memory, pressure flickers between normal and critical within seconds
+# and kern.memorystatus_level swings 6-44 % as the machine swaps. The fits only look at the moment they run (a
+# prefill's start, decode tokens 1, 513, ...), so a fit right after a prefill freed its buffers read a high moment
+# and grew the capacity by 13.6 GiB at once; swap then grew 6 -> 16 GiB and 150-400-token follow-ups took 33-41 s
+# instead of 6-9. A watcher samples both every HOST_WATCH_EVERY seconds: the capacity grows only after
+# HOST_GROW_QUIET seconds without warning pressure (or less than half the floor available), by the lowest
+# availability seen in that window; each such event gives back a slab at the next fit (a decode token), at most one
+# every HOST_SHRINK_EVERY seconds. HOST_GROW_QUIET <= 0 turns the watcher off (the 0.43 rule).
+HOST_GROW_QUIET = float(os.environ.get("CACHALOT_HOST_GROW_QUIET_S", "60"))
+HOST_WATCH_EVERY = 0.5
+HOST_SHRINK_EVERY = float(os.environ.get("CACHALOT_HOST_SHRINK_EVERY_S", "10"))
+
+
+class HostWatch:
+    """Memory pressure and availability sampled in a daemon thread (two sysctls, a few µs each)."""
+
+    def __init__(self, floor: int, quiet: float = HOST_GROW_QUIET, every: float = HOST_WATCH_EVERY,
+                 clock=time.monotonic, start: bool = True):
+        self.floor, self.quiet_s, self.every, self.clock = floor, quiet, every, clock
+        self.last_event = float("-inf")
+        self.events = 0
+        self._samples: list[tuple[float, int]] = []
+        self._lock = threading.Lock()
+        if start:
+            threading.Thread(target=self._run, daemon=True, name="host-watch").start()
+
+    def sample(self, level: int, available: int) -> None:
+        t = self.clock()
+        with self._lock:
+            if level >= 2 or 0 <= available < self.floor // 2:
+                self.last_event = t
+                self.events += 1
+            self._samples.append((t, available))
+            cut = t - self.quiet_s
+            while self._samples and self._samples[0][0] < cut:
+                self._samples.pop(0)
+
+    def _run(self) -> None:
+        while True:
+            self.sample(host_memory()[1], host_available())
+            time.sleep(self.every)
+
+    def quiet(self) -> bool:
+        """No pressure event in the last `quiet_s` seconds."""
+        with self._lock:
+            return self.clock() - self.last_event >= self.quiet_s
+
+    def min_available(self) -> int:
+        with self._lock:
+            return min((a for _, a in self._samples if a >= 0), default=-1)
+
+
 # HANDOFF 18.17: the GPU's memory is shared by every process. With 62 GiB of MiniMax slots, 1 GiB more of anyone's
 # GPU memory (48 more slots, or another process holding 2 GiB) slowed decode 6-25 % and short prefills up to 2.3x,
 # the same tokens: the driver pages (its "In use system memory" stays pinned near 74.3 GiB while "Alloc system
@@ -563,6 +615,17 @@ class GlmModel:
     # the full capacity, longer ones scale down to this linearly.
     _prefill_budget: int | None = None
     PREFILL_FULL_TOKENS = 2048
+    # HANDOFF 18.24: the host watcher (started by the first _host_capacity), the event count the last fit saw, and
+    # when it last gave back a slab for one
+    _host_watch: HostWatch | None = None
+    _watch_seen = 0
+    _watch_shrunk = float("-inf")
+
+    def _watch_pending(self) -> bool:
+        """A pressure event the fits have not answered yet, and a slab may be given back for it now."""
+        w = self._host_watch
+        return (w is not None and w.events != self._watch_seen
+                and time.monotonic() - self._watch_shrunk >= HOST_SHRINK_EVERY)
 
     def _host_capacity(self, capacity: int) -> int:
         """The capacity the machine's memory allows (S2): a slab less at warning pressure or under half the floor
@@ -574,8 +637,25 @@ class GlmModel:
             return capacity
         pool = self.store.pool
         step = getattr(pool, "slab_slots", MEMORY_FIT_MIN_SLOTS)
+        watch = self._host_watch
+        if watch is None and HOST_GROW_QUIET > 0:
+            watch = self._host_watch = HostWatch(HOST_AVAILABLE_FLOOR)
+        now = time.monotonic()
         if level >= 2 or available < HOST_AVAILABLE_FLOOR // 2:
+            if watch is not None:
+                self._watch_seen, self._watch_shrunk = watch.events, now
             return capacity - step
+        if watch is not None:
+            if watch.events != self._watch_seen and now - self._watch_shrunk >= HOST_SHRINK_EVERY:
+                # warning pressure since the last fit (HANDOFF 18.24): give back a slab
+                self._watch_seen, self._watch_shrunk = watch.events, now
+                return capacity - step
+            if not watch.quiet():
+                available = min(available, HOST_AVAILABLE_FLOOR)  # no growth until it has been quiet a while
+            else:
+                low = watch.min_available()
+                if low >= 0:
+                    available = min(available, low)
         allowed = capacity + max(0, available - HOST_AVAILABLE_FLOOR) // self.store.expert_bytes
         ceiling = gpu_ceiling()
         if ceiling > 0:
@@ -904,7 +984,7 @@ class GlmModel:
                     yield ("token", token)
                     logits = self._forward([token], cache)
                     mx.eval(logits)
-                    if len(out) % MEMORY_FIT_EVERY == 1:
+                    if len(out) % MEMORY_FIT_EVERY == 1 or self._watch_pending():
                         self._fit_memory()
                 if not self.CONSUME_SNAPSHOTS:
                     if out and finish != "cancel":

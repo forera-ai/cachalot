@@ -66,8 +66,13 @@ def runtime_identity(model_path, bank_path, max_seq_len: int, version: str) -> s
     return hashlib.sha256("\n".join(parts).encode()).hexdigest()
 
 
-def _file_name(snap: SequenceSnapshot) -> str:
+def _file_name(snap: SequenceSnapshot, identity: str = "") -> str:
+    # The identity is part of the name (0.43.3): with the tokens alone, a file written under another numerics tag
+    # (the exact path, an older switch setting) had this block's name, `persist` saw the name and skipped the write,
+    # and every restart of the current configuration prefilled the whole system block again (HANDOFF 18.24).
     digest = hashlib.sha256(np.asarray(snap.tokens, dtype=np.int32).tobytes())
+    if identity:
+        digest.update(identity.encode())
     return f"prefix-{len(snap.tokens)}-{digest.hexdigest()[:16]}.safetensors"
 
 
@@ -110,7 +115,7 @@ def save(snap: SequenceSnapshot, directory, identity: str, keep: int = 8) -> Pat
     """
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=True)
-    path = directory / _file_name(snap)
+    path = directory / _file_name(snap, identity)
     _write(snap, path, identity)
     files = sorted(directory.glob("prefix-*.safetensors"), key=lambda p: p.stat().st_mtime, reverse=True)
     for old in files[keep:]:
@@ -226,7 +231,7 @@ class SnapshotStore:
 
     def persist(self, snap: SequenceSnapshot) -> None:
         """PrefixCache.persist: a system block was snapshotted."""
-        name = _file_name(snap)
+        name = _file_name(snap, self.identity)
         self.index[name] = {"used": self.clock()}
         self.tokens[name] = snap.tokens
         files = self._files()
@@ -239,7 +244,7 @@ class SnapshotStore:
         """PrefixCache.on_find: `blocks` are the cached system blocks that `tokens` starts with."""
         touched = False
         for block in blocks:
-            name = _file_name(block)
+            name = _file_name(block, self.identity)
             if name in self.tokens:
                 self.index[name] = {"used": self.clock()}
                 touched = True

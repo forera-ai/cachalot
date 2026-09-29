@@ -175,6 +175,15 @@ def test_shrinking_parks_whole_slabs_and_keeps_the_survivors_data():
     assert store.set_capacity(9) == 8
 
 
+def test_shrinking_never_parks_the_transient_slots():
+    # 16 slots in four slabs, a capacity of 4 and 12 transient slots: a target of 1 used to park three slabs and
+    # leave the capacity at -8 (0.43.0's "expert slots 1892 -> -16")
+    store, pool, _ = _store(n_slots=16, capacity_budget=4)
+    assert store.capacity == 4 and store.transient_slots == 12
+    assert store.set_capacity(1) == 4
+    assert len(pool.active_slabs()) == 4
+
+
 def test_slab_kernels_with_scale_index_slots_match_codes_qmv_bit_for_bit():
     """A scale-index slot (HANDOFF 18.13): the slab kernels look each scale up and give codes_qmv's bits."""
     sizes = {}

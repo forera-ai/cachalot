@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.44.0 (2026-09-29)
+
+HANDOFF section 18.24.
+
+### Fixed
+- **A restart reuses the agent's system block again.** Snapshot files were named by their tokens alone, so a block
+  already saved under another numerics tag (the exact path, an older switch setting) kept the current configuration
+  from ever writing its own: since 0.43.0 every restart of `serve-minimax.sh` prefilled Hermes's ~21k-token system
+  block cold (98-133 s here, 323.6 s in Hamed's sixth session). The runtime identity is now part of the file name's
+  hash; the first request after a restart takes 2-10 s again. Applies to every model's disk snapshots.
+- **Parking whole slabs no longer takes the transient slots.** The governor could drive the expert capacity below
+  zero (`memory fit: expert slots 1892 -> -16`) and park the slots a prefill's misses load into; it now stops at a
+  capacity of 1.
+
+### Changed
+- **MiniMax's memory governor watches macOS memory pressure between its fits.** With other apps holding host memory,
+  a fit right after a long prefill could read a momentarily high availability and take back 13.6 GiB of expert
+  cache at once; swap grew 6 -> 19 GiB and short follow-ups at 30k context took 30-41 s instead of 8-18. A watcher
+  now samples the pressure level and available memory every 0.5 s: the cache grows only after 60 s without warning
+  pressure and by the lowest availability seen in that window, and each pressure event gives a slab back at the next
+  decode token (at most one every 10 s). Server-path replays of Hamed's sixth Hermes session with 2 GiB of GPU and
+  12 GiB of host memory held by other processes: pressure samples halved in all four pairs, total decode -5.6 to
+  -10.6 % in three pairs (+10.4 % in one), the 120 s follow-up stall gone. Inert on a quiet machine.
+  `CACHALOT_HOST_GROW_QUIET_S=0` restores the previous rule; `CACHALOT_HOST_SHRINK_EVERY_S` sets the interval.
+
+### Documented
+- The sixth session's `read=` 4.5-5.3 ms a miss and GPU "Alloc" 86.5 GiB are normal on this machine (a clean replay
+  shows the same); the follow-up stalls came from host memory pressure.
+
 ## 0.43.2 (2026-09-29)
 
 HANDOFF section 18.23 item 8.

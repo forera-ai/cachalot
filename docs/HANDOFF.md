@@ -1,6 +1,6 @@
 # Cachalot — Engineering Handoff
 
-**Authoritative state as of 2026-09-29 (twenty-second MiniMax session), after the session that gated the decode miss substitution on thinking-on and tool-call tasks and applied its rule to prefill, opt-in, short follow-ups -20 % (section 18.23), the one that capped MLX's buffer cache during MiniMax's decode, moved persisted system blocks off the GPU and gated the miss substitution at 24k (section 18.22), the one that let MiniMax's decode
+**Authoritative state as of 2026-09-29 (twenty-third MiniMax session), after the session that made a restart reuse the agent's system block again and taught the memory governor to watch memory pressure (section 18.24), the one that gated the decode miss substitution on thinking-on and tool-call tasks and applied its rule to prefill, opt-in, short follow-ups -20 % (section 18.23), the one that capped MLX's buffer cache during MiniMax's decode, moved persisted system blocks off the GPU and gated the miss substitution at 24k (section 18.22), the one that let MiniMax's decode
 substitute its lightest missing experts, opt-in and measured inside the rounding noise (section 18.21), the one that put MiniMax's prefill at the GPU's FLOP
 wall and measured three levers without a gain (section 18.20), the one that measured where MiniMax's
 remaining time goes and shipped two bit-identical kernel fusions switched off (section 18.19), the one that raised the GPU's working
@@ -24,6 +24,25 @@ that gave it a bias-free expert bank (18.4), the one that gave it a second drive
 kernel (18.3), the one that cut its per-token overhead and measured it to 64k (18.2), the one that made it faster
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
+
+> ## Start here (2026-09-29, 0.44.0): a restart reuses the agent's system block again; the governor watches memory pressure
+>
+> - **Restart (section 18.24 item 2):** snapshot files were named by their tokens only, so the block saved under
+>   another numerics tag kept 0.43's configuration from ever writing its own: every restart prefilled Hermes's
+>   21k-token system block cold (98-133 s; 323.6 s in the sixth session). The identity is now in the name: the
+>   first request after a restart **98-133 s -> 2-10 s**. Bit-identical.
+> - **Follow-up stalls (items 1, 3, 4):** reproduced through the server path by holding 2 GiB of GPU and 12 GiB of
+>   host memory in other processes: follow-ups of 211-1,965 tokens at 30-32k took 30-41 s, swap 6 -> 19 GiB, the GPU's
+>   "Alloc" under its ceiling. A fit after a long prefill read a momentary high availability and took back 13.6 GiB at
+>   once. A pressure watcher (0.5 s samples; growth only after 60 s quiet, by the window's lowest availability; a slab
+>   back per event) is on: pressure samples halved in 4 of 4 pairs, total decode -5.6 to -10.6 % in 3 (+10.4 % in
+>   1), the stall gone. Inert without pressure.  restores 0.43.
+> - **Not symptoms (item 1):** `read=` 4.5-5.3 ms and "Alloc" 86-88 GiB are normal here; a clean replay shows both.
+> - **Also (items 5-6):** slab parking stops at capacity 1 (it took the transient slots); the sixth session's runaway
+>   replays 0/8 with the switches on and 0/8 exact.
+> - **Version 0.44.0.** 461 tests pass.
+
+**Previous block, 0.42.0-0.43.0:**
 
 > ## Start here (2026-09-29, 0.42.0-0.43.0): short follow-up prefills -20 %; miss substitution on by default
 >
@@ -8356,6 +8375,116 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.24 MiniMax-M3: a restart reuses the agent's system block again; the governor stops growing into memory pressure — 2026-09-29 (0.44.0)
+
+Hamed's brief (prompt v71, the twenty-third "MiniMax-M3 as fast as possible at unchanged quality"): confirm caveman,
+Jev and the codebase-memory graph first, then plan, build, measure and document. Tools: caveman active (session
+hook), Jev answered (`jev_verify` on a probe claim), the graph ready (6,154 nodes, the known partial `repair.patch`).
+The `cachalot` session skill loaded mid-session and its gates were run. 0.43.2 committed, tree clean,
+`iogpu.wired_limit_mb` 88064 (Metal's recommended working set 86.0 GiB, so the governor's GPU ceiling is 87.0), no
+runtime running; other apps (Cachalot Studio, Hermes Desktop and others) held 8.5 GiB of GPU memory with no runtime
+up, swap 5.6 GiB used. Nothing slept the display; arms where the screensaver ran are marked.
+
+**The plan.** Every exact lever left is single-digit (decode at the drives' bandwidth, prefill at the GPU's matmul
+peak, 18.19-18.20). The largest measured loss was live, not in a kernel: Hamed's sixth session (18.23 item 8) had
+71-107-token follow-ups at 28-66 s that should take 5-10 s, and a first request of 323.6 s. The first job was to
+reproduce that through the server path and find its cause.
+
+**Instruments (scratch, rebuild from this description).** `replay.py`: the nine Hermes request bodies of the sixth
+session (dump `/tmp/cachalot-requests.jsonl` rows 282-298, every second row) sent in order to `serve-minimax.sh`,
+non-streaming, temperature 0, `max_tokens` the original reply's length capped at 300, 3 s apart. Later prompts carry
+the original replies, so every arm prefills the same new tokens (±30 where a capped reply differed). `arm.sh NAME
+HOLD_GIB [ENV...]`: a driver sampler (`drv.sh`, every 2 s: the AGX driver's "Alloc system memory" and "In use system
+memory", swap used, `kern.memorystatus_level`, `kern.memorystatus_vm_pressure_level`), optionally a GPU holder
+(`hold.py`, N GiB of MLX arrays) and a host holder (`hoghost.py`, N GiB of random bytes kept touched: other apps'
+memory that cannot be compressed away), then the server with `CACHALOT_SERVER_DUMP`, the replay, and the `[request]`
+lines. `summ.py`: per arm, the first request's prefill, the five follow-ups 5-9 (380, 211, 1,965, 151 and 155 new
+tokens at 30-32k context), all prefill, total decode time, swap and the pressure samples.
+
+**1. The `read=` figure in 18.23 item 8 was not a symptom.** A clean replay (arm A: no holders) read at
+4.5-5.1 ms a miss, the same as the sixth session's 4.5-5.3, with follow-ups at 5-9 s. The 2.9-3.3 ms that 18.23 set
+against it were benchmarks' decode wait per miss (store wait divided by misses), not the server's `read=` (the mean
+wall time of one read with several in flight). The same holds for 18.23's reading of "Alloc" 86.5 GiB: in arm A the
+driver's total sat at 86-88.3 GiB through every decode with no stall at all. Neither number separates a slow session
+from a normal one.
+
+**2. The first request after every restart re-prefilled the whole system block (fixed).** Every arm's startup printed
+`prefix snapshots: 0 loaded ... 0 more on disk` although the 21,333-token block had been persisted by the arm before
+it, and the first request prefilled 21,343 tokens cold (98-133 s; the sixth session's 323.6 s was this under memory
+pressure). A snapshot file's name was `prefix-<n>-<hash of the tokens>`: the same block written under another
+numerics tag (the 0.40-0.41 decode-switch tag here, identity `7698afcf…`) has the same name, `SnapshotStore.persist`
+found the name on disk and skipped the write, and at the next start the file failed the identity check and was
+ignored. Since 0.43.0 changed the tag, no restart had reused Hermes's block. **The identity is now part of the
+hash** (`snapshot_store._file_name(snap, identity)`), so each configuration keeps its own file; old files still load
+by their stored identity and age out by use. Test: `test_a_file_of_another_runtime_does_not_stop_this_one_saving_the_same_block`
+(fails before the fix). After it, the first request of a restart: **98-133 s → 2.0-10.2 s** (the block loads in
+0.46 s; arms D, B2, C2 below). Bit-identical: only file names changed.
+
+**3. What stalls the follow-ups: host memory, not the GPU ceiling.** With 2 GiB of GPU memory and 12 GiB of host
+memory held by other processes (arm B, 0.43.2's governor), the follow-ups ran **33.4, 41.3 and 30.2 s** (380, 211 and
+1,965 new tokens; arm A 8.7, 9.2, 18.2): the sixth session's stall, reproduced. The driver's "Alloc" stayed at
+81.7-85.4 GiB, under the ceiling. What moved: `kern.memorystatus_level` swung between 6 % and 44 % from one sample
+to the next, pressure reached critical (4) in 187 of 297 samples, and swap grew **6.0 → 19.0 GiB**. The governor's
+own lines show why: after a long prefill parked slabs, the fit at the first decode token read a momentarily high
+availability and took back 660 slots (13.6 GiB) at once (`expert slots 2236 -> 2896`); the fits only look at the
+moment they run (a prefill's start, decode tokens 1, 513, ...), and nothing between them notices pressure.
+
+**4. The fix: a pressure watcher (shipped, on).** `glm.model.HostWatch` samples the pressure level and
+`kern.memorystatus_level` every 0.5 s in a daemon thread (two sysctls, a few µs). In `_host_capacity`: the expert
+capacity grows only after `CACHALOT_HOST_GROW_QUIET_S` (60) seconds without an event (warning or critical pressure,
+or less than half of `HOST_AVAILABLE_FLOOR` available), and then by the lowest availability seen in that window; an
+event gives back a slab at the next fit, and decode runs a fit at the next token when an event is pending, at most
+one slab every `CACHALOT_HOST_SHRINK_EVERY_S` (10) seconds. `CACHALOT_HOST_GROW_QUIET_S=0` restores 0.43's rule.
+Three unit tests in `tests/test_memory_governor.py`. The exact path's outputs do not depend on residency; with miss
+substitution on (the default) they do, as they already did with every governor decision.
+
+Server path, the same holders (2 GiB GPU + 12 GiB host), the replay above; "cold" arms start from an empty snapshot
+directory with the server's saved warm set (the start the sixth session had), "warm" arms from the saved system
+block:
+
+| arm | start | watcher | first request | follow-ups 5-9 | all prefill | total decode | swap | pressure ≥ 2 |
+|---|---|---|---|---|---|---|---|---|
+| A (no holders) | cold | off | 98.5 | 47.5 | 207.0 | 159.6 s (8.26 tok/s) | flat | 0 |
+| B | cold | off | 103.8 | **119.7** | 282.8 | 199.2 s (6.60) | 6.0 → 19.0 GiB | 187 / 297 |
+| C | cold | on | 120.9 | **52.1** | 236.9 | 188.0 s (7.00) | 7.0 → 16.6 | 63 / 258 |
+| D (no holders) * | warm | on | 3.0 | 40.8 | 106.2 | 142.8 s (9.21) | flat | 0 |
+| B2 | warm | off | 2.0 | 49.3 | 107.0 | 174.5 s (7.53) | 6.6 → 13.0 | 80 / 185 |
+| C2 | warm | on | 10.2 | 49.3 | 117.3 | 192.6 s (6.82) | 6.4 → 14.9 | 50 / 202 |
+| cold1 off | cold | off | 100.2 | 47.2 | 204.1 | 210.1 s (6.25) | 5.6 → 14.2 | 114 / 249 |
+| cold1 on * | cold | on | 108.7 | 49.1 | 214.8 | 189.6 s (6.94) | 7.5 → 15.0 | 55 / 244 |
+| cold2 off * | cold | off | 133.1 | 52.2 | 252.4 | 195.8 s (6.72) | 7.3 → 17.2 | 136 / 272 |
+| cold2 on | cold | on | 99.9 | 47.8 | 203.4 | 175.1 s (7.50) | 8.0 → 13.1 | 47 / 231 |
+
+(* screensaver running at the start or end of the arm.) The stall of arm B came back in one of four off arms; with
+the watcher on it never did. Over the four held pairs the watcher halved the pressure samples every time (187 → 63,
+80 → 50, 114 → 55, 136 → 47), cut total decode in three (-5.6 %, -9.8 %, -10.6 %) and lengthened it in one
+(warm start, +10.4 %), and left the follow-ups where a normal arm has them. With no pressure it does nothing (arm D:
+no event, fits as before). Jev (`jev_decide`, ship on / ship off / more pairs): ship on, 0.94.
+
+**5. A slab pool could park past the capacity (fixed).** 0.43.0's smoke test printed `memory fit: expert slots 1892
+-> -16`: a slab pool holds the capacity plus the transient slots, and parking whole slabs towards a target near 1 took
+the transient slots too, which a prefill's misses load into. `_set_capacity_slabs_locked` now stops before the
+capacity would drop below 1. Test: `test_shrinking_never_parks_the_transient_slots` (fails before the fix).
+
+**6. The runaway of the sixth session's last request does not replay.** Dump row 300 (the request whose reply looped
+inside a `terminal` call until the loop guard cut it at 2,002 tokens), at Hermes's sampling (the server defaults:
+temperature 1.0, top_p 0.95, thinking off), `max_tokens` 1,500, 8 samples a arm, no holders: **0 of 8 looped with
+the switches on, 0 of 8 on the exact path** (no `[loop guard]` line in either server log). All 16 replies were one
+parsed `terminal` call of 55-281 tokens: a `dotnet build`, or a sample CSV/JSON written and the importer run on it.
+The live runaway was a rare sampled branch, as 18.21 item 10 found for the C# flail; nothing ties it to the switches.
+
+**Shipped (0.44.0).** The snapshot file name with the identity (item 2), the host pressure watcher (item 4, on;
+`CACHALOT_HOST_GROW_QUIET_S`, `CACHALOT_HOST_SHRINK_EVERY_S`), the slab parking floor (item 5). 461 tests pass. Studio
+brief: `docs/studio/briefs/2026-09-29-runtime-0.44.0.md`.
+
+**What is open after this.** 1. A Hermes session on 0.44.0 with `CACHALOT_SERVER_DUMP` set and
+`benchmarks/slow_window_sampler.py` (or this section's `drv.sh`) beside it: the first request after a restart
+should reuse the block (`prefix snapshots: 1 loaded`), and follow-ups at 30k+ should stay at 5-20 s even with other
+apps open. 2. The machine itself: other apps held 8.5 GiB of GPU memory and swap sat at 5.6-8 GiB before any arm;
+every GiB they hold is a GiB of expert cache (Hamed's call which apps stay open during agent sessions). 3. Unchanged
+from 18.23: the prefill switch at Hermes's real shape, a prefill battery, M28 with Hamed, M19 (a Thunderbolt mirror
+drive), the pair-index prefill `qmm` kernel, GLM G6 + S1c + S1e.
 
 ### 18.23 MiniMax-M3: miss substitution passes the thinking and tool-call batteries; the same rule in prefill, opt-in, short follow-ups -20 % — 2026-09-29 (0.42.0)
 

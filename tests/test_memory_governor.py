@@ -42,6 +42,7 @@ def host(monkeypatch):
     monkeypatch.setattr(glm_model.mx, "get_active_memory", lambda: state["ours"])
     monkeypatch.setattr(glm_model.mx, "get_cache_memory", lambda: 0)
     monkeypatch.setattr(glm_model.mx, "clear_cache", lambda: None)
+    monkeypatch.setattr(glm_model, "HOST_GROW_QUIET", 0)  # the watcher's own tests below give it a clock
     return state
 
 
@@ -125,3 +126,62 @@ def test_a_small_gpu_overshoot_still_gives_back_a_whole_slab(host):
     m = governed(capacity=2920)
     host["gpu"] = 78 * GIB + GIB // 2
     assert m._host_capacity(2920) <= 2920 - 128
+
+
+class Clock:
+    def __init__(self):
+        self.t = 100.0
+
+    def __call__(self):
+        return self.t
+
+
+def watched(host, monkeypatch, clock):
+    # HANDOFF 18.24: a watcher driven by hand, and the governor reading the same clock
+    m = governed()
+    m._host_watch = glm_model.HostWatch(glm_model.HOST_AVAILABLE_FLOOR, quiet=60, clock=clock, start=False)
+    monkeypatch.setattr(glm_model.time, "monotonic", clock)
+    return m
+
+
+def test_growth_waits_for_a_quiet_minute_after_warning_pressure(host, monkeypatch):
+    clock = Clock()
+    m, slot = watched(host, monkeypatch, clock), 21 * 2**20
+    w = m._host_watch
+    w.sample(1, 20 * GIB)
+    w.sample(4, 7 * GIB)  # critical for one sample, between two fits
+    host["available"] = 20 * GIB  # the fit reads a good moment
+    assert m._host_capacity(2718) == 2718 - 128  # the event gives back a slab
+    clock.t += 5
+    w.sample(1, 20 * GIB)
+    assert m._host_capacity(2718) == 2718  # answered; no growth while it is not quiet
+    clock.t += 61
+    w.sample(1, 20 * GIB)
+    assert m._host_capacity(2718) == 2718 + 12 * GIB // slot
+
+
+def test_growth_is_sized_by_the_lowest_availability_in_the_window(host, monkeypatch):
+    clock = Clock()
+    m, slot = watched(host, monkeypatch, clock), 21 * 2**20
+    w = m._host_watch
+    for avail in (30, 11, 25):
+        w.sample(1, avail * GIB)
+        clock.t += 10
+    host["available"] = 30 * GIB
+    assert m._host_capacity(2718) == 2718 + 3 * GIB // slot  # 11 GiB seen, 8 kept
+
+
+def test_pressure_gives_back_at_most_a_slab_per_interval(host, monkeypatch):
+    clock = Clock()
+    m = watched(host, monkeypatch, clock)
+    w = m._host_watch
+    w.sample(2, 20 * GIB)
+    assert m._watch_pending()
+    assert m._host_capacity(2718) == 2718 - 128
+    w.sample(2, 20 * GIB)
+    clock.t += 1
+    assert not m._watch_pending()
+    assert m._host_capacity(2718) == 2718  # too soon for another slab, and no growth
+    clock.t += glm_model.HOST_SHRINK_EVERY
+    assert m._watch_pending()
+    assert m._host_capacity(2718) == 2718 - 128

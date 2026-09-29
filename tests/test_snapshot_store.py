@@ -101,6 +101,20 @@ def test_a_file_of_another_runtime_is_indexed_but_never_served(tmp_path):
     assert store.tokens == {}
 
 
+def test_a_file_of_another_runtime_does_not_stop_this_one_saving_the_same_block(tmp_path):
+    # HANDOFF 18.24: the exact path's file for a block kept the switched-on server from ever writing its own, so
+    # every restart prefilled the system block again
+    clock = Clock()
+    block = _block(6)
+    snapshot_store.SnapshotStore(tmp_path, "exact", clock=clock).persist(block)
+    snapshot_store.SnapshotStore(tmp_path, "id", clock=clock).persist(block)
+    assert _on_disk(tmp_path) == [6, 6]
+    for identity in ("id", "exact"):
+        loaded = snapshot_store.SnapshotStore(tmp_path, identity, clock=clock, preload=1).load_all()
+        assert [s.tokens for s in loaded] == [block.tokens]
+        _same(loaded[0], block)
+
+
 def test_a_failing_store_does_not_fail_the_request():
     cache = PrefixCache()
 
