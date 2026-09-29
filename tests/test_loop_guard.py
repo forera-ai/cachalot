@@ -30,7 +30,7 @@ class _Tok:
     eos_token_id = 0
 
     def decode(self, ids, skip_special_tokens=False):
-        return "".join(f"w{i} " for i in ids)
+        return "".join("<tool_call>" if i == 7 else f"w{i} " for i in ids)
 
     def encode(self, text, add_special_tokens=False):
         return [1, 2, 3]
@@ -48,6 +48,9 @@ class _Model:
 
     def render_chat(self, *a, **k):
         return "x"
+
+    def parse_tool_calls(self, text, tools=None):
+        return []  # the fake tokenizer never closes a call
 
     def stream(self, prompt, *, max_new_tokens, temperature, top_p, cancel=None, boundary=0):
         yield ("prefill", 0, 0.0)
@@ -84,3 +87,16 @@ def test_a_normal_reply_is_untouched():
     script = list(range(10, 900))
     model, last = _run(script, 6)
     assert model.fed == len(script)
+
+
+def test_a_reply_looping_inside_a_tool_call_drops_the_unclosed_block():
+    # HANDOFF 18.23 item 8: the loop guard cut a reply inside its (never closed) tool call, which reached Hermes as text
+    script = list(range(10, 20)) + [7] + list(range(300, 330)) * 100
+    glm_engine.LOOP_GUARD_REPEATS = 6
+    model = _Model(script)
+    eng = GlmEngine(model, model_id="m")
+    req = ChatRequest(messages=[{"role": "user", "content": "hi"}], params=SamplingParams(max_new_tokens=5000))
+    deltas = list(eng.stream_chat(req))
+    text = "".join(d.content for d in deltas)
+    assert "<tool_call>" not in text and "w300" not in text and text.startswith("w10 ")
+    assert deltas[-1].finish_reason == "stop" and not deltas[-1].tool_calls

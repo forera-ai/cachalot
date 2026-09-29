@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.43.2 (2026-09-29)
+
+HANDOFF section 18.23 item 8.
+
+### Fixed
+- **A reply cut inside an unclosed tool call no longer reaches the client as text.** In Hamed's sixth Hermes
+  session a MiniMax reply looped inside a `terminal` call's command until the loop guard stopped it; the unclosed
+  call cannot be parsed, and ~6,000 characters of raw call markup went to Hermes as the reply. At a loop-guard or
+  length stop the unclosed block is now dropped (logged as `[tool call] unclosed block dropped`).
+
+### Documented
+- Hamed's sixth Hermes session on 0.43.0 (both substitution switches on): tool calls right, decode 6.6-9.6 tok/s at
+  27-34k context; short follow-ups stalled 28-66 s with every read at 4.5-5.3 ms a miss, and all processes' GPU
+  allocation stood at 86.5 GiB against the 86.0 GiB working set afterwards (the paging zone; not attributed to the
+  switches).
+
 ## 0.43.1 (2026-09-29)
 
 ### Fixed

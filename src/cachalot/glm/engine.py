@@ -289,6 +289,11 @@ class GlmEngine:
                         if calls:
                             tool_calls = _with_ids(calls)
                             finish = "tool_calls"
+                        elif looped or event[1] == "length":
+                            # HANDOFF 18.23 item 8: a reply cut inside its tool block (the loop guard, the length
+                            # limit) left an unclosed call that nothing can run; it went to the client as text
+                            print(f"[tool call] unclosed block dropped ({len(splitter.text) - splitter.emitted_content}"
+                                  f" chars) at a {'loop guard' if looped else 'length'} stop", flush=True)
                         else:
                             tail.content += splitter.text[splitter.emitted_content:]
                     n_out = len(splitter.tokens) + (1 if event[1] == "stop" else 0)

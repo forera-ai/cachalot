@@ -42,7 +42,11 @@ The first block below is new; the blocks after it still hold.
 > - **0.43.0 (item 7): both switches on by default** (Hamed's call). `CACHALOT_MINIMAX_MISS_DROP=0
 >   CACHALOT_MINIMAX_PREFILL_MISS_DROP=0` is the exact path; benchmark arms meaning "exact" must set both. The first
 >   Hermes request after upgrading re-prefills its system block once (new numerics tag).
-> - **Version 0.43.0.** 455 tests pass.
+> - **Hamed's sixth session on 0.43.0 (item 8):** tool calls right, decode 6.6-9.6 tok/s at 27-34k. Short follow-ups
+>   stalled 28-66 s and reads ran 4.5-5.3 ms a miss: all processes' GPU allocation read 86.5 GiB against the 86.0
+>   working set (swap 7.1/8.2 GiB), the paging zone, not attributed to the switches. A loop inside a tool call
+>   leaked the unclosed call as text: **0.43.2 drops an unclosed tool block at a loop-guard or length stop.**
+> - **Version 0.43.2.** 456 tests pass.
 
 **Previous block, 0.41.0:**
 
@@ -8479,6 +8483,58 @@ rule's exact and noise arms included). Smoke test with the defaults: 57 prefill-
 with other apps holding memory (12.5 GiB available, 22.8 GiB swap: budget 68 -> 39 GiB at load) and printed
 `memory fit: expert slots 1892 -> -16`, an older governor bug (whole-slab parking can subtract more than the
 capacity when the pool also holds transient slots), filed as its own task. 455 tests pass.
+
+**8. Hamed's sixth Hermes session, on 0.43.0 with both switches on** (export `list-files-in-desktop-folder-6-20260929.json`,
+dump `/tmp/cachalot-requests.jsonl` rows 281-300, 10 requests, 15:34-16:09; the server's startup line said 0.41.0
+because `cachalot.__version__` had not been bumped, fixed in 0.43.1). The requests:
+
+| # | prompt | reused | new | prefill s | completion | decode tok/s | miss/tok | read ms/miss | finish |
+|---|---|---|---|---|---|---|---|---|---|
+| 1 | 21,343 | 0 | 21,343 | 323.6 | 11 | 0.57 | 22.5 | 4.92 | stop |
+| 2 | 21,379 | 21,353 | 26 | 4.1 | 30 | 4.68 | 20.9 | 5.33 | tool_calls |
+| 3 | 27,366 | 21,408 | 5,958 | 41.4 | 158 | 7.10 | 16.1 | 4.84 | tool_calls |
+| 4 | 29,658 | 27,523 | 2,135 | 20.3 | 358 | 8.46 | 12.1 | 4.62 | stop |
+| 5 | 30,038 | 30,015 | 23 | 2.0 | 81 | 6.76 | 14.4 | 4.53 | tool_calls |
+| 6 | 30,249 | 30,118 | 131 | 9.6 | 1,736 | 7.26 | 11.6 | 4.60 | tool_calls |
+| 7 | 32,214 | 30,249 | 1,965 | **64.2** | 81 | 6.59 | 18.5 | 4.91 | tool_calls |
+| 8 | 32,365 | 32,294 | 71 | **27.8** | 70 | 6.81 | 17.8 | 4.80 | tool_calls |
+| 9 | 32,520 | 32,434 | 86 | **65.9** | 1,696 | 6.60 | 17.3 | 4.86 | tool_calls |
+| 10 | 34,322 | 34,215 | 107 | **60.3** | 2,002 | 9.62 | 8.9 | 4.60 | stop (loop guard) |
+
+What worked: every tool call parsed (the Desktop listing, `dotnet new console`, a `write_file` refused by Hermes's
+own read-before-overwrite guard, then read and written: an 8 KB `Program.cs`), decode 6.6-9.6 tok/s at 27-34k context
+(the fifth session, exact decode path plus switch: 5.0-10.4), and the switches' disk snapshots were kept apart (the
+first request found no snapshot under the new numerics tag and prefilled the 21k block cold).
+
+What went wrong, and what it was:
+- **Request 1, 323.6 s for the cold 21k block and 0.57 tok/s for 11 tokens.** Expected once after 0.43.0 (item 7),
+  but ~2.5x slower than the fifth session's 127 s. The machine was short of memory before the server started (the
+  item 7 smoke test an hour earlier found 12.5 GiB available and 22.8 GiB of swap); the 11 decode tokens also paid
+  for taking back ~400 slots right after the prefill.
+- **Requests 7-10, short follow-ups at 28-66 s** (71-107 new tokens should take 2-10 s; 1,965 about 15-20 s),
+  and **every read at 4.5-5.3 ms a miss all session** (2.9-3.3 in every measured arm). Read with the server idle
+  after the session: **all processes' GPU allocation 86.5 GiB against a 86.0 GiB working set** (inside the
+  governor's +1 GiB slack, `CACHALOT_GPU_ALLOC_SLACK_GIB`), swap 7.1 of 8.2 GiB, 8.6 GiB of host memory available,
+  no screensaver. That is the paging zone of 18.17 and 18.18 item 8 (0.3-1.2 GiB over held decode at 2.9-3.5 tok/s)
+  and of 18.22 item 3's slow follow-ups. Most likely cause: other apps' GPU and host memory (Hermes Desktop, Codex,
+  Claude, ChatGPT windows) with the 68 GiB cache at the ceiling. **Not attributed to the switches:** they change which
+  experts are read, not memory; prefill-sub's host work is ~0.65 s for an 8k chunk and ~2 ms for 100 tokens
+  (timed on synthetic routing). Unproven: no sampler ran beside the session, and nothing was replayed.
+- **Request 10, a runaway inside a tool call.** "Run it against your real files" became one `terminal` call whose
+  `<command>` listed `dotnet run` for every Desktop file, then invented names (`claude code bug1.csv.tar.zst`), then
+  repeated one line until the loop guard stopped it at 2,002 tokens. The model's own runaway at temperature 1.0 (the
+  kind 18.21 item 9 saw on the exact path too; not replayed per arm, so the switches are not ruled out). **The
+  runtime's part:** the cut left an unclosed tool block, which no parser accepts, and `stream_chat` appended it to the
+  reply's text, so Hermes showed ~6,000 characters of raw call markup. **Fixed (0.43.2):** when a reply stops inside
+  a tool block that does not parse, at the loop guard or the length limit, the block is dropped (a `[tool call]
+  unclosed block dropped` log line) and the text before it is the reply. A test covers it; 456 tests pass.
+
+**For the next session.** 1. A Hermes session with `benchmarks/slow_window_sampler.py` beside it (the driver's
+"Alloc system memory", swap, pressure) and the switches on, to confirm the GPU ceiling as the follow-up stall; if it
+is, price `CACHALOT_GPU_ALLOC_SLACK_GIB=0` (the governor stops at the working set, not +1 GiB) against 1 on
+`agent_spill.py` with a GPU memory holder of ~2 GiB beside it. 2. Replay request 10 (dump row 299) at Hermes's
+sampling, 20 samples per arm (switches on, exact), counting runaways, once no server runs. 3. Ask Hamed to quit
+Codex/ChatGPT windows during Hermes sessions, or measure what they hold.
 
 **6. A finer governor grain, priced on paper and not built** (18.22 "what is open" 3). An MLX array cannot give
 back part of its buffer, so shrinking a slab means either allocating the smaller slab and copying the kept rows
