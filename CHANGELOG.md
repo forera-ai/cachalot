@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.51.2 (2026-09-30)
+
+HANDOFF "Start here (2026-09-30, 0.51.2)".
+
+### Documentation
+- The release round of the 0.48.0-0.51.1 session: the next-session prompt is v84 (the superseded v78-v83 are archived in
+  `docs/next-session-prompts/`, rebuilt from the commits that wrote them, because each had been edited in place), with one consolidated account
+  of the session, the GLM levers closed or held, the new rules (per-turn alternation for ~10 % decode levers, cold pages for cache benchmarks,
+  `MiniMaxModel` subclasses `GlmModel` without `__init__`, Hermes self-updates and its vision timeout) and the new instruments; HANDOFF has one
+  start-here block for the whole session and a refreshed header; the README lists the three releases (items 60-62).
 ## 0.51.1 (2026-09-30)
 
 HANDOFF section 18.39 (Hermes screenshot session).

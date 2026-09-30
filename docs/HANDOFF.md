@@ -1,6 +1,6 @@
 # Cachalot — Engineering Handoff
 
-**Authoritative state as of 2026-09-30 (twenty-fourth MiniMax session), after the session that made MiniMax's server default temperature 0.7 (section 18.31), the one that read Hamed's three Hermes sessions on 0.46.0, the last one at temperature 0.7 (section 18.30), the one that measured an agent temperature and added a loop guard for counting runaway lists (section 18.29), the one that replayed Hamed's second Hermes session on 0.45.x from its dump (section 18.28), the one that read his first Hermes session on 0.45.1 (section 18.27), the one that priced MiniMax's prefill expert kernels and closed them (section 18.26), the one that read Hamed's first Hermes session on 0.44.0 and made the mirror's share follow the X10Pro's speed (section 18.25), the one that made a restart reuse the agent's system block again and taught the memory governor to watch memory pressure (section 18.24), the one that gated the decode miss substitution on thinking-on and tool-call tasks and applied its rule to prefill, opt-in, short follow-ups -20 % (section 18.23), the one that capped MLX's buffer cache during MiniMax's decode, moved persisted system blocks off the GPU and gated the miss substitution at 24k (section 18.22), the one that let MiniMax's decode
+**Authoritative state as of 2026-09-30 (twenty-fifth session), after the session that put MiniMax's chat at temperature 0.7, moved GLM-5.3-Flash back to the internal SSD, optimized its decode (a next-layer expert prefetch; the bank, pair index, S1c and MTP priced and closed or held), gave it vision and read it through Hermes with a screenshot (sections 18.32-18.40), after the session that made MiniMax's server default temperature 0.7 (section 18.31), the one that read Hamed's three Hermes sessions on 0.46.0, the last one at temperature 0.7 (section 18.30), the one that measured an agent temperature and added a loop guard for counting runaway lists (section 18.29), the one that replayed Hamed's second Hermes session on 0.45.x from its dump (section 18.28), the one that read his first Hermes session on 0.45.1 (section 18.27), the one that priced MiniMax's prefill expert kernels and closed them (section 18.26), the one that read Hamed's first Hermes session on 0.44.0 and made the mirror's share follow the X10Pro's speed (section 18.25), the one that made a restart reuse the agent's system block again and taught the memory governor to watch memory pressure (section 18.24), the one that gated the decode miss substitution on thinking-on and tool-call tasks and applied its rule to prefill, opt-in, short follow-ups -20 % (section 18.23), the one that capped MLX's buffer cache during MiniMax's decode, moved persisted system blocks off the GPU and gated the miss substitution at 24k (section 18.22), the one that let MiniMax's decode
 substitute its lightest missing experts, opt-in and measured inside the rounding noise (section 18.21), the one that put MiniMax's prefill at the GPU's FLOP
 wall and measured three levers without a gain (section 18.20), the one that measured where MiniMax's
 remaining time goes and shipped two bit-identical kernel fusions switched off (section 18.19), the one that raised the GPU's working
@@ -24,6 +24,20 @@ that gave it a bias-free expert bank (18.4), the one that gave it a second drive
 kernel (18.3), the one that cut its per-token overhead and measured it to 64k (18.2), the one that made it faster
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
+
+> ## Start here (2026-09-30, 0.51.2): the session's summary (0.48.0-0.51.2), GLM is drive-bound
+>
+> - **Shipped:** MiniMax chat samples at 0.7 (§18.32); GLM decode prefetches the next layer's likely experts, `CACHALOT_GLM_PREDICT_TOPK=5`, same
+>   tokens, -8 to -14 % a token (§18.35; +14.5 % tok/s in two live Hermes sessions, §18.38); GLM reads images, `image_url` on `./serve-glm.sh` (§18.39).
+> - **Where things are:** GLM at `~/GLM-5.3-Flash-MLX-4bit-MTP` (internal; copy verified by size/mtime), DeepSeek's bank read from
+>   `/Volumes/X10Pro/Flash4-1/DeepSeek-V4.1-Flash-q2g128` (the internal copy was deleted after a checksum compare), ~88 GiB free internally.
+> - **Closed or held** (§18.33-18.37, 18.40): the GLM bias-code bank, a 64 GiB budget, the contiguous bank `CACHALOT_GLM_BANK` (built, unmeasured),
+>   the pair-index slots, S1c (16.3 % of layers all-hit), MTP. The X10Pro mirror `split` 0.10: -5 % wait, opt-in.
+> - **For Hamed:** M19 (a Thunderbolt drive) is the one big lever left for GLM and MiniMax; his Hermes config needs `auxiliary.vision.timeout` for
+>   images on GLM; running `hermes` self-updates Hermes (§18.38).
+> - **Version 0.51.2.** Per-session prompts: `docs/next-session-prompts/v78`..`v83`; the current one is `docs/NEXT-SESSION-PROMPT.md` (v84).
+
+**Previous block, 0.51.1:**
 
 > ## Start here (2026-09-30, 0.51.1): a Hermes screenshot session on GLM
 >

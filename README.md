@@ -758,6 +758,22 @@ line, is `docs/HANDOFF.md` section 9.25.
     30/32 to 32/32. Since 0.47.0 the MiniMax server samples at 0.7 when a request sends no temperature
     (`--default-temperature 1.0` restores the checkpoint's 1.0).
 
+60. The terminal chat samples at 0.7 too (0.48.0). `./chat-minimax.sh` now passes `--temperature 0.7` like the server and Hermes
+    (`--temperature 1.0` after the script name restores the checkpoint's 1.0). GLM-5.3-Flash moved back to the internal SSD
+    (`~/GLM-5.3-Flash-MLX-4bit-MTP`) and DeepSeek's expert bank is read from the X10Pro copy (`serve.sh`, `chat.sh`).
+61. GLM decode reads the next layer's likely experts early (0.50.0, on by default). Each decode layer scores the next layer's router on its own
+    MoE input in the same sync as its routing (59 % of the next layer's misses are found at the top 8) and reads the five best-ranked non-resident
+    experts once its own reads are in (`CACHALOT_GLM_PREDICT_TOPK=5`, 0 turns it off). Same tokens; a token 8 to 14 % faster on swapped in-process
+    alternation pairs, 8.4 % per turn through the server's `stream()`, 14.5 % more tokens a second in two live Hermes sessions (2.6 to 3.0 tok/s).
+    Measured and not shipped: a bias-free bank (8.6 % of groups break the rule), a 64 GiB budget (the GPU pages), a contiguous expert bank
+    (`CACHALOT_GLM_BANK`, byte-verified, effect unmeasured), 16-bit pair-index slots (about 2.5 % of a token at best), a GPU-select loop
+    (only 16 % of decode layers have every expert resident) and MTP (a two-token verify reads 1.75 times the experts). GLM decode is bound by
+    the drive: what is left is a faster second drive.
+62. GLM-5.3-Flash reads images (0.51.0). The checkpoint's own 24-block vision tower loads on the first image; `image_url` parts work through
+    `./serve-glm.sh`, each image's tokens carry its content hash in the prefix cache (a resent image reuses its prefix), and a real screenshot
+    read through Hermes was described accurately. Hermes's own `vision_analyze` tool times out after 120 s by default, shorter than one GLM pass
+    (3-6 minutes for a 6,000-token image): raise `auxiliary.vision.timeout` in its config.
+
 ## Cachalot Studio
 
 A desktop app for this runtime, [Cachalot Studio](https://github.com/prooshani/cachalot-studio), is built from
