@@ -25,6 +25,15 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-09-30, 0.50.4): GLM through Hermes, prefetch on +14.5 % decode tok/s live
+>
+> - **Section 18.38:** four Hermes prompts on `./serve-glm.sh` with a dump, K=5 against K=0: 3.01 vs 2.62 tok/s (faster in all 8 matched
+>   requests), clean answers, 14k block cold 156 s and reused in 1.3 s after a restart. One pair, replies differ: an observation next to
+>   §18.35's controlled -8.4 %. Running `hermes` self-updated Hermes (see the section).
+> - **Version 0.50.4.**
+
+**Previous block, 0.50.3:**
+
 > ## Start here (2026-09-30, 0.50.3): S1c closed for GLM; the X10Pro mirror priced
 >
 > - **Section 18.37:** only 16.3 % of GLM decode layers are all-hit (mean 2.6 misses a layer), so a GPU-select loop would rewind
@@ -8548,6 +8557,30 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.38 GLM-5.3-Flash: the first Hermes sessions through serve-glm.sh, prefetch on against off — 2026-09-30 (0.50.4)
+
+Hamed: "run a Hermes session on serve-glm with a dump". Run by Claude with the Hermes CLI: `HERMES_HOME=<dir with only config.yaml>`
+(a `custom:cachalot` provider, model `glm-5.3-flash`, http://127.0.0.1:8011/v1), `hermes chat -Q -q ...` then `--resume`, four prompts (hi;
+list ~/Desktop, first 30, which are folders; a C# snippet importing JSON and CSV; a 200-word story), server
+`CACHALOT_SERVER_DUMP=<file> ./serve-glm.sh` (temperature 0.6 default, the display on, Hermes Desktop's window open), arms run one
+after the other: `CACHALOT_GLM_PREDICT_TOPK=5` (default) then 0. Scratch `serve_arm.sh` / `hermes_arm.sh`.
+
+**Side effect (report):** the first `hermes chat` self-updated Hermes (v0.21.5+4905): dependencies, the TUI, the web UI, a rebuilt and
+repackaged desktop app, 58 bundled skills, the config format (v0 -> v49); it took 377 s of the first prompt's wall time and was not
+requested. The update is Hermes's own and reaches beyond the isolated home; assume it happens on any `hermes` run after an upstream change.
+
+**Server lines** (`[request]`), K = 5 then K = 0: decode tok/s for the eight matched requests 3.43 / 3.05, 3.17 / 2.69, 2.82 / 2.72, 3.15 /
+2.82, 2.71 / 2.24, 2.82 / 2.49, 2.94 / 2.61, 3.39 / 2.72 (+12, +18, +4, +12, +21, +13, +13, +25 %); token-weighted 3.01 tok/s (1,899
+tokens in 632 s) against 2.62 (2,117 in 807 s) = +14.5 %; misses a token and hit rates match (63-80 %), mean read time 4.9 against 6.3 ms.
+Prefill: the 14,282-token Hermes block cold 155.9 s (91 tok/s), reused in 1.3 s after a restart (`prefix snapshots: 2 loaded`), follow-ups
+of 22-1,130 new tokens in 4.4-18.6 s. Answers: sound in both (8 folders and 22 files; a working importer using only `System.Text.Json` and
+a hand-written CSV parser; a clean story). **Read as an observation**: the replies differ between the arms (temperature 0.6: 972 against
+1,151 tokens for the C# snippet), one pair per prompt, first arm cold. The controlled numbers are §18.35's (-8.4 % a token by per-turn
+alternation through `stream()`); this session shows the same direction in all eight requests with real Hermes traffic, no stalls, no
+loop-guard lines.
+
+The dumps (`dump-glm-k5.jsonl` 16 rows, `dump-glm-k0.jsonl`) live in the session scratchpad, not the repo.
 
 ### 18.37 GLM-5.3-Flash: S1c closed on the hit-rate arithmetic; the X10Pro mirror priced — 2026-09-30 (0.50.3)
 

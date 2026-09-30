@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.50.4 (2026-09-30)
+
+HANDOFF section 18.38.
+
+### Measured
+- **The first Hermes sessions on GLM-5.3-Flash through `./serve-glm.sh`** (an isolated `HERMES_HOME`, `CACHALOT_SERVER_DUMP`, the
+  usual four prompts: hi, the Desktop listing, a C# snippet, a 200-word story; 8 server requests each), the next-layer prefetch
+  on (`CACHALOT_GLM_PREDICT_TOPK=5`) against off (0): decode 3.01 tok/s (1,899 tokens) against 2.62 (2,117 tokens), +14.5 %, faster
+  in all eight matched requests (+4 to +25 %); the same hit rates and misses a token. Hermes's 14,282-token first request prefilled
+  in 156 s (91 tok/s) and a restarted server reused it in 1.3 s. Replies were sound (8 folders and 22 files in the listing, a
+  working C# importer without a NuGet dependency, a clean story). One pair of live sessions: replies differ (temperature 0.6), so
+  this is an observation next to the per-turn alternation's -8.4 %, not a rate.
 ## 0.50.3 (2026-09-30)
 
 HANDOFF section 18.37.
