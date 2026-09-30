@@ -1,6 +1,6 @@
 # Cachalot — Engineering Handoff
 
-**Authoritative state as of 2026-09-30 (twenty-fourth MiniMax session), after the session that measured an agent temperature and added a loop guard for counting runaway lists (section 18.29), the one that replayed Hamed's second Hermes session on 0.45.x from its dump (section 18.28), the one that read his first Hermes session on 0.45.1 (section 18.27), the one that priced MiniMax's prefill expert kernels and closed them (section 18.26), the one that read Hamed's first Hermes session on 0.44.0 and made the mirror's share follow the X10Pro's speed (section 18.25), the one that made a restart reuse the agent's system block again and taught the memory governor to watch memory pressure (section 18.24), the one that gated the decode miss substitution on thinking-on and tool-call tasks and applied its rule to prefill, opt-in, short follow-ups -20 % (section 18.23), the one that capped MLX's buffer cache during MiniMax's decode, moved persisted system blocks off the GPU and gated the miss substitution at 24k (section 18.22), the one that let MiniMax's decode
+**Authoritative state as of 2026-09-30 (twenty-fourth MiniMax session), after the session that read Hamed's three Hermes sessions on 0.46.0, the last one at temperature 0.7 (section 18.30), the one that measured an agent temperature and added a loop guard for counting runaway lists (section 18.29), the one that replayed Hamed's second Hermes session on 0.45.x from its dump (section 18.28), the one that read his first Hermes session on 0.45.1 (section 18.27), the one that priced MiniMax's prefill expert kernels and closed them (section 18.26), the one that read Hamed's first Hermes session on 0.44.0 and made the mirror's share follow the X10Pro's speed (section 18.25), the one that made a restart reuse the agent's system block again and taught the memory governor to watch memory pressure (section 18.24), the one that gated the decode miss substitution on thinking-on and tool-call tasks and applied its rule to prefill, opt-in, short follow-ups -20 % (section 18.23), the one that capped MLX's buffer cache during MiniMax's decode, moved persisted system blocks off the GPU and gated the miss substitution at 24k (section 18.22), the one that let MiniMax's decode
 substitute its lightest missing experts, opt-in and measured inside the rounding noise (section 18.21), the one that put MiniMax's prefill at the GPU's FLOP
 wall and measured three levers without a gain (section 18.20), the one that measured where MiniMax's
 remaining time goes and shipped two bit-identical kernel fusions switched off (section 18.19), the one that raised the GPU's working
@@ -24,6 +24,19 @@ that gave it a bias-free expert bank (18.4), the one that gave it a second drive
 kernel (18.3), the one that cut its per-token overhead and measured it to 64k (18.2), the one that made it faster
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
+
+> ## Start here (2026-09-30, 0.46.1): Hermes now sends temperature 0.7; three sessions read
+>
+> - **Config (section 18.30 item 1):** Hamed's `temperature: 0.7` sat under `models:` in his Hermes config, so the
+>   first two sessions still sampled at 1.0. Fixed at his request (backup `config.yaml.bak-20260930-temp`); the third
+>   session's six bodies all carry `"temperature": 0.7`. Read one dumped body for `temperature` before grading.
+> - **Answers (item 4):** the 1.0 sessions invented details (a `B$` folder, a wrong size ordering, "240+ files") and
+>   wrote "Wait —" asides; the 0.7 session listed everything right except a screenshot count. One sample each.
+> - **Speed (items 2-3):** clean; a saved block is reused (1.6-1.8 s). The first request of a new day prefills the
+>   21k block again (101 s): Hermes writes the date into its system prompt, at token 5,965 of 21,333.
+> - **Version 0.46.1** (documentation only).
+
+**Previous block, 0.46.0:**
 
 > ## Start here (2026-09-30, 0.46.0): a lower agent temperature measured; a loop guard for counting runaway lists
 >
@@ -8457,6 +8470,65 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.30 MiniMax-M3: three Hermes sessions on 0.46.0, two at 1.0 and one at 0.7 — 2026-09-30 (0.46.1)
+
+Hamed ran the same prompts three times through Hermes Desktop on 0.46.0, each with `CACHALOT_SERVER_DUMP` and
+`benchmarks/slow_window_sampler.py` beside it (exports `hilfe-bei-anfrage-20260930.json`,
+`list-desktop-folder-contents-2-20260930.json`, `list-home-desktop-folder-files-20260930.json`; dumps
+`/tmp/cachalot-requests-0.46.jsonl` for the first two, `/tmp/cachalot-requests-0.46b.jsonl` for the third).
+
+**1. The temperature did not reach the server in the first two.** Hamed had added `temperature: 0.7` to Hermes's
+config before the first session, but indented under the `cachalot` entry's `models:` mapping, where Hermes reads it
+as a fourth model named `extra_body`; none of the eleven request bodies carried a temperature and the server
+sampled at its 1.0. At Hamed's explicit request the entry was corrected in `~/.hermes/config.yaml` (backup
+`config.yaml.bak-20260930-temp`; the only change: `extra_body` two spaces left, level with `models:`). After a
+Hermes restart all six bodies of the third session carry `"temperature": 0.7`. **Rule for the next session: read
+one dumped body for `temperature` before grading anything.**
+
+**2. Speed, all three clean.**
+
+| session | first request | short turns | tool result | decode |
+|---|---|---|---|---|
+| 1 (1.0) | **21,399 tokens prefilled in 101.2 s** (item 3) | 2.5-3.5 s | 5,988 tokens in 37.5 s (160 tok/s) | 7.0-10.2 tok/s |
+| 2 (1.0) | block reused, 1.63 s | 1.7-3.9 s | 2,104 tokens in 15.8 s | 7.2-11.2 |
+| 3 (0.7) | block reused, 1.84 s | 1.9-3.1 s | 2,104 tokens in 17.6 s | 6.8-10.5 |
+
+Swap stayed flat (4.4-5.0 GiB) and no stall appeared; the sampler shows desktop-commander at 120-176 % CPU at times,
+Spotlight and other system daemons busy early in each session, and WindowServer at 50-90 % while the Hermes window
+streamed. In sessions 2-3 the model ran `ls -la ~/Desktop | head -50` (50 lines, 28 screenshots) instead of the
+full listing.
+
+**3. The first request of a new day re-prefills Hermes's block.** Session 1's block differed from 0.45's in three
+places: Hermes's skill list now includes the `cachalot` skill, Hermes updated its `clarify` tool schema, and the
+line `Conversation started: Wednesday, September 30, 2026` near the end of the system prompt. The date line changes
+every day. MiniMax's template renders the system prompt before the tool schemas, so the date sits at token 5,965 of
+21,333 (measured with a date-only edit of 0.45's block) and ~15.4k tokens of schemas follow it: reusing the longest
+matching prefix of a saved block would save ~28 % of the ~100 s, not all of it. Not built.
+
+**4. Answers.** One sample per temperature per prompt, so these are observations, not rates (the rates are §18.29's).
+
+- Session 1 (1.0), full listing: claimed to sort by size but the order is wrong (1.2 MB before 3.5 MB, 538 KB before
+  795 KB), listed `Unsloth Studio` and a `.fileloc` file as folders, said "240+ files" (134 lines), and ended with a
+  "Wait — let me double-check" paragraph. C#: two versions with a "Wait — over-engineered" aside between them.
+  Story clean.
+- Session 2 (1.0), 50-line listing: invented a "`B$` in your `My Documents`", called "Pasports" Farsi, dated
+  `ImporterApp` 2025, and suggested moving screenshots to `~/Library/Logs`. The C# explanation carries a nonsense
+  sentence about CsvHelper; the story ends with a false "199 words" claim. TypeScript clean.
+- Session 3 (0.7), 50-line listing: every folder, PDF, spreadsheet and image right; "~50 more screenshots" for 28 and
+  `My Documents` called a system folder are the only slips. Story, C# (CsvHelper records) and TypeScript
+  (`csv-parse`) clean, without the "Wait —" asides of both 1.0 sessions.
+
+This is what §18.29 predicted: the invented details and self-doubting asides of the 1.0 sessions are gone at 0.7;
+count slips remain.
+
+**Shipped (0.46.1):** documentation only. Hamed's Hermes config now sends 0.7 for every model of its `cachalot`
+entry (DeepSeek, GLM, MiniMax); the server default stays 1.0.
+
+**What is open after this.** 1. More 0.7 sessions, especially long agent work (compression summaries, subagents),
+reading one body per dump for the temperature. 2. Whether the server default should follow (other clients, the
+terminal chat's own `--temperature`). 3. Longest-prefix reuse of a saved block for the daily date change (item 3;
+~28 s of ~100 s once a day). 4. §18.27's and §18.25's open items stand.
 
 ### 18.29 MiniMax-M3: an agent temperature measured, and a loop guard for counting runaway lists — 2026-09-30 (0.46.0)
 

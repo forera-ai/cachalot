@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.46.1 (2026-09-30)
+
+HANDOFF section 18.30.
+
+### Documented
+- Three Hermes sessions on 0.46.0 with the same prompts. The first two still sampled at temperature 1.0: the
+  `temperature: 0.7` in Hermes's config sat under the provider's `models:` mapping, where Hermes reads it as a model
+  name. With the entry corrected, the third session's requests all carry 0.7. At 1.0 the directory-listing summaries
+  invented details (a wrong size ordering, a folder that does not exist, "240+ files" for 134 lines) and the
+  replies wrote "Wait —" asides; at 0.7 the summary was right apart from a screenshot count. Speed was clean in all
+  three (saved system block reused in 1.6-1.8 s, decode 6.8-11.2 tok/s). The first request of a new day prefills
+  Hermes's 21k-token block again (101 s), because Hermes writes the date into its system prompt.
+
 ## 0.46.0 (2026-09-30)
 
 HANDOFF section 18.29.
