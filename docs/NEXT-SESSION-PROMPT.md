@@ -1,11 +1,12 @@
-# Next-session prompt — **v77**, written 2026-09-30
+# Next-session prompt — **v78**, written 2026-09-30
 
 **This is the file to paste.** `docs/NEXT-SESSION-PROMPT.md` is always current; superseded ones live in
 `docs/next-session-prompts/`.
 
 | version | written | produced by | what changed |
 |---|---|---|---|
-| **v77** | 2026-09-30 | Hamed ran three Hermes sessions on 0.46.0 (the last at temperature 0.7) and asked for them read; his Hermes config's `extra_body` was fixed at his request; then he set the server default to 0.7 | **0.47.0: `serve-minimax.sh` samples at 0.7 when a request sends no temperature (was 1.0; the terminal chat keeps 1.0). 0.46.1: the first two sessions still sampled at 1.0 (Hermes read `extra_body` as a model name under `models:`); the third sent 0.7 on every request. 1.0: invented details and "Wait —" asides; 0.7: a clean listing apart from a screenshot count. Speed clean. The first request of a new day prefills Hermes's 21k block again (101 s): the date sits in its system prompt at token 5,965.** §18.30 |
+| **v78** | 2026-09-30 | Hamed read his first chat session at 0.7 (asked for performance and quality), said Hermes agent work looks fine at 0.7, skipped the daily date reuse, and asked for GLM-5.3-Flash to be optimized after replacing the internal DeepSeek copy | **0.48.0: `chat-minimax.sh` samples at 0.7 (was 1.0; `--temperature 1.0` restores it). The chat session: decode 12.5 / 9.0 / 8.7 tok/s (story / C# / TypeScript), hit 94-96 %, follow-up prefills 1.4-2.5 s, first turn 7.7 s while the warm set read back; the C# snippet has a compile error (one sample, not a rate). Next: GLM-5.3-Flash runtime optimization.** §18.32 |
+| v77 | 2026-09-30 | Hamed ran three Hermes sessions on 0.46.0 (the last at temperature 0.7) and asked for them read; his Hermes config's `extra_body` was fixed at his request; then he set the server default to 0.7 | **0.47.0: `serve-minimax.sh` samples at 0.7 when a request sends no temperature (was 1.0; the terminal chat keeps 1.0). 0.46.1: the first two sessions still sampled at 1.0 (Hermes read `extra_body` as a model name under `models:`); the third sent 0.7 on every request. 1.0: invented details and "Wait —" asides; 0.7: a clean listing apart from a screenshot count. Speed clean. The first request of a new day prefills Hermes's 21k block again (101 s): the date sits in its system prompt at token 5,965.** §18.30 |
 | v76 | 2026-09-30 | Hamed asked for the handoff and prompts read and their tasks done (v75's first job: an agent temperature) | **0.46.0: the `ls` turn that derailed live, 12 samples per temperature, graded blind: derailed 5/12 at 1.0, 1/12 at 0.7, 0/12 at 0.5; tool prompts under Hermes's system prompt 30/32, 32/32, 32/32; reasoning and code 35-36/36 at all three. Hermes can set it through its `cachalot` provider's `extra_body`, or the server through `--default-temperature` (Hamed's call, unchanged). A loop guard for invented lists that count up (`CACHALOT_LOOP_GUARD_INCREMENTING`, 64 items): the 4,829-token runaway stops at token 1,258.** §18.29 |
 | v75 | 2026-09-29 | Hamed ran a second Hermes session on 0.45.x with a dump and asked for it read | **0.45.3: the derailed reply (an invented "DESTRUCTIVE" rule list after a 6k `ls` result) replayed: prompts token-identical, the same turn at temperature 1.0 derails 0/8 default and 3/8 exact: sampling, not the substitution or state. The 44 s first prefill replays at 4-6 s. Open: an agent temperature (Hermes sends none), the loop guard on incrementing runaway lists.** §18.28 |
 | v74 | 2026-09-29 | Hamed asked a twenty-fourth time for MiniMax-M3 as fast as possible at unchanged quality, tools (caveman, Jev, codebase-memory) confirmed first; then he ran a Hermes session on 0.45.1 and asked for it read | **0.45.1: MiniMax's prefill expert kernels priced and closed, nothing in `src/`. The per-expert (scale, bias) rebuild costs 0.15-0.2 s of a 128-2,048-token chunk. MLX's four matmul kernels copied to read the pair index: bit-identical for every row count 1-130, faster alone, 4-7 % slower inside a layer. One grouped `gather_qmm_rhs` launch over the slabs: -10 to -13 % at 1-2k tokens, slower below 400, not bit-identical. Instruments in `benchmarks/minimax_prefill_kernels/`. 0.45.2: Hamed's Hermes session on 0.45.1 ran clean (first request 1.75 s, short turns 1.9-3.1 s, a 6k tool result at 148 tok/s, decode 6.8-9.5 tok/s, no stalls); one 25-token follow-up at 7.35 s and a listing summary with invented names are open, and the session had no dump.** §18.27, §18.26 |
@@ -120,7 +121,13 @@ correctly apart from a screenshot count. The first request of each new day prefi
 (~100 s): Hermes writes "Conversation started: <date>" into its system prompt, at token 5,965 of 21,333, before
 ~15.4k tokens of tool schemas.
 
-**First job (§18.30 "what is open" 1):** ask Hamed how the 0.7 sessions feel in real agent work (long tasks,
+**New in 0.48.0 (§18.32), read first:** `chat-minimax.sh` samples at 0.7 (Hamed's call); Hamed reports Hermes agent work
+"looks fine" at 0.7; the daily date reuse is skipped by him. **First job now: GLM-5.3-Flash runtime optimization**
+(G6 + S1c + S1e below, §18.12 item 5, §18.13 item 7, §18.14), on the internal SSD. Hamed approved replacing the internal
+DeepSeek copy (`~/DeepSeek-V4.1-Flash-q2g128`, 142 GiB) to make room for GLM's 169 GiB; the X10Pro keeps
+`Flash4-1/DeepSeek-V4.1-Flash-q2g128`. Check §18.33 (if present) for how far that got.
+
+**Previous first job (§18.30 "what is open" 1), answered in words by Hamed (looks fine):** ask Hamed how the 0.7 sessions feel in real agent work (long tasks,
 compression summaries, subagents), and read those dumps (temperature first, then `[loop guard]` lines, slow
 `[request]` lines against the sampler). The server default is 0.7 since 0.47.0 (§18.31). Then, his
 call: whether the terminal chat (`chat-minimax.sh`, still 1.0) follows, and whether to build longest-prefix reuse

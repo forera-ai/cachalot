@@ -43,10 +43,12 @@ export CACHALOT_SNAPSHOT_DIR=${CACHALOT_MINIMAX_SNAPSHOT_DIR-$HOME/.cache/cachal
 # experts under 20 % of a layer's routing weight and computes the best resident runner-up instead; prefill does the
 # same only where it saves a read. CACHALOT_MINIMAX_MISS_DROP=0 CACHALOT_MINIMAX_PREFILL_MISS_DROP=0 in front of this
 # script restores the exact path (its disk snapshots are kept apart by the numerics tag).
+# 0.48.0: the terminal chat samples at temperature 0.7 like the server (was the checkpoint's 1.0; Hamed's call, HANDOFF
+# 18.32). ./chat-minimax.sh --temperature 1.0 restores 1.0 (the last flag wins).
 exec ~/venvs/deepseek-v41/bin/python -m cachalot.cli chat \
     --model "$CACHALOT_MODEL_PATH" \
     --expert-budget-gib 68 \
     --max-seq-len 131072 \
     --max-new-tokens 2000 \
-    --temperature 1.0 \
+    --temperature 0.7 \
     "$@"

@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.48.0 (2026-09-30)
+
+HANDOFF section 18.32.
+
+### Changed
+- **MiniMax's terminal chat samples at temperature 0.7** (`chat-minimax.sh`, was the checkpoint's 1.0; Hamed's call,
+  matching the server default since 0.47.0). `./chat-minimax.sh --temperature 1.0` restores 1.0. top_p stays 0.95.
+  No numerics change: prefill KV is unaffected and saved snapshots stay valid.
+
+### Measured
+- Hamed's first chat session at 0.7 (four turns, display on): decode 12.5 tok/s on the story, 9.0 on C#, 8.7 on
+  TypeScript, expert hit 94-96 %, follow-up prefills 1.4-2.5 s for 19-41 new tokens, drive 6.62 GiB/s. The first
+  turn's 164-token prefill took 7.7 s while the warm set was still reading back (9.9 s). The story is 206 words. The
+  TypeScript snippet is correct; the C# snippet does not compile (`value` is never assigned) and reads dynamic
+  records through reflection. One sample each, not a rate.
+
 ## 0.47.0 (2026-09-30)
 
 HANDOFF section 18.31.

@@ -25,6 +25,18 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-09-30, 0.48.0): the terminal chat samples at 0.7; Hamed's first chat session read
+>
+> - **Default (section 18.32):** `chat-minimax.sh` passes `--temperature 0.7` (was 1.0); `./chat-minimax.sh
+>   --temperature 1.0` restores it. Server, chat and Hermes now all sample at 0.7.
+> - **Chat session read:** decode 12.5 / 9.0 / 8.7 tok/s (story / C# / TypeScript), hit 94-96 %, follow-up prefills
+>   1.4-2.5 s. Speed as expected; the C# snippet has a compile error (one sample).
+> - **Next:** GLM-5.3-Flash runtime optimization (G6 + S1c + S1e), after freeing internal space by replacing the
+>   internal DeepSeek copy (Hamed's decision, 2026-09-30; the X10Pro keeps `Flash4-1/DeepSeek-V4.1-Flash-q2g128`).
+> - **Version 0.48.0.**
+
+**Previous block, 0.47.0:**
+
 > ## Start here (2026-09-30, 0.47.0): MiniMax's server samples at 0.7 by default
 >
 > - **Default (section 18.31):** `serve-minimax.sh` passes `--default-temperature 0.7` (was 1.0) for requests that
@@ -8479,6 +8491,40 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.32 MiniMax-M3: the terminal chat samples at 0.7, and Hamed's first chat session at 0.7 — 2026-09-30 (0.48.0)
+
+Hamed asked for `chat-minimax.sh` to follow the server (section 18.31) so he could test the chat by hand. The script
+now passes `--temperature 0.7` (was the checkpoint's 1.0); a `--temperature` after the script name overrides it. He also
+reported that Hermes agent work "looks fine" at 0.7 (no dump; §18.30's first open item is answered in words only).
+
+**The chat session (0.47.0 code, 0.7, display on, four turns, a fresh process).** Startup loaded 0 snapshots (the chat's
+directory held none for its tag), the warm set of 3,176 experts (65.4 GiB) read back in 9.9 s while the first turn ran.
+
+| turn | prefill | decode | hit | note |
+|---|---|---|---|---|
+| "Hi" (164 tokens, nothing reused) | 7.7 s | 7.45 tok/s (10 tokens) | 62 % | first turn shared the drives with the warm set |
+| 200-word story | 2.2 s for 25 new | 12.54 tok/s (292) | 96 % | 206 words |
+| C# importer | 2.5 s for 41 new | 9.02 tok/s (476) | 94 % | code |
+| TypeScript importer | 1.4 s for 19 new | 8.71 tok/s (337) | 94 % | code |
+
+`/stats`: 93.6 % expert hits, 1.24 ms decode wait per miss, drive 6.62 GiB/s, 3,186 slots. Compared with §18.14's chat
+(prose 12.7-12.9 tok/s, code 5.5), prose is unchanged and code is faster; the first-turn cost is the known warm-set
+overlap (§18.16 item 5).
+
+**Quality (one sample per prompt, observations, not rates).** The story is 206 words and reads cleanly, with no "Wait -"
+aside. The TypeScript snippet is correct. The C# snippet does not compile: the loop over `key in
+record.GetType().GetProperties()` assigns `value?.ToString()` where `value` is never declared, and a CsvHelper `dynamic`
+record is an `IDictionary<string, object>`, so reflecting over its properties would return nothing useful. It also
+printed a stray leading space in the sample JSON fence. §18.30's session 3 (0.7) wrote a working C# version, so this is one
+draw of a coding task, not evidence about the temperature; grading coding at 0.7 against 1.0 needs the sampled
+battery of §18.29 (`sbattery.py`), not a chat.
+
+**Shipped (0.48.0):** the chat default only. No numerics change; saved snapshots stay valid. Minor bump because a
+default changed (RELEASE.md §1).
+
+**What is open.** 1. Long agent work at 0.7 with a dump (Hamed reports it looks fine). 2. Longest-prefix reuse for
+Hermes's daily date line: skipped by Hamed. 3. GLM-5.3-Flash optimization (next job).
 
 ### 18.31 MiniMax-M3: the server samples at 0.7 when a request sends no temperature — 2026-09-30 (0.47.0)
 
