@@ -1,11 +1,12 @@
-# Next-session prompt — **v79**, written 2026-09-30
+# Next-session prompt — **v80**, written 2026-09-30
 
 **This is the file to paste.** `docs/NEXT-SESSION-PROMPT.md` is always current; superseded ones live in
 `docs/next-session-prompts/`.
 
 | version | written | produced by | what changed |
 |---|---|---|---|
-| **v79** | 2026-09-30 | Hamed approved replacing the internal DeepSeek copy and asked for GLM-5.3-Flash runtime optimization | **0.48.1: GLM back on the internal SSD (`~/GLM-5.3-Flash-MLX-4bit-MTP`), DeepSeek's expert bank read from the X10Pro. GLM baseline at 52 GiB: prefill 72-100 tok/s, decode 2.0-2.9 tok/s, 70-75 % of a token store wait. Closed: a bias-code bank (8.6 % of groups break the rule), a 64 GiB budget (wired 87-90 GiB, tokens 1.5-2.3x slower). First job: a contiguous GLM bank, then GPU-side selection (S1c) and prefetch (S1e).** §18.33 |
+| **v80** | 2026-09-30 | Same session: Hamed's go on GLM optimization, first lever built | **0.49.0: `CACHALOT_GLM_BANK` (contiguous GLM expert bank, `benchmarks/glm_bank.py`): byte-verified, same decode ids through 3 layers, effect not measured (the read timing came from the file cache; priced low on paper). First job: S1c/S1e for GLM (GPU-side selection + prefetch overlap), or a cold read A/B of the bank first.** §18.34 |
+| v79 | 2026-09-30 | Hamed approved replacing the internal DeepSeek copy and asked for GLM-5.3-Flash runtime optimization | **0.48.1: GLM back on the internal SSD (`~/GLM-5.3-Flash-MLX-4bit-MTP`), DeepSeek's expert bank read from the X10Pro. GLM baseline at 52 GiB: prefill 72-100 tok/s, decode 2.0-2.9 tok/s, 70-75 % of a token store wait. Closed: a bias-code bank (8.6 % of groups break the rule), a 64 GiB budget (wired 87-90 GiB, tokens 1.5-2.3x slower). First job: a contiguous GLM bank, then GPU-side selection (S1c) and prefetch (S1e).** §18.33 |
 | v78 | 2026-09-30 | Hamed read his first chat session at 0.7 (asked for performance and quality), said Hermes agent work looks fine at 0.7, skipped the daily date reuse, and asked for GLM-5.3-Flash to be optimized after replacing the internal DeepSeek copy | **0.48.0: `chat-minimax.sh` samples at 0.7 (was 1.0; `--temperature 1.0` restores it). The chat session: decode 12.5 / 9.0 / 8.7 tok/s (story / C# / TypeScript), hit 94-96 %, follow-up prefills 1.4-2.5 s, first turn 7.7 s while the warm set read back; the C# snippet has a compile error (one sample, not a rate). Next: GLM-5.3-Flash runtime optimization.** §18.32 |
 | v77 | 2026-09-30 | Hamed ran three Hermes sessions on 0.46.0 (the last at temperature 0.7) and asked for them read; his Hermes config's `extra_body` was fixed at his request; then he set the server default to 0.7 | **0.47.0: `serve-minimax.sh` samples at 0.7 when a request sends no temperature (was 1.0; the terminal chat keeps 1.0). 0.46.1: the first two sessions still sampled at 1.0 (Hermes read `extra_body` as a model name under `models:`); the third sent 0.7 on every request. 1.0: invented details and "Wait —" asides; 0.7: a clean listing apart from a screenshot count. Speed clean. The first request of a new day prefills Hermes's 21k block again (101 s): the date sits in its system prompt at token 5,965.** §18.30 |
 | v76 | 2026-09-30 | Hamed asked for the handoff and prompts read and their tasks done (v75's first job: an agent temperature) | **0.46.0: the `ls` turn that derailed live, 12 samples per temperature, graded blind: derailed 5/12 at 1.0, 1/12 at 0.7, 0/12 at 0.5; tool prompts under Hermes's system prompt 30/32, 32/32, 32/32; reasoning and code 35-36/36 at all three. Hermes can set it through its `cachalot` provider's `extra_body`, or the server through `--default-temperature` (Hamed's call, unchanged). A loop guard for invented lists that count up (`CACHALOT_LOOP_GUARD_INCREMENTING`, 64 items): the 4,829-token runaway stops at token 1,258.** §18.29 |
@@ -122,7 +123,11 @@ correctly apart from a screenshot count. The first request of each new day prefi
 (~100 s): Hermes writes "Conversation started: <date>" into its system prompt, at token 5,965 of 21,333, before
 ~15.4k tokens of tool schemas.
 
-**New in 0.48.1 (§18.33), read first:** GLM optimization has started. **First job: the GLM contiguous per-expert bank**
+**New in 0.49.0 (§18.34), read first:** the GLM bank is built (`~/GLM-5.3-Flash-bank`, layers 3-5, off unless `CACHALOT_GLM_BANK`
+is set); its speed effect is unmeasured and priced low. **First job now: S1c + S1e for GLM (§18.12 item 5, §18.14), or a cold
+read A/B of the bank first (§18.34 "open").** Older text follows.
+
+**New in 0.48.1 (§18.33), read first:** GLM optimization has started. **First job (superseded by §18.34): the GLM contiguous per-expert bank**
 (`benchmarks/minimax_coded_bank.py` and `cachalot.minimax.coded_bank` are the model: one record per expert per layer
 file, `bank.json`, slot images; GLM has no bias coding, so the record is scales + biases + weights, 13.5 MiB), then S1c
 and S1e (below). Baseline and the closed levers are in §18.33. Internal free space is ~89 GiB after GLM's copy (the

@@ -359,6 +359,12 @@ class GlmModel:
         quant = config.get("quantization") or config.get("quantization_config") or {}
 
         self.expert_format, index = build_glm_expert_index(self.model_path)
+        from cachalot.glm import bank as glm_bank
+
+        bank_path = glm_bank.bank_dir()
+        if bank_path is not None:
+            index = glm_bank.apply_bank(self.expert_format, index, bank_path)
+            print(f"GLM expert bank: {bank_path}", flush=True)
         # layer 45 is the MTP block's MoE, not loaded
         self.expert_index = {k: v for k, v in index.items() if k[0] < self.config.num_hidden_layers}
         sizes = tensor_sizes(self.expert_format)

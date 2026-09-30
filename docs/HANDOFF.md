@@ -25,6 +25,15 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-09-30, 0.49.0): a contiguous GLM bank exists, bit-identical, effect not measured
+>
+> - **Section 18.34:** `cachalot.glm.bank` + `benchmarks/glm_bank.py` + `CACHALOT_GLM_BANK`: one record per expert, byte-verified,
+>   same decode ids on a 3-layer bank. The read-speed test was served from the file cache (invalid); priced low on paper.
+> - **Next:** S1c/S1e (GPU selection, prefetch overlap), G6's pair index, a cold read A/B before writing the full bank.
+> - **Version 0.49.0.**
+
+**Previous block, 0.48.1:**
+
 > ## Start here (2026-09-30, 0.48.1): GLM back on the internal SSD; first GLM numbers
 >
 > - **Space (section 18.33):** internal DeepSeek bank deleted (checksum-identical copy on the X10Pro; `serve.sh` /
@@ -8502,6 +8511,35 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.34 GLM-5.3-Flash: a contiguous expert bank, built and byte-verified, effect not measured — 2026-09-30 (0.49.0)
+
+Hamed's go on GLM optimization: the plan's first lever was a contiguous per-expert bank. **Built:** `cachalot.glm.bank`
+(record layout = the slot's `tensor_names` order, 13.5 MiB exactly, 864 x 16 KiB so no padding; `apply_bank` swaps a
+layer's entries for one range per expert; `CACHALOT_GLM_BANK` selects the directory) and `benchmarks/glm_bank.py --write /
+--verify` (a layer is written to `.part`, renamed, `bank.json` rewritten per layer; 3.3-3.7 s a layer from the internal
+copy). `GlmModel` applies it after `build_glm_expert_index` and prints `GLM expert bank: <dir>`. Layers 3-5 exist at
+`~/GLM-5.3-Flash-bank` (11 GiB). **Identity:** 16 random experts per layer byte-equal to the checkpoint; greedy decode
+of 32 tokens after a 512-token prefill, 52 GiB budget: the same ids, 103.3 misses a token both arms, 2.92 vs 2.91 tok/s.
+`tests/test_glm_bank.py` covers the layout, `apply_bank` and a format mismatch.
+
+**Not measured, and why.** (1) `expert_read_speed`-style timing of 200 random experts, bank against checkpoint: 0.58 ms
+(checkpoint) and 1.1-1.7 ms (bank) for 13.5 MiB is 8-23 GB/s, so both came from the file cache (freshly copied or
+written; `F_NOCACHE` does not evict pages already cached, a 60 GiB anonymous hog did not either, and `purge` needs sudo):
+invalid, discarded. A cold comparison needs a bank layer written with `F_NOCACHE` and checkpoint layers known cold.
+(2) Decode through 3 of 42 layers cannot show a difference. (3) A 15-layer bank would fit beside the checkpoint copy
+(88 GiB free) but decode's ~25 % run-to-run noise hides a few percent on a third of the layers.
+
+**Priced on paper, expectation low.** Experts sit in 1-9 ranges (4,098 of 12,096 in nine); the reader already reads a
+multi-range expert's pieces concurrently (`_read_pieces_concurrently`: 2.8 ms against 3.3 ms for one read of the same
+bytes; the comment in `storage/reader.py`, measured 2026-09-16 on DeepSeek's stacked bank, internal SSD), so one range saves at most ~15 % of a read's latency, less than the drive's bandwidth wall
+GLM decode sits at (misses x 13.5 MiB at 5.3-5.8 GiB/s = its store wait). MiniMax's bank gains came with bias removal
+(fewer bytes) and the GPU-select loop.
+
+**What is open, in the order to try:** (a) S1c/S1e (GPU-side selection and speculative prefetch overlap reads with the
+~100 ms of compute per token: ceiling ~20 %); (b) G6's pair index (+5.6 % slots, more hits); (c) a cold read A/B of the
+bank (write with `F_NOCACHE`) before deciding whether to build the full 160 GiB bank (needs the internal checkpoint copy
+removed, or the bank written straight from the X10Pro).
 
 ### 18.33 GLM-5.3-Flash moves back to the internal SSD; first measurements for its optimization — 2026-09-30 (0.48.1)
 

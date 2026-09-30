@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.49.0 (2026-09-30)
+
+HANDOFF section 18.34.
+
+### Added
+- **A contiguous GLM-5.3-Flash expert bank, off unless selected** (`cachalot.glm.bank`, `benchmarks/glm_bank.py`,
+  `CACHALOT_GLM_BANK=<dir>`, `CACHALOT_GLM_BANK_ENABLED=0` ignores it). One 13.5 MiB record per expert in the slot's own
+  tensor order, one `layer-NNN.bin` per MoE layer, so a read is one pread instead of up to nine (the checkpoint scatters an
+  expert over 1-9 ranges). A bank may cover some layers only. Bit-identical: each written layer is byte-compared with the
+  checkpoint on 16 random experts, and greedy decode through a 3-layer bank gave the same 32 token ids and the same 103.3
+  misses a token as the checkpoint.
+
+### Measured, not shipped
+- The bank's speed effect is not measured: a read timing of bank against checkpoint on this Mac served both from the file
+  cache (0.6-1.7 ms for 13.5 MiB), so it says nothing, and decode through three of 42 layers moved nothing (2.92 against
+  2.91 tok/s). On paper the gain is small: the reader already issues a multi-range expert's pieces concurrently. Decode is
+  ~70 % store wait at the drive's 5.3-5.8 GiB/s, so bytes per token, not read count, are the limit.
 ## 0.48.1 (2026-09-30)
 
 HANDOFF section 18.33.
