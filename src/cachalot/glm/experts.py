@@ -139,6 +139,20 @@ PREFILL_SCAN = os.environ.get("CACHALOT_GLM_PREFILL_SCAN", "1") != "0"
 # an int so TF_ALTERNATE can flip it.
 DECODE_HIT_OVERLAP = int(os.environ.get("CACHALOT_DECODE_HIT_OVERLAP", "-1"))
 SPECULATE_MIN_TOKENS = int(os.environ.get("CACHALOT_GLM_SPECULATE_MIN_TOKENS", "128"))
+# HANDOFF 18.35: a decode layer also scores the NEXT MoE layer's router on this layer's MoE input (the same sync as
+# its own routing) and starts reading that layer's top PREDICT_TOPK non-resident experts into transient slots while
+# this layer computes (the store's prefetch path). Priced on 1,968 layer-calls: top 8 finds 67 % of the next layer's
+# experts and 59 % of its misses, top 16 82 % and 79 % (the 'previous token's set' baseline: 28 % and 0 %). Outputs are bit-identical: only which reads start early
+# changes. Ints so TF_ALTERNATE can flip them; 0 turns the prediction off.
+PREDICT_TOPK = int(os.environ.get("CACHALOT_GLM_PREDICT_TOPK", "5"))
+# Measured with TF_ALTERNATE on swapped pairs (80 teacher-forced tokens after a 1,024-token prefill, 52 GiB): store wait
+# -18 to -25 % and a token -9 to -13 % at 5, -8 to -10 % at 3-4 and 6; 8 and above read as many experts nobody asks for
+# as it saves (the drive is the wall) and gain nothing; predicted reads issued before this layer's own (after-demand 0) lose
+# about half the gain.
+# reads started per layer (0: all of PREDICT_TOPK), and whether they wait for this layer's own reads (1) or share the
+# drive with them (0); -1 follows the store's CACHALOT_DECODE_PREFETCH_AFTER_DEMAND
+PREDICT_LIMIT = int(os.environ.get("CACHALOT_GLM_PREDICT_LIMIT", "0"))
+PREDICT_AFTER_DEMAND = int(os.environ.get("CACHALOT_GLM_PREDICT_AFTER_DEMAND", "1"))
 # 1 submits a decode layer's routed output (async) as soon as it is built when `decode_eval` is off, instead of with
 # the next layer's routing sync (HANDOFF 18.10); an int so TF_ALTERNATE can flip it
 DECODE_ASYNC_OUT = int(os.environ.get("CACHALOT_DECODE_ASYNC_OUT", "0"))
@@ -158,6 +172,8 @@ class StreamingSwitchGLU(nn.Module):
 
     # the slots hold 4-bit bias codes instead of bf16 biases (MiniMax sets it, HANDOFF 18.10)
     codes = False
+    # (x [1, D], k) -> (indices, weights) of the next MoE layer's predicted experts, or None; set by GlmModel
+    predict = None
 
     def _qmm(self, x, slot, proj):
         w, s, b, *lut = _typed(slot, self._fmt, proj)
@@ -204,6 +220,13 @@ class StreamingSwitchGLU(nn.Module):
         flat_x = x.reshape(-1, dim)
         # syncs on the router; the cast is done on the host, because a cast in MLX is a new op and costs a
         # second GPU round trip when the routing was already evaluated (HANDOFF 18.1: 17 ms per MiniMax token)
+        pred_entries = None
+        if PREDICT_TOPK > 0 and self.predict is not None and flat_x.shape[0] == 1 and prefetch is None:
+            pred = self.predict(flat_x, PREDICT_TOPK)
+            if pred is not None:
+                mx.eval(indices, *pred)  # one sync for this layer's routing and the next layer's prediction
+                p_idx, p_w = np.array(pred[0]).reshape(-1), np.array(pred[1]).astype(np.float32).reshape(-1)
+                pred_entries = [self._index[(self._layer + 1, int(e))] for e in p_idx[np.argsort(-p_w, kind="stable")]]
         routes = np.array(indices).reshape(-1).astype(np.int32)
         order = np.argsort(routes, kind="stable")
         experts, starts = np.unique(routes[order], return_index=True)
@@ -231,7 +254,14 @@ class StreamingSwitchGLU(nn.Module):
                     if early:
                         mx.async_eval(*early.values())
 
-            residents = self._store.get_many(entries, prefetch=prefetch, on_hits=on_hits)
+            after = None if PREDICT_AFTER_DEMAND < 0 else bool(PREDICT_AFTER_DEMAND)
+            residents = self._store.get_many(
+                entries,
+                prefetch=pred_entries if pred_entries is not None else prefetch,
+                prefetch_limit=(PREDICT_LIMIT or None) if pred_entries is not None else None,
+                prefetch_after=after if pred_entries is not None else None,
+                on_hits=on_hits,
+            )
         if flat_x.shape[0] == 1 and len(experts) == k:
             # one decode token: its k experts are distinct, so compute them in routing order and skip the
             # row gathers (the same matmuls on the same row, bit-identical)

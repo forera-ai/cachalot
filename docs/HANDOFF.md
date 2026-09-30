@@ -25,6 +25,17 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-09-30, 0.50.0): GLM decode prefetches the next layer's likely experts
+>
+> - **Section 18.35:** `CACHALOT_GLM_PREDICT_TOPK=5` (0 off): each decode layer scores the next layer's router on its
+>   own MoE input and starts reading that layer's 5 best-ranked non-resident experts after its own reads. Same tokens
+>   (64 greedy ids identical); store wait -18 to -25 %, a token -9 to -13 % (swapped `TF_ALTERNATE` pairs), 404 -> 325 ms in
+>   separate processes. K 8+ gains nothing (the drive is the wall). Server-path confirmation still open.
+> - **Next:** the server-path check; S1c (needs a state snapshot for GLM's linear-attention layers); G6.
+> - **Version 0.50.0.**
+
+**Previous block, 0.49.0:**
+
 > ## Start here (2026-09-30, 0.49.0): a contiguous GLM bank exists, bit-identical, effect not measured
 >
 > - **Section 18.34:** `cachalot.glm.bank` + `benchmarks/glm_bank.py` + `CACHALOT_GLM_BANK`: one record per expert, byte-verified,
@@ -8511,6 +8522,48 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.35 GLM-5.3-Flash: next-layer expert prediction on the shipped sync path, on by default — 2026-09-30 (0.50.0)
+
+Hamed: "selection and prefetch first". The GPU-select loop (S1c) that MiniMax's prefetch (S1e) rides on rewinds a layer's
+attention when an expert misses; GLM's 34 linear-attention layers keep a recurrent state that a KV-offset rewind does not
+restore, so S1c needs a state snapshot per layer and is a larger job. The store already has a decode prefetch path
+(`get_many(prefetch=...)`, used by MiniMax's 0.28.0 prediction), and GLM never passed it a prediction. **Priced first**
+(scratch `glm_pred.py`: patch `StreamingSwitchGLU.__call__`, score layer i+1's router, `_expert_select`, on layer i's MoE
+input; 2,048-token prefill, 48 decode tokens, 1,968 layer-calls): top 8 contains 67 % of the next layer's experts and
+59 % of its misses; top 16 82 % / 79 % (precision 41 %); the previous token's set 28 % / 0 %.
+
+**Built.** `GlmModel._install_predictors` gives each MoE layer whose successor is MoE a `predict(x, k)` (router matmul
+plus `_expert_select` with the layer's own group logic); `StreamingSwitchGLU.__call__` evaluates it with the layer's
+routing in one `mx.eval`, ranks the k experts by weight on the host, and passes the next layer's entries as `prefetch`
+(`prefetch_after`, `prefetch_limit`) to `get_many`. Knobs (module ints, `TF_ALTERNATE`-flippable): `PREDICT_TOPK`
+(default 5, 0 off), `PREDICT_LIMIT`, `PREDICT_AFTER_DEMAND` (1).
+
+**Measured** (`glm_prefill_timeline.py 1024`, `TF_DECODE=80`, `TF_ALTERNATE=cachalot.glm.experts:PREDICT_TOPK:A:B`, every
+K on swapped pairs A:B and B:A, 52 GiB budget, display state unchanged, screensaver on): median token, off -> on:
+
+| K | pair 1 | pair 2 | store wait |
+|---|---|---|---|
+| 3 | 369 -> 316 ms (-14 %) | 409 -> 389 (-5 %) | -20 / -18 % |
+| 4 | 367 -> 330 (-10 %) | 388 -> 349 (-10 %) | -18 / -20 % |
+| 5 | 425 -> 368 (-13 %) | 401 -> 363 (-9 %) | -25 / -21 % |
+| 6 | 399 -> 362 (-9 %) | 406 -> 373 (-8 %) | -20 / -18 % |
+| 8 | 353 -> 348 (-1 %) | 346 -> 368 (+6 %) | 0 |
+| 12 (one process, no alternation) | 332 -> 414 ms (+25 %) | | wasted reads (loads 2x, 42 % used) |
+
+K = 4 with the predicted reads issued alongside the layer's own (after-demand 0): -9.6 / -3.7 %. Reads a token at K = 5: 66
+started, 51 used. Absolute medians drift 350-425 ms between runs (the screensaver); the pairs alternate inside one
+process. **Identity:** greedy decode of 64 tokens after a 1,024-token prefill, K 0 vs 5: identical ids; K 12 vs 0 over 32 tokens
+identical too. **Separate processes, same text** (K 0 then 5): 404 -> 325 ms a token (2.48 -> 3.08 tok/s), store wait 272 -> 220 ms.
+
+**Not verified.** The server path (`stream()`/Hermes-shaped turns with a long context): §18.19 item 8 says a decode win
+under `TF_ALTERNATE` must also win there; only the direct benchmark ran. No GLM quality gate is needed (outputs are the same
+tokens), but 64 greedy tokens on one text is the whole identity evidence.
+
+**What is open.** (a) The server-path confirmation. (b) S1c: the GPU-select loop for GLM, which would also let the
+prediction run on the speculative routing (MiniMax's 91 % precision) instead of this layer's input (59 % of misses at 8);
+needs a per-layer state snapshot for the 34 linear-attention layers. (c) G6's pair index (+5.6 % slots). (d) The contiguous
+bank (§18.34) once a cold read A/B exists. (e) Deeper prediction (layer i+2) and a precision-aware K per layer.
 
 ### 18.34 GLM-5.3-Flash: a contiguous expert bank, built and byte-verified, effect not measured — 2026-09-30 (0.49.0)
 

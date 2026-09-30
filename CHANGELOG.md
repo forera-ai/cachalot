@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.50.0 (2026-09-30)
+
+HANDOFF section 18.35.
+
+### Added
+- **GLM-5.3-Flash decode reads the next layer's likely experts early, on by default** (`cachalot.glm.experts`,
+  `CACHALOT_GLM_PREDICT_TOPK=5`, `CACHALOT_GLM_PREDICT_LIMIT`, `CACHALOT_GLM_PREDICT_AFTER_DEMAND=1`; `PREDICT_TOPK=0` turns
+  it off). Each decode MoE layer scores the next layer's router on its own MoE input in the same sync as its routing and
+  starts reading that layer's five best-ranked non-resident experts once its own misses are in. Same tokens: greedy
+  decode of 64 tokens is identical with and without it. Measured with in-process alternation on swapped pairs (80
+  teacher-forced tokens, 52 GiB): store wait -18 to -25 %, a token -9 to -13 %; in separate processes on the same text
+  404 -> 325 ms a token (2.48 -> 3.08 tok/s). Wider prediction (8 and up) gains nothing: the drive is the wall and the
+  extra reads are experts nobody asks for.
+
+### Measured, not shipped
+- Scoring the next layer's router on this layer's MoE input finds 67 % of the next layer's experts and 59 % of its misses
+  at the top 8 (82 % and 79 % at 16), against 28 % and 0 % for the previous token's set (1,968 layer-calls).
 ## 0.49.0 (2026-09-30)
 
 HANDOFF section 18.34.

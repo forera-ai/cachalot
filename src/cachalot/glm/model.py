@@ -404,6 +404,8 @@ class GlmModel:
                 )
                 n_moe += 1
 
+        self._install_predictors()
+
         weights = self.model.sanitize(_remap(load_non_expert_weights(self.model_path)))
         weights = {k[len("language_model."):]: v for k, v in weights.items() if k.startswith("language_model.")}
 
@@ -451,6 +453,27 @@ class GlmModel:
                 f"loaded in {time.perf_counter() - t0:.1f}s",
                 flush=True,
             )
+
+    def _install_predictors(self) -> None:
+        """Per MoE layer, the next MoE layer's router applied to this layer's MoE input (HANDOFF 18.35)."""
+        from cachalot.third_party.mlx_vlm.models.glm5_next.language import _expert_select
+
+        layers = self.model.layers
+
+        def make(nxt_moe):
+            def predict(x, k):
+                gate = nxt_moe.gate
+                logits = x.astype(mx.float32) @ gate.weight.T
+                return _expert_select(
+                    logits, gate.e_score_correction_bias, k, gate.n_group, gate.topk_group,
+                    gate.routed_scaling_factor, gate.norm_topk_prob,
+                )
+            return predict
+
+        for i, layer in enumerate(layers[:-1]):
+            nxt = layers[i + 1]
+            if isinstance(layer.mlp, Glm5NextMoE) and isinstance(nxt.mlp, Glm5NextMoE):
+                layer.mlp.switch_mlp.predict = make(nxt.mlp)
 
     # -- keep the wired set wired while idle (macOS un-wires an idle Metal queue) -------------------------
     def _heartbeat(self, period: float) -> None:
