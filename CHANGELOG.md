@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.50.1 (2026-09-30)
+
+HANDOFF section 18.35.
+
+### Measured
+- 0.50.0's GLM next-layer prefetch confirmed through `GlmModel.stream()` with agent-shaped turns (a 3,000-token prompt, then
+  turns that append the reply and 150 new tokens; 48 greedy tokens a turn), the knob alternating per turn inside one process
+  and the parity swapped in a second: on the same turn's context K=5 was faster in all six turns, -5 to -12 %, mean 375 against
+  409 ms a token (-8.4 %), identical tokens. Four separate processes in a row (K 0, 5, 5, 0) showed only -1 % (416 against
+  420 ms), because the run-to-run drift is +-10 %; that method cannot see a 9 % effect.
 ## 0.50.0 (2026-09-30)
 
 HANDOFF section 18.35.

@@ -124,8 +124,8 @@ correctly apart from a screenshot count. The first request of each new day prefi
 (~100 s): Hermes writes "Conversation started: <date>" into its system prompt, at token 5,965 of 21,333, before
 ~15.4k tokens of tool schemas.
 
-**New in 0.50.0 (§18.35), read first:** GLM decode reads the next layer's predicted experts early, on by default. **First job:
-confirm it through the server path** (a Hermes-shaped agent turn through `stream()` or `./serve-glm.sh` with a dump: `[request]`
+**New in 0.50.0 (§18.35), read first:** GLM decode reads the next layer's predicted experts early, on by default. **First job
+(the `stream()` confirmation is done, §18.35: -8.4 % a token; a Hermes session on `./serve-glm.sh` with a dump is still wanted, `[request]`
 decode tok/s with `CACHALOT_GLM_PREDICT_TOPK=0` against 5), then S1c (needs a snapshot of the 34 linear-attention layers'
 recurrent state to rewind a layer) or G6. Older text follows.
 

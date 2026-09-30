@@ -25,6 +25,14 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-09-30, 0.50.1): GLM prefetch confirmed through `stream()`: -8.4 % a token, same tokens
+>
+> - **Section 18.35:** per-turn alternation inside one process, parity swapped: K=5 faster in all six turns (-5 to -12 %), 375 vs
+>   409 ms. Four sequential processes showed only -1 % (drift +-10 %): use per-turn alternation.
+> - **Version 0.50.1.**
+
+**Previous block, 0.50.0:**
+
 > ## Start here (2026-09-30, 0.50.0): GLM decode prefetches the next layer's likely experts
 >
 > - **Section 18.35:** `CACHALOT_GLM_PREDICT_TOPK=5` (0 off): each decode layer scores the next layer's router on its
@@ -8556,9 +8564,14 @@ started, 51 used. Absolute medians drift 350-425 ms between runs (the screensave
 process. **Identity:** greedy decode of 64 tokens after a 1,024-token prefill, K 0 vs 5: identical ids; K 12 vs 0 over 32 tokens
 identical too. **Separate processes, same text** (K 0 then 5): 404 -> 325 ms a token (2.48 -> 3.08 tok/s), store wait 272 -> 220 ms.
 
-**Not verified.** The server path (`stream()`/Hermes-shaped turns with a long context): §18.19 item 8 says a decode win
-under `TF_ALTERNATE` must also win there; only the direct benchmark ran. No GLM quality gate is needed (outputs are the same
-tokens), but 64 greedy tokens on one text is the whole identity evidence.
+**Through `stream()` (0.50.1).** Agent-shaped turns (scratch `glm_stream_agent.py` / `glm_stream_alt.py`: a 3,000-token prompt from
+HANDOFF text, each turn appends the 48-token reply and 150 new tokens; greedy; 52 GiB; no disk snapshots): the knob flipped per
+turn inside one process, parity swapped in a second process, so each turn's context is measured with and without. K = 5 over K = 0
+per turn: 319 / 360, 328 / 372, 375 / 395, 401 / 439, 435 / 476, 391 / 410 ms a token = -11, -12, -5, -9, -9, -5 %; means 375
+against 409 ms (-8.4 %), the same tokens in both processes. Four separate processes in a row (K 0, 5, 5, 0) read 420 vs 416 ms (-1 %):
+process-to-process drift is +-10 %, so use per-turn alternation for a decode lever of this size. Prefill is untouched (17-19 s a
+150-token follow-up either way). The Hermes-shaped server run (`serve-glm.sh` with a dump) has not been done; no GLM quality gate
+is needed (the same tokens).
 
 **What is open.** (a) The server-path confirmation. (b) S1c: the GPU-select loop for GLM, which would also let the
 prediction run on the speculative routing (MiniMax's 91 % precision) instead of this layer's input (59 % of misses at 8);
