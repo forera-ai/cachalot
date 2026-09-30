@@ -25,6 +25,16 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-09-30, 0.51.0): GLM sees images; MTP closed
+>
+> - **Section 18.39:** `image_url` works on `./serve-glm.sh`: the vendored `glm5_next` vision tower loads on the first image, images
+>   are preprocessed by a port of mlx-vlm's processor, prefixes are keyed on the image hash (a resent image is reused: 338 of 349 tokens,
+>   2.4 s). Two charts read exactly; an HTTP request with a base64 image answered correctly.
+> - **Section 18.40:** MTP closed on arithmetic (a two-token verify reads ~1.75x the experts; ~1.11x reads per token at 58 % acceptance).
+> - **Version 0.51.0.**
+
+**Previous block, 0.50.4:**
+
 > ## Start here (2026-09-30, 0.50.4): GLM through Hermes, prefetch on +14.5 % decode tok/s live
 >
 > - **Section 18.38:** four Hermes prompts on `./serve-glm.sh` with a dump, K=5 against K=0: 3.01 vs 2.62 tok/s (faster in all 8 matched
@@ -8557,6 +8567,46 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.40 GLM-5.3-Flash: MTP priced and closed — 2026-09-30 (0.51.0)
+
+Hamed: "GLM vision and MTP next". The checkpoint holds one native MTP layer (depth 1; the runtime skips it: `_wanted` drops `.mtp.`
+tensors, and layer 45 counts among the 12,384 routed experts of §18.37's scan). Speculative decoding verifies the drafted token in
+the same forward as the current one, so the forward carries two tokens and reads the union of their experts. From this session's own
+data (`glm_pred.py`, the "previous token's set" row, 52 GiB): a layer's experts for consecutive tokens overlap 21-28 %, so two tokens
+route to ~14 distinct experts a layer against 8, ~1.75x the reads (and the drive is the wall, §18.33). At the published 58 %
+acceptance a forward yields 1.58 tokens: ~1.11x the reads per token, before the MTP block's own 288 experts (+8 reads a forward), so
+decode gets slower, not faster. The same arithmetic closed MiniMax's speculative decoding (§18.7 item 1: misses per forward scale
+exactly with the verify width). **Not built; the acceptance rate was not measured locally.** Reopen only for a compute-bound regime
+(all experts resident, or a drive several times faster).
+
+### 18.39 GLM-5.3-Flash sees images — 2026-09-30 (0.51.0)
+
+Hamed: "GLM vision and MTP next". **What existed:** the checkpoint has a vision tower (`model.visual.*`, 347 bf16 tensors: a 24-block
+ViT, hidden 1,024, 16 heads, patch 14, temporal patch 2, 2D rotary, a 2x2 merge to 4,096 and a SwiGLU merger) and the chat template
+writes `<|begin_of_image|><|image|><|end_of_image|>` per image part; Cachalot skipped the tower and passed image parts as text. The
+language model has no positional encoding of its own (NoPE), so nothing about positions changes. **Built** (the reference: mlx-vlm at the
+pinned commit ad4a3cc, MIT, read through the GitHub API): `third_party/mlx_vlm/models/glm5_next/vision.py` vendored unmodified;
+`cachalot/glm/vision.py` (a torch-free port of `Glm5NextImageProcessor`: `smart_resize` under `max_image_tokens` 8,000, PIL bicubic resize
+of the content, zero padding to the canvas, rescale and normalise, patches ordered by 2x2 merge group with the temporal axis repeated;
+`image_records`, `expand`, `key_tokens`; `VisionTower`, loaded on the first image with a cache of its outputs by hash);
+`GlmModel._forward_span` and `stream(..., images=)` (prefill chunks that hold image tokens take the tower's rows for those positions);
+`GlmEngine._encode_with_images` (renders, tokenizes, expands each marker to `grid_h * grid_w / 4` tokens, passes the spans). **Cache keys:**
+`stream` keys saved prefixes on a copy of the prompt whose image tokens are pseudo tokens (`-1 - hash(image, index)`), so a different
+image of one size never reuses another's KV while the same image in a later turn does; only the real ids go through the model.
+
+**Checked.** (1) Two 640x360 charts (bars with values, a title, colours; scratch `vis_test.py`), greedy, thinking off: image 1 read as
+"Revenue Q3 (units)", A 42 (blue), B 17 (dark red), C 88 (green), every value right; image 2 (same size, different content) "Cost Q4
+(units)", X 63, Y 91, Z 25, right, with `reused=0` (no wrong reuse); a new question about image 1 answered "C, 88". (2) A real second turn
+(image, reply, new question; scratch `vis_turns.py`): prompt 322 cold (28.0 s at 12 tok/s: small chunks), then 349 with 338 reused, prefill
+2.4 s, answer right ("B, 17"). (3) An HTTP request with a base64 `image_url` to `./serve-glm.sh`: the right title and tallest bar, 329
+prompt tokens, `images=1` in the `[request]` line, `images_served: 1` in `/v1/stats`. (4) 476 tests, including `tests/test_glm_vision.py`.
+**Caught:** the shared engine (MiniMax's model subclasses `GlmModel` and skips its `__init__`) first called `has_vision()` on an object
+with no `_raw_config`; four loop-guard tests failed, the method now uses `getattr` and a test pins it.
+
+**Not done / open.** Real photographs and screenshots at Desktop size (the 8,000-token cap is a ~100 s prefill), a Hermes session with a
+screenshot, comparing the tower's rows against mlx-vlm's (not installed; the checks above are functional), video, and image parts in a
+system message (the system-prefix snapshot compares the unexpanded system render). MiniMax has no vision.
 
 ### 18.38 GLM-5.3-Flash: the first Hermes sessions through serve-glm.sh, prefetch on against off — 2026-09-30 (0.50.4)
 

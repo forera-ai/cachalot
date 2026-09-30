@@ -7,7 +7,7 @@
 # guard below), because both use the same expert-cache memory.
 #
 # The routed experts (12,096 x 13.5 MiB) stream from SSD into a 52 GiB wired cache;
-# the rest of the model (5.5 GiB) stays resident. Text only (no vision, no MTP yet). HANDOFF section 17.
+# the rest of the model (5.5 GiB) stays resident. Text and images since 0.51.0 (the vision tower loads on the first image); no MTP (priced and closed, HANDOFF 18.40). HANDOFF sections 17, 18.39.
 #
 # Any argument is passed through to `cachalot.cli serve`, e.g. ./serve-glm.sh --expert-budget-gib 44
 set -euo pipefail

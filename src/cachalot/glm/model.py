@@ -356,6 +356,8 @@ class GlmModel:
         self.model_path = Path(model_path)
         config = json.loads((self.model_path / "config.json").read_text())
         self.config = TextConfig.from_dict(config["text_config"])
+        self._raw_config = config
+        self._vision_tower_obj = None
         quant = config.get("quantization") or config.get("quantization_config") or {}
 
         self.expert_format, index = build_glm_expert_index(self.model_path)
@@ -600,6 +602,44 @@ class GlmModel:
 
     def _forward(self, tokens: list[int], cache) -> mx.array:
         out = self.model(mx.array(tokens, dtype=mx.int32)[None], cache=cache)
+        return out.logits[:, -1, :]
+
+    # -- vision (HANDOFF 18.39) -------------------------------------------------------------------------------------
+    def vision_config(self):
+        from cachalot.glm import vision
+
+        return vision.ImageProcessorConfig.from_model(self.model_path)
+
+    def has_vision(self) -> bool:
+        # MiniMaxModel subclasses this class without running its __init__: no config, no vision
+        return bool(getattr(self, "_raw_config", {}).get("vision_config"))
+
+    def _vision_tower(self):
+        if self._vision_tower_obj is None:
+            from types import SimpleNamespace
+
+            from cachalot.glm.vision import VisionTower
+            from cachalot.third_party.mlx_vlm.models.glm5_next.config import VisionConfig
+
+            cfg = SimpleNamespace(vision_config=VisionConfig.from_dict(self._raw_config["vision_config"]))
+            self._vision_tower_obj = VisionTower(self.model_path, cfg)
+        return self._vision_tower_obj
+
+    def _forward_span(self, tokens: list[int], start: int, cache, spans) -> mx.array:
+        """`_forward` for the chunk of the prompt at [start, start + len(tokens)): where it holds image tokens, the
+        embedding rows are the vision tower's (one row per token of the image, in reading order)."""
+        end = start + len(tokens)
+        hit = [sp for sp in spans if sp.start < end and sp.start + sp.length > start]
+        if not hit:
+            return self._forward(tokens, cache)
+        ids = mx.array(tokens, dtype=mx.int32)[None]
+        embeds = self.model.model.embed_tokens(ids)
+        tower = self._vision_tower()
+        for sp in hit:
+            a, b = max(sp.start, start), min(sp.start + sp.length, end)
+            rows = tower.features(sp)[a - sp.start:b - sp.start].astype(embeds.dtype)
+            embeds[:, a - start:b - start, :] = rows[None]
+        out = self.model(None, cache=cache, inputs_embeds=embeds)
         return out.logits[:, -1, :]
 
     def prefill(self, tokens: list[int], cache) -> mx.array:
@@ -950,15 +990,26 @@ class GlmModel:
         top_p: float = 1.0,
         cancel: threading.Event | None = None,
         boundary: int = 0,
+        images=None,
     ):
-        """Yields ("prefill", reused, seconds), ("token", id) ..., ("done", finish, decode_seconds)."""
+        """Yields ("prefill", reused, seconds), ("token", id) ..., ("done", finish, decode_seconds).
+
+        `images` (cachalot.glm.vision.ImageSpan list) names the runs of image tokens in `prompt_tokens`; saved
+        prefixes are keyed on a copy whose image tokens are pseudo tokens of the image's hash (HANDOFF 18.39)."""
         with self._lock:
             self._busy = True
             restore_cache = None
             try:
                 self._stop_idle_warm()
                 self._wait_warm_set()
-                tokens = tuple(prompt_tokens)
+                spans = list(images or [])
+                if spans:
+                    from cachalot.glm import vision as _vision
+
+                    tokens = tuple(_vision.key_tokens(list(prompt_tokens), spans))
+                else:
+                    tokens = tuple(prompt_tokens)
+                real = list(prompt_tokens)
                 t0 = time.perf_counter()
                 snap = self._find_prefix(tokens)
                 if snap is not None:
@@ -982,7 +1033,8 @@ class GlmModel:
                             yield ("done", "cancel", 0.0)
                             return
                         end = min(pos + self.PREFILL_CHUNK, cut)
-                        logits = self._forward(list(tokens[pos:end]), cache)
+                        logits = self._forward_span(real[pos:end], pos, cache, spans) if spans \
+                            else self._forward(real[pos:end], cache)
                         mx.eval(logits)
                         pos = end
                     if cut < len(tokens):

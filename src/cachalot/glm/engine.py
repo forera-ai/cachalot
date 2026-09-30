@@ -12,7 +12,9 @@ GLM's chat template differs from DeepSeek's in three ways that matter here:
 - the template reads an assistant message's tool-call arguments as a mapping, so the OpenAI
   JSON-string form is decoded before rendering.
 
-Text only: image parts are passed to the template as text parts (the vision tower is not loaded).
+Images (HANDOFF 18.39): the template writes one image marker per image part; each becomes the image's run of tokens
+(`cachalot.glm.vision.expand`) and the model splices the vision tower's rows into those positions during prefill. The
+tower loads on the first image, so a text-only server never pays for it. Videos are not supported.
 """
 
 from __future__ import annotations
@@ -243,7 +245,20 @@ class GlmEngine:
         return list(self.tokenizer.encode(text, add_special_tokens=False))
 
     def encode_chat(self, req: ChatRequest) -> list[int]:
-        return self._render(req, req.messages)
+        return self._encode_with_images(req)[0]
+
+    def _encode_with_images(self, req: ChatRequest):
+        """(prompt tokens, image spans): each image marker expanded to its image's run of `<|image|>` tokens."""
+        tokens = self._render(req, req.messages)
+        # MiniMax and the test doubles share this engine and have no vision tower
+        if not getattr(self.model, "has_vision", lambda: False)():
+            return tokens, []
+        from cachalot.glm import vision
+
+        records = vision.image_records(req.messages)
+        if not records:
+            return tokens, []
+        return vision.expand(tokens, vision.load_inputs(records, self.model.vision_config()))
 
     def system_prefix_len(self, req: ChatRequest, tokens: list[int]) -> int:
         """Tokens of the rendered header + tools + leading system message, when a prefix of `tokens`."""
@@ -264,7 +279,8 @@ class GlmEngine:
         with self._lock:
             if cancel is not None and cancel.is_set():
                 return
-            prompt = self.encode_chat(req)
+            prompt, spans = self._encode_with_images(req)
+            self.images_served += len(spans)
             boundary = self.system_prefix_len(req, prompt)
             params = req.params
             room = self.model.max_seq_len - len(prompt)
@@ -283,6 +299,7 @@ class GlmEngine:
                 top_p=params.top_p,
                 cancel=cancel,
                 boundary=boundary,
+                **({"images": spans} if spans else {}),
             ):
                 kind = event[0]
                 if kind == "prefill":
@@ -347,7 +364,7 @@ class GlmEngine:
                     self.requests_served += 1
                     self.tokens_generated += n_out
                     dump_reply(prompt, splitter.tokens, reused)
-                    _log_request(len(prompt), reused, prefill_s, n_out, event[2], finish, 0, 0,
+                    _log_request(len(prompt), reused, prefill_s, n_out, event[2], finish, len(spans), 0,
                                  self._expert_counts(), decode_start)
                     yield Delta(
                         content=tail.content,
@@ -397,4 +414,5 @@ class GlmEngine:
             "expert_hit_rate": s.hit_rate,
             "resident_experts": len(self.model.store),
             "prefix_snapshots": len(self.model.prefix),
+            "images_served": self.images_served,
         }

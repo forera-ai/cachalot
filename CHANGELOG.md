@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.51.0 (2026-09-30)
+
+HANDOFF sections 18.39-18.40.
+
+### Added
+- **GLM-5.3-Flash reads images** (`cachalot.glm.vision`, the vendored `glm5_next` vision tower, `image_url` parts through
+  `./serve-glm.sh` and the engine). The checkpoint's 24-block ViT (`model.visual.*`, ~0.9 GiB) loads on the first image; images are
+  preprocessed by a port of mlx-vlm's processor (an aligned canvas under an 8,000-token budget, PIL bicubic, 2x2 merge groups); each
+  `<|image|>` marker becomes its image's run of tokens and the tower's rows replace those embeddings in prefill. Saved prefixes are
+  keyed on the image's content hash, so a second turn that resends the image reuses it (338 of 349 tokens, 2.4 s) and a different
+  image of the same size does not. `/v1/stats` carries `images_served`. Videos are not supported.
+- Checked: two charts of one size read exactly (every label and value), an HTTP request with a base64 image answered correctly, 476
+  tests (`tests/test_glm_vision.py` covers the resize, the patch layout, normalisation, marker expansion and cache keys).
+
+### Fixed
+- (Caught before release) the shared engine called a `has_vision()` that MiniMax's model, a `GlmModel` subclass that skips its
+  `__init__`, could not answer; `has_vision` now returns False without a config and a test pins it.
+
+### Measured, not shipped
+- **MTP for GLM priced and closed on arithmetic** (HANDOFF 18.40): consecutive tokens share 21-28 % of a layer's experts, so a
+  two-token verify reads ~1.75x the experts for 1.58 tokens at the published 58 % acceptance: ~11 % more reads per token on a
+  drive-bound decode, before the MTP block's own 288 experts.
 ## 0.50.4 (2026-09-30)
 
 HANDOFF section 18.38.
