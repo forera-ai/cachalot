@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.51.3 (2026-09-30)
+
+### Documentation
+- `docs/next-session-prompts/v84-2026-09-30.md` added: the current prompt also lives in that folder (as v77's did: the file to paste is
+  the versioned copy and is identical to `docs/NEXT-SESSION-PROMPT.md`). 0.51.2 had archived v78-v83 but not the current v84.
 ## 0.51.2 (2026-09-30)
 
 HANDOFF "Start here (2026-09-30, 0.51.2)".
