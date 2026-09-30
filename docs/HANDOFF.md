@@ -25,6 +25,17 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-09-30, 0.48.1): GLM back on the internal SSD; first GLM numbers
+>
+> - **Space (section 18.33):** internal DeepSeek bank deleted (checksum-identical copy on the X10Pro; `serve.sh` /
+>   `chat.sh` read it there now); GLM copied to `~/GLM-5.3-Flash-MLX-4bit-MTP` (verified by size/mtime only).
+> - **GLM baseline (52 GiB):** prefill 72-100 tok/s, decode 2.0-2.9 tok/s (noise ~25 %), 60-70 % hits, 70-75 % of a
+>   token is store wait. Bias-code bank closed (8.6 % of groups break the rule); a 64 GiB budget closed (paging).
+> - **Next:** contiguous GLM bank, then GPU-side selection (S1c), then speculative prefetch (S1e).
+> - **Version 0.48.1.**
+
+**Previous block, 0.48.0:**
+
 > ## Start here (2026-09-30, 0.48.0): the terminal chat samples at 0.7; Hamed's first chat session read
 >
 > - **Default (section 18.32):** `chat-minimax.sh` passes `--temperature 0.7` (was 1.0); `./chat-minimax.sh
@@ -8491,6 +8502,41 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.33 GLM-5.3-Flash moves back to the internal SSD; first measurements for its optimization — 2026-09-30 (0.48.1)
+
+Hamed asked for GLM-5.3-Flash to be optimized (runtime, the way DeepSeek and MiniMax were) and approved replacing the
+internal DeepSeek copy. **Space.** `~/DeepSeek-V4.1-Flash-q2g128` (142 GiB) was deleted after `rsync -rn --checksum`
+against `/Volumes/X10Pro/Flash4-1/DeepSeek-V4.1-Flash-q2g128` returned exit 0 with no difference (42 files each);
+`serve.sh` / `chat.sh` default to the X10Pro copy now. GLM (170 GiB, 163 files) was copied to
+`~/GLM-5.3-Flash-MLX-4bit-MTP`; the copy is verified by file count and size/mtime only (`rsync -rnt`), not by
+checksum. Internal free space: 259 GiB before the copy.
+
+**1. The bias-code bank does not transfer.** Scan of every 8th expert (608.7 M groups): k = round(bias / scale) takes
+nine values (-15 .. -7, MiniMax's four), and 52.6 M groups (8.6 %) do not satisfy `bias == bf16(k x scale)`, so most
+experts would need the raw form. Biases are ~6 % of an expert, so the ceiling was ~4 % anyway. Distinct (scale, bias)
+pairs per projection: median 274, max 1,405 (a 16-bit pair index fits: ~5.6 % more slots, G6). Scratch `glm_scan.py`
+(rebuild from this description: `build_glm_expert_index`, pread each scales/biases pair).
+
+**2. Baseline on the internal SSD** (`glm_prefill_timeline.py 2048`, ROUNDS=3, DECODE_TOKENS=48, greedy, fresh text
+`FILLER_OFFSET=400000`, the screensaver on, budget 52 GiB = 3,944 slots): prefill 20-28 s per 2k round (72-100 tok/s),
+reads 5.3-5.8 GiB/s; decode 2.0-2.9 tok/s, hit rate 60-70 %, ~100-135 misses a token, store wait 246-325 ms of
+347-436 ms. The first attempt (right after a 170 GiB copy, swap 4.6 of 6 GiB) gave prefill 38 tok/s and decode
+1.75-2.45: page cache and swap from the copy, discarded. Same configuration, two runs: decode 2.30 / 2.25 / 1.99 then
+2.88 / 2.65 / 2.29 tok/s (wired limit 80 then 84): the method's noise is ~25 %.
+
+**3. A 64 GiB budget is closed** (wired limit 84, same text and rounds as the 52 arm): hit rate 74 / 75 / 66 % against
+70 / 67 / 60 %, misses a token 86 / 83 / 113 against 102 / 111 / 135 (-16 to -26 %), store wait 214 / 210 / 279 ms
+against 246 / 272 / 325, but a token took 798 / 514 / 585 ms against 347 / 378 / 436 with wired memory at 87-90 GiB
+(76-81 at 52) and swap rising 4.5 to 7.9 GiB: the GPU pages, as MiniMax did above 62 GiB (§18.17). GLM's wired set is
+budget + ~24 GiB, so 52 already sits at the edge of the 86 GiB working set; more expert cache needs memory from
+elsewhere (the KV/transient side), not a bigger budget.
+
+**What is open.** The levers that made MiniMax fast are all still unbuilt for GLM: (a) a contiguous per-expert bank
+(GLM reads nine pieces per expert; MiniMax's nine-to-one was -9 % read wait), (b) GPU-side expert selection over slabbed
+slots (S1c; MiniMax decode -9.5 %), (c) speculative next-layer prefetch from that loop (S1e; MiniMax -15 %), (d) G6's
+pair index (+5.6 % slots). Decode is 70-75 % store wait, so (a)-(c) are the ones that can move it. Do them in that order,
+each behind a knob and measured with `TF_ALTERNATE`, and price the paging ceiling into any slot-count change.
 
 ### 18.32 MiniMax-M3: the terminal chat samples at 0.7, and Hamed's first chat session at 0.7 — 2026-09-30 (0.48.0)
 

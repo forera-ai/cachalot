@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.48.1 (2026-09-30)
+
+HANDOFF section 18.33.
+
+### Changed
+- **The launch scripts follow the models' new places.** GLM-5.3-Flash is back on the internal SSD
+  (`~/GLM-5.3-Flash-MLX-4bit-MTP`, copied from the X10Pro; `serve-glm.sh` and `chat-glm.sh` default to it, and
+  `CACHALOT_GLM_PATH` overrides). The internal DeepSeek expert bank was deleted to make room (Hamed's call; a
+  checksum compare against the X10Pro copy found no difference) and `serve.sh` / `chat.sh` now default to the X10Pro
+  copy (`Flash4-1/DeepSeek-V4.1-Flash-q2g128`), so DeepSeek reads over USB; `CACHALOT_EXPERT_BANK` overrides.
+
+### Measured, not shipped
+- GLM's bias-code idea (MiniMax's bank) does not carry over: biases take 9 values of k, and 8.6 % of 608.7 million
+  sampled groups do not satisfy `bias = bf16(k x scale)`. GLM baseline on the internal SSD, 52 GiB budget, 2k-token
+  rounds: prefill 72-100 tok/s, decode 2.0-2.9 tok/s (hit rate 60-70 %, ~100-135 misses a token, 5.3-5.8 GiB/s).
+  A 64 GiB budget cuts misses a token by 16-26 % but pushes wired memory to 87-90 GiB and makes tokens 1.5-2.3x
+  slower (paging): closed on this Mac.
 ## 0.48.0 (2026-09-30)
 
 HANDOFF section 18.32.

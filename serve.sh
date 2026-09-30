@@ -25,7 +25,7 @@ if pgrep -fl "deepseek-v41/bin/python|cachalot\.cli" >/dev/null 2>&1; then
 fi
 
 export CACHALOT_MODEL_PATH=/Volumes/X10Pro/Flash4-1/DeepSeek-V4.1-Flash
-export CACHALOT_EXPERT_BANK=/Users/hamedprooshani/DeepSeek-V4.1-Flash-q2g128
+export CACHALOT_EXPERT_BANK=${CACHALOT_EXPERT_BANK:-/Volumes/X10Pro/Flash4-1/DeepSeek-V4.1-Flash-q2g128}
 export CACHALOT_PAGE_CACHE=1
 export CACHALOT_MLX_WIRED_LIMIT_GIB=${CACHALOT_MLX_WIRED_LIMIT_GIB:-80}
 export CACHALOT_HOTLIST=/Users/hamedprooshani/cachalot-hotlist.json
