@@ -61,7 +61,10 @@ export CACHALOT_SNAPSHOT_PRELOAD=${CACHALOT_SNAPSHOT_PRELOAD:-2}
 # 0.41.0 (HANDOFF 18.22), both bit-identical and on: decode runs with a 0.25 GiB MLX buffer cache
 # (CACHALOT_MINIMAX_DECODE_CACHE_GIB; -1 keeps 2 GiB) so the GPU stays under its working set, and system blocks saved
 # on disk leave memory after each request (CACHALOT_MINIMAX_SPILL_BLOCKS=0 keeps them).
-# MiniMax's generation_config: temperature 1.0, top_p 0.95
+# MiniMax's generation_config says temperature 1.0, top_p 0.95; top_p stays the checkpoint's. Since 0.47.0 a request
+# without a temperature samples at 0.7 (Hamed's call, HANDOFF 18.29-18.31): at 1.0 a long tool result derailed agent
+# replies 5 times in 12, at 0.7 once; tool calls under Hermes's prompt 30/32 against 32/32. A client's own temperature
+# always wins; --default-temperature 1.0 after the script name restores the checkpoint's.
 exec ~/venvs/deepseek-v41/bin/python -m cachalot.cli serve \
     --model "$CACHALOT_MODEL_PATH" \
     --expert-budget-gib 68 \
@@ -69,5 +72,5 @@ exec ~/venvs/deepseek-v41/bin/python -m cachalot.cli serve \
     --port 8011 \
     --model-id minimax-m3 \
     --default-max-tokens 8192 \
-    --default-temperature 1.0 \
+    --default-temperature 0.7 \
     "$@"

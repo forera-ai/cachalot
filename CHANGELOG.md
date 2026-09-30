@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.47.0 (2026-09-30)
+
+HANDOFF section 18.31.
+
+### Changed
+- **MiniMax's server samples at temperature 0.7 when a request sends none** (`serve-minimax.sh`, was the
+  checkpoint's 1.0; Hamed's call). A client's own temperature always wins and top_p stays 0.95. Measured in 0.46.0:
+  a long tool result derailed agent replies 5 times in 12 at 1.0 and once at 0.7, and tool calls under Hermes's
+  system prompt went from 30/32 to 32/32, with reasoning and code tasks unchanged. `./serve-minimax.sh
+  --default-temperature 1.0` restores the old default. The terminal chat (`chat-minimax.sh`), GLM and DeepSeek are
+  unchanged.
+
 ## 0.46.1 (2026-09-30)
 
 HANDOFF section 18.30.

@@ -1,6 +1,6 @@
 # Cachalot — Engineering Handoff
 
-**Authoritative state as of 2026-09-30 (twenty-fourth MiniMax session), after the session that read Hamed's three Hermes sessions on 0.46.0, the last one at temperature 0.7 (section 18.30), the one that measured an agent temperature and added a loop guard for counting runaway lists (section 18.29), the one that replayed Hamed's second Hermes session on 0.45.x from its dump (section 18.28), the one that read his first Hermes session on 0.45.1 (section 18.27), the one that priced MiniMax's prefill expert kernels and closed them (section 18.26), the one that read Hamed's first Hermes session on 0.44.0 and made the mirror's share follow the X10Pro's speed (section 18.25), the one that made a restart reuse the agent's system block again and taught the memory governor to watch memory pressure (section 18.24), the one that gated the decode miss substitution on thinking-on and tool-call tasks and applied its rule to prefill, opt-in, short follow-ups -20 % (section 18.23), the one that capped MLX's buffer cache during MiniMax's decode, moved persisted system blocks off the GPU and gated the miss substitution at 24k (section 18.22), the one that let MiniMax's decode
+**Authoritative state as of 2026-09-30 (twenty-fourth MiniMax session), after the session that made MiniMax's server default temperature 0.7 (section 18.31), the one that read Hamed's three Hermes sessions on 0.46.0, the last one at temperature 0.7 (section 18.30), the one that measured an agent temperature and added a loop guard for counting runaway lists (section 18.29), the one that replayed Hamed's second Hermes session on 0.45.x from its dump (section 18.28), the one that read his first Hermes session on 0.45.1 (section 18.27), the one that priced MiniMax's prefill expert kernels and closed them (section 18.26), the one that read Hamed's first Hermes session on 0.44.0 and made the mirror's share follow the X10Pro's speed (section 18.25), the one that made a restart reuse the agent's system block again and taught the memory governor to watch memory pressure (section 18.24), the one that gated the decode miss substitution on thinking-on and tool-call tasks and applied its rule to prefill, opt-in, short follow-ups -20 % (section 18.23), the one that capped MLX's buffer cache during MiniMax's decode, moved persisted system blocks off the GPU and gated the miss substitution at 24k (section 18.22), the one that let MiniMax's decode
 substitute its lightest missing experts, opt-in and measured inside the rounding noise (section 18.21), the one that put MiniMax's prefill at the GPU's FLOP
 wall and measured three levers without a gain (section 18.20), the one that measured where MiniMax's
 remaining time goes and shipped two bit-identical kernel fusions switched off (section 18.19), the one that raised the GPU's working
@@ -24,6 +24,15 @@ that gave it a bias-free expert bank (18.4), the one that gave it a second drive
 kernel (18.3), the one that cut its per-token overhead and measured it to 64k (18.2), the one that made it faster
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
+
+> ## Start here (2026-09-30, 0.47.0): MiniMax's server samples at 0.7 by default
+>
+> - **Default (section 18.31):** `serve-minimax.sh` passes `--default-temperature 0.7` (was 1.0) for requests that
+>   send none; a client's own temperature wins; `--default-temperature 1.0` after the script name restores the old
+>   one. Hermes already sends 0.7 from its config (§18.30). The terminal chat, GLM and DeepSeek are unchanged.
+> - **Version 0.47.0.**
+
+**Previous block, 0.46.1:**
 
 > ## Start here (2026-09-30, 0.46.1): Hermes now sends temperature 0.7; three sessions read
 >
@@ -8470,6 +8479,21 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.31 MiniMax-M3: the server samples at 0.7 when a request sends no temperature — 2026-09-30 (0.47.0)
+
+Hamed's call after §18.29 and §18.30: `serve-minimax.sh` now passes `--default-temperature 0.7` (was 1.0, the
+checkpoint's `generation_config`). It applies only to requests that carry no `temperature`; a client's own value
+always wins, and top_p stays the checkpoint's 0.95. Evidence: §18.29 (the long `ls` tool result derailed 5/12 at
+1.0, 1/12 at 0.7; tool prompts under Hermes's system prompt 30/32 against 32/32; reasoning and code 35-36/36 at
+both) and §18.30 (one live Hermes session at 0.7, clean apart from a count). Hermes already sends 0.7 through its
+config, so Hermes sees no change; the change reaches every other client that sends nothing (curl, other agents,
+Studio). `./serve-minimax.sh --default-temperature 1.0` restores the old default (the last flag wins). Not changed:
+`chat-minimax.sh` (the terminal chat, `--temperature 1.0`), GLM (0.6 in both scripts), DeepSeek. Prefill KV is
+unaffected, so no numerics tag bump; saved snapshots stay valid.
+
+**What is open after this.** §18.30's list, minus item 2: long agent work at 0.7 with a dump; whether the terminal
+chat follows; longest-prefix reuse of a saved block for Hermes's daily date line.
 
 ### 18.30 MiniMax-M3: three Hermes sessions on 0.46.0, two at 1.0 and one at 0.7 — 2026-09-30 (0.46.1)
 
