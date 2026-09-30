@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.51.1 (2026-09-30)
+
+HANDOFF section 18.39 (Hermes screenshot session).
+
+### Measured
+- **A Hermes session with a real screenshot on GLM** (Hermes CLI, an isolated home, `./serve-glm.sh`; a 2,364 x 2,016 Desktop image = 6,120
+  image tokens, 6,168-6,188 prompt tokens): GLM's reading was accurate against the image (a Cachalot logo: concentric light-blue, royal-blue and
+  navy rings with a slot cut into the left side, a four-pointed star in the centre, "CACHALOT" in bold navy capitals, a light-grey background with a
+  faint grid, no numbers). Each vision pass prefilled the image in 62-163 s and decoded 485-728 tokens at 2.5-3.5 tok/s (140-215 s).
+- **Hermes routes `--image` through its `vision_analyze` tool** (the aux vision task on the same server) whose default 120 s timeout is
+  shorter than one pass, so the first run timed out on every attempt and looped (five image requests); with `auxiliary.vision.timeout: 1500` in
+  the Hermes config the session answered (it also downscaled the file after two timeouts).
 ## 0.51.0 (2026-09-30)
 
 HANDOFF sections 18.39-18.40.

@@ -25,6 +25,14 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-09-30, 0.51.1): a Hermes screenshot session on GLM
+>
+> - **Section 18.39:** Hermes sends an image through its `vision_analyze` tool (120 s default timeout); one GLM pass on a 6.1k-token screenshot is
+>   3-6 minutes, so set `auxiliary.vision.timeout` (isolated config used 1500). The answer, a Cachalot logo, was accurate against the image.
+> - **Version 0.51.1.**
+
+**Previous block, 0.51.0:**
+
 > ## Start here (2026-09-30, 0.51.0): GLM sees images; MTP closed
 >
 > - **Section 18.39:** `image_url` works on `./serve-glm.sh`: the vendored `glm5_next` vision tower loads on the first image, images
@@ -8604,8 +8612,20 @@ prompt tokens, `images=1` in the `[request]` line, `images_served: 1` in `/v1/st
 **Caught:** the shared engine (MiniMax's model subclasses `GlmModel` and skips its `__init__`) first called `has_vision()` on an object
 with no `_raw_config`; four loop-guard tests failed, the method now uses `getattr` and a test pins it.
 
-**Not done / open.** Real photographs and screenshots at Desktop size (the 8,000-token cap is a ~100 s prefill), a Hermes session with a
-screenshot, comparing the tower's rows against mlx-vlm's (not installed; the checks above are functional), video, and image parts in a
+**Hermes with a real screenshot (0.51.1).** Hermes CLI, an isolated `HERMES_HOME`, `hermes chat -Q --image <file> -q "Describe this screenshot..."`
+against `./serve-glm.sh` (a 2,364 x 2,016 Desktop screenshot, 6,120 image tokens, a copy in the scratchpad: the original name holds a narrow
+no-break space before "PM"). Hermes does not hand the image to the main model: it calls its `vision_analyze` tool, which describes the image with
+the aux vision model (here the same server: `Vision auto-detect: using main provider custom:cachalot`) and returns text to the agent. That
+call's default timeout is 120 s (`auxiliary.vision.timeout`); one pass on GLM is a 62-163 s prefill of ~6.1k tokens plus 485-728 decoded
+tokens at 2.5-3.5 tok/s (140-215 s), so the first run timed out every time and the agent retried (five image requests, `images=1`, `finish=stop`
+each: the server answered, the client had gone). **Fix in the isolated config:** `auxiliary: vision: timeout: 1500`. Then the session answered:
+a Cachalot logo with a slot cut into the left of concentric light-blue, royal-blue and navy rings, a four-pointed star in the navy centre, "CACHALOT"
+in bold navy capitals, a light-grey background with a faint grid, no numbers, checked against the image and accurate (Hermes noted it read a
+downscaled copy after two timeouts). Eight image requests in all across two runs; the follow-up prompt of the script did not run (the process
+was stopped after the answer). **For Hamed's own Hermes config:** the same `auxiliary.vision.timeout` (and, to cut a pass to ~1 min,
+`reasoning_effort: none` for the aux call, which the CLI does not expose) matter for any image on GLM; a screenshot this size costs ~3-6 minutes.
+
+**Not done / open.** Real photographs at Desktop size, comparing the tower's rows against mlx-vlm's (not installed; the checks above are functional), video, and image parts in a
 system message (the system-prefix snapshot compares the unexpanded system render). MiniMax has no vision.
 
 ### 18.38 GLM-5.3-Flash: the first Hermes sessions through serve-glm.sh, prefetch on against off — 2026-09-30 (0.50.4)
