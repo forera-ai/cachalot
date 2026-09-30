@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.50.3 (2026-09-30)
+
+HANDOFF section 18.37.
+
+### Measured, not shipped
+- **GPU-side expert selection for GLM (S1c) closed on the hit-rate arithmetic.** With the prefetch off at a 52 GiB budget only
+  16.3 % of decode layer-calls have every expert resident (34 % have at most one miss; mean 2.6 misses a layer, 1,968
+  layer-calls). MiniMax's loop keeps the GPU running only through all-hit layers; GLM's would rewind and re-run the next
+  layer's attention (and, for its 34 linear-attention layers, restore a recurrent state) at ~84 % of layers.
+- **The X10Pro mirror for GLM decode** (the checkpoint copy on the X10Pro, `CACHALOT_MIRROR_PATH`), per-token alternation on
+  swapped pairs, 100 teacher-forced tokens: `split` mode at 0.10 cuts store wait 5.2 % in both orders (172.9 vs 182.4 and 175.3
+  vs 185.0 ms; wait per miss 1.94 vs 2.06 and 1.98 vs 2.08) and a token 0 % and 6.8 % (noisy); the default `pieces` mode at 0.13
+  1-3 % of wait. Not made a default: GLM has no adaptive share, and a busy X10Pro cost MiniMax 3x on short prefills (0.45.0).
+  To try it: `CACHALOT_MIRROR_PATH=/Volumes/X10Pro/models/GLM-5.3-Flash-MLX-4bit-MTP CACHALOT_MIRROR_FRACTION=0.10
+  CACHALOT_MIRROR_MODE=split ./serve-glm.sh`.
 ## 0.50.2 (2026-09-30)
 
 HANDOFF section 18.36.

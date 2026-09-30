@@ -25,6 +25,16 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-09-30, 0.50.3): S1c closed for GLM; the X10Pro mirror priced
+>
+> - **Section 18.37:** only 16.3 % of GLM decode layers are all-hit (mean 2.6 misses a layer), so a GPU-select loop would rewind
+>   at ~84 % of layers: closed. The X10Pro mirror in `split` mode at 0.10 cuts store wait ~5 % (opt-in, not default).
+> - **GLM decode is drive-bound**: the software levers are done (prefetch shipped, bank/pair index/S1c/64 GiB budget closed or
+>   held). What is left is M19 (a Thunderbolt drive).
+> - **Version 0.50.3.**
+
+**Previous block, 0.50.2:**
+
 > ## Start here (2026-09-30, 0.50.2): the pair-index slots (G6) priced and held
 >
 > - **Section 18.36:** every expert fits a 2,048-entry pair table (max 1,405 pairs); slots -5.4 % (+5.75 % slots), which a 55 GiB
@@ -8538,6 +8548,37 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.37 GLM-5.3-Flash: S1c closed on the hit-rate arithmetic; the X10Pro mirror priced — 2026-09-30 (0.50.3)
+
+Hamed: "go with S1c". **The arithmetic first.** MiniMax's GPU-select loop (`minimax/gpu_select.py`) submits layer i+1's
+attention before the host has checked layer i's slots; a layer whose experts were all resident needs no fix-up, and a layer
+with a miss rewinds the following layers' KV offsets and recomputes. MiniMax's hit rate is 94-96 % with four experts a
+layer, so most layers are all-hit. Scratch `glm_pred.py` (misses per layer-call before `get_many`, prefetch off, 52 GiB,
+48 tokens after a 2,048-token prefill, 1,968 layer-calls): zero misses 16.3 %, one 17.9 %, two 19.9 %, three 16.6 %, four
+12.3 %, five 7.8 %, six 4.3 %, seven 2.4 %, eight 2.5 %; mean 2.58. So ~84 % of GLM's layers would take the fix-up path, and GLM's
+fix-up is dearer than MiniMax's: 34 of 45 layers are linear attention whose conv and recurrent state must be restored (keep the
+old arrays and reassign), 11 are MLA layers with a lightning indexer and pooling cache (a KV-offset rewind is not enough), and a
+hyper-connection mixes four streams around each branch. What S1c would give is removing 42 host syncs (~17-27 ms of a 375 ms
+token, from MiniMax's 0.4-0.65 ms a layer) and a better prediction from the speculative routing; the first is spent on
+rewinds at 84 % of layers, and the second is a small part of what the shipped prefetch (§18.35) already captures (59 % of
+misses at the top 8). **Not built.** Reopen only if the hit rate rises above ~90 % (more memory, or bytes per expert well below
+13.5 MiB), where all-hit layers become the common case.
+
+**The X10Pro mirror for GLM decode** (a cheap lever the reader already supports: the X10Pro checkpoint has the same shard
+names). Scratch `tfmir.py` (a shim patching `ExpertReader.mirror_fraction` to a module float, so `TF_ALTERNATE` can flip it per
+token), 100 teacher-forced tokens after a 1,024-token prefill, pairs A:B and B:A, 52 GiB, prefetch on: `CACHALOT_MIRROR_MODE=split`,
+fraction 0.10: store wait 182.4 -> 172.9 ms (-5.2 %) and 185.0 -> 175.3 ms (-5.2 %), wait per miss 2.06 -> 1.94 and 2.08 -> 1.98, a
+token median 275.8 -> 275.9 (0 %) and 301.6 -> 281.0 (-6.8 %; the "other" part moves too, so noise). Default `pieces` mode, 0.13: wait
+-1.0 % and -2.6 %, a token -3.9 % and -6.7 %, wait per miss 1.99 -> 1.97. A first attempt with per-turn alternation through
+`stream()` was inconclusive (-38 to +32 % turn to turn). **Not made a default:** the effect is ~-5 % of wait (~3 % of a token), GLM
+has no adaptive share (MiniMax needed one: a busy X10Pro made 12 -> 41 s on a short prefill, §18.25), and the X10Pro must be
+mounted. Opt in with `CACHALOT_MIRROR_PATH=/Volumes/X10Pro/models/GLM-5.3-Flash-MLX-4bit-MTP CACHALOT_MIRROR_FRACTION=0.10
+CACHALOT_MIRROR_MODE=split ./serve-glm.sh`.
+
+**What is left for GLM decode** (drive-bound, ~70 % store wait at 5.3-5.8 GiB/s): a Thunderbolt drive (M19, Hamed's purchase, the
+one big lever), more hits from memory taken elsewhere, and smaller experts; every software lever priced this session is closed or
+shipped (§18.33-18.37).
 
 ### 18.36 GLM-5.3-Flash: the pair-index slots (G6) priced, not built — 2026-09-30 (0.50.2)
 

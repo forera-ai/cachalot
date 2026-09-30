@@ -1,11 +1,12 @@
-# Next-session prompt — **v81**, written 2026-09-30
+# Next-session prompt — **v82**, written 2026-09-30
 
 **This is the file to paste.** `docs/NEXT-SESSION-PROMPT.md` is always current; superseded ones live in
 `docs/next-session-prompts/`.
 
 | version | written | produced by | what changed |
 |---|---|---|---|
-| **v81** | 2026-09-30 | Hamed: "go with selection and prefetch first" (GLM) | **0.50.0: GLM decode prefetches the next layer's likely experts (`CACHALOT_GLM_PREDICT_TOPK=5`, on by default, 0 off): scoring the next router on this layer's MoE input finds 59 % of its misses at the top 8; top 5 read after the layer's own reads: store wait -18 to -25 %, a token -9 to -13 % on swapped `TF_ALTERNATE` pairs (404 -> 325 ms in separate processes), same tokens (64 greedy ids). K 8+ gains nothing. Open: server-path confirmation, S1c (linear-attention state snapshot), G6.** §18.35 |
+| **v82** | 2026-09-30 | Hamed: pair index slots, then "go with S1c" | **0.50.1-0.50.3 (GLM, all measured): the prefetch confirmed through `stream()` (-8.4 % a token); the pair-index slots priced and held (~2.5 % of a token at best); S1c closed (16.3 % of layers all-hit, so ~84 % would rewind); the X10Pro mirror `split` 0.10 cuts wait ~5 % (opt-in). GLM decode is drive-bound: what is left is M19 (a Thunderbolt drive, Hamed's purchase), or a Hermes session on `./serve-glm.sh` with a dump to confirm the prefetch live.** §18.35-18.37 |
+| v81 | 2026-09-30 | Hamed: "go with selection and prefetch first" (GLM) | **0.50.0: GLM decode prefetches the next layer's likely experts (`CACHALOT_GLM_PREDICT_TOPK=5`, on by default, 0 off): scoring the next router on this layer's MoE input finds 59 % of its misses at the top 8; top 5 read after the layer's own reads: store wait -18 to -25 %, a token -9 to -13 % on swapped `TF_ALTERNATE` pairs (404 -> 325 ms in separate processes), same tokens (64 greedy ids). K 8+ gains nothing. Open: server-path confirmation, S1c (linear-attention state snapshot), G6.** §18.35 |
 | v80 | 2026-09-30 | Same session: Hamed's go on GLM optimization, first lever built | **0.49.0: `CACHALOT_GLM_BANK` (contiguous GLM expert bank, `benchmarks/glm_bank.py`): byte-verified, same decode ids through 3 layers, effect not measured (the read timing came from the file cache; priced low on paper). First job: S1c/S1e for GLM (GPU-side selection + prefetch overlap), or a cold read A/B of the bank first.** §18.34 |
 | v79 | 2026-09-30 | Hamed approved replacing the internal DeepSeek copy and asked for GLM-5.3-Flash runtime optimization | **0.48.1: GLM back on the internal SSD (`~/GLM-5.3-Flash-MLX-4bit-MTP`), DeepSeek's expert bank read from the X10Pro. GLM baseline at 52 GiB: prefill 72-100 tok/s, decode 2.0-2.9 tok/s, 70-75 % of a token store wait. Closed: a bias-code bank (8.6 % of groups break the rule), a 64 GiB budget (wired 87-90 GiB, tokens 1.5-2.3x slower). First job: a contiguous GLM bank, then GPU-side selection (S1c) and prefetch (S1e).** §18.33 |
 | v78 | 2026-09-30 | Hamed read his first chat session at 0.7 (asked for performance and quality), said Hermes agent work looks fine at 0.7, skipped the daily date reuse, and asked for GLM-5.3-Flash to be optimized after replacing the internal DeepSeek copy | **0.48.0: `chat-minimax.sh` samples at 0.7 (was 1.0; `--temperature 1.0` restores it). The chat session: decode 12.5 / 9.0 / 8.7 tok/s (story / C# / TypeScript), hit 94-96 %, follow-up prefills 1.4-2.5 s, first turn 7.7 s while the warm set read back; the C# snippet has a compile error (one sample, not a rate). Next: GLM-5.3-Flash runtime optimization.** §18.32 |
@@ -123,6 +124,12 @@ saved block reused in 1.6-1.8 s, decode 6.8-11.2 tok/s); 1.0 invented details an
 correctly apart from a screenshot count. The first request of each new day prefills Hermes's 21k block again
 (~100 s): Hermes writes "Conversation started: <date>" into its system prompt, at token 5,965 of 21,333, before
 ~15.4k tokens of tool schemas.
+
+**New in 0.50.3 (§18.37), read first:** GLM's software levers are done: the next-layer prefetch shipped (0.50.0, confirmed through
+`stream()` in 0.50.1), the bank (§18.34), pair-index slots (§18.36) and S1c (§18.37) closed or held, the X10Pro mirror priced
+(opt-in). **First job: ask Hamed about M19** (a Thunderbolt NVMe for the mirror: GLM and MiniMax are both drive-bound) and for a
+Hermes session on `./serve-glm.sh` with `CACHALOT_SERVER_DUMP` (read `[request]` decode tok/s; `CACHALOT_GLM_PREDICT_TOPK=0`
+against 5). Vision on GLM and MTP (native, depth 1) are still unbuilt.
 
 **New in 0.50.0 (§18.35), read first:** GLM decode reads the next layer's predicted experts early, on by default. **First job
 (the `stream()` confirmation is done, §18.35: -8.4 % a token; a Hermes session on `./serve-glm.sh` with a dump is still wanted, `[request]`
