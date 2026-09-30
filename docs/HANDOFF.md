@@ -25,6 +25,15 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-09-30, 0.51.4): GLM vision on real images
+>
+> - **Section 18.41:** two full-size images through `./serve-glm.sh`: a forest photograph described correctly; a cyberpunk illustration recognised as an
+>   illustration with two of three quoted brand names right and one invented. An ~8k-token image prompt prefills in 178-287 s, decodes at 3.2-3.5 tok/s; a
+>   resent image reuses all of it. No code change; vision stays functional-checked, not numerically compared (mlx-vlm not installed).
+> - **Version 0.51.4.** Needs Hamed: M19, a Hermes GLM session with the vision timeout raised, `pip install mlx-vlm` approval (v85's first job).
+
+**Previous block, 0.51.2:**
+
 > ## Start here (2026-09-30, 0.51.2): the session's summary (0.48.0-0.51.2), GLM is drive-bound
 >
 > - **Shipped:** MiniMax chat samples at 0.7 (§18.32); GLM decode prefetches the next layer's likely experts, `CACHALOT_GLM_PREDICT_TOPK=5`, same
@@ -8589,6 +8598,26 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.41 GLM-5.3-Flash vision on real images — 2026-09-30 (0.51.4)
+
+Hamed: "read the handoff and session prompts and do the tasks". v84's first job needs him (M19 purchase, a Hermes GLM session, the screenshot
+follow-up), so the autonomous open item from 18.39 was run: real images at desktop size. Personal scans, passports and receipts in `~/Pictures`
+were not used; two wallpapers were. `./serve-glm.sh` with `CACHALOT_SERVER_DUMP`, base64 `image_url` over HTTP, temperature 0, thinking off
+(scratch `vq.py`, one POST per image).
+
+1. **Photograph** (`autumn-trees-by-johannes-plenio-wallpaper.jpg`, 3,840 x 2,160): 8,004 prompt tokens (the 8,000-token image cap), prefill 177.7 s,
+   91 tokens at 3.16 tok/s. The answer (misty forest path, golden light at its end, dark blue-black foreground against orange/red foliage, green moss,
+   no people, no text) was checked against the image: all correct. The same request again: `reused=8004`, prefill 0.00 s, identical text.
+2. **Illustration** (`cyberpunk-sunset-wallpaper.jpg`, 3,840 x 2,160): 8,003 tokens, prefill 287.4 s, 115 tokens at 3.48 tok/s. Called a digital
+   illustration (correct), red-orange sky over teal depths (correct), signs "Origin" and "Behring" (both in the image); it also named "Weyland",
+   which is not visible in the image. One sample at temperature 0: a hallucinated detail, not a rate.
+3. **Cost:** 178-287 s of prefill for ~8k image tokens is 28-45 tok/s against 72-100 tok/s for text, which includes the tower's first load and
+   the small per-chunk splicing; not separated here. A full-size image is a 3-5 minute first request on GLM.
+
+**Closed/open.** Real images: done. Open: numeric comparison against mlx-vlm's tower (needs `mlx-vlm` installed, Hamed's approval), video, an image part
+in a system message (the system-prefix snapshot compares the unexpanded render), the screenshot follow-up turn in his own Hermes, and the
+M19 decision. **Needs Hamed:** the same three questions as v84 plus the `mlx-vlm` install.
 
 ### 18.40 GLM-5.3-Flash: MTP priced and closed — 2026-09-30 (0.51.0)
 

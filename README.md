@@ -772,7 +772,8 @@ line, is `docs/HANDOFF.md` section 9.25.
 62. GLM-5.3-Flash reads images (0.51.0). The checkpoint's own 24-block vision tower loads on the first image; `image_url` parts work through
     `./serve-glm.sh`, each image's tokens carry its content hash in the prefix cache (a resent image reuses its prefix), and a real screenshot
     read through Hermes was described accurately. Hermes's own `vision_analyze` tool times out after 120 s by default, shorter than one GLM pass
-    (3-6 minutes for a 6,000-token image): raise `auxiliary.vision.timeout` in its config.
+    (3-6 minutes for a 6,000-token image): raise `auxiliary.vision.timeout` in its config. Two full-size (3,840 x 2,160) images checked directly (0.51.4): a photograph described correctly, an illustration recognised
+    with one invented sign name; an ~8,000-token image prefills in 178-287 s and a resent image costs nothing.
 
 ## Cachalot Studio
 

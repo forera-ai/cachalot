@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.51.4 (2026-09-30)
+
+HANDOFF "Start here (2026-09-30, 0.51.4)", section 18.41.
+
+### Measured, not shipped
+- GLM-5.3-Flash vision on real images through `./serve-glm.sh` (two 3,840 x 2,160 wallpapers, each resized to ~8,000 image tokens, greedy,
+  thinking off). A misty-forest photograph: scene, colours, moss, "no people or text" all correct. A cyberpunk illustration: called an
+  illustration, "Origin" and "Behring" signs read correctly, one brand name ("Weyland") not visible in the image (a hallucinated detail).
+  Prefill of an ~8k-token image prompt 178-287 s, decode 3.2-3.5 tok/s; the same image resent reuses all 8,004 tokens (prefill 0.00 s, same text).
+  No code changed.
 ## 0.51.3 (2026-09-30)
 
 ### Documentation
