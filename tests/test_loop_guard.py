@@ -100,3 +100,58 @@ def test_a_reply_looping_inside_a_tool_call_drops_the_unclosed_block():
     text = "".join(d.content for d in deltas)
     assert "<tool_call>" not in text and "w300" not in text and text.startswith("w10 ")
     assert deltas[-1].finish_reason == "stop" and not deltas[-1].tool_calls
+
+
+def test_incrementing_tail_finds_an_invented_counting_list():
+    # HANDOFF 18.29 item 5: 18.28's runaway listed `noto 1` ... `noto 495`, which never repeats a block exactly
+    from cachalot.glm.engine import incrementing_tail
+    noto = "Here is the Desktop:\n" + "".join(f"- `noto {i}` \n" for i in range(1, 70))
+    assert incrementing_tail(noto, 64) == 64
+    assert incrementing_tail("".join(f"- `noto {i}` \n" for i in range(1, 64)), 64) == 0  # 63 items
+    websites = ", ".join(f"`shaahin.website {i}.0/`" for i in range(2, 70)) + ", "
+    assert incrementing_tail(websites, 64) == 64  # comma-separated, one number of two counting
+    assert incrementing_tail(noto, 64, prompt_text="noto 12\nnoto 13") == 0  # copied from the prompt, not invented
+
+
+def test_incrementing_tail_ignores_lists_that_do_not_count_by_one():
+    from cachalot.glm.engine import incrementing_tail
+    assert incrementing_tail(", ".join(str(i) for i in range(200)) + ", ", 64) == 0  # no letters
+    assert incrementing_tail("".join(f"{i}. Step {i}: part {i}\n" for i in range(1, 200)), 64) == 0  # three numbers move
+    assert incrementing_tail("".join(f"Chapter {i}\n" for i in range(200, 0, -1)), 64) == 0  # counts down
+    assert incrementing_tail("".join(f"Screenshot 2026-09-{i % 28 + 1:02d} at 10.{i % 60:02d}.00.png\n"
+                                     for i in range(200)), 64) == 0
+
+
+class _LineTok(_Tok):
+    """Token i >= 1000 is the line "- `noto <i - 1000>`"; the prompt is `prompt_lines`."""
+
+    prompt_lines = ""
+
+    def decode(self, ids, skip_special_tokens=False):
+        if list(ids) == [1, 2, 3]:
+            return self.prompt_lines
+        return "".join(f"- `noto {i - 1000}`\n" if i >= 1000 else f"w{i} " for i in ids)
+
+
+def _run_lines(script, prompt_lines=""):
+    model = _Model(script)
+    model.tokenizer = _LineTok()
+    model.tokenizer.prompt_lines = prompt_lines
+    eng = GlmEngine(model, model_id="m")
+    req = ChatRequest(messages=[{"role": "user", "content": "hi"}], params=SamplingParams(max_new_tokens=5000))
+    deltas = list(eng.stream_chat(req))
+    return model, deltas[-1]
+
+
+def test_an_invented_counting_list_stops_the_reply():
+    script = list(range(10, 20)) + list(range(1001, 1500))
+    glm_engine.LOOP_GUARD_INCREMENTING = 64
+    model, last = _run_lines(script)
+    assert last.finish_reason == "stop"
+    assert model.fed == 10 + 65  # the 65th line completes the 64th item (the last line is still growing)
+    model, last = _run_lines(script, prompt_lines="".join(f"noto {i}\n" for i in range(1, 500)))
+    assert model.fed == len(script)  # the listing is in the prompt
+    glm_engine.LOOP_GUARD_INCREMENTING = 0
+    model, last = _run_lines(script)
+    assert model.fed == len(script) and last.finish_reason == "length"
+    glm_engine.LOOP_GUARD_INCREMENTING = 64

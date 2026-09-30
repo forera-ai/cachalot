@@ -1,11 +1,12 @@
-# Next-session prompt — **v75**, written 2026-09-29
+# Next-session prompt — **v76**, written 2026-09-30
 
 **This is the file to paste.** `docs/NEXT-SESSION-PROMPT.md` is always current; superseded ones live in
 `docs/next-session-prompts/`.
 
 | version | written | produced by | what changed |
 |---|---|---|---|
-| **v75** | 2026-09-29 | Hamed ran a second Hermes session on 0.45.x with a dump and asked for it read | **0.45.3: the derailed reply (an invented "DESTRUCTIVE" rule list after a 6k `ls` result) replayed: prompts token-identical, the same turn at temperature 1.0 derails 0/8 default and 3/8 exact: sampling, not the substitution or state. The 44 s first prefill replays at 4-6 s. Open: an agent temperature (Hermes sends none), the loop guard on incrementing runaway lists.** §18.28 |
+| **v76** | 2026-09-30 | Hamed asked for the handoff and prompts read and their tasks done (v75's first job: an agent temperature) | **0.46.0: the `ls` turn that derailed live, 12 samples per temperature, graded blind: derailed 5/12 at 1.0, 1/12 at 0.7, 0/12 at 0.5; tool prompts under Hermes's system prompt 30/32, 32/32, 32/32; reasoning and code 35-36/36 at all three. Hermes can set it through its `cachalot` provider's `extra_body`, or the server through `--default-temperature` (Hamed's call, unchanged). A loop guard for invented lists that count up (`CACHALOT_LOOP_GUARD_INCREMENTING`, 64 items): the 4,829-token runaway stops at token 1,258.** §18.29 |
+| v75 | 2026-09-29 | Hamed ran a second Hermes session on 0.45.x with a dump and asked for it read | **0.45.3: the derailed reply (an invented "DESTRUCTIVE" rule list after a 6k `ls` result) replayed: prompts token-identical, the same turn at temperature 1.0 derails 0/8 default and 3/8 exact: sampling, not the substitution or state. The 44 s first prefill replays at 4-6 s. Open: an agent temperature (Hermes sends none), the loop guard on incrementing runaway lists.** §18.28 |
 | v74 | 2026-09-29 | Hamed asked a twenty-fourth time for MiniMax-M3 as fast as possible at unchanged quality, tools (caveman, Jev, codebase-memory) confirmed first; then he ran a Hermes session on 0.45.1 and asked for it read | **0.45.1: MiniMax's prefill expert kernels priced and closed, nothing in `src/`. The per-expert (scale, bias) rebuild costs 0.15-0.2 s of a 128-2,048-token chunk. MLX's four matmul kernels copied to read the pair index: bit-identical for every row count 1-130, faster alone, 4-7 % slower inside a layer. One grouped `gather_qmm_rhs` launch over the slabs: -10 to -13 % at 1-2k tokens, slower below 400, not bit-identical. Instruments in `benchmarks/minimax_prefill_kernels/`. 0.45.2: Hamed's Hermes session on 0.45.1 ran clean (first request 1.75 s, short turns 1.9-3.1 s, a 6k tool result at 148 tok/s, decode 6.8-9.5 tok/s, no stalls); one 25-token follow-up at 7.35 s and a listing summary with invented names are open, and the session had no dump.** §18.27, §18.26 |
 | v73 | 2026-09-29 | Hamed ran a Hermes session on 0.44.0 and asked for the dump and log read | **0.45.0: the restart fix held live (first request 7.2 s, block reused); short follow-ups 1.9-7.2 s. Three slow prefills live (405/315 tokens in 28-31 s; Hermes's 2,207-token approval check in 86.8 s, which Hermes timed out on) replay at 10-12 s. A busy X10Pro reproduces part of it (approval check 14-41 s): the mirror's share now follows both drives' measured speed (busy: reads -12 to -17 %, decode +7 %; idle: no change; bit-identical).** §18.25 |
 | v72 | 2026-09-29 | Hamed asked a twenty-third time for MiniMax-M3 as fast as possible at unchanged quality, tools (caveman, Jev, codebase-memory) confirmed first | **0.44.0: the sixth session's stalls replayed through the server path. A restart never reused Hermes's system block since 0.43.0 (snapshot files named by tokens only; a file of another numerics tag blocked the write): first request after a restart 98-133 s → 2-10 s. Follow-up stalls (30-41 s) reproduced with 12 GiB of host memory held by other processes, not the GPU ceiling: a fit after a long prefill regrew 13.6 GiB into swap. A pressure watcher (growth only after 60 s quiet) is on: pressure samples halved, decode -5.6 to -10.6 % in 3 of 4 pairs. Slab parking stops at capacity 1. The runaway replays 0/8 either arm.** §18.24 |
@@ -44,8 +45,8 @@ You are continuing work on **Cachalot**, an MLX runtime that runs DeepSeek V4.1 
 96 GiB Mac Studio M3 Ultra by streaming routed experts from SSD. The user is Hamed; he runs the interactive model
 himself in a separate terminal and expects terse replies in chat, complete prose in files.
 
-**Read this first.** `docs/HANDOFF.md`'s "Start here (2026-09-29, 0.45.3)", "0.45.2", "0.45.1", "0.45.0", "0.44.0", "0.42.0", "0.41.0", "0.39.0", "0.38.1", "0.38.0" and "0.37.0" blocks, then
-sections **18.28**, **18.27**, **18.26**, **18.25**, **18.24**, **18.23**, **18.22**, **18.21**, **18.20**, **18.19**, **18.18**, **18.17**, **18.16**, **18.15**, **18.14**, **18.13**, **18.12** (item 5 first), **18.11**, **18.10**, **18.9**, **18.8**, **18.7**, **18.6**, **18.5**, **18.4**, **18.3**, **18.2**, **18.1**, **18**, **17.1** and **15.13**, then 17 and 15.12.
+**Read this first.** `docs/HANDOFF.md`'s "Start here (2026-09-30, 0.46.0)", "Start here (2026-09-29, 0.45.3)", "0.45.2", "0.45.1", "0.45.0", "0.44.0", "0.42.0", "0.41.0", "0.39.0", "0.38.1", "0.38.0" and "0.37.0" blocks, then
+sections **18.29**, **18.28**, **18.27**, **18.26**, **18.25**, **18.24**, **18.23**, **18.22**, **18.21**, **18.20**, **18.19**, **18.18**, **18.17**, **18.16**, **18.15**, **18.14**, **18.13**, **18.12** (item 5 first), **18.11**, **18.10**, **18.9**, **18.8**, **18.7**, **18.6**, **18.5**, **18.4**, **18.3**, **18.2**, **18.1**, **18**, **17.1** and **15.13**, then 17 and 15.12.
 
 **Hamed's standing priority order: Hermes usage first, vision second, speed/performance third.**
 
@@ -103,7 +104,43 @@ priced so far are closed; what is left is the live Hermes slowness, M28 and M19.
 minute). Hamed's first 0.44.0 session is read there: the restart fix held; three prefills were 3-7x slower live
 than in any replay, one of them Hermes's approval check, which Hermes timed out on.
 
-**First job (§18.28 "what is open" 1):** ask Hamed about an agent temperature. Hermes sends none, so every agent
+**New in 0.46.0 (§18.29), read first:** (1) An agent temperature, measured, not changed. The 0.45 dump's `ls` turn
+(5,988 tokens at 27k context) 12 times per temperature through the server, graded blind: derailed **5/12 at 1.0**,
+**1/12 at 0.7**, **0/12 at 0.5**. Eight tool prompts under Hermes's real system prompt and tools, 4 samples each:
+30/32, 32/32, 32/32. §18.23's battery sampled (thinking off): reasoning and code 35-36/36 at all three; its tool
+tasks under a one-line system prompt get worse as the temperature falls (the model answers `/etc/hosts` or "latest
+MLX release notes" from memory: 3, 6, 7 of 36), which Hermes's prompt does not show. Hermes has no main-agent
+temperature, but its `custom_providers` entry's `extra_body` is merged into every request of the models the entry
+lists; the server takes `./serve-minimax.sh --default-temperature 0.7` with no code change. (2) A loop guard for
+invented lists that count up (`glm.engine.incrementing_tail`, `CACHALOT_LOOP_GUARD_INCREMENTING`, default 64, 0 off):
+64 list items with one template and one integer going up by one, none of them in the prompt; §18.28's 4,829-token
+runaway stops at token 1,258, nothing else of 1,279 texts trips it. §18.28 item 4 was wrong that the exact-repeat
+guard never tripped: it stopped that reply at its very end. Instruments (scratch, rebuild from §18.29):
+`tsweep.py`/`arm.sh` (temperature sweep of one dump body), `sbattery.py`/`arm2.sh` and `hbattery.py`/`arm3.sh`
+(sampled batteries through the server), `incr.py` (the counting-run detector over the dumps).
+
+**First job (§18.29 "what is open" 1):** Hamed's temperature decision, with §18.29's numbers (recommendation: 0.7).
+Either he adds to the `cachalot` entry of `custom_providers` in `~/.hermes/config.yaml` (never edit it yourself; he
+does)
+
+```yaml
+    extra_body:
+      temperature: 0.7
+```
+
+(it applies to every model of that entry: DeepSeek, GLM, MiniMax), or he launches the server with the default:
+
+```bash
+cd /Users/hamedprooshani/Projects/deepseek-v41-mac && CACHALOT_SERVER_DUMP=/tmp/cachalot-requests-0.46.jsonl ./serve-minimax.sh --default-temperature 0.7
+```
+
+Then the next Hermes session with the dump and the same four prompts as §18.27-18.28 (hi, list the Desktop, the C#
+importer, the 200-word story); read the dump first: the bodies must carry `"temperature": 0.7` (Hermes route) or
+the startup line must say `samples at temperature 0.7` (server route). Grade the listing summary against the tool
+output (§18.29's rubric). If Hamed wants the server default changed in `serve-minimax.sh` itself, that is a minor
+release with this evidence; it changes outputs for every client that sends no temperature.
+
+**Previous first job (§18.28 "what is open" 1), measured in §18.29, decision pending:** ask Hamed about an agent temperature. Hermes sends none, so every agent
 turn samples at the checkpoint's 1.0, and long tool results derail at that temperature a few times in ten (§18.28
 item 3). Two ways, both his call: set a temperature in Hermes's model config (never edit `~/.hermes/config.yaml`
 yourself; hand him the exact change), or give the server a lower default for requests that carry none (changes
@@ -323,6 +360,10 @@ check `pgrep -f Flurry.appex` before each arm instead.
 ## Jobs 4-7 — the rest of the slow-window trigger and MLX buffer knobs; vision on Desktop-sized screenshots; prefill KL; 54 GiB collapse, Objective-C corpus. Unchanged from v46.
 
 ## What is closed, so nobody spends a session there
+
+- **"Temperature 1.0 is fine for agents"** (§18.29 items 1-2): a long tool result derails 5/12 at 1.0 against 0/12
+  at 0.5; tool calls under Hermes's prompt 30/32 against 32/32. **A counting-list guard below 64 items** (item 5):
+  a requested 40-item numbered list would be cut. New.
 
 - **The miss substitution or corrupted runtime state as the cause of Hermes's derailed replies** (§18.28 item 3):
   prompts token-identical to live; default 0/8 derailed, exact 3/8 at temperature 1.0. New.

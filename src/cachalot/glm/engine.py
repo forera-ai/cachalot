@@ -49,6 +49,41 @@ def repeating_tail(tokens: list[int], repeats: int, min_block: int = 10, max_blo
         if all(tokens[n - (k + 1) * p:n - k * p] == block for k in range(1, repeats)):
             return p
     return 0
+
+
+# HANDOFF 18.29 item 5: a runaway list whose items share one template and differ only in one integer that goes up by
+# one (`noto 1`, `noto 2`, ... `noto 495` in 18.28's replay) never repeats a block exactly, so the guard above only
+# stopped it at its tail, 4,829 tokens in. A reply that ends with LOOP_GUARD_INCREMENTING such items, none of them in
+# the prompt (a listing the model copies is not invented), stops there. 0 turns it off.
+LOOP_GUARD_INCREMENTING = int(os.environ.get("CACHALOT_LOOP_GUARD_INCREMENTING", "64"))
+_ITEM_SPLIT = re.compile(r"\n|, |; |\t")
+_NUMBER = re.compile(r"\d+")
+
+
+def incrementing_tail(text: str, items: int, prompt_text: str = "") -> int:
+    """How many complete list items `text` ends with that share one template (with at least three letters), differ
+    only in one integer that goes up by one from item to item, and none of which is in `prompt_text`: that count once
+    it reaches `items`, else 0. Items are split at newlines, ", ", "; " and tabs; the last, unfinished one is ignored."""
+    if items < 2:
+        return 0
+    run, later = 0, None
+    for part in reversed(_ITEM_SPLIT.split(text)[:-1]):
+        item = part.strip(" -*`|")
+        numbers = [int(m.group()) for m in _NUMBER.finditer(item)]
+        template = _NUMBER.sub("#", item)
+        if not numbers or sum(c.isalpha() for c in template) < 3 or (prompt_text and item in prompt_text):
+            break
+        if later is not None:
+            steps = sorted(b - a for a, b in zip(numbers, later[1]))
+            if template != later[0] or len(numbers) != len(later[1]) or steps != [0] * (len(steps) - 1) + [1]:
+                break
+        run += 1
+        if run >= items:
+            return run
+        later = (template, numbers)
+    return 0
+
+
 _TOOL_RE = re.compile(r"<tool_call>(.*?)</tool_call>", re.S)
 _ARG_RE = re.compile(r"<arg_key>(.*?)</arg_key>\s*<arg_value>(.*?)</arg_value>", re.S)
 
@@ -240,7 +275,7 @@ class GlmEngine:
             decode_start = None
             if cancel is None:
                 cancel = threading.Event()  # the stop-string and loop paths below end generation through it
-            looped = 0
+            looped, prompt_text = 0, None
             for event in self.model.stream(
                 prompt,
                 max_new_tokens=params.max_new_tokens,
@@ -264,6 +299,18 @@ class GlmEngine:
                         if looped:
                             print(f"[loop guard] reply stopped after {len(splitter.tokens)} tokens: a {looped}-token "
                                   f"block repeated {LOOP_GUARD_REPEATS} times", flush=True)
+                            cancel.set()
+                    new_text = delta.content + delta.reasoning
+                    if (LOOP_GUARD_INCREMENTING and not looped and not stop_hit and new_text
+                            and _ITEM_SPLIT.search(new_text)
+                            and incrementing_tail(splitter.text, LOOP_GUARD_INCREMENTING)):
+                        if prompt_text is None:
+                            prompt_text = self.tokenizer.decode(prompt)
+                        items = incrementing_tail(splitter.text, LOOP_GUARD_INCREMENTING, prompt_text)
+                        if items:
+                            looped = items
+                            print(f"[loop guard] reply stopped after {len(splitter.tokens)} tokens: {items} list "
+                                  f"items counting up by one, none of them in the prompt", flush=True)
                             cancel.set()
                     if req.stop and not stop_hit:
                         full = splitter.content_so_far()

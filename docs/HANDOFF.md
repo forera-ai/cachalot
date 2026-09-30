@@ -1,6 +1,6 @@
 # Cachalot — Engineering Handoff
 
-**Authoritative state as of 2026-09-29 (twenty-fourth MiniMax session), after the session that replayed Hamed's second Hermes session on 0.45.x from its dump (section 18.28), the one that read his first Hermes session on 0.45.1 (section 18.27), the one that priced MiniMax's prefill expert kernels and closed them (section 18.26), the one that read Hamed's first Hermes session on 0.44.0 and made the mirror's share follow the X10Pro's speed (section 18.25), the one that made a restart reuse the agent's system block again and taught the memory governor to watch memory pressure (section 18.24), the one that gated the decode miss substitution on thinking-on and tool-call tasks and applied its rule to prefill, opt-in, short follow-ups -20 % (section 18.23), the one that capped MLX's buffer cache during MiniMax's decode, moved persisted system blocks off the GPU and gated the miss substitution at 24k (section 18.22), the one that let MiniMax's decode
+**Authoritative state as of 2026-09-30 (twenty-fourth MiniMax session), after the session that measured an agent temperature and added a loop guard for counting runaway lists (section 18.29), the one that replayed Hamed's second Hermes session on 0.45.x from its dump (section 18.28), the one that read his first Hermes session on 0.45.1 (section 18.27), the one that priced MiniMax's prefill expert kernels and closed them (section 18.26), the one that read Hamed's first Hermes session on 0.44.0 and made the mirror's share follow the X10Pro's speed (section 18.25), the one that made a restart reuse the agent's system block again and taught the memory governor to watch memory pressure (section 18.24), the one that gated the decode miss substitution on thinking-on and tool-call tasks and applied its rule to prefill, opt-in, short follow-ups -20 % (section 18.23), the one that capped MLX's buffer cache during MiniMax's decode, moved persisted system blocks off the GPU and gated the miss substitution at 24k (section 18.22), the one that let MiniMax's decode
 substitute its lightest missing experts, opt-in and measured inside the rounding noise (section 18.21), the one that put MiniMax's prefill at the GPU's FLOP
 wall and measured three levers without a gain (section 18.20), the one that measured where MiniMax's
 remaining time goes and shipped two bit-identical kernel fusions switched off (section 18.19), the one that raised the GPU's working
@@ -24,6 +24,22 @@ that gave it a bias-free expert bank (18.4), the one that gave it a second drive
 kernel (18.3), the one that cut its per-token overhead and measured it to 64k (18.2), the one that made it faster
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
+
+> ## Start here (2026-09-30, 0.46.0): a lower agent temperature measured; a loop guard for counting runaway lists
+>
+> - **Temperature (section 18.29 items 1-3):** the `ls` turn that derailed live, 12 samples per temperature, graded
+>   blind: derailed **5/12 at 1.0** (today's default), **1/12 at 0.7**, **0/12 at 0.5**. Tool prompts under Hermes's real
+>   system prompt: 30/32, 32/32, 32/32. Reasoning and code 35-36/36 at every temperature. Under a weak one-line
+>   system prompt a low temperature makes the model answer some tool requests from memory (3, 6, 7 of 36).
+> - **Where to set it (item 4):** Hermes has no main-agent temperature, but a `custom_providers` entry's `extra_body`
+>   reaches every request of the models it lists (`extra_body: {temperature: 0.7}` under `cachalot`); or
+>   `./serve-minimax.sh --default-temperature 0.7`. **Hamed's call; nothing changed.**
+> - **Loop guard (item 5):** a reply that ends with 64 list items differing only in one integer counting up by one,
+>   none of them in the prompt, stops (`CACHALOT_LOOP_GUARD_INCREMENTING`, 0 off). §18.28's 4,829-token runaway stops
+>   at token 1,258; none of 1,279 other replies and tool outputs trips it.
+> - **Version 0.46.0.**
+
+**Previous block, 0.45.3:**
 
 > ## Start here (2026-09-29, 0.45.3): a derailed Hermes session replayed from its dump: sampling, not the runtime
 >
@@ -8441,6 +8457,109 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.29 MiniMax-M3: an agent temperature measured, and a loop guard for counting runaway lists — 2026-09-30 (0.46.0)
+
+Brief (prompt v75, first job): §18.28 found Hermes's derailed reply to be temperature-1.0 sampling on a long tool
+result. Hermes sends no temperature, so every agent turn samples at the checkpoint's 1.0 (`serve-minimax.sh` passes
+`--default-temperature 1.0`). Measure what a lower temperature does before Hamed chooses; then price a loop guard
+for the runaway lists that count up (`noto 1` ... `noto 495`). Tools: caveman (session hook), Jev (`jev_decide`
+chose the temperature sweep first, p 0.98) and the graph (6,355 nodes, ready) confirmed before any work. Machine:
+tree clean at 0.45.3, `iogpu.wired_limit_mb` 88064, no runtime running, the X10Pro mounted. The screensaver
+started during the second benchmark; every comparison below interleaves its arms inside one server run and grades
+text, not speed.
+
+**1. The `ls` turn at three temperatures.** The 0.45 dump's third body (the 5,988-token `ls -la ~/Desktop` result
+at 27k context, Hermes's real system prompt and 25 tools) through `./serve-minimax.sh` with its defaults (miss
+substitution on), 12 samples per temperature, temperatures interleaved (1.0, 0.7, 0.5, 1.0, ...), top_p 0.95. The
+36 replies were graded blind (shuffled, temperature hidden) against the listing (134 lines, 98 screenshots, 13
+folders): **C** clean (lists the real folders and files, counts within ~20 %), **M** minor slips (a screenshot count
+off by 30-150 %, a duplicated entry, a file called a folder), **D** derailed (does not answer, invents a tool
+failure or a rule, invents items, or garbles).
+
+| temperature | C | M | D | median / max tokens |
+|---|---|---|---|---|
+| 1.0 (today's default) | 1 | 6 | **5** | 368 / 899 |
+| 0.7 | 6 | 5 | **1** | 383 / 604 |
+| 0.5 | 7 | 5 | **0** | 375 / 568 |
+
+The five derailments at 1.0: a reply that is a fabricated tool error (`{"output": "Failed while retrieving the user
+message via callback..."}`), one claiming the listing had "50,000+ items" and asking what the user wanted, one that
+refuses to list because of "sensitive files", one table claiming "5 top-level items" followed by garbled names,
+and one that lists every folder three times until the loop guard stopped it at 899 tokens. The one at 0.7 invents
+"252 entries" in a folder and a folder named `farzaneh vpn.txt`, and offers to delete files. §18.28's own 1.0
+samples (8, default arm) had no derailment by its coarser count; its exact arm had 3 of 8. Fisher's exact test on
+derailed (two-sided), 1.0 against 0.5: p ≈ 0.04; against 0.7: p ≈ 0.16.
+
+**2. A checkable battery at the same three temperatures.** §18.23's `battery2.py` tasks sent through the server
+(scratch `sbattery.py`): 12 reasoning and code tasks with checkable answers and 12 tool tasks under a one-line
+system prompt with five tools, thinking off as Hermes sends it, 3 samples per task and temperature, interleaved.
+
+| temperature | reasoning + code | tool tasks | tool failures |
+|---|---|---|---|
+| 1.0 | 36/36 | 31/36 | 3 answered without calling the tool, 1 call written as text, 1 wrong command |
+| 0.7 | 35/36 | 30/36 | 6 answered without calling the tool |
+| 0.5 | 36/36 | 29/36 | 7 answered without calling the tool |
+
+Every failure below 1.0 is the same kind: under the short system prompt the model answers "Show me /etc/hosts" and
+"Search the web for the latest MLX release notes" (and at 0.5 "Save 'hello world' to /tmp/greeting.txt") from
+memory without calling a tool, and it does so more often as the temperature falls (the replies become near
+deterministic per task). **Under Hermes's real system prompt the effect is gone** (scratch `hbattery.py`: the 0.45
+dump's system prompt and 25 tools, eight tool prompts, 4 samples per temperature): **1.0 30/32, 0.7 32/32, 0.5
+32/32**. The two failures at 1.0 are a fabricated disk-space answer and a reply that starts with a garbled
+`<response>multiple tools called but no follow-through</response>` and then invents `/etc/hosts`.
+
+**3. What this says.** For Hermes's shape of request, a lower temperature is better on both measurements: long
+tool results derail 5/12 → 1/12 → 0/12 and tool calls go 30/32 → 32/32. Reasoning and code stay at 35-36/36. The
+cost is outside Hermes: with a weak system prompt, a low temperature makes the model answer some tool requests from
+memory. 0.7 keeps most of the gain (the derailment at 0.7 is one reply of twelve) and stays closer to the
+checkpoint's distribution than 0.5; the counts cannot separate 0.7 from 0.5. The choice is Hamed's (item 6).
+
+**4. Where Hermes's temperature can be set.** Read-only look at `~/.hermes/hermes-agent` (commit 547248908bf) and
+Hamed's `~/.hermes/config.yaml` (not edited): the main agent has no temperature setting of its own, but a
+`custom_providers` entry's `extra_body` dict is merged into every request of a model the entry lists
+(`agent/agent_init.py`, `_custom_provider_extra_body_for_agent`, `_custom_provider_model_matches`: a model in the
+entry's `models:` catalog matches). The `cachalot` entry lists `minimax-m3`, so an `extra_body: {temperature: 0.7}`
+there reaches every MiniMax request, and DeepSeek's and GLM's through the same entry. The server side needs no code:
+`./serve-minimax.sh --default-temperature 0.7` overrides the script's 1.0 (arguments pass through and the last flag
+wins), for requests without a temperature only.
+
+**5. A loop guard for counting lists.** §18.28 item 4 said the guard never tripped on the 4,829-token runaway; the
+exact arm's server log shows it did, at the reply's very end (`a 12-token block repeated 6 times`), after ~450
+invented `noto N` lines that no exact-repeat rule can see. The second runaway (1,202 tokens) counted up inside one
+line (`shaahin.website 2.0/` ... `58.0/`). Priced on text first (scratch `incr.py`): a run of consecutive list items
+(split at newlines, ", ", "; ", tabs) that share one template with at least three letters and differ only in one
+integer that goes up by one catches both at any run length from 6 to 48, and nothing in 951 other texts (every
+reply and assistant message in the three dumps, and every tool output as if the model had written it). Synthetic
+cases: numbered steps, a table, a list of integers, a date-stamped screenshot list, a countdown do not trip it; a
+requested list of `Chapter N` or `file_NNN.txt` does once it reaches the run length, and a listing copied from the
+prompt must not stop, so the rule also requires that no item of the run is in the prompt text.
+
+Shipped: `glm.engine.incrementing_tail` and `CACHALOT_LOOP_GUARD_INCREMENTING` (default **64** items, 0 off).
+The engine checks only when a token's text holds a separator, decodes the prompt once when a run reaches 64, and
+prints `[loop guard] reply stopped after N tokens: 64 list items counting up by one, none of them in the prompt`.
+Replayed token by token through MiniMax's tokenizer: the 4,829-token runaway stops at **token 1,258** (-74 %, ~6
+minutes of decode at 10 tok/s); none of the other 328 replies of this and §18.28's runs trips it. Cost: 20-90 µs
+per separator token (a decode token is ~100 ms). 64 rather than a smaller run: a legitimate request for 40 numbered
+names must not be cut; the 1,202-token runaway (57 items) is left to the exact-repeat guard, which stopped it.
+Tests: `tests/test_loop_guard.py` (4 new, 465 pass). Outputs change only for a reply that has already produced 64
+invented counting items. Prefill KV unchanged: no numerics tag bump.
+
+**Shipped (0.46.0):** the counting-list loop guard, on by default. No temperature change: that is Hamed's call.
+
+**Instruments (scratch, rebuild from here):** `tsweep.py` + `arm.sh` (a server per arm with its own dump, the dump's
+first two bodies, then the `ls` body N rounds over a list of temperatures), `grade.py` (backticked names against
+the listing; noisy, the grades above were read by hand, blind, from a shuffled file with a key), `sbattery.py` +
+`arm2.sh` (battery2's tasks through the server, sampled, thinking off), `hbattery.py` + `arm3.sh` (tool prompts
+under the dump's Hermes system prompt and tools), `incr.py` (the counting-run detector over the dumps).
+
+**6. What is open after this.** 1. **An agent temperature (Hamed's call, with this section's numbers):** (a) in
+Hermes, add under the `cachalot` entry of `custom_providers` in `~/.hermes/config.yaml`
+`extra_body: {temperature: 0.7}` (Hamed edits it; it applies to every model of that entry); or (b) launch
+`./serve-minimax.sh --default-temperature 0.7` (every client that sends no temperature). Either way the next dump
+should show it: (a) puts `"temperature": 0.7` into the request bodies, (b) prints `samples at temperature 0.7` at
+startup. Then a Hermes session with the dump, and the same four prompts as §18.27-18.28. 2. §18.27's two open items
+(a 25-token follow-up at 7.35 s, invented names in a listing summary) and §18.25's stand; both need a dump.
 
 ### 18.28 MiniMax-M3: Hamed's second Hermes session on 0.45.x, replayed from its dump — 2026-09-29 (0.45.3)
 

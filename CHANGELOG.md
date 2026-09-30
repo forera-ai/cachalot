@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.46.0 (2026-09-30)
+
+HANDOFF section 18.29.
+
+### Added
+- **A loop guard for runaway lists that count up** (`CACHALOT_LOOP_GUARD_INCREMENTING`, default 64, 0 off): a
+  GLM/MiniMax reply that ends with 64 list items sharing one template and differing only in one integer that goes up
+  by one (`noto 1`, `noto 2`, ...), none of them in the prompt, stops there with `finish_reason: stop` and a
+  `[loop guard] ... list items counting up by one` log line. The existing guard only catches exact repeats, so the
+  4,829-token runaway of section 18.28 ran to its end; replayed through the tokenizer it now stops at token 1,258.
+  None of 1,279 other replies and tool outputs from the dumps and this session's runs trips it; a listing the model
+  copies from the prompt never does.
+
+### Measured, not shipped
+- **A lower agent temperature for Hermes.** Hermes sends none, so MiniMax samples at the checkpoint's 1.0. The
+  directory-listing turn that derailed live, 12 samples each through the server, graded blind: derailed 5/12 at 1.0,
+  1/12 at 0.7, 0/12 at 0.5. Tool prompts under Hermes's real system prompt: 30/32, 32/32, 32/32. Reasoning and code
+  tasks 35-36/36 at every temperature. With a weak one-line system prompt a low temperature makes the model answer
+  some tool requests from memory (3, 6, 7 of 36). Where to set it: an `extra_body: {temperature: 0.7}` on Hermes's
+  `cachalot` custom provider, or `./serve-minimax.sh --default-temperature 0.7`. Hamed's call; the default is
+  unchanged.
+
 ## 0.45.3 (2026-09-29)
 
 HANDOFF section 18.28.
