@@ -25,6 +25,14 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-09-30, 0.50.2): the pair-index slots (G6) priced and held
+>
+> - **Section 18.36:** every expert fits a 2,048-entry pair table (max 1,405 pairs); slots -5.4 % (+5.75 % slots), which a 55 GiB
+>   budget emulates as -5.5 % misses a token, ~2.5 % of a token at best, below the resolution of the measurements. Not built.
+> - **Version 0.50.2.**
+
+**Previous block, 0.50.1:**
+
 > ## Start here (2026-09-30, 0.50.1): GLM prefetch confirmed through `stream()`: -8.4 % a token, same tokens
 >
 > - **Section 18.35:** per-turn alternation inside one process, parity swapped: K=5 faster in all six turns (-5 to -12 %), 375 vs
@@ -8530,6 +8538,28 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.36 GLM-5.3-Flash: the pair-index slots (G6) priced, not built — 2026-09-30 (0.50.2)
+
+Hamed: "do the pair index slots next". **Scan, every expert** (12,384 including the MTP layer; scratch `glm_pairs.py`: distinct
+(scale, bias) bf16 pairs per projection per expert): w1 median 289, max 819; w3 median 273, max 984; w2 median 264, max 1,405
+(9 experts above 1,024, none above 2,048). A 16-bit index per group with a fixed 2,048-entry (scale, bias) table per projection
+(8 KiB each) therefore needs no raw fallback. Slot: 393,216 groups x 2 B = 768 KiB of indices + 24 KiB of tables against
+1,536 KiB of scales and biases now = 12.77 MiB instead of 13.50 (-5.4 %, +5.75 % slots at the same GiB).
+
+**Price** (the same gain emulated by a bigger budget, `glm_prefill_timeline.py 2048`, ROUNDS=3, DECODE_TOKENS=48, greedy, same text,
+K = 5 prefetch on, wired limit 84): 52 GiB (3,944 slots) misses a token 112.9 / 106.8 / 83.8; 55 GiB (+5.75 % slots) 108.7 / 99.8 /
+78.5 = -3.7 / -6.6 / -6.3 % (mean -5.5 %; the hit rate is deterministic for the same tokens). Round 1 of the 55 GiB arm decoded at
+5.5 s a token (the GPU paging: wired above the limit), which is the memory ceiling again (§18.33) and not what the pair index
+would do (same bytes). Store wait is 150-210 ms of a 380-425 ms token here, so -5.5 % of it is ~10 ms, **~2.5 % of a token at
+best**, before the slot kernels' rebuild cost (LUT gathers for every expert projection: MiniMax needed hand-written
+`codes_qmv` Metal kernels to keep that near zero, one per matmul shape).
+
+**Held, not built.** The ceiling (2.5 %) is under the method's resolution (+-5 % per-turn alternation, +-10 % between
+processes), so neither a win nor a loss could be shown, and the build is a new bank format, Metal kernels for decode (qmv) and
+prefill (qmm) shapes, the slot layout in the store and a governor pass. MiniMax's pair slots (-9 % decode, §18.13) had a
+steeper miss curve and a read-bound token; GLM's elasticity is -0.95 % misses per 1 % slots. Reopen only with a larger budget
+(more memory taken from elsewhere) or together with S1c.
 
 ### 18.35 GLM-5.3-Flash: next-layer expert prediction on the shipped sync path, on by default — 2026-09-30 (0.50.0)
 

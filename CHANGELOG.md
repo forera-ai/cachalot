@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.50.2 (2026-09-30)
+
+HANDOFF section 18.36.
+
+### Measured, not shipped
+- GLM's 16-bit (scale, bias) pair index for expert slots (G6) priced and held. Every one of the 12,384 experts fits a fixed
+  2,048-entry table per projection (most pairs in one projection: 1,405), so a slot would shrink from 13.50 to ~12.77 MiB
+  (5.75 % more slots). The same gain emulated with a 55 GiB budget cut misses a token by 4-7 % (mean 5.5 %, three rounds), which
+  is ~2.5 % of a token at best before the cost of rebuilding scales and biases in the matmul kernels, below what this Mac's decode
+  measurements can resolve (+-5 % with per-turn alternation, +-10 % between processes).
 ## 0.50.1 (2026-09-30)
 
 HANDOFF section 18.35.
