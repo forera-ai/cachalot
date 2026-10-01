@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.51.9 (2026-10-01)
+
+HANDOFF "Start here (2026-10-01, 0.51.9)", section 18.46. No runtime change.
+
+### Added
+- `benchmarks/nand_temp.c`: reads the internal SSD's NAND temperature from the HID sensor (`smartctl` is not installed), one line per period, for lining up with
+  `iostat` and a benchmark's `EPOCH T0=`. Idle 35 C; 44-54 C during a prefill.
+
+### Measured, not shipped
+- The DeepSeek prefill drift (Job 3, §15.13) cannot be asked as written: the internal DeepSeek expert bank was deleted in 0.48.1, so DeepSeek's prefill streams
+  its experts and Engram tables from the X10Pro over USB, and the internal drive carried 16-24 MB/s during the trace. One cold 12,288-token prefill in that
+  configuration (distinct 60k-character window, keep-alive 0.5, 52 GiB budget) took 1,131 s (chunks 234 / 536 / 335 s; the internal bank took 124-130 s), the
+  X10Pro averaging 164-542 MB/s with bursts to 938, memory pressure level 9 and swap 4.3 to 5.1 GiB during the run, the screensaver running. Contaminated by
+  memory pressure, so it shows only that this setup swaps; it says nothing about drift.
+- Harness pitfall: `FILLER_OFFSET` is ignored without `FILLER_FILE` (the first sweep prefilled the same text every run: identical logits, 633 s against
+  1,131 s for fresh text).
+
+### Closed
+- Job 3 as a thermal-drift question on the internal drive (no internal bank to heat). Reopen only with a guarded rerun of six cold prefills at a lower budget
+  (about 44 GiB, screensaver off, ~2 h) against the X10Pro-bound configuration.
+
 ## 0.51.8 (2026-10-01)
 
 HANDOFF "Start here (2026-10-01, 0.51.8)", section 18.45. No code changed.

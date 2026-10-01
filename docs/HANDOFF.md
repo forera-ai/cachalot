@@ -25,6 +25,15 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-01, 0.51.9): the DeepSeek prefill drift is moot as asked; one cold 12k prefill now takes ~19 min
+>
+> - **Section 18.46, no runtime change.** The drift of §15.13 was an internal-SSD question and the internal DeepSeek bank is gone (0.48.1): DeepSeek streams from the
+>   X10Pro over USB. One cold 12,288-token prefill there took 1,131 s (124-130 s on the old internal bank) under memory pressure level 9 with the screensaver on:
+>   contaminated, so Job 3 is closed as asked. New: `benchmarks/nand_temp.c` (drive temperature without smartctl); `FILLER_OFFSET` needs `FILLER_FILE`.
+> - **Version 0.51.9.** Hamed's call, still open: another GLM-5.3-Flash quantisation (a download). Nothing needs his purchase.
+
+**Previous block, 0.51.8:**
+
 > ## Start here (2026-10-01, 0.51.8): an fp32 GLM pipeline would not help; GLM's code noise is the model's
 >
 > - **Section 18.45, no code change.** (b) of §18.44: the hyper-connection residual stream kept in fp32 leaves the prefill-against-decode spread where it
@@ -8640,6 +8649,31 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.46 The DeepSeek prefill drift is moot as asked — 2026-10-01 (0.51.9)
+
+Hamed: "run the DeepSeek prefill drift job" (v89's first job, §15.13's open item), then "close it as moot". No runtime change.
+
+**Why it cannot be asked as written.** §15.13 saw six back-to-back 12k prefills slow from 124-130 s to ~200 s with the 2-bit expert bank on the internal SSD (disk0) and
+suspected the drive's heat. Since 0.48.1 the internal DeepSeek bank is deleted and `serve.sh`/`chat.sh` (and the benchmark's documented command, whose bank path
+no longer exists: `FileNotFoundError: no routed experts found`) read it from `/Volumes/X10Pro/Flash4-1/DeepSeek-V4.1-Flash-q2g128`; the checkpoint and Engram tables were
+already there. During the trace disk0 carried 16-24 MB/s.
+
+**What ran.** Scratch `drift.sh` (six `prefill_unwire_timeline.py 12288` processes back to back with `iostat_ts.py disk0 disk6` and a NAND temperature reader beside
+them; scratch `ana.py` splits the trace per chunk). Settings: keep-alive 0.5, lookahead off, hotlist 8 GiB, wired limit 80, 52 GiB budget, bank on the X10Pro.
+(1) A first sweep prefilled the same text every run: **`FILLER_OFFSET` is ignored unless `FILLER_FILE` is set** (runs 1 and 2 gave identical logits; 633 and 576 s, faster than
+fresh text because the files were warm). Killed. (2) A second sweep with `FILLER_FILE` (a 3.3 MB concatenation of docs and repo code) and a distinct offset per run: run 1 took
+**1,131 s** (chunks 234 / 536 / 335 s plus 25 s for the 54-token tail). The X10Pro (disk6) averaged 542 / 164 / 260 MB/s over the three chunks with bursts to 938 (its USB wall),
+so the drive was not saturated; **memory pressure level fell to 9** and swap grew from 4.3 to 5.1 GiB during the run, MLX active 67-71 GiB with wired 75-82 GiB, and the Flurry
+screensaver was running. Pressure returned to 85 the moment the benchmark was killed. The sweep was stopped after run 1: a pressure-9 run measures swapping, not drift.
+
+**Reading.** No drift question is answered. What the one run does show: with the bank on USB a cold 12k DeepSeek prefill is ~11 tok/s (~19 min) rather than ~100, and the
+default-ish settings (52 GiB budget, 80 GiB wired limit, 8 GiB hotlist) leave no memory headroom on this machine without a guard. Temperature: the internal NAND read 35 C idle
+and 44-54 C during the run (`benchmarks/nand_temp.c`, a HID sensor read; `smartctl` is not installed and was not installed); the X10Pro's is not readable.
+
+**Closed:** Job 3 as an internal-drive thermal question. **Reopen** only as a different question (does the X10Pro-bound prefill drift?) with `benchmarks/guarded_run.sh`, a budget of
+about 44 GiB, the screensaver on Never, `FILLER_FILE` plus a distinct `FILLER_OFFSET` per run, six cold runs (~2 h), and the machine state recorded. The "lookahead stays off"
+note of §15.13 stands.
 
 ### 18.45 An fp32 GLM pipeline does not help; streamed against non-streamed is one code path — 2026-10-01 (0.51.8)
 
