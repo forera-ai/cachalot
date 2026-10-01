@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.51.5 (2026-10-01)
+
+HANDOFF "Start here (2026-10-01, 0.51.5)", section 18.42. No code changed.
+
+### Measured, not shipped
+- GLM-5.3-Flash's vision tower and image preprocessing against mlx-vlm 0.7.4 (own venv `~/venvs/mlxvlm-compare`, mlx 0.32.2): patches and grids
+  byte-identical, tower rows bit-identical (max difference 0) on seven image sizes up to 2160x3840 (7,973 rows), real checkpoint weights.
+- Three Hermes sessions on `./serve-glm.sh` at `--expert-budget-gib` 44 / 48 / 50, one per arm: decode 2.79 / 3.00 / 3.10 tok/s over six turns
+  (about 1.7 % per GiB), hit rate rising, a ~4.7 s floor for a tiny follow-up prefill at every cap, the screenshot read correctly at all three (the image
+  goes in natively, `images=1`). Swap flat at 44 and 48; at 50 one tool-result prefill peaked MLX at 72.2 GiB and swap rose 0.7 GiB.
+
+### Found, open
+- GLM-5.3-Flash's C# output is corrupted: 9 of 12 non-streamed replays of the Hermes request failed to compile, 3 of 4 with no system prompt and no
+  tools, and temperature 0 gives the same wrong text twice (a code fence closing mid-class, a stray line in a `for` header, a cut-off snippet). Not the
+  budget, the sampling temperature or the 21k prefix. Whether the 4-bit weights or a decode-path fault in the runtime cause it is not yet known.
+
 ## 0.51.4 (2026-09-30)
 
 HANDOFF "Start here (2026-09-30, 0.51.4)", section 18.41.

@@ -1,6 +1,6 @@
 # Cachalot — Engineering Handoff
 
-**Authoritative state as of 2026-09-30 (twenty-fifth session), after the session that put MiniMax's chat at temperature 0.7, moved GLM-5.3-Flash back to the internal SSD, optimized its decode (a next-layer expert prefetch; the bank, pair index, S1c and MTP priced and closed or held), gave it vision and read it through Hermes with a screenshot (sections 18.32-18.40), after the session that made MiniMax's server default temperature 0.7 (section 18.31), the one that read Hamed's three Hermes sessions on 0.46.0, the last one at temperature 0.7 (section 18.30), the one that measured an agent temperature and added a loop guard for counting runaway lists (section 18.29), the one that replayed Hamed's second Hermes session on 0.45.x from its dump (section 18.28), the one that read his first Hermes session on 0.45.1 (section 18.27), the one that priced MiniMax's prefill expert kernels and closed them (section 18.26), the one that read Hamed's first Hermes session on 0.44.0 and made the mirror's share follow the X10Pro's speed (section 18.25), the one that made a restart reuse the agent's system block again and taught the memory governor to watch memory pressure (section 18.24), the one that gated the decode miss substitution on thinking-on and tool-call tasks and applied its rule to prefill, opt-in, short follow-ups -20 % (section 18.23), the one that capped MLX's buffer cache during MiniMax's decode, moved persisted system blocks off the GPU and gated the miss substitution at 24k (section 18.22), the one that let MiniMax's decode
+**Authoritative state as of 2026-10-01 (twenty-sixth session), after the session that compared GLM's vision tower with mlx-vlm's, read three Hermes sessions at 44-50 GiB and found GLM's code output corrupted (section 18.42), after the session that put MiniMax's chat at temperature 0.7, moved GLM-5.3-Flash back to the internal SSD, optimized its decode (a next-layer expert prefetch; the bank, pair index, S1c and MTP priced and closed or held), gave it vision and read it through Hermes with a screenshot (sections 18.32-18.40), after the session that made MiniMax's server default temperature 0.7 (section 18.31), the one that read Hamed's three Hermes sessions on 0.46.0, the last one at temperature 0.7 (section 18.30), the one that measured an agent temperature and added a loop guard for counting runaway lists (section 18.29), the one that replayed Hamed's second Hermes session on 0.45.x from its dump (section 18.28), the one that read his first Hermes session on 0.45.1 (section 18.27), the one that priced MiniMax's prefill expert kernels and closed them (section 18.26), the one that read Hamed's first Hermes session on 0.44.0 and made the mirror's share follow the X10Pro's speed (section 18.25), the one that made a restart reuse the agent's system block again and taught the memory governor to watch memory pressure (section 18.24), the one that gated the decode miss substitution on thinking-on and tool-call tasks and applied its rule to prefill, opt-in, short follow-ups -20 % (section 18.23), the one that capped MLX's buffer cache during MiniMax's decode, moved persisted system blocks off the GPU and gated the miss substitution at 24k (section 18.22), the one that let MiniMax's decode
 substitute its lightest missing experts, opt-in and measured inside the rounding noise (section 18.21), the one that put MiniMax's prefill at the GPU's FLOP
 wall and measured three levers without a gain (section 18.20), the one that measured where MiniMax's
 remaining time goes and shipped two bit-identical kernel fusions switched off (section 18.19), the one that raised the GPU's working
@@ -24,6 +24,18 @@ that gave it a bias-free expert bank (18.4), the one that gave it a second drive
 kernel (18.3), the one that cut its per-token overhead and measured it to 64k (18.2), the one that made it faster
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
+
+> ## Start here (2026-10-01, 0.51.5): GLM's code output is corrupted (cause open), the tower matches mlx-vlm, 48-50 GiB is the GLM budget knee
+>
+> - **Section 18.42, no code change.** (1) GLM's vision tower and preprocessing are bit-identical to mlx-vlm 0.7.4's on the real weights (7 image sizes,
+>   up to 7,973 rows): closed. (2) Hermes sessions at 44 / 48 / 50 GiB: decode 2.79 / 3.00 / 3.10 tok/s (about 1.7 % per GiB), screenshot read correctly
+>   at all three, swap stable at 44 and 48, one pressure event at 50 (a 2.6k tool-result prefill peaked MLX at 72.2 GiB). (3) **GLM's C# output does not
+>   compile in 9 of 12 replays and is wrong even at temperature 0** (deterministic, byte-identical twice: a fence closing mid-class, a stray line in a
+>   `for` header, a cut-off snippet), with no system prompt and with Hermes's: not the cap, not sampling, not the 21k prefix. Whether it is the 4-bit
+>   weights or a decode fault in the runtime is **not known**; that is the first job.
+> - **Version 0.51.5.** Needs Hamed: M19; whether Hermes on GLM waits for the answer.
+
+**Previous block, 0.51.4:**
 
 > ## Start here (2026-09-30, 0.51.4): GLM vision on real images
 >
@@ -8598,6 +8610,64 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.42 GLM tower matches mlx-vlm; a Hermes session at 44, 48 and 50 GiB; GLM's code output is corrupted — 2026-10-01 (0.51.5)
+
+Hamed: "yes install mlx-vlm and run the comparison", then three Hermes sessions on `./serve-glm.sh` at `--expert-budget-gib` 44, 48 and 50
+(same four prompts each, `CACHALOT_SERVER_DUMP` set, `benchmarks/slow_window_sampler.py` beside it), and "run the replay, then release". No code changed.
+
+**1. Vision tower against mlx-vlm 0.7.4 (closed).** mlx-vlm went into its own venv, `~/venvs/mlxvlm-compare` (mlx pinned to 0.32.2): installing it into
+`~/venvs/deepseek-v41` would have moved transformers 5.6 to 5.18 and tokenizers under the runtime. The installed `glm5_next/vision.py` differs from the
+vendored copy only by its three-line header. Scratch `cmp_tower.py` ran `cachalot.glm.vision.preprocess` and the vendored tower against mlx-vlm's
+`Glm5NextImageProcessor` and tower, on the checkpoint's real `model.visual.*` weights, on synthetic images of 224x224, 480x640, 1080x1920, 2160x3840,
+2016x2364, 37x901 and 1000x1001: patches and grids byte-identical, tower rows (up to 7,973 x 4,096) bit-identical (max difference 0). Video and an image
+part in a system message stay open.
+
+**2. Budget 44 / 48 / 50 GiB through Hermes (n=1 per arm, tokens differ, display on, Hermes window visible; the 44 run first).** The dump shows
+`"temperature": 0.7` on every request (Hermes `extra_body` overrides GLM's 0.6).
+
+| | 44 | 48 | 50 |
+|---|---|---|---|
+| decode, 6 turns | 2.79 tok/s (1,660 tokens, 595 s) | 3.00 (1,416, 472 s) | 3.10 (1,587, 512 s) |
+| hit rate over the turns | 63-75 % | 67-78 % | 68-78 % |
+| misses per token | 85-120 | 73-111 | 74-109 |
+| prefill of 18-34 new tokens | 4.8 / 4.8 / 6.8 s | 4.6 / 4.7 / 6.7 s | 4.5 / 4.5 / 6.7 s |
+| image turn (1,185 tokens) | 20.9 s prefill, 2.71 tok/s | 19.7 s, 3.19 | 19.9 s, 3.39 |
+
+About 1.7 % of decode per GiB from 44 to 50, with the hit rate rising and misses per token falling; the floor for a tiny follow-up prefill (~4.7 s) does
+not move with the cap. Memory: swap stayed flat at 3.2-3.3 GiB at 44 and 48; at 50 the 2,606-token tool-result prefill peaked MLX at 72.2 GiB, the
+sampler shows one sample with the compressor at 27 GiB, swap rose 3.3 to 4.0 GiB and that prefill ran at 56 tok/s against ~72 elsewhere (one event;
+the 2,606-token result was bigger than the others because the model chose different `search_files` arguments). 48-50 looks like the knee with Hamed's
+apps open; 52 (the default) was not run in this comparison. The 44 run's first request prefilled 21,214 tokens cold (244 s, 87 tok/s): Hermes'
+system prompt changed overnight (the date, §18.30), and it saved the 21,165-token snapshot the 48 and 50 runs then reused (10 s). The image went in
+natively (`images=1` in the chat request), so Hermes' `vision_analyze` tool and its 120 s timeout were not involved; the whole turn took 50-56 s and
+all three runs read the screenshot completely and correctly (label, input text, five suggestions, highlighted row, disabled button).
+
+**3. GLM's code output is corrupted, and it is not the cap, the temperature or the context length.** The 44 run's C# snippet did not compile
+(`I < line.Length`, a stray `I (c == '"')`); the 48 run's did. Scratch `replay_cs.py` / `replay_cs2.py` (the dump's C# request bodies POSTed to a
+fresh `./serve-glm.sh` at 52 GiB, every reply's first ```csharp block built with `dotnet build`, net8.0, Nullable on; a missing `CsvHelper` package is
+counted as clean, a syntax error or cut-off block as a defect):
+
+| arm | n | compiled | defect | package only |
+|---|---|---|---|---|
+| Hermes body, T 0.7, not streamed | 12 | 2 | 9 | 1 |
+| Hermes body, T 0.7, streamed (as live) | 4 | 2 | 0 | 2 |
+| Hermes body, T 0.0, streamed | 1 | 0 | 1 | 0 |
+| one user message only (no system prompt, no tools), T 0.7, streamed | 4 | 1 | 3 | 0 |
+
+Replies say it themselves: "a `→` instead of `=`", "I mangled that", "my output keeps truncating", a `ReadMore: ;` line. The prompts of the replay are
+token-identical to the live ones (23,226 and 23,188 tokens). **Greedy decoding is deterministic and still wrong:** the short prompt at temperature 0,
+900 tokens, twice, byte-identical (4,379 characters, scratch `greedy.py`), and it contains a code fence closing mid-class (`public class CsvImporter`
+then ```` ``` ````), a stray line `System.IO.File.ReadAllLines` inside a `for` header, and a snippet cut mid-word (`{ get; a`). So it is not sampling,
+not the 21k Hermes prefix, not the snapshot, and not the budget (the cap changes which experts are resident, not the numerics, and the GLM path has no
+miss substitution). It is either the model's own 4-bit weights or a decode-path numerics fault in the runtime; this session cannot tell which.
+Streamed versus not streamed (9/12 against 0/4 at the same settings) is a lead, not a result (Fisher p about 0.03, n small, and the short arm was
+streamed and failed 3/4). That decode ran at 1.5 and 0.76 tok/s on the two greedy runs, far below the live 2.5-3.5, with nothing else of ours running.
+
+**Closed/open.** Closed: the tower comparison. Open, in this order: (a) which is it, the weights or the runtime: teacher-force the greedy text
+through the prefill path and read the probability of the glitch tokens (prefill computes `lm_head` on the last row only: a scratch variant is needed),
+or run the same prompt greedy through a reference implementation; (b) the prefetch-off arm (`CACHALOT_GLM_PREDICT_TOPK=0`) was not run, so prefetch is
+not excluded; (c) the streamed/non-streamed difference. **Needs Hamed:** M19; whether GLM's Hermes sessions should wait for (a).
 
 ### 18.41 GLM-5.3-Flash vision on real images — 2026-09-30 (0.51.4)
 
