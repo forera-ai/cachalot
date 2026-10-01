@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.51.6 (2026-10-01)
+
+HANDOFF "Start here (2026-10-01, 0.51.6)", section 18.43. No code changed.
+
+### Measured, not shipped
+- GLM-5.3-Flash's corrupted code (0.51.5) is not a decode-path fault. Same 900 tokens through batched prefill and one token at a time: KL mean 0.0153,
+  median 0.00002, max 1.96, identical with `CACHALOT_GLM_PREDICT_TOPK=0` (the prefetch is exonerated); relative hidden-state error 1.2 % in layer 0 (no MoE)
+  growing to ~10 % median by layer 23. Teacher-forced NLL of neutral text is the same under both modes (decode minus prefill -0.015 on Python, -0.003 on
+  prose, -0.003 on the greedy C# text, every 95 % interval spanning zero).
+
+### Closed
+- The decode-path hypothesis of 0.51.5. Open: a MiniMax baseline on the same C# replay, a higher-precision pipeline, fidelity to a reference implementation.
+
 ## 0.51.5 (2026-10-01)
 
 HANDOFF "Start here (2026-10-01, 0.51.5)", section 18.42. No code changed.

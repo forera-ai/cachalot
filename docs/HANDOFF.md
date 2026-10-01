@@ -1,6 +1,6 @@
 # Cachalot — Engineering Handoff
 
-**Authoritative state as of 2026-10-01 (twenty-sixth session), after the session that compared GLM's vision tower with mlx-vlm's, read three Hermes sessions at 44-50 GiB and found GLM's code output corrupted (section 18.42), after the session that put MiniMax's chat at temperature 0.7, moved GLM-5.3-Flash back to the internal SSD, optimized its decode (a next-layer expert prefetch; the bank, pair index, S1c and MTP priced and closed or held), gave it vision and read it through Hermes with a screenshot (sections 18.32-18.40), after the session that made MiniMax's server default temperature 0.7 (section 18.31), the one that read Hamed's three Hermes sessions on 0.46.0, the last one at temperature 0.7 (section 18.30), the one that measured an agent temperature and added a loop guard for counting runaway lists (section 18.29), the one that replayed Hamed's second Hermes session on 0.45.x from its dump (section 18.28), the one that read his first Hermes session on 0.45.1 (section 18.27), the one that priced MiniMax's prefill expert kernels and closed them (section 18.26), the one that read Hamed's first Hermes session on 0.44.0 and made the mirror's share follow the X10Pro's speed (section 18.25), the one that made a restart reuse the agent's system block again and taught the memory governor to watch memory pressure (section 18.24), the one that gated the decode miss substitution on thinking-on and tool-call tasks and applied its rule to prefill, opt-in, short follow-ups -20 % (section 18.23), the one that capped MLX's buffer cache during MiniMax's decode, moved persisted system blocks off the GPU and gated the miss substitution at 24k (section 18.22), the one that let MiniMax's decode
+**Authoritative state as of 2026-10-01 (twenty-sixth session), after the session that traced GLM's corrupted code to the model's numerics, not the decode path (section 18.43), after the session that compared GLM's vision tower with mlx-vlm's, read three Hermes sessions at 44-50 GiB and found GLM's code output corrupted (section 18.42), after the session that put MiniMax's chat at temperature 0.7, moved GLM-5.3-Flash back to the internal SSD, optimized its decode (a next-layer expert prefetch; the bank, pair index, S1c and MTP priced and closed or held), gave it vision and read it through Hermes with a screenshot (sections 18.32-18.40), after the session that made MiniMax's server default temperature 0.7 (section 18.31), the one that read Hamed's three Hermes sessions on 0.46.0, the last one at temperature 0.7 (section 18.30), the one that measured an agent temperature and added a loop guard for counting runaway lists (section 18.29), the one that replayed Hamed's second Hermes session on 0.45.x from its dump (section 18.28), the one that read his first Hermes session on 0.45.1 (section 18.27), the one that priced MiniMax's prefill expert kernels and closed them (section 18.26), the one that read Hamed's first Hermes session on 0.44.0 and made the mirror's share follow the X10Pro's speed (section 18.25), the one that made a restart reuse the agent's system block again and taught the memory governor to watch memory pressure (section 18.24), the one that gated the decode miss substitution on thinking-on and tool-call tasks and applied its rule to prefill, opt-in, short follow-ups -20 % (section 18.23), the one that capped MLX's buffer cache during MiniMax's decode, moved persisted system blocks off the GPU and gated the miss substitution at 24k (section 18.22), the one that let MiniMax's decode
 substitute its lightest missing experts, opt-in and measured inside the rounding noise (section 18.21), the one that put MiniMax's prefill at the GPU's FLOP
 wall and measured three levers without a gain (section 18.20), the one that measured where MiniMax's
 remaining time goes and shipped two bit-identical kernel fusions switched off (section 18.19), the one that raised the GPU's working
@@ -24,6 +24,17 @@ that gave it a bias-free expert bank (18.4), the one that gave it a second drive
 kernel (18.3), the one that cut its per-token overhead and measured it to 64k (18.2), the one that made it faster
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
+
+> ## Start here (2026-10-01, 0.51.6): GLM's corrupted code is not a decode-path fault
+>
+> - **Section 18.43, no code change.** Decode and prefill modes differ (KL mean 0.015, max 1.96; ~10 % relative hidden-state error by layer 23, already 1.2 %
+>   in layer 0) but are equally good on neutral text (teacher-forced NLL difference inside +-0.04 on code, prose and the greedy C# text), and the expert
+>   prefetch is exactly neutral (`PREDICT_TOPK=0` gives identical numbers). So §18.42's decode-path suspicion is refuted: the glitches are a noisy model
+>   taking the wrong fork where its top choices are close. Not tested: fidelity to an independent implementation, a MiniMax/DeepSeek baseline on the same
+>   C# replay, a higher-precision pipeline.
+> - **Version 0.51.6.** M19 is halted (Hamed: no purchase for now): nothing in the open list needs him.
+
+**Previous block, 0.51.5:**
 
 > ## Start here (2026-10-01, 0.51.5): GLM's code output is corrupted (cause open), the tower matches mlx-vlm, 48-50 GiB is the GLM budget knee
 >
@@ -8610,6 +8621,41 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.43 GLM's corrupted code is not a decode-path fault: decode and prefill are equally good — 2026-10-01 (0.51.6)
+
+Hamed: "M19 is halted, other levers and possibilities should be done independently." The first job of §18.42 (weights or runtime?) was run in-process, no
+server, on the greedy text of the short C# prompt (scratch `tf.py`, `td.py`, `loc.py`, `nllpd.py`; GLM at 52 GiB).
+
+1. **Teacher-forced through prefill** (the 43-token prompt plus the 900 greedy tokens in one batched pass): prefill's argmax equals the token decode chose at 888
+   of 900 positions. The 12 others are where decode's choice looks wrong and prefill's looks right, e.g. after `public` decode wrote ` static` (0.039
+   under prefill) where prefill wanted ` class` (0.894), and after `i++)` it wrote ` System` (0.156) where prefill wanted ` {` (0.616).
+2. **Decode mode against prefill mode, same 900 tokens** (prompt by prefill, then one token at a time through `_forward`): decode reproduces its own
+   greedy text 900 of 900; KL(prefill||decode) mean 0.0153, median 0.00002, p95 0.049, max 1.96. **`CACHALOT_GLM_PREDICT_TOPK=0` gives the identical
+   numbers**, so the prefetch is excluded (it never changed a logit).
+3. **Where they part** (decoder-layer outputs of the two modes at 520 positions, relative L2 error per position): 1.2 % median already in layer 0, which is
+   a linear-attention layer with a dense MLP (layers 0-2 have no MoE), 0.7-1.5 % through layer 13, ~5 % at layer 20, ~10 % median (30 % at p95, up to ~1.0
+   at single positions) from layer 23 to the end. The experts are not where the two modes differ; the model is numerically sensitive to the shape of the
+   computation (its 45 layers mix linear attention, sparse attention and hyper-connections in bf16).
+4. **Which mode is better? Neither** (teacher-forced NLL of neutral text under both modes, 700 tokens each, paired bootstrap of decode minus prefill):
+
+   | text | NLL prefill | NLL decode | difference [95 % interval] | argmax agreement |
+   |---|---|---|---|---|
+   | repo Python (`glm/engine.py`) | 1.449 | 1.434 | -0.015 [-0.041, +0.010] | 0.930 |
+   | repo prose (`README.md`) | 2.506 | 2.503 | -0.003 [-0.036, +0.029] | 0.886 |
+   | the greedy C# text | 0.263 | 0.260 | -0.003 [-0.018, +0.011] | 0.983 |
+
+**Conclusion.** §18.42's suspicion of the decode path is refuted: decode is not worse than prefill on text neither produced. The two modes are two
+equally good, differently rounded evaluations of one noisy model, and where its top choices are close (a token at 0.5 against another at 0.2, a logit
+gap of ~1 nat is within that noise) greedy decoding takes the wrong fork; the same spread gives the 9 of 12 failed builds at temperature 0.7. What this
+does **not** show: that the model is faithful to an independent implementation (both modes share weights and kernels; only a higher-precision or
+reference run can test that), or that GLM is worse at code than the other two models (the same C# replay was not run on MiniMax or DeepSeek).
+
+**Closed:** the decode-path hypothesis, and the prefetch as a cause. **Open, in this order:** (a) the same replay (`replay_cs.py`, 12 samples, `dotnet
+build`) on MiniMax-M3 for a baseline rate; (b) whether a higher-precision pipeline (fp32 residual/hyper-connection stream, fp32 linear-attention state)
+lowers the 10 % layer-to-layer spread and the failed builds: price it on the per-layer script first (`loc.py`); (c) the streamed against non-streamed
+difference of §18.42 (9/12 against 0/4). **For Hamed:** until (a) or (b) is answered, prefer MiniMax-M3 or DeepSeek for code and keep GLM for
+what it does well (vision, long context, prose); nothing needs his purchase.
 
 ### 18.42 GLM tower matches mlx-vlm; a Hermes session at 44, 48 and 50 GiB; GLM's code output is corrupted — 2026-10-01 (0.51.5)
 
