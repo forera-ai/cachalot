@@ -1,6 +1,6 @@
 # Cachalot — Engineering Handoff
 
-**Authoritative state as of 2026-10-01 (twenty-sixth session), after the session that traced GLM's corrupted code to the model's numerics, not the decode path (section 18.43), after the session that compared GLM's vision tower with mlx-vlm's, read three Hermes sessions at 44-50 GiB and found GLM's code output corrupted (section 18.42), after the session that put MiniMax's chat at temperature 0.7, moved GLM-5.3-Flash back to the internal SSD, optimized its decode (a next-layer expert prefetch; the bank, pair index, S1c and MTP priced and closed or held), gave it vision and read it through Hermes with a screenshot (sections 18.32-18.40), after the session that made MiniMax's server default temperature 0.7 (section 18.31), the one that read Hamed's three Hermes sessions on 0.46.0, the last one at temperature 0.7 (section 18.30), the one that measured an agent temperature and added a loop guard for counting runaway lists (section 18.29), the one that replayed Hamed's second Hermes session on 0.45.x from its dump (section 18.28), the one that read his first Hermes session on 0.45.1 (section 18.27), the one that priced MiniMax's prefill expert kernels and closed them (section 18.26), the one that read Hamed's first Hermes session on 0.44.0 and made the mirror's share follow the X10Pro's speed (section 18.25), the one that made a restart reuse the agent's system block again and taught the memory governor to watch memory pressure (section 18.24), the one that gated the decode miss substitution on thinking-on and tool-call tasks and applied its rule to prefill, opt-in, short follow-ups -20 % (section 18.23), the one that capped MLX's buffer cache during MiniMax's decode, moved persisted system blocks off the GPU and gated the miss substitution at 24k (section 18.22), the one that let MiniMax's decode
+**Authoritative state as of 2026-10-01 (twenty-sixth session), after the session that showed GLM's corrupted code is GLM's own, MiniMax writing the same C# nearly garble-free (section 18.44), after the session that traced GLM's corrupted code to the model's numerics, not the decode path (section 18.43), after the session that compared GLM's vision tower with mlx-vlm's, read three Hermes sessions at 44-50 GiB and found GLM's code output corrupted (section 18.42), after the session that put MiniMax's chat at temperature 0.7, moved GLM-5.3-Flash back to the internal SSD, optimized its decode (a next-layer expert prefetch; the bank, pair index, S1c and MTP priced and closed or held), gave it vision and read it through Hermes with a screenshot (sections 18.32-18.40), after the session that made MiniMax's server default temperature 0.7 (section 18.31), the one that read Hamed's three Hermes sessions on 0.46.0, the last one at temperature 0.7 (section 18.30), the one that measured an agent temperature and added a loop guard for counting runaway lists (section 18.29), the one that replayed Hamed's second Hermes session on 0.45.x from its dump (section 18.28), the one that read his first Hermes session on 0.45.1 (section 18.27), the one that priced MiniMax's prefill expert kernels and closed them (section 18.26), the one that read Hamed's first Hermes session on 0.44.0 and made the mirror's share follow the X10Pro's speed (section 18.25), the one that made a restart reuse the agent's system block again and taught the memory governor to watch memory pressure (section 18.24), the one that gated the decode miss substitution on thinking-on and tool-call tasks and applied its rule to prefill, opt-in, short follow-ups -20 % (section 18.23), the one that capped MLX's buffer cache during MiniMax's decode, moved persisted system blocks off the GPU and gated the miss substitution at 24k (section 18.22), the one that let MiniMax's decode
 substitute its lightest missing experts, opt-in and measured inside the rounding noise (section 18.21), the one that put MiniMax's prefill at the GPU's FLOP
 wall and measured three levers without a gain (section 18.20), the one that measured where MiniMax's
 remaining time goes and shipped two bit-identical kernel fusions switched off (section 18.19), the one that raised the GPU's working
@@ -24,6 +24,16 @@ that gave it a bias-free expert bank (18.4), the one that gave it a second drive
 kernel (18.3), the one that cut its per-token overhead and measured it to 64k (18.2), the one that made it faster
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
+
+> ## Start here (2026-10-01, 0.51.7): GLM's code corruption is GLM's, not Cachalot's
+>
+> - **Section 18.44, no code change.** The same C# replay on MiniMax-M3: syntax garble 1 of 19 (GLM 12 of 21; 8/12 against 1/12 on the same arm, p about
+>   0.005), with MiniMax's failures being wrong API calls instead. So the cause is the GLM checkpoint's 4-bit weights or the architecture's bf16
+>   sensitivity (§18.43). Use MiniMax-M3 for code. Open: a higher-precision GLM pipeline, another GLM quantisation (Hamed's call), streamed against
+>   non-streamed. The harness fix: builds use ImplicitUsings on.
+> - **Version 0.51.7.** Nothing needs Hamed's purchase (M19 halted).
+
+**Previous block, 0.51.6:**
 
 > ## Start here (2026-10-01, 0.51.6): GLM's corrupted code is not a decode-path fault
 >
@@ -8621,6 +8631,37 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.44 MiniMax baseline on the same C# replay: GLM's code corruption is GLM's — 2026-10-01 (0.51.7)
+
+Autonomous job (a) of §18.43, with Hamed's go. `./serve-minimax.sh` (default budget, 65.6 GiB of the 68 asked for: 81.6 GiB were available), the two Hermes C# request bodies of
+the dump (23.7k tokens of context, GLM's own earlier turns included) and the one-line prompt, replayed as in §18.42 (scratch `replay_mm.py`, `reclass.py`):
+the first ```csharp block of every reply built with `dotnet build` (net8.0, Nullable **and ImplicitUsings on**; §18.42's harness had ImplicitUsings off, which
+turned snippets that assume the .NET 8 defaults into "missing type" errors, so every saved block of both models was rebuilt with it on). Failures are split:
+*syntax garble* (CS1002, CS1003, CS1513, CS8641 and the like: broken tokens, fences, cut-off code), *semantic* (a wrong API or member, an undefined name),
+*package only* (CsvHelper and friends, counted as sound).
+
+| model, arm | n | clean | package only | semantic error | **syntax garble** |
+|---|---|---|---|---|---|
+| GLM, Hermes bodies, T 0.7, not streamed | 12 | 2 | 1 | 1 | **8** |
+| GLM, Hermes body, T 0.7, streamed | 4 | 2 | 2 | 0 | 0 |
+| GLM, Hermes body, T 0.0 | 1 | 0 | 0 | 0 | 1 |
+| GLM, one message, T 0.7 | 4 | 1 | 0 | 0 | 3 |
+| MiniMax-M3, Hermes bodies, T 0.7, not streamed | 12 | 4 | 2 | 5 | **1** |
+| MiniMax-M3, one message, T 0.7 | 6 | 4 | 2 | 0 | 0 |
+| MiniMax-M3, one message, T 0.0 | 1 | 1 | 0 | 0 | 0 |
+
+Syntax garble: GLM 12 of 21, MiniMax 1 of 19 (and that one is a structural slip, methods and top-level statements mixed, not a broken token). On the same
+12-sample arm 8 of 12 against 1 of 12 (Fisher p about 0.005). MiniMax's failures are of another kind: wrong API calls in 5 of 12 Hermes replies
+(`JsonDocument.EnumerateArray`, `JsonNumberHandling`, `.Select` on an array enumerator), which build errors but read as code. The server's decode ran at
+7.5-7.6 tok/s at 23.7k context, hit 93-94 %, the first request prefilled 23,728 tokens in 118.7 s (200 tok/s), a follow-up with 2.1k new tokens 15.5 s.
+
+**Conclusion.** The corruption is specific to GLM-5.3-Flash on this runtime, not to Cachalot's cache, prompts, harness or replay path (the same harness and
+the same bodies give MiniMax almost no garble). With §18.43 (GLM's decode and prefill are equally good, the prefetch changes no logit) what remains is the
+GLM checkpoint's 4-bit weights or the GLM architecture's sensitivity to bf16 (45 layers of linear attention, sparse attention and hyper-connections:
+~10 % layer-to-layer spread). **Open:** a higher-precision GLM pipeline (fp32 residual and linear-attention state) priced on `loc.py`; whether another
+quantisation of GLM-5.3-Flash exists (Hamed's call; disk is ~88 GiB free internally, a 4-bit checkpoint is ~169 GiB, so it would live on the X10Pro); the
+streamed against non-streamed difference. **For Hamed:** use MiniMax-M3 for code. Nothing needs a purchase.
 
 ### 18.43 GLM's corrupted code is not a decode-path fault: decode and prefill are equally good — 2026-10-01 (0.51.6)
 

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.51.7 (2026-10-01)
+
+HANDOFF "Start here (2026-10-01, 0.51.7)", section 18.44. No code changed.
+
+### Measured, not shipped
+- The C# replay of 0.51.5 on MiniMax-M3 (same bodies, same `dotnet build` harness, ImplicitUsings on for every saved block of both models): syntax garble 1
+  of 19 replies against GLM-5.3-Flash's 12 of 21 (8 of 12 against 1 of 12 on the same Hermes arm, Fisher p about 0.005). MiniMax's failures are wrong API
+  calls (5 of 12 Hermes replies), not broken tokens. GLM's corruption is therefore GLM's (4-bit weights or architecture sensitivity), not the runtime's cache,
+  prompts or harness. MiniMax decoded at 7.5-7.6 tok/s at 23.7k context, hit 93-94 %.
+
 ## 0.51.6 (2026-10-01)
 
 HANDOFF "Start here (2026-10-01, 0.51.6)", section 18.43. No code changed.

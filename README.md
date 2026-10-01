@@ -778,7 +778,7 @@ line, is `docs/HANDOFF.md` section 9.25.
     bit-identical to mlx-vlm 0.7.4's on the real weights (seven image sizes up to 7,973 rows). Three Hermes sessions at expert budgets 44 / 48 / 50 GiB
     decoded at 2.79 / 3.00 / 3.10 tok/s (about 1.7 % per GiB; one session per arm) and read a screenshot correctly at all three. But GLM's C# snippets
     do not compile in 9 of 12 replays, with and without Hermes's system prompt, and temperature 0 gives the same wrong text twice: not the budget, the
-    temperature or the context. Traced in 0.51.6 (HANDOFF 18.43): not the decode path (decode and prefill are equally good on neutral text, the prefetch changes no logit), but a numerically noisy model taking the wrong fork where its top choices are close; a MiniMax baseline and a higher-precision pipeline are the open checks.
+    temperature or the context. Traced in 0.51.6 (HANDOFF 18.43): not the decode path (decode and prefill are equally good on neutral text, the prefetch changes no logit), but a numerically noisy model taking the wrong fork where its top choices are close; the same C# replay on MiniMax-M3 garbles 1 of 19 replies against GLM's 12 of 21 (0.51.7, HANDOFF 18.44), so use MiniMax for code; a higher-precision GLM pipeline is the open check.
 
 ## Cachalot Studio
 
