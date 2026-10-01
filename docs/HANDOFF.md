@@ -25,6 +25,15 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-01, 0.51.8): an fp32 GLM pipeline would not help; GLM's code noise is the model's
+>
+> - **Section 18.45, no code change.** (b) of §18.44: the hyper-connection residual stream kept in fp32 leaves the prefill-against-decode spread where it
+>   was (layer 23: 0.185 library, 0.189 bf16 stream, 0.187 fp32 stream; KL 0.0172 / 0.0213 / 0.0168); the linear-attention state is already fp32. (c): the
+>   streamed/non-streamed lead cannot exist in the code (`Engine.chat` runs `stream_chat`). Both closed. GLM is not a code model on this checkpoint.
+> - **Version 0.51.8.** Open, Hamed's call: another GLM-5.3-Flash quantisation (a download). Nothing needs his purchase (M19 halted).
+
+**Previous block, 0.51.7:**
+
 > ## Start here (2026-10-01, 0.51.7): GLM's code corruption is GLM's, not Cachalot's
 >
 > - **Section 18.44, no code change.** The same C# replay on MiniMax-M3: syntax garble 1 of 19 (GLM 12 of 21; 8/12 against 1/12 on the same arm, p about
@@ -8631,6 +8640,43 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.45 An fp32 GLM pipeline does not help; streamed against non-streamed is one code path — 2026-10-01 (0.51.8)
+
+Autonomous jobs (b) and (c) of §18.44 (Hamed: read the handoff and prompts, do the tasks). In-process, no server, GLM at 52 GiB, nothing else running.
+
+**(b) Price of a higher-precision pipeline.** Where precision could be lost: the layer-to-layer residual stream is four hyper-connection copies held in bf16
+(`hc_expand` ends in `.astype(x.dtype)`); the branch inputs and outputs are bf16; the linear-attention recurrent state is **already fp32**
+(`gated_delta_update` allocates `mx.zeros(..., float32)` and the cache keeps it); router logits, indexer scores and the hyper-connection mixes are already fp32.
+So the stream was the one candidate. Scratch `fp32probe.py` (rebuild: monkeypatch `HyperConnection.apply_branch` to a generic-ops version, record each layer's
+mean-over-copies output): three arms on the same 260 prose tokens (README.md) - `orig` (library), `ops16` (the generic path, stream rounded to bf16 as shipped,
+a control for the patch), `ops32` (stream kept in fp32, collapsed to bf16 only at each branch input). Per arm the layer outputs of one batched pass of all
+260 tokens against 24 prefilled plus 236 one-token decode steps, relative L2 error per position (positions 24-259):
+
+| | orig | ops16 | ops32 |
+|---|---|---|---|
+| spread, layer 0 median | 0.0163 | 0.0163 | 0.0157 |
+| spread, layer 23 median | 0.185 | 0.189 | 0.187 |
+| spread, last layer median | 0.180 | 0.238 | 0.178 |
+| spread, mean over all layers and positions | 0.126 | 0.146 | 0.129 |
+| KL(prefill \|\| decode) of the logits | 0.0172 | 0.0213 | 0.0168 |
+| argmax agreement | 0.949 | 0.966 | 0.957 |
+| NLL prefill / decode (teacher-forced) | 1.023 / 1.038 | 1.011 / 1.017 | 1.012 / 1.021 |
+| last-layer distance of its prefill to orig's prefill | 0 | 0.225 | 0.186 |
+
+The fp32 stream changes nothing the spread can show: the arms differ by less than the control does against the library. Reordering the arithmetic (ops16 against
+orig, same precision) already moves the final hidden state 22 %, as much as fp32 does (19 %). The model amplifies any rounding difference to ~20 % by the last
+layer, whichever precision carries it; the NLL values of all arms are within 0.03 of each other. One text, n = 236 positions; the direction is unambiguous and
+no arm separates, so no second text was run. **Closed:** fp32 stream and fp32 linear-attention state (the latter already in place). What would still tell
+whether GLM is faithful is an independent reference implementation of the checkpoint, or a different quantisation (8-bit or bf16 weights do not fit this
+machine's expert streaming; another 4-bit quant is a download, Hamed's call).
+
+**(c) Streamed against non-streamed.** §18.42's 9/12 against 0/4: `Engine.chat` (the non-streamed route) is `for d in self.stream_chat(req)`, so both routes
+run the same generator with the same sampler; the difference is the small-n spread of a 60 % failure rate (Fisher p about 0.03 on counts that §18.44's harness
+fix, ImplicitUsings on, changed anyway). **Closed:** no code path to find.
+
+**Open.** Another GLM-5.3-Flash quantisation (Hamed's call, a download); video and an image in a system message on GLM; the DeepSeek prefill drift (Job 3).
+**Needs Hamed:** the quantisation decision only.
 
 ### 18.44 MiniMax baseline on the same C# replay: GLM's code corruption is GLM's — 2026-10-01 (0.51.7)
 

@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.51.8 (2026-10-01)
+
+HANDOFF "Start here (2026-10-01, 0.51.8)", section 18.45. No code changed.
+
+### Measured, not shipped
+- A higher-precision pipeline for GLM-5.3-Flash does not lower the prefill-against-decode spread. Same 260 tokens of prose (24 prefilled, 236 decoded one at a
+  time, 52 GiB budget), layer outputs of one batched pass against one-token decode: library code, a patched generic path with the hyper-connection residual
+  stream rounded to bf16 as shipped, and the same path with the stream kept in fp32. Median relative error at layer 23: 0.185 / 0.189 / 0.187; at the last
+  layer 0.180 / 0.238 / 0.178; KL of the logits 0.0172 / 0.0213 / 0.0168; argmax agreement 0.949 / 0.966 / 0.957. The linear-attention recurrent state is
+  already fp32 in the library (`gated_delta_update` allocates it as float32). Any change of rounding order moves the final hidden state ~20 % (patched bf16
+  path against the library, last layer 0.22), so the noise is the model's own sensitivity, not the stream's storage precision.
+- The streamed against non-streamed difference of 0.51.5 (9/12 against 0/4) has no code path to come from: `Engine.chat` consumes `Engine.stream_chat`, so both
+  run the same generator. It was sampling noise on small n.
+
+### Closed
+- Higher-precision residual stream and linear-attention state for GLM, and the streamed/non-streamed lead. Open: another GLM-5.3-Flash quantisation (Hamed's
+  call; a download), video and a system-message image on GLM, the DeepSeek prefill drift.
+
 ## 0.51.7 (2026-10-01)
 
 HANDOFF "Start here (2026-10-01, 0.51.7)", section 18.44. No code changed.
