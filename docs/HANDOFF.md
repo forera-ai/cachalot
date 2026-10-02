@@ -25,6 +25,12 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-02, 0.52.1): an 8-bit GLM hybrid does not fix its garbled code
+>
+> Hamed: "continue with others too" (after "build video for GLM"). Section 18.49: the other GLM-5.3-Flash quantisations on Hugging Face are mixed (attention, delta-rule projections, shared experts at 8 bits, experts at
+> 4), the same size as ours. Hybrid built from ours plus one of them's 8.9 GiB of non-expert tensors; the C# replay garbles 12 of 12 (Hermes bodies) and 4 of 8 (one message): no better than 4-bit. The remaining
+> open item for GLM code is the 4-bit experts themselves (a full 6/8-bit expert checkpoint is 250+ GiB) or the model; use MiniMax or DeepSeek for code. The DeepSeek drift stays closed as moot.
+
 > ## Start here (2026-10-02, 0.52.0): GLM-5.3-Flash reads video
 >
 > Hamed: "build video for GLM and continue with others too". Section 18.48: a `video_url` part works through `./serve-glm.sh`, a port of mlx-vlm's video processor (sampled frame numbers identical,
@@ -8661,6 +8667,44 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.49 A mixed 4/8-bit GLM does not stop the garbled code — 2026-10-02 (0.52.1)
+
+Hamed: "build video for GLM and continue with others too". §18.48 built video. The "others" of v90's list: another GLM-5.3-Flash quantisation (Hamed's call, taken as given by "continue"), the DeepSeek drift (he had closed it as moot, so not rerun), a Hermes session (needs him).
+
+**Candidates (read-only Hugging Face listing).** The MLX ones are `pipenetwork/GLM-5.3-Flash-MLX-mixed-4_8bit` (169.4 GiB) and `TensorFold/GLM-5.3-Flash-MLX-oQ4-MTP` (173.0 GiB), against our `Vontra/...-4bit-MTP` (169.2 GiB). Ours is
+a uniform 4-bit affine, group 64, with no per-module exceptions. Both others keep the routed experts at 4 bits and put the self-attention projections, the linear-attention (delta-rule) projections including the forget
+and gate paths, the shared experts and lm_head at 8 bits (oQ4 also uses 5 and 6). Those are the parts §18.43 and §18.45 called numerically sensitive, and they are small, so the expert bytes (the drive-bound part) do not grow.
+
+**Cheaper than a download.** Full expert shards are 170 GiB. Checks on `pipenetwork`'s layer-5 `switch_mlp.gate_proj`, three experts by HTTP range reads: scales and biases are identical to ours byte for byte; the packed
+4-bit codes differ in 0.0315 % of positions, always by one (a rounding tie-break in a different quantiser build). So the experts are equivalent, and only the 8.91 GiB of non-expert tensors are needed: fetched by range into
+`~/GLM-5.3-Flash-MLX-mixed48/nonexpert-sanitized.safetensors` (2,273 tensors, 12 connections, ~8 MiB/s, ~19 minutes). The directory also holds symlinks to every file of the 4-bit model (experts, tokenizer, vision tower) and a
+`config.json` with `pipenetwork`'s `quantization` map. Nothing of the 4-bit model was touched.
+
+**Loader (0.52.1).** The sidecar is in mlx-lm's layout, not the model's: `forget_gate.*` and a fused `conv1d` instead of the names `LanguageModel.sanitize` fuses from, and the `config.json` map is keyed by unfused names. So
+`_sidecar_key` renames those two patterns and runs the existing `sanitize`, and the quantisation predicate reads each module's bit width from its tensors (`weight.shape[-1] * 32 / (scales.shape[-1] * group_size)`) instead of the config. The first load attempts failed on a
+parameter-name diff (260 missing: `gate_up_proj`, `fbg_a_proj`, ...) and then on a shape (`qkv_proj` built at 4 bits, weights at 8), both fixed. Resident non-expert weights grew by about 4 GiB, so the run used a 48, later 40 GiB expert budget.
+
+**Measured.** A short prompt answers correctly at 3.0 tok/s (48 GiB). The C# replay (scratch `replay_cs.py`, rebuilt from §18.42/18.44: POST the dump's C# request bodies or the one-line prompt to `./serve-glm.sh`, temperature 0.7, `max_tokens` 3000, first
+```csharp block built as a net8.0 library with Nullable and ImplicitUsings, syntax codes CS1001/1002/1003/1022/1026/1513/1519/1525/8124/8641... = garble, CsvHelper-only errors = package):
+
+| arm | n | clean | package only | syntax garble |
+|---|---|---|---|---|
+| hybrid, Hermes bodies (3 distinct, round robin) | 12 | 0 | 0 | **12** (11 without one reply cut off at 3,000 tokens) |
+| 4-bit (§18.44) same arm | 12 | 2 | 1 | 8 (1 semantic) |
+| MiniMax-M3 (§18.44) same arm | 12 | 4 | 2 | 1 (5 semantic) |
+| hybrid, one message | 8 | 3 | 1 | **4** |
+| 4-bit one message | 4 | 1 | 0 | 3 |
+
+12 of 12 against 8 of 12 is not better (Fisher p about 0.09, and the direction is worse); 4 of 8 against 3 of 4 is not different. Server decode was 2.3-3.0 tok/s at 48-40 GiB; one stretch ran at 0.8 tok/s with memory pressure at level 9, the screensaver on and
+swap near its 5 GiB limit (the 48 GiB budget plus the hybrid's extra resident bytes plus Hamed's apps), so the server was restarted at 40 GiB; the budget changes speed, not the text. The unit-test run during the replay failed
+`test_prefill_keepalive` once (a timing test; it passes with the GPU idle and failed the same with the loader stashed).
+
+**Reading.** The sensitive 4-bit non-expert layers are not what garbles GLM's code. What is left is the routed experts at 4 bits or the model; a checkpoint with experts above 4 bits is 250+ GiB and would halve decode (drive-bound),
+so it is not worth downloading blind. `TensorFold/...oQ4` was not tried (same architecture of change; its expert bits are 4 too). **Closed:** the non-expert quantisation as the cause of GLM's code corruption. **Open (Hamed's call):** nothing cheap; use MiniMax-M3 or DeepSeek for code.
+
+**Housekeeping.** `~/GLM-5.3-Flash-MLX-mixed48` (9.6 GB sidecar plus symlinks) and `~/.cache/cachalot/prefix-snapshots-glm-mixed48` can be deleted; not deleted without his say. Instruments (scratch): `remote.py` (HTTP range reads of safetensors headers and tensors),
+`fetch_ne.py` (the non-expert sidecar writer), `replay_cs.py` (the replay above).
 
 ### 18.48 GLM reads video — 2026-10-02 (0.52.0)
 

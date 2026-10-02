@@ -43,6 +43,16 @@ _NP_DTYPE = {"F32": np.float32, "F16": np.float16, "BF16": np.uint16, "U32": np.
              "U8": np.uint8, "I64": np.int64}
 
 
+# A model directory may carry the non-expert weights of another quantisation next to the expert shards: one safetensors file
+# in mlx-lm's layout (`language_model.*` names, fused conv, `forget_gate.*`), with per-module bit widths in config.json's `quantization`.
+NONEXPERT_SIDECAR = "nonexpert-sanitized.safetensors"
+
+
+def _sidecar_key(name: str) -> str:
+    """mlx-lm's names for the linear-attention parts back to the ones `LanguageModel.sanitize` fuses from."""
+    return name.replace(".self_attn.forget_gate.", ".self_attn.").replace(".self_attn.conv1d.weight", ".self_attn.qkv_conv.conv.weight")
+
+
 def _is_routed_expert(name: str) -> bool:
     return ".mlp.experts." in name
 
@@ -408,19 +418,24 @@ class GlmModel:
 
         self._install_predictors()
 
-        weights = self.model.sanitize(_remap(load_non_expert_weights(self.model_path)))
+        sidecar = self.model_path / NONEXPERT_SIDECAR
+        if sidecar.exists():
+            # the non-expert weights of another quantisation, in mlx-lm's layout (HANDOFF 18.49)
+            weights = self.model.sanitize({_sidecar_key(k): v for k, v in mx.load(str(sidecar)).items() if k.startswith("language_model.")})
+        else:
+            weights = self.model.sanitize(_remap(load_non_expert_weights(self.model_path)))
         weights = {k[len("language_model."):]: v for k, v in weights.items() if k.startswith("language_model.")}
+        group_size, bits, mode = int(quant.get("group_size", 64)), int(quant.get("bits", 4)), quant.get("mode", "affine")
 
         def quantized(path, module):
-            return hasattr(module, "to_quantized") and f"{path}.scales" in weights
+            if not (hasattr(module, "to_quantized") and f"{path}.scales" in weights):
+                return False
+            # a mixed-precision checkpoint's width is read off the tensors (packed columns per scale group), not off the
+            # config, whose per-module map is keyed by the unfused names the fused modules were built from
+            module_bits = weights[f"{path}.weight"].shape[-1] * 32 // (weights[f"{path}.scales"].shape[-1] * group_size)
+            return True if module_bits == bits else {"group_size": group_size, "bits": module_bits, "mode": mode}
 
-        nn.quantize(
-            self.model,
-            group_size=int(quant.get("group_size", 64)),
-            bits=int(quant.get("bits", 4)),
-            mode=quant.get("mode", "affine"),
-            class_predicate=quantized,
-        )
+        nn.quantize(self.model, group_size=group_size, bits=bits, mode=mode, class_predicate=quantized)
         params = dict(nn.utils.tree_flatten(self.model.parameters()))
         missing = sorted(set(params) - set(weights))
         unexpected = sorted(set(weights) - set(params))

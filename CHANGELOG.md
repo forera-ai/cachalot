@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.52.1 (2026-10-02)
+
+HANDOFF "Start here (2026-10-02, 0.52.1)", section 18.49. The default model path is unchanged.
+
+### Added
+- GLM model directories may carry `nonexpert-sanitized.safetensors`: the non-expert weights of another quantisation in mlx-lm's layout (`language_model.*` names). When present, `GlmModel` loads
+  them instead of the shards' non-expert tensors, renames mlx-lm's `forget_gate.*` and fused `conv1d` to the names `LanguageModel.sanitize` fuses from, and reads each module's bit width off its tensors
+  (packed columns per scale group), so a mixed 4/8-bit checkpoint loads next to 4-bit expert shards. Unit tests for the renaming.
+
+### Measured, not shipped
+- A mixed-precision GLM-5.3-Flash did not stop the garbled C#. The hybrid: this machine's 4-bit experts plus `pipenetwork/GLM-5.3-Flash-MLX-mixed-4_8bit`'s non-expert tensors (attention, delta-rule
+  projections, shared experts, lm_head at 8 bits; 8.9 GiB fetched by byte range instead of 170 GiB). Its expert scales and biases equal the local ones byte for byte and its 4-bit codes differ in 0.03 %
+  of positions (by one). The same C# replay as 0.51.7: Hermes bodies at temperature 0.7, **12 of 12 syntax garbles** (11 of 12 excluding one reply cut off at 3,000 tokens) against GLM 4-bit's 8 of 12 and
+  MiniMax's 1 of 12; one message, 4 of 8 garbled, 3 clean, 1 package-only, against 3 of 4. The 4-bit non-expert weights are not what garbles GLM's code.
+
 ## 0.52.0 (2026-10-02)
 
 HANDOFF "Start here (2026-10-02, 0.52.0)", section 18.48.
