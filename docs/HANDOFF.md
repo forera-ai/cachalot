@@ -25,6 +25,12 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-02, 0.52.0): GLM-5.3-Flash reads video
+>
+> Hamed: "build video for GLM and continue with others too". Section 18.48: a `video_url` part works through `./serve-glm.sh`, a port of mlx-vlm's video processor (sampled frame numbers identical,
+> patches bit-identical, prompt token-identical), each two-frame temporal step is one tower span. A 6 s test clip is read correctly (text change at 3 s, colour change; the shape count wrong),
+> 1,221 tokens in 24.8 s, a resent clip free. Knobs: `CACHALOT_GLM_VIDEO_MAX_TOKENS` (4000), `CACHALOT_GLM_VIDEO_MAX_FRAMES` (128). The "others" are in 18.49 onward as they land.
+
 > ## Start here (2026-10-02, 0.51.10): GLM reads an image in a system message; video is a build, not a test
 >
 > No runtime change. Hamed asked for the handoff and prompts read and their tasks done. v90's autonomous item was "video and an image in a system message on GLM". The system-message
@@ -8655,6 +8661,40 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.48 GLM reads video — 2026-10-02 (0.52.0)
+
+Hamed: "build video for GLM and continue with others too". §18.47 had priced it; this builds it.
+
+**Reference.** mlx-vlm 0.7.4's `Glm5NextVideoProcessor` / `Glm5NextProcessor._video_replacement` (`~/venvs/mlxvlm-compare`). Reading it settled the questions §18.47 left open:
+the language model has no positional encoding of its own (NoPE), so video needs no position scheme; the tower is called with one `[1, h, w]` grid per temporal step (`_video_grid`);
+the `<|video|>` marker is replaced, per step, by `<|begin_of_image|>` + `per_frame` image tokens + `<|end_of_image|>` + `"<t> seconds"` (timestamps = sampled frame time / source fps, every second one);
+image tokens inside `<|begin_of_video|>...<|end_of_video|>` are filled from the video tower rows.
+
+**Built (`src/cachalot/glm/vision.py`, `engine.py`).** `image_records` marks `video_url` / `video` / `input_video` parts (`kind: video`); `load_video` probes with ffprobe, picks frames with
+`sample_indices` (a port of `sample_frames`, duration = frames / fps as the loader reports, never empty), decodes the picked frames with ffmpeg (`select='eq(n,i)+...'`, one PNG each in a temp
+directory; `-fps_mode passthrough`, `-vsync` is gone from this ffmpeg), runs `preprocess_video` (resize under a budget for the whole clip, pad, normalise, patches ordered by 2x2 merge group
+with the two frames of a step in the temporal axis) and cuts it into one `ImageInput` per step with a content-hash digest per step. `expand` places images and videos by marker order and writes
+the per-step blocks; the engine passes its tokenizer. Prefill, the prefix key (`key_tokens`) and the tower cache then work unchanged, because a step is an image-like span. The tower cache holds 192 spans (was 8).
+Budget: `CACHALOT_GLM_VIDEO_MAX_TOKENS` 4000 for the whole clip (the checkpoint allows 240,000; at ~50 tok/s that is ~80 s), `CACHALOT_GLM_VIDEO_MAX_FRAMES` 128.
+
+**Parity with mlx-vlm (scratch instruments, rebuild from here).** (1) Sampling: `Glm5NextVideoProcessor.sample_frames` against `sample_indices` for eight (frames, fps) cases
+(168/24, 300/30, 40/25, 90/15, 7/30, 1000/29.97, 600/60, 120/24): identical lists. (An early run differed because the processor's own duration estimate rounds up (8 s for a 7 s clip, 16 frames
+against 14); the loader passes frames / fps, which the code now uses.) (2) Preprocessing: a 7 s, 24 fps, 480 x 270 test clip (ffmpeg `testsrc2`) decoded to 14 frames; the processor's patches and
+grid against `preprocess_video` at the same 4,000-token budget: grid `[7, 20, 36]` both, patches bit-identical (max difference 0.0). (3) Prompt: the chat template's text with the processor's
+replacement string tokenised whole against `expand`'s token list (1,319 tokens): identical.
+
+**Live (`./serve-glm.sh`, temperature 0).** A 6 s, 10 fps, 448 x 336 synthetic clip (a blue circle sliding right over "ALPHA" for 3 s, then a red square sliding right over "OMEGA"), asked to
+describe what happens and when text changes. Reply: ALPHA bottom left, blue shape sliding left to right, at 3 seconds the text changes to OMEGA and the shape becomes red and keeps sliding: the
+text, the 3-second change, the colours and the direction are right; the shape counts are wrong (two blue circles, three red rectangles for one each). 1,221 prompt tokens (8 steps x 144 + framing),
+prefill 24.8 s (about 49 tok/s, tower included), decode 65 tokens at 3.0 tok/s; the same request again: 1,221 reused, prefill 0.001 s, the same text. n = 1 clip; a read of one synthetic clip, not an
+accuracy rate.
+
+**Tests.** 485 pass: video part records, sampling counts and evenness, temporal-step patches (two distinct frames per step), mixed image + video expansion with a stub tokenizer, marker mismatch.
+
+**Not done / limits.** No audio. ffmpeg and ffprobe must exist (`/opt/homebrew/bin` or the PATH). A whole clip is a base64 JSON body: very long clips are Studio's/client's to cut. The 4,000-token default
+shrinks resolution for long clips (a 60 s clip at 2 fps is 60 steps, ~65 tokens each: about 80 x 80 pixels of detail per frame); raise the knob for detail and pay ~50 tok/s. Tower correctness for videos is
+the image tower's (bit-identical to mlx-vlm in §18.42) fed by bit-identical patches; no end-to-end tower-row comparison was run on a clip.
 
 ### 18.47 An image in a GLM system message reads correctly; video priced — 2026-10-02 (0.51.10)
 

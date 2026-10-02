@@ -72,3 +72,57 @@ def test_a_subclass_that_skips_init_has_no_vision():
 
     assert MiniMaxModel.__new__(MiniMaxModel).has_vision() is False
     assert GlmModel.__new__(GlmModel).has_vision() is False
+
+
+def test_image_records_marks_video_parts():
+    messages = [{"role": "user", "content": [{"type": "video_url", "video_url": {"url": "file:///tmp/c.mp4"}},
+                                             {"type": "image_url", "image_url": {"url": "file:///tmp/x.png"}}]}]
+    assert vision.image_records(messages) == [{"url": "file:///tmp/c.mp4", "kind": "video"}, {"url": "file:///tmp/x.png"}]
+
+
+@pytest.mark.parametrize("total,fps,length", [(168, 24.0, 14), (300, 30.0, 20), (40, 25.0, 4), (90, 15.0, 12), (1000, 29.97, 66)])
+def test_sample_indices_match_mlx_vlm_counts(total, fps, length):
+    idx = vision.sample_indices(fps, total, 2.0, 128, total / fps)
+    assert len(idx) == length and len(idx) % 2 == 0 and idx[0] == 0 and list(idx) == sorted(idx) and idx[-1] < total
+
+
+def test_sample_indices_never_empty():
+    assert len(vision.sample_indices(30.0, 7, 2.0, 128, 7 / 30.0)) == 2
+
+
+def test_preprocess_video_cuts_temporal_steps_with_distinct_frames():
+    frames = np.zeros((4, 140, 196, 3), np.uint8)
+    frames[2:] = 255
+    patches, grid = vision.preprocess_video(frames, CFG)
+    assert grid == [2, 10, 14]
+    assert patches.shape == (2 * 10 * 14, 3 * 2 * 14 * 14)
+    first, second = patches[:140], patches[140:]
+    p0 = first[0].reshape(3, 2, 14, 14)
+    p1 = second[0].reshape(3, 2, 14, 14)
+    assert np.allclose(p0[:, 0], p0[:, 1]) and np.allclose(p1[:, 0], p1[:, 1]) and not np.allclose(p0, p1)
+
+
+class _Tok:
+    ids = {"<|begin_of_image|>": 901, "<|end_of_image|>": 902}
+
+    def convert_tokens_to_ids(self, name):
+        return self.ids[name]
+
+    def encode(self, text, add_special_tokens=False):
+        return [ord(c) for c in text]
+
+
+def test_expand_places_video_blocks_between_image_markers():
+    def step(d):
+        return vision.ImageInput(d, np.zeros((8, 1176), np.float32), [1, 2, 4], 2)
+
+    video = vision.VideoInput([step("a" * 64), step("b" * 64)], [0.0, 1.5])
+    image = vision.ImageInput("c" * 64, np.zeros((4, 1176), np.float32), [1, 2, 2], 1)
+    tokens = [7, vision.IMAGE_TOKEN_ID, 8, vision.VIDEO_TOKEN_ID, 9]
+    out, spans = vision.expand(tokens, [image, video], _Tok())
+    img_tok = vision.IMAGE_TOKEN_ID
+    stamp0, stamp1 = (ord(c) for c in "0.0 seconds"), (ord(c) for c in "1.5 seconds")
+    assert out == [7, img_tok, 8, 901, img_tok, img_tok, 902, *stamp0, 901, img_tok, img_tok, 902, *stamp1, 9]
+    assert [(s.start, s.length) for s in spans] == [(1, 1), (4, 2), (4 + 2 + 1 + 11 + 1, 2)]
+    with pytest.raises(ValueError):
+        vision.expand([vision.VIDEO_TOKEN_ID], [image], _Tok())

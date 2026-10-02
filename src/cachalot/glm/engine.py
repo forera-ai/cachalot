@@ -258,7 +258,7 @@ class GlmEngine:
         records = vision.image_records(req.messages)
         if not records:
             return tokens, []
-        return vision.expand(tokens, vision.load_inputs(records, self.model.vision_config()))
+        return vision.expand(tokens, vision.load_inputs(records, self.model.vision_config()), self.tokenizer)
 
     def system_prefix_len(self, req: ChatRequest, tokens: list[int]) -> int:
         """Tokens of the rendered header + tools + leading system message, when a prefix of `tokens`."""

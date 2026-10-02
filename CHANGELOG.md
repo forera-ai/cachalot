@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.52.0 (2026-10-02)
+
+HANDOFF "Start here (2026-10-02, 0.52.0)", section 18.48.
+
+### Added
+- **GLM-5.3-Flash reads video** through `./serve-glm.sh`: a `video_url` (also `video`, `input_video`) content part with a `data:` URI, an http(s) URL or a local path. The part is a port of
+  mlx-vlm's `Glm5NextVideoProcessor`: frames are sampled at the checkpoint's 2 fps (`vision.sample_indices`), decoded with `ffmpeg` (needs `ffmpeg` and `ffprobe` on the PATH or in
+  `/opt/homebrew/bin`), resized under a token budget for the whole clip, and cut into temporal steps of two frames. Each step is one image-like span through the existing tower, and the
+  `<|video|>` marker expands to `<|begin_of_image|>`, the step's `<|image|>` run, `<|end_of_image|>` and `"<seconds> seconds"` per step, as mlx-vlm's processor writes it.
+  Prefix keys carry the video's content hash per step, so a resent clip reuses its prefix.
+- `CACHALOT_GLM_VIDEO_MAX_TOKENS` (default 4000, the `<|image|>` tokens of a whole clip; the checkpoint allows 240,000) and `CACHALOT_GLM_VIDEO_MAX_FRAMES` (default 128; mlx-vlm 2048).
+  At the measured ~50 tok/s prefill, 4,000 tokens is about 80 s.
+- Tests: video part records, sampling counts, temporal-step patches, mixed image and video expansion.
+
+### Changed
+- The tower's output cache holds 192 images or video steps (was 8), so a clip's steps stay cached for a second question.
+
+### Measured
+- Against mlx-vlm 0.7.4 (`~/venvs/mlxvlm-compare`): the sampled frame numbers are identical for eight (frames, fps) cases; the patches and grid of a 14-frame 480 x 270 clip are bit-identical
+  (`[7, 20, 36]`, max difference 0.0); the expanded prompt is token-identical to the tokenised mlx-vlm text.
+- Live: a 6 s, 448 x 336 test clip (a blue circle sliding right with "ALPHA", a red square sliding right with "OMEGA" from 3 s) is read correctly: the text change at 3 seconds and the
+  blue-to-red change; the shape count was wrong ("two overlapping" circles for one). 1,221 prompt tokens, prefill 24.8 s, decode 3.0 tok/s; the same clip again reuses all 1,221 tokens (0.001 s).
+
 ## 0.51.10 (2026-10-02)
 
 HANDOFF "Start here (2026-10-02, 0.51.10)", section 18.47. No runtime change.

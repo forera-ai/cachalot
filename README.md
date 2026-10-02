@@ -133,7 +133,7 @@ idle 45 % of the time — and is now limited by the share of experts that are al
 | `./chat.sh` launcher for the shipped configuration | ✅ shipped |
 | Batched prefill (attention for all 40 layers, HC, router, routed + shared experts, Engram) | ✅ shipped |
 | DSpark / MTP speculative decoding | ⛔ measured and closed twice; needs a decode-shaped multi-position forward first |
-| Vision (ViT + aligner, image spans in prefill, `image_url` in the server) | ✅ DeepSeek: working 0.10.0; reads a real chart's every value correctly. Tower loads on first image (~1 s, 0.9 GiB). ✅ GLM-5.3-Flash since 0.51.0 (its own 24-block ViT, bit-identical to mlx-vlm's in 0.51.5, images keyed by content hash in the prefix cache; two charts read exactly, a resent image reuses its prefix; an image in a system message reads correctly too, 0.51.10; video not supported) |
+| Vision (ViT + aligner, image spans in prefill, `image_url` in the server) | ✅ DeepSeek: working 0.10.0; reads a real chart's every value correctly. Tower loads on first image (~1 s, 0.9 GiB). ✅ GLM-5.3-Flash since 0.51.0 (its own 24-block ViT, bit-identical to mlx-vlm's in 0.51.5, images keyed by content hash in the prefix cache; two charts read exactly, a resent image reuses its prefix; an image in a system message reads correctly too, 0.51.10; video since 0.52.0: a `video_url` part is sampled at 2 fps through ffmpeg, matches mlx-vlm's processor bit for bit, a 1.2k-token clip prefills in 25 s) |
 
 ## Hardware
 
