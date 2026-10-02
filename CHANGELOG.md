@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.51.10 (2026-10-02)
+
+HANDOFF "Start here (2026-10-02, 0.51.10)", section 18.47. No runtime change.
+
+### Measured, not shipped
+- GLM-5.3-Flash reads an image that sits in a **system** message: a 448 x 448 synthetic image (a red square, a blue circle, the text "TIDE 731") sent once in a system
+  message and once in the user message (temperature 0, `./serve-glm.sh`) was described correctly both ways ("A red square and a blue circle appear above the black text
+  \"TIDE 731\"."). 300 and 286 prompt tokens, prefill 50.9 s and 53.5 s (both include the tower's first load or a cold path), decode 0.30-0.35 tok/s on a freshly started server.
+  `vision.image_records` already collects image parts from any message and the chat template renders the image markers for the system role, so no code was needed.
+- Video on GLM priced on paper, not built: the vendored tower already takes a temporal grid and the checkpoint's `video_processor` names 2 fps and a temporal patch of 2, but
+  `vision.py` says "Videos are not supported" and the server has no video part, frame decoding or `<|video|>` expansion.
+
 ## 0.51.9 (2026-10-01)
 
 HANDOFF "Start here (2026-10-01, 0.51.9)", section 18.46. No runtime change.

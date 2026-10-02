@@ -25,6 +25,12 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-02, 0.51.10): GLM reads an image in a system message; video is a build, not a test
+>
+> No runtime change. Hamed asked for the handoff and prompts read and their tasks done. v90's autonomous item was "video and an image in a system message on GLM". The system-message
+> image works (section 18.47): it needed no code. Video does not exist in the server and would be a feature build (frame decoding, `<|video|>` expansion, a mask or position check
+> against mlx-vlm); it is priced in 18.47 and waits for Hamed's go. Still waiting on Hamed: another GLM quantisation, video go/no-go, and the X10Pro-bound prefill drift only if he wants it.
+
 > ## Start here (2026-10-01, 0.51.9): the DeepSeek prefill drift is moot as asked; one cold 12k prefill now takes ~19 min
 >
 > - **Section 18.46, no runtime change.** The drift of §15.13 was an internal-SSD question and the internal DeepSeek bank is gone (0.48.1): DeepSeek streams from the
@@ -8649,6 +8655,39 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.47 An image in a GLM system message reads correctly; video priced — 2026-10-02 (0.51.10)
+
+Hamed: "read the handoff and session prompts and do the tasks". Machine gate: tree clean at 0.51.9, wired limit 88064, no runtime, X10Pro mounted, screensaver off,
+memory pressure level 87, swap 2.8 of 4.0 GiB. v90's first job offered three items: another GLM quantisation (Hamed's call), video and a system-message image on GLM, and the
+X10Pro-bound drift rerun (only if he wants it). The second is the only autonomous one.
+
+**Reading the code first.** `glm.vision.image_records` walks every message and collects each `image_url` / `image` / `input_image` part in prompt order; `expand` then replaces
+each `<|image|>` token in the rendered prompt. The chat template (`~/GLM-5.3-Flash-MLX-4bit-MTP/chat_template.jinja`, `visible_text`) renders `<|begin_of_image|><|image|><|end_of_image|>`
+for a list-typed system content as well (rendered offline with jinja2 and `loopcontrols`: `...<|system|>SYS<|begin_of_image|><|image|><|end_of_image|><|user|>hi...`). So the marker count
+and the record count agree for a system image, and no change was predicted to be needed.
+
+**Test.** Scratch image (PIL, 448 x 448: a red square, a blue circle, "TIDE 731" in black). `./serve-glm.sh` (52 GiB budget, warm set read back in 9.0 s), two requests at temperature 0,
+`max_tokens` 1200, the question "What shapes, colours and text are in the image? One short sentence.":
+
+| placement | prompt tokens | prefill | decode | reply |
+|---|---|---|---|---|
+| system message (text + image) | 300 | 50.9 s | 20 tokens, 0.30 tok/s | A red square and a blue circle appear above the black text "TIDE 731". |
+| user message (text + image) | 286 | 53.5 s | 23 tokens, 0.35 tok/s | The image contains a red square, a blue circle, and the black text "TIDE 731". |
+
+n = 1 per placement; the point is that the path works, not a rate. The prefill and decode times are of a freshly started server whose first requests also load the tower and fill
+experts, so they are not representative (the 0.51.4 numbers, decode 3.2-3.5 tok/s, stand). An image in a system message is not reused between requests in this test (only one request each);
+the prefix key covers it by the same `key_tokens` path as any other image.
+
+**Video, priced, not built.** The vendored tower (`third_party/mlx_vlm/models/glm5_next/vision.py`) already handles a temporal grid `(t, h, w)`, and the checkpoint's
+`processor_config.json` gives `video_processor` 2 fps, temporal patch 2, up to 240,000 tokens. What is missing is all on the Cachalot side: `glm/vision.py` states videos are not
+supported; the server parses no `video_url` part; there is no frame decoding (`ffmpeg` is at `/opt/homebrew/bin/ffmpeg`, `cv2` is not installed in the venv); the prompt
+expansion handles only `<|image|>`; and whether GLM-5.3 inserts timestamps between temporal steps or uses a different position scheme for video is unchecked (mlx-vlm's processor is the reference, in
+`~/venvs/mlxvlm-compare`). Cost: a 5 s clip at 448 x 448 is 10 frames, 5 temporal steps of 256 tokens, about 1,300 tokens, a minute of prefill at the measured 30-45 tok/s; a 30 s 720p clip is
+far larger, so a frame cap would be needed. This is a feature build of roughly a session plus an mlx-vlm parity check, not a measurement. Hamed's priority order puts vision second; whether video
+is worth it is his call.
+
+**Closed:** system-message image on GLM (works as is). **Open:** video (build on Hamed's go), another GLM quantisation (Hamed's call), the X10Pro-bound drift (only if wanted).
 
 ### 18.46 The DeepSeek prefill drift is moot as asked — 2026-10-01 (0.51.9)
 
