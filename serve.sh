@@ -25,7 +25,14 @@ if pgrep -fl "deepseek-v41/bin/python|cachalot\.cli" >/dev/null 2>&1; then
 fi
 
 export CACHALOT_MODEL_PATH=/Volumes/X10Pro/Flash4-1/DeepSeek-V4.1-Flash
-export CACHALOT_EXPERT_BANK=${CACHALOT_EXPERT_BANK:-/Volumes/X10Pro/Flash4-1/DeepSeek-V4.1-Flash-q2g128}
+# The 2-bit bank is read from the internal SSD (6.8 GB/s) when a verified copy exists there, else from the X10Pro (1 GB/s, six times dearer a miss;
+# HANDOFF 18.51). The internal copy is trusted only when it carries the marker written after a byte-for-byte compare with the X10Pro one.
+if [ -f "$HOME/DeepSeek-V4.1-Flash-q2g128/.cachalot-verified" ]; then
+    DS_BANK_DEFAULT="$HOME/DeepSeek-V4.1-Flash-q2g128"
+else
+    DS_BANK_DEFAULT="/Volumes/X10Pro/Flash4-1/DeepSeek-V4.1-Flash-q2g128"
+fi
+export CACHALOT_EXPERT_BANK=${CACHALOT_EXPERT_BANK:-$DS_BANK_DEFAULT}
 export CACHALOT_PAGE_CACHE=1
 export CACHALOT_MLX_WIRED_LIMIT_GIB=${CACHALOT_MLX_WIRED_LIMIT_GIB:-80}
 export CACHALOT_HOTLIST=/Users/hamedprooshani/cachalot-hotlist.json

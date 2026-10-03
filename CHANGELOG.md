@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.52.3 (2026-10-03)
+
+HANDOFF "Start here (2026-10-03, 0.52.3)", section 18.51, and `docs/SPEED-RESEARCH-2026-10-03.md` (revision 2: DeepSeek first). No runtime change.
+
+### Changed
+- `serve.sh` and `chat.sh` read DeepSeek's 2-bit bank from `~/DeepSeek-V4.1-Flash-q2g128` (internal SSD, ~6.8 GB/s) when it carries the marker `.cachalot-verified`, else from the X10Pro (1 GB/s). The marker is written only after a
+  byte-for-byte compare with the X10Pro copy (done: 42 files, 0 differences).
+- `serve-glm.sh` and `chat-glm.sh` fall back to `/Volumes/X10Pro/models/GLM-5.3-Flash-MLX-4bit-MTP` when no internal copy exists. The internal GLM copy (169 GiB) was removed after a byte compare with that one (53 files, 0 differences).
+
+### Measured, not shipped
+- First DeepSeek run on the internal bank: 4.1-5.1 tok/s at a 90-96 % hit rate, taken at memory pressure level 12 with swap at 5.6 of 7 GiB and the screensaver on: not a valid speed figure (README 0.9.x: 9.4-9.6 tok/s). The server's
+  counters showed 47k predicted loads with 16.8k used (36 %).
+- Research, revision 2: DeepSeek-V4.1-Flash added. Public REAP checkpoints cost +2.8 % (25 % pruned) and +16.8 % (50 %) wikitext perplexity; Rapid-MLX measured DSpark at 2.02x on an M3 Ultra with the target resident;
+  a framework-free engine (ds4) decodes a 2-bit V4 Flash at 25-36 ms a token against our 77 ms all-resident floor.
+
 ## 0.52.2 (2026-10-03)
 
 HANDOFF "Start here (2026-10-03, 0.52.2)", section 18.50, and `docs/SPEED-RESEARCH-2026-10-03.md`. No runtime change.

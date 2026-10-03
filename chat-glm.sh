@@ -15,7 +15,14 @@ fi
 
 # The internal copy was deleted on 2026-09-25 to make room for MiniMax-M3 (HANDOFF 18); GLM reads over USB
 # until it is copied back. CACHALOT_GLM_PATH overrides.
-export CACHALOT_MODEL_PATH=${CACHALOT_GLM_PATH:-$HOME/GLM-5.3-Flash-MLX-4bit-MTP}
+# GLM (priority 3) lives on the X10Pro since 2026-10-03, freeing the internal SSD for DeepSeek's bank (HANDOFF 18.51); an internal copy, if one
+# exists again, wins.
+if [ -d "$HOME/GLM-5.3-Flash-MLX-4bit-MTP" ]; then
+    GLM_DEFAULT_PATH="$HOME/GLM-5.3-Flash-MLX-4bit-MTP"
+else
+    GLM_DEFAULT_PATH="/Volumes/X10Pro/models/GLM-5.3-Flash-MLX-4bit-MTP"
+fi
+export CACHALOT_MODEL_PATH=${CACHALOT_GLM_PATH:-$GLM_DEFAULT_PATH}
 export CACHALOT_MODEL_FAMILY=glm
 export CACHALOT_PAGE_CACHE=1
 export CACHALOT_MLX_WIRED_LIMIT_GIB=${CACHALOT_MLX_WIRED_LIMIT_GIB:-80}

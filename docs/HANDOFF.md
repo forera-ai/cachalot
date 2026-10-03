@@ -25,13 +25,15 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
-> ## Start here (2026-10-03, 0.52.2): speed research; the next levers change the workload, and MiniMax's floor must be measured first
+> ## Start here (2026-10-03, 0.52.3): DeepSeek is priority 1 and is back on the internal SSD; the research is redone around it
 >
-> Hamed asked for the literature checked, our own method reviewed, and unseen ways to a large speed gain found. No runtime change; the result is `docs/SPEED-RESEARCH-2026-10-03.md` and section 18.50. Short form:
-> (1) GLM is read-bound (70-75 % of a 365 ms token): every route to a higher hit rate pays (80 % hit = 1.3x, 90 % = 1.9x). (2) MiniMax at chat contexts is only ~one third misses: a fit over 14 replies gives
-> `ms = 77 + 3.4 x misses`, against §18.19's 35-43 ms all-hit floor: **measure where the extra ~34 ms of the floor went before any more MiniMax lever.** (3) The levers left all change the model's workload (output-changing, Hamed's call):
-> miss substitution for GLM, a saliency-aware substitution rule, REAP-style pruning as a router mask over the banks we already have, bit-sliced expert reads. (4) A common Pareto harness (misses/token against NLL/KL and a checkable battery)
-> plus a routing-trace cache simulator is the prerequisite.
+> Hamed ranked the models **1 DeepSeek-V4.1-Flash, 2 MiniMax-M3, 3 GLM-5.3-Flash** and asked for the research to cover DeepSeek and the docs to follow. Done (no runtime change; sections 18.50-18.51 and
+> `docs/SPEED-RESEARCH-2026-10-03.md`, revision 2):
+> - **Storage.** GLM's internal copy (169 GiB) was removed after a byte compare with its X10Pro copy; DeepSeek's 2-bit bank (142 GiB) was copied back to `~/DeepSeek-V4.1-Flash-q2g128` and byte-verified; `serve.sh`/`chat.sh` use it
+>   once the marker `.cachalot-verified` exists; GLM scripts fall back to the X10Pro copy (GLM now ~0.7 tok/s, estimated).
+> - **First DeepSeek run on the internal bank was a smoke test only:** 4.1-5.1 tok/s at memory pressure 12, swap 5.6 of 7 GiB, screensaver on (README 0.9.x: 9.4-9.6). Repeat it on a settled machine first (D0).
+> - **Research:** DeepSeek is read-light and floor-heavy (77 ms floor, 12 % of the machine's bandwidth; ds4 reaches 25-36 ms). It never got the GPU-select loop or miss substitution built for MiniMax; DSpark was closed on constants that
+>   no longer hold (Rapid-MLX measured 2.02x on an M3 Ultra); DeepSeek tolerates REAP pruning (25 % = +2.8 % perplexity). Ranked levers D0-D8 for DeepSeek, then MiniMax, then GLM.
 
 > ## Start here (2026-10-02, 0.52.1): an 8-bit GLM hybrid does not fix its garbled code
 >
@@ -8676,30 +8678,50 @@ line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderb
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
-### 18.50 Speed research: literature, our own process, and the untried levers — 2026-10-03 (0.52.2)
+### 18.50 Speed research, revision 2: priority order DeepSeek, MiniMax, GLM — 2026-10-03 (0.52.2-0.52.3)
 
-Hamed: "check again with all online resources in the same area ... find new breakthrough changes we missed ... scientifically analyze the whole procedures ... find another unseen, untested ways to improve the speed by much ... prepare next session's docs".
-The full analysis is `docs/SPEED-RESEARCH-2026-10-03.md`; this section keeps what the next session needs to act.
+Hamed: "check again with all online resources ... find unseen, untested ways to improve the speed by much ... prepare next session's docs", then: "one problem with the research is that you just checked for 2 models while one of the
+high priority models is DeepSeek-flash 4.1 ... priority: 1 DeepSeek Flash 4.1, 2 MiniMax-M3, 3 GLM Flash 5.3 ... re-research for DeepSeek too and refine/adjust next session's prompt and handoff documents". The full analysis is
+`docs/SPEED-RESEARCH-2026-10-03.md` (revision 2); this section keeps what the next session needs.
 
-**Measured this session (the only new numbers).** Fourteen MiniMax replies of one prompt (temperature 0.7 and 0, default server settings, screensaver intermittently on): 114 ms a token (107-127), 10.9 misses a token (9.5-12.8);
-fit `ms = 77 + 3.42 x misses`, r 0.65. The slope equals one expert's raw read time, so reads are not hidden from the token; the user's chat `/stats` shows `decode_wait_ms_per_miss` 1.2 ms, which understates the real
-cost ~3x because reads also slow the GPU's part (§18.4). The intercept (77 ms) is the open question against §18.19's 35-43 ms all-hit floor. GLM's older figures (365 ms a token, ~100 misses, 2.6 ms a miss, 105 ms floor) reproduce.
-Quality, same session (not a speed result): MiniMax's wrong "fabricated data" Swift answer was 1 of 15 (14 reruns real importers; 10 of 14 compile), see the chat review in the transcript; GLM's matched the 4-bit garble pattern in the replay (§18.49).
+**Measured this session.** (1) Fourteen MiniMax replies: `ms/token = 77 + 3.42 x misses` (r 0.65, n 14): a miss costs its full raw read time; `decode_wait_ms_per_miss` understates it 3x; the 77 ms floor against §18.19's 35-43 ms is open (M0).
+(2) DeepSeek on the internal bank, smoke test only (see 18.51): 4.1-5.1 tok/s at memory pressure 12 and swap 5.6 GiB, 47k predicted loads with 16.8k used. (3) GLM's older figures (365 ms, ~100 misses, 105 ms floor, 2.6 ms a miss) reproduce.
 
-**What the literature adds (abstracts and model cards, not run).** REAP pruning (ICLR 2026; 25 % pruning ~free on large models, 50 % costs 1-2 % on 160-384-expert models but 11 % on a 128-expert one; calibration domain decisive;
-agentic tool use -5 to -6 %); public REAP checkpoints for both our models (GLM: +0.34 nats at 37 %, +0.56 at 50 % on wikitext-2; MiniMax: 87 of 128 experts with agentic-coder calibration); mixed-precision miss loading (HOBBIT);
-bit-sliced MSB/LSB expert caching (SliceMoE: 1.6-1.8x); per-layer cache quotas and routing-history replacement (MoE-CORE: 1.39-1.75x on DeepSeek-V4-Flash); residency-aware self-speculation with verifier-side expert budgets
-(DraftExpert, AcceptMoE, MoE-Spec, EcoSpec). flash-moe (Qwen3.5-397B on a 48 GB MacBook, 4.4 tok/s) shows our approach is ahead, not behind.
+**What the research found, DeepSeek first (abstracts, model cards and repositories; nothing run).**
+- DeepSeek's all-resident floor is 77-80 ms (README), streaming ~7.5 GB a token at ~98 GB/s, 12 % of the M3 Ultra's bandwidth; antirez's pure C/Metal `ds4` decodes a 2-bit V4 Flash at 25-36 ms on an M5 Max. Our 40 per-layer `mx.eval` round trips
+  (57 ms wait + 21-29 ms CPU) are the pre-0.31 structure that MiniMax left behind (GPU-side selection, host one layer behind: all-hit floor 72 -> 34 ms). **DeepSeek never got it** (D3), nor miss substitution (D4).
+- DSpark: our checkpoint carries the draft (`mtp.0-2`), acceptance was measured at 2.85 tokens/forward and speculation was closed at 1.03-1.20x because our verify costs 242.6 ms + 26.9 ms a position. Rapid-MLX (Apache-2.0) measured 19.39 against 9.58 tok/s
+  (2.02x, K = 4, accepted 1.85) on an M3 Ultra with the target resident; with a Rapid-MLX-grade verify (~8-10 ms a position, ~15 ms draft) the model gives **1.4-1.6x at internal-drive miss cost**, ~1.07x over USB. The closure was an engineering gap plus a regime (D2).
+- REAP on DeepSeek: pipenetwork REAP25 (288 of 384 experts) wikitext-2 perplexity x1.028, REAP50 x1.168, LibertAI REAP-256E +14 %; calibration generic. DeepSeek (384 experts) tolerates pruning far better than GLM (+41 % at 37 %) (D5).
+- MiniMax and GLM: REAP, HOBBIT, SliceMoE, MoE-CORE, residency-aware speculation as in revision 1; public drafters exist for both (`nvidia/MiniMax-M3-DSpark`, `Inferact/MiniMax-M3-EAGLE3`, `RedHatAI/GLM-5.3-Flash-speculator.dspark-preview`).
 
-**Method review, in one paragraph.** Only workload-changing levers (bank layout, prefetch, substitution, bytes per expert, memory governor) moved a token by more than 10 %; kernel, ordering and scheduling work landed at 0-5 % and was often below
-the +-10 % process drift. Kernel work is exhausted on this hardware. What is missing is a common currency (misses a token against quality) so approximations can be combined and ranked, and a metric that tells the truth about miss cost.
+**Method review.** Only workload-changing levers (and the GPU-select loop for MiniMax) moved tokens by more than 10 %; features built for MiniMax and GLM were never ported back to the priority-1 model; closures carry their constants and two regimes
+changed (DeepSeek's bank moved to USB, MiniMax's floor); `decode_wait_ms_per_miss` misleads; there is no common currency (misses per token against quality) for approximations; storage was never allocated by priority.
 
-**Ranked levers (details, gains, costs and gates in the research file, section 4):** N1 re-anatomise MiniMax's floor; the Pareto harness; N2 miss substitution for GLM; N3 saliency-aware thresholds; N4 REAP as a router mask over our banks
-(keep-lists recoverable from the public checkpoints by fingerprinting expert scales, ~1 GB of range reads, no weight download); N5 S1c for GLM above 90 % hits; N6 bit-sliced experts; N7-N10 smaller ideas and the model-tiering option.
-**Combined estimate for GLM: 2.7 -> ~5.5 tok/s if quality survives every gate; MiniMax 1.15-1.5x depending on N1.**
+**Ranked levers (tables and arithmetic in the research file, sections 1 and 4).** DeepSeek: D0 measure on a settled machine; D1/D1b storage (done); D3 GPU-select loop (+14-22 ms); D4 miss substitution (output-changing); D2 DSpark with a decode-shaped verify (1.4-1.6x
+internal); D5 REAP mask; D6 a framework-free decode loop (long-term); D7 trunk precision; D8 prefill. MiniMax: M0 re-anatomise the floor; M1 speculation with a public drafter; M2 saliency-aware substitution; M3 REAP mask; M4 bit-sliced experts; M5 cache policy. GLM: G1 substitution, G2 REAP,
+G3 S1c, G4 speculation (closed). **Combined DeepSeek estimate: USB 3.8 tok/s -> internal 9.3 -> ~17 tok/s with D4, D3, D2.**
 
-**Closed by this research:** nothing new; two earlier closures got a footnote: speculative decoding stays closed until the harness can price a verifier-side expert budget (N8), and the GLM S1c "reopen above 90 % hits" condition is reachable through N2/N4.
-**Needs Hamed:** permission to try output-changing speed levers against the harness (default only on his word); the screensaver on Never and the Hermes window hidden while benchmarking; whether a second, fully resident model for subagent turns is wanted (N10).
+**Needs Hamed:** permission for output-changing levers against the Pareto harness; the screensaver on Never and the Hermes window hidden while benchmarking; closing memory-hungry apps before D0 (pressure 12 / swap 5.6 GiB made the first run meaningless); how much of the 111 GiB free internal space the Engram tables may take.
+
+### 18.51 Storage by priority: GLM off the internal SSD, DeepSeek's bank back — 2026-10-03 (0.52.3)
+
+Hamed: "you can remove GLM model from internal drive to open up some space for returning deepseek to internal ssd. make sure glm model does not included with something we generated and required."
+
+**Safety checks before deleting.** (1) The internal `~/GLM-5.3-Flash-MLX-4bit-MTP` was compared with `Vontra/GLM-5.3-Flash-MLX-4bit-MTP`'s file list: all 54 files present, sizes equal except `README.md` (Hugging Face's has since changed); the only extras
+were `.cache/huggingface/download/*.lock|.metadata` (Hugging Face's download bookkeeping). **Nothing Cachalot generated was inside it**: the contiguous GLM bank is a separate directory, `~/GLM-5.3-Flash-bank` (11 GiB, `CACHALOT_GLM_BANK`, off by default, effect unmeasured),
+and the GLM prefix snapshots live in `~/.cache/cachalot/prefix-snapshots-glm`; both were left in place. (2) A complete copy existed at `/Volumes/X10Pro/models/GLM-5.3-Flash-MLX-4bit-MTP` (54 files); `cmp` of all 53 files against the internal one: 53 identical, 0 differences (8 min).
+**Then** the internal directory was deleted (169 GiB; internal free space 84 -> 254 GiB).
+
+**DeepSeek's bank back.** `cp -R` of `/Volumes/X10Pro/Flash4-1/DeepSeek-V4.1-Flash-q2g128` (142 GiB, 42 files, ~0.7 GB/s) to `~/DeepSeek-V4.1-Flash-q2g128`; `cmp` of all 42 files: 42 identical (6.9 min); the marker `.cachalot-verified` was written; internal free space 111 GiB.
+`serve.sh` and `chat.sh` now take the internal bank when the marker exists and fall back to the X10Pro bank otherwise; `serve-glm.sh` and `chat-glm.sh` take the internal GLM if it exists again, else the X10Pro copy. The DeepSeek checkpoint (trunk and the 189 GiB Engram tables) is still on the X10Pro.
+GLM now reads over USB: estimated ~14 ms a miss at ~100 misses a token, ~0.7 tok/s, until G1/G2.
+
+**First DeepSeek run on the internal bank (smoke test).** `./serve.sh` loaded in 19 s ("expert bank: /Users/hamedprooshani/DeepSeek-V4.1-Flash-q2g128 (affine, 2-bit, 9.49 MiB/expert, 15360 experts)", hotlist 863 experts, budget 52 GiB, wired 80). Five requests (150-500 tokens) and three repeats of one: 4.1-5.1 tok/s,
+hit 90-96 %, 10-24 misses a token, `read=` 2.3-2.8 ms. Not a valid speed figure: memory pressure level 12, swap 5.6 of 7 GiB, screensaver on, MLX peak 71.7 GiB (the README's 52 GiB session peaked at 67.7). The pressure returned to 84 when the server stopped.
+`/v1/stats` after 1,661 tokens: 703 GB read, `predicted_loads` 46,956, `predicted_used` 16,761 (36 %). **Next:** D0 on a settled machine; look at whether the prediction over-reads and whether Engram preads over USB cost anything.
+
+**Closed:** D1 (tiering) for the full bank. **Reopen** a tier only if a later change (a second large model, an Engram hot tier) needs the internal space.
 
 ### 18.49 A mixed 4/8-bit GLM does not stop the garbled code — 2026-10-02 (0.52.1)
 
