@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-03, 0.56.0): the Pareto harness
+>
+> Hamed: "go, build the Pareto harness." Section 18.57: `benchmarks/pareto.py` runs named arms (env, budget, `miss_budget`, prefill chunk) and reports paired NLL (block-bootstrap CI), KL, top-1, a 21-task checkable battery (Python asserts, JSON, C# `dotnet build`) with Wilson bounds, ms and misses, the frontier and a noise band from a numerically equivalent arm. Quick smoke (144 positions): `miss-budget0` cuts the decode step 141 to 113 ms (misses 34.5 to 18.5), KL outside the noise band, dNLL +0.013 with an interval spanning zero: too little power; the next step is a full-size sweep.
+
 > ## Start here (2026-10-03, 0.55.2): D2 priced from the trace and held
 >
 > Hamed: "go, price D2 from the trace." Section 18.56: a verify block reads K tokens' worth of misses (28 a token at every K), so D2 amortises only the 70 ms floor. Speed-up over 126 ms: 1.08-1.12x at our acceptance with Rapid-MLX's 8 ms a position, 0.92-1.00x at the 26.9 ms we measured, 1.11x only at p = 0.9. Held under the 10 % stop rule. Instrument: `benchmarks/d2_verify_union.py`. DeepSeek's bit-identical levers are now all priced and held; what is left is output-changing (harness + Hamed) or D6.
@@ -8710,6 +8714,32 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.57 The Pareto harness — 2026-10-03 (0.56.0)
+
+Hamed: "go, build the Pareto harness" (v100's option (a)).
+
+**What it is.** `benchmarks/pareto.py` (+ `pareto_tasks.json`, `pareto_arms.example.json`, `tests/test_pareto.py`, 13 tests). An *arm* is a named configuration: environment knobs (applied to that arm's process), the expert budget, an optional per-layer decode miss budget (`V41Model.set_decode_miss_budget`, the only output-changing decode knob that exists) and an optional prefill chunk size. `sweep ARMS --out DIR` runs the reference arm first and every other arm in its own process (`benchmarks/settle.sh` between); `report DIR --arms ARMS` prints the table. One run measures, in one process:
+1. **Teacher-forced decode** on three fixed texts (prose from the research file, code from `wired_governor.py`, the CHANGELOG), 384 prefill tokens then 192 decode steps each: the true token's log-probability, the arm's log-probabilities at the *reference's* top-64 tokens (KL, with a tail bucket), the argmax, the step's wall ms, the expert misses it caused. Decode is where substitution and drops act.
+2. **A task battery** (21 tasks; `--quick` runs 6): exact answers, eight Python functions run against asserts, JSON keys, two C# classes that must `dotnet build` as a library (ImplicitUsings on), greedy, fresh context each; the response text is saved in the manifest (first 3,000 characters).
+The report gives, against the reference: paired NLL difference with a block-bootstrap 95 % interval (blocks of 16 positions inside each text), KL mean and max, top-1 agreement, pass rates with Wilson lower bounds, median ms and misses a token, and the Pareto frontier over (ms, NLL loss, task pass lower bound). An arm marked `"noise": true` (numerically equivalent: a different prefill chunk) defines the rounding band; an arm with |dNLL| and mean KL inside it is "inside noise", one with equal log-probabilities is "identical", otherwise "outside noise". The manifest is written last (a killed run has none), carries the git sha and dirty flag, the texts' hash and the arm.
+
+**Smoke run (quick: 48 positions a text = 144, 6 tasks; machine settled, no other runtime).**
+
+| arm | verdict | dNLL nats [95 % CI] | KL mean / max | top-1 | tasks | ms | misses |
+|---|---|---|---|---|---|---|---|
+| ref | reference | 0 | 0 | 100 % | 5/6 | 141 | 34.5 |
+| noise-chunk96 (prefill in 96-token chunks) | noise arm | +0.0143 [-0.0177, +0.0452] | 0.0112 / 0.044 | 94.4 % | 5/6 | 141 | 31.0 |
+| miss-budget2 | inside noise | +0.0014 [-0.0109, +0.0133] | 0.0053 / 0.083 | 95.1 % | 5/6 | 140 | 33.6 |
+| miss-budget0 (every miss dropped) | outside noise | +0.0134 [-0.0149, +0.0419] | 0.0143 / 0.215 | 93.1 % | 5/6 | 113 | 18.5 |
+
+Reading: the harness runs end to end and flags a real change. `miss-budget2` removes only 3 % of misses (a layer rarely has more than two), so it is a weak test, not a result. `miss-budget0` cuts a decode step 20 % (141 to 113 ms) and 46 % of misses; its mean NLL moves +0.013 nats with an interval spanning zero at n = 144, but its KL (mean 0.0143 against the band's 0.0112, max 0.215 against 0.044) puts it outside the noise band. **The quick run has little power (the interval is about +-0.03 nats); a verdict on any lever needs the default size (576 positions, 21 tasks, ~10 minutes an arm) and at least three texts' worth of agreement.** The pass counts are identical across arms because `reverse-word` fails on all (the model wrote `kcamrehneb`; the check is right and the task discriminates nothing).
+
+**Limits, stated.** Speed here is the teacher-forced decode step in one process (indicative; alternate arms and confirm a win through the server path, MEASUREMENT.md). No Hermes tool-call task yet (it needs a dump-based task: a body from `/tmp/cachalot-requests-*.jsonl` with its tools through the server, graded for a well-formed tool call). The only output-changing decode knob is `miss_budget`; D4 (router-share substitution with the best resident runner-up, `tau`) and D5 (REAP mask) have no DeepSeek implementation, so they have no arm yet. Default-on stays Hamed's call.
+
+**Shipped.** The harness and its tests; no runtime change, no numerics change.
+
+**Open / next.** (1) A full-size sweep of `pareto_arms.example.json` (ref, noise-chunk96, budget36, miss-budget4, miss-budget2, miss-budget0; ~1 h) to read `miss_budget` properly: it is the one DeepSeek lever that already trades misses for quality. (2) Port MiniMax's router-share substitution to DeepSeek as an arm. (3) A Hermes tool-call task. **Needs Hamed:** nothing for (1); output-changing defaults only on his word.
 
 ### 18.56 D2 priced from the trace: held, below the stop rule — 2026-10-03 (0.55.2)
 

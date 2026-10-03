@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.56.0 (2026-10-03)
+
+HANDOFF "Start here (2026-10-03, 0.56.0)" and section 18.57. The Pareto harness, so output-changing levers can be judged.
+
+### Added
+- `benchmarks/pareto.py`, `benchmarks/pareto_tasks.json`, `benchmarks/pareto_arms.example.json`, `tests/test_pareto.py` (13 tests): named arms (environment, expert budget, per-layer decode miss budget, prefill chunk), a sweep that runs each arm in its own process, and a report with paired NLL and a block-bootstrap interval, KL against the reference's top-64 tokens, top-1 agreement, a 21-task checkable battery (Python asserts, JSON, C# `dotnet build`) with Wilson bounds, ms and misses a token, the Pareto frontier and a noise band from a numerically equivalent arm.
+
+### Measured, not shipped
+- Quick smoke (144 positions, 6 tasks): the noise arm (96-token prefill chunks) moves dNLL +0.014 [-0.018, +0.045], KL 0.011; dropping every decode miss cuts the step 141 to 113 ms and misses 34.5 to 18.5, KL 0.014 (outside the band), dNLL +0.013 with an interval spanning zero. Too little power for a verdict; a full-size sweep is the next step.
+
 ## 0.55.2 (2026-10-03)
 
 HANDOFF "Start here (2026-10-03, 0.55.2)" and section 18.56. D2 (speculative verify for DeepSeek) priced from the weighted trace and held.

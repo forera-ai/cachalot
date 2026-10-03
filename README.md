@@ -293,6 +293,8 @@ The same configuration as a benchmark, with a colder working set than a conversa
 token (5.90 tok/s)** at an 83.5 % hit rate, reading 627 MiB per token, drive busy 55 % of decode,
 reproducible to ±0.3 %.
 
+**0.56.0 (2026-10-03): a Pareto harness for output-changing levers.** `benchmarks/pareto.py` compares configurations on paired NLL, KL, a checkable task battery (including C# that must build) and decode speed, with a noise band from a numerically equivalent arm. A first quick run shows dropping every decode miss cuts the step 20 % at a KL outside the noise band; the verdict needs the full-size sweep (HANDOFF section 18.57).
+
 **0.55.2 (2026-10-03): D2 priced and held.** A speculative verify of K tokens reads K tokens' worth of experts (28 misses a token at every K), so it only amortises the 70 ms floor: 0.92-1.12x of a 126 ms token depending on the verify's cost per position (HANDOFF section 18.56).
 
 **0.55.1 (2026-10-03): D3 priced and held.** Only 53 % of DeepSeek's decode layers have all six experts resident at 48 GiB, so GPU-side expert selection would net about 0 ms (13 ms with free rewinds) of a 126 ms token (HANDOFF section 18.55).

@@ -1,0 +1,36 @@
+{
+ "about": "Arms for benchmarks/pareto.py. 'reference' runs first and defines the comparison; 'noise' marks a numerically equivalent arm (a different prefill chunk) whose differences define the rounding band; 'miss_budget' is V41Model.set_decode_miss_budget (the only output-changing decode knob today); env is applied to that arm's process.",
+ "base": {
+  "budget_gib": 48,
+  "max_seq_len": 4096,
+  "prefill": 384,
+  "decode": 192
+ },
+ "reference": "ref",
+ "arms": [
+  {
+   "name": "ref"
+  },
+  {
+   "name": "noise-chunk96",
+   "noise": true,
+   "prefill_chunk": 96
+  },
+  {
+   "name": "budget36",
+   "budget_gib": 36
+  },
+  {
+   "name": "miss-budget4",
+   "miss_budget": 4
+  },
+  {
+   "name": "miss-budget2",
+   "miss_budget": 2
+  },
+  {
+   "name": "miss-budget0",
+   "miss_budget": 0
+  }
+ ]
+}

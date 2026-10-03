@@ -1,0 +1,187 @@
+{
+ "about": "Checkable tasks for benchmarks/pareto.py. kind: exact (contains / regex), python (asserts run after the model's code), json (keys and values), csharp (must dotnet build as a library with ImplicitUsings). quick: true marks the subset `--quick` runs.",
+ "tasks": [
+  {
+   "id": "mul-17-23",
+   "kind": "exact",
+   "prompt": "What is 17 * 23? Answer with just the number.",
+   "max_tokens": 48,
+   "quick": true,
+   "contains": [
+    "391"
+   ]
+  },
+  {
+   "id": "capital-aus",
+   "kind": "exact",
+   "prompt": "What is the capital of Australia? Answer with one word.",
+   "max_tokens": 48,
+   "quick": true,
+   "regex": "canberra"
+  },
+  {
+   "id": "reverse-word",
+   "kind": "exact",
+   "prompt": "Spell the word 'benchmark' backwards. Answer with just the letters.",
+   "max_tokens": 48,
+   "quick": true,
+   "regex": "kramhcneb"
+  },
+  {
+   "id": "compare-decimals",
+   "kind": "exact",
+   "prompt": "Which is larger, 9.11 or 9.9? Answer with just the number.",
+   "max_tokens": 48,
+   "quick": false,
+   "regex": "^\\W*9\\.9\\b"
+  },
+  {
+   "id": "extract-year",
+   "kind": "exact",
+   "prompt": "Extract the year from this sentence: 'The bridge was completed in 1932 after six years of work.' Answer with just the year.",
+   "max_tokens": 48,
+   "quick": false,
+   "contains": [
+    "1932"
+   ]
+  },
+  {
+   "id": "count-letters",
+   "kind": "exact",
+   "prompt": "How many letters are in the word 'strawberry'? Answer with just the number.",
+   "max_tokens": 48,
+   "quick": true,
+   "regex": "^\\W*10\\b"
+  },
+  {
+   "id": "hours-minutes",
+   "kind": "exact",
+   "prompt": "Convert 3 hours 25 minutes to minutes. Answer with just the number.",
+   "max_tokens": 48,
+   "quick": false,
+   "regex": "\\b205\\b"
+  },
+  {
+   "id": "py-slice",
+   "kind": "exact",
+   "prompt": "In Python, what does len([1, 2, 3][1:]) return? Answer with just the number.",
+   "max_tokens": 48,
+   "quick": false,
+   "regex": "^\\W*2\\b"
+  },
+  {
+   "id": "palindrome",
+   "kind": "python",
+   "prompt": "Write a Python function is_palindrome(s) that returns True if s reads the same forwards and backwards ignoring case and non-alphanumeric characters. Reply with a single Python code block and nothing else.",
+   "max_tokens": 320,
+   "quick": true,
+   "asserts": "assert is_palindrome('A man, a plan, a canal: Panama')\nassert not is_palindrome('hello')\nassert is_palindrome('')"
+  },
+  {
+   "id": "merge-intervals",
+   "kind": "python",
+   "prompt": "Write a Python function merge_intervals(intervals) that merges overlapping [start, end] intervals (sorted by start in the result) and returns a list of lists. Reply with a single Python code block and nothing else.",
+   "max_tokens": 320,
+   "quick": true,
+   "asserts": "assert merge_intervals([[1,3],[2,6],[8,10],[15,18]]) == [[1,6],[8,10],[15,18]]\nassert merge_intervals([[1,4],[4,5]]) == [[1,5]]\nassert merge_intervals([]) == []"
+  },
+  {
+   "id": "flatten",
+   "kind": "python",
+   "prompt": "Write a Python function flatten(x) that flattens arbitrarily nested lists into one flat list, keeping order. Reply with a single Python code block and nothing else.",
+   "max_tokens": 320,
+   "quick": false,
+   "asserts": "assert flatten([1,[2,[3,[4]],5]]) == [1,2,3,4,5]\nassert flatten([]) == []\nassert flatten([[[]]]) == []"
+  },
+  {
+   "id": "rle",
+   "kind": "python",
+   "prompt": "Write a Python function rle(s) that run-length encodes a string, e.g. 'aaabccdd' becomes 'a3b1c2d2'. Reply with a single Python code block and nothing else.",
+   "max_tokens": 320,
+   "quick": false,
+   "asserts": "assert rle('aaabccdd') == 'a3b1c2d2'\nassert rle('') == ''\nassert rle('z') == 'z1'"
+  },
+  {
+   "id": "parse-duration",
+   "kind": "python",
+   "prompt": "Write a Python function parse_duration(s) that converts strings like '1h30m', '45s' or '2h5m10s' into total seconds. Reply with a single Python code block and nothing else.",
+   "max_tokens": 320,
+   "quick": false,
+   "asserts": "assert parse_duration('1h30m') == 5400\nassert parse_duration('45s') == 45\nassert parse_duration('2h5m10s') == 7510"
+  },
+  {
+   "id": "top-k-words",
+   "kind": "python",
+   "prompt": "Write a Python function top_k(words, k) returning the k most frequent words, ties broken alphabetically. Reply with a single Python code block and nothing else.",
+   "max_tokens": 320,
+   "quick": false,
+   "asserts": "assert top_k(['b','a','b','c','a','b'], 2) == ['b','a']\nassert top_k(['x','y'], 1) == ['x']"
+  },
+  {
+   "id": "roman",
+   "kind": "python",
+   "prompt": "Write a Python function roman_to_int(s) converting a Roman numeral to an integer. Reply with a single Python code block and nothing else.",
+   "max_tokens": 320,
+   "quick": false,
+   "asserts": "assert roman_to_int('MCMXCIV') == 1994\nassert roman_to_int('IX') == 9\nassert roman_to_int('LVIII') == 58"
+  },
+  {
+   "id": "two-sum",
+   "kind": "python",
+   "prompt": "Write a Python function two_sum(nums, target) returning the indices [i, j] with i < j of the two numbers that add to target. Reply with a single Python code block and nothing else.",
+   "max_tokens": 320,
+   "quick": false,
+   "asserts": "assert two_sum([2,7,11,15], 9) == [0,1]\nassert two_sum([3,2,4], 6) == [1,2]"
+  },
+  {
+   "id": "json-person",
+   "kind": "json",
+   "prompt": "Produce a JSON object describing a person named Ada who is 36 years old, with a key 'tags' holding a list of three strings. Keys: name, age, tags. Reply with only the JSON object.",
+   "max_tokens": 160,
+   "quick": false,
+   "keys": {
+    "name": "Ada",
+    "age": 36,
+    "tags": null
+   }
+  },
+  {
+   "id": "json-order",
+   "kind": "json",
+   "prompt": "Produce a JSON object for an order with id 'A-17', a numeric total of 42.5 and a boolean paid set to false. Keys: id, total, paid. Reply with only the JSON object.",
+   "max_tokens": 160,
+   "quick": false,
+   "keys": {
+    "id": "A-17",
+    "total": 42.5,
+    "paid": false
+   }
+  },
+  {
+   "id": "json-point",
+   "kind": "json",
+   "prompt": "Produce a JSON object for a 3D point with x 1, y 2, z 3. Keys: x, y, z. Reply with only the JSON object.",
+   "max_tokens": 160,
+   "quick": false,
+   "keys": {
+    "x": 1,
+    "y": 2,
+    "z": 3
+   }
+  },
+  {
+   "id": "cs-counter",
+   "kind": "csharp",
+   "prompt": "Write a public C# class Counter with a private int field, a method Increment() that adds one, and a read-only property Value. Reply with a single C# code block containing complete compilable code with no Main method, and nothing else.",
+   "max_tokens": 380,
+   "quick": false
+  },
+  {
+   "id": "cs-stringtools",
+   "kind": "csharp",
+   "prompt": "Write a public static C# class StringTools with a static method Reverse(string s) that returns the reversed string, and a static method IsPalindrome(string s) that ignores case. Reply with a single C# code block containing complete compilable code with no Main method, and nothing else.",
+   "max_tokens": 380,
+   "quick": false
+  }
+ ]
+}
