@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-03, 0.55.2): D2 priced from the trace and held
+>
+> Hamed: "go, price D2 from the trace." Section 18.56: a verify block reads K tokens' worth of misses (28 a token at every K), so D2 amortises only the 70 ms floor. Speed-up over 126 ms: 1.08-1.12x at our acceptance with Rapid-MLX's 8 ms a position, 0.92-1.00x at the 26.9 ms we measured, 1.11x only at p = 0.9. Held under the 10 % stop rule. Instrument: `benchmarks/d2_verify_union.py`. DeepSeek's bit-identical levers are now all priced and held; what is left is output-changing (harness + Hamed) or D6.
+
 > ## Start here (2026-10-03, 0.55.1): D3 priced from the trace and held
 >
 > Hamed: "go, price D3 from the trace." Section 18.55: only 52.8 % of DeepSeek's decode layers are all-hit at 48 GiB (45 % at 36, 54 % at 52), and a layer with a miss rewinds. With MiniMax's constants (0.63 ms saved, 0.7 rewind) the net is +0.1 ms; the free-rewind ceiling is 13 ms of 126. Held below the 8 ms stop rule. Instrument: `benchmarks/d3_layer_hits.py`. Next: D2 priced on the trace, then the Pareto harness.
@@ -8706,6 +8710,30 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.56 D2 priced from the trace: held, below the stop rule — 2026-10-03 (0.55.2)
+
+Hamed: "go, price D2 from the trace" (v99's first job).
+
+**Method.** `benchmarks/d2_verify_union.py` replays §18.54's weighted trace (1,958 decode tokens, 22k context, 48 GiB LRU store) with decode in blocks of K consecutive tokens: a verify pass reads, per layer, the union of the block's experts. Per accepted token: `ms = (floor 70 + marginal x (K-1) + draft 15 + 2.0 x block misses) / accepted`, `accepted = 1 + p + ... + p^(K-1)` (per-position acceptance p). The trace holds the tokens actually generated, so a block is the all-accepted case; rejected draft positions' experts are approximated by the next real tokens (their misses are probably higher: optimistic). The baseline is the same replay at K = 1: 28.0 misses, 126 ms (live 7.7 tok/s).
+
+**Finding 1: reads do not shrink.** Misses a token are 28.0 at every K: a layer's union misses equal the sum of the K single-token misses, because an expert read once is resident for the next token in the single-token run too. D2 amortises only the 70 ms floor and the draft, never the 56 ms of reads (2.0 ms x 28). A block of K reads K tokens' worth while only `accepted` advance (the rejected positions' reads are paid; §15's "verifying all five positions is a loss" is this).
+
+**Finding 2: the price.** Speed-up over 126 ms (acceptance p: the measured 2.85 tokens a forward at five positions is p of about 0.72; the research's 2.85 at K = 4 is p of 0.78):
+
+| marginal ms a position | K=2, p=0.78 | K=3 | K=4 | K=3, p=0.9 | K=4, p=0.9 |
+|---:|---:|---:|---:|---:|---:|
+| 8 (Rapid-MLX) | 1.09x | 1.12x | 1.08x | 1.27x | 1.30x |
+| 16 | 1.05x | 1.06x | 1.01x | 1.20x | 1.21x |
+| 27 (ours, §18.50) | 1.00x | 0.98x | 0.92x | 1.11x | 1.11x |
+
+At p = 0.6 every K is a loss (0.54-0.98x). Our verify was measured at 26.9 ms a position (HANDOFF §18.50), so the realistic row is the last: **0.92-1.00x at p = 0.78, 1.11x only at p = 0.9.**
+
+**Verdict: held (not built).** Priced gain 0-12 % at the optimistic marginal cost and ~0 at the measured one, against a 10 % stop rule and 2-3 sessions of work (KV rollback of the 128-window and compressed KV, a decode-shaped packed verify). Reopen only if a decode-shaped verify measures under ~8 ms a position on our kernels (the lever then pays ~1.1x at p = 0.78) or acceptance reaches 0.9. **Not measured:** acceptance on this trace's text (the 2.85 is from four short prompts, greedy), a decode-shaped verify's marginal cost.
+
+**Shipped.** The instrument only (`benchmarks/d2_verify_union.py`); no runtime change, no numerics change.
+
+**State of DeepSeek's levers after 18.54-18.56:** D3 held (52.8 % all-hit layers), D4 weak (-16 % misses at a 1.6 % routing-mass cost), D2 held, D1 moot. What is left is output-changing (D5 REAP mask, D4 at a larger tau, D7 lower-precision trunk), all needing the Pareto harness and Hamed's word, or D6 (a framework-free decode loop against the 70 ms floor: up to 25-35 %, many sessions). **Say this before another pure-speed session.** **Needs Hamed:** whether to build the harness and try output-changing levers, or the D6 build.
 
 ### 18.55 D3 priced from the trace: held, below the stop rule — 2026-10-03 (0.55.1)
 

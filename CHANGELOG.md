@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.55.2 (2026-10-03)
+
+HANDOFF "Start here (2026-10-03, 0.55.2)" and section 18.56. D2 (speculative verify for DeepSeek) priced from the weighted trace and held.
+
+### Added
+- `benchmarks/d2_verify_union.py`: the expert reads of a verify block of K consecutive tokens (the union per layer) from a routing trace, and the speed-up per accepted token for a per-position acceptance, a marginal cost a position and a draft cost.
+
+### Measured, not shipped
+- Misses a token are 28.0 at every K (a union of K tokens' misses equals the sum of the single-token misses), so only the 70 ms floor is amortised. At 48 GiB against a 126 ms token: 1.08-1.12x with Rapid-MLX's 8 ms a position at acceptance 0.78, 0.92-1.00x with the 26.9 ms measured on our kernels, 1.11x only at acceptance 0.9. Under the 10 % stop rule: held.
+
 ## 0.55.1 (2026-10-03)
 
 HANDOFF "Start here (2026-10-03, 0.55.1)" and section 18.55. D3 (GPU-side expert selection for DeepSeek) priced from the weighted trace and held.
