@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.55.1 (2026-10-03)
+
+HANDOFF "Start here (2026-10-03, 0.55.1)" and section 18.55. D3 (GPU-side expert selection for DeepSeek) priced from the weighted trace and held.
+
+### Added
+- `benchmarks/d3_layer_hits.py`: the share of decode layers whose six experts are all resident, per budget, and D3's net saving under a per-layer saving and rewind cost.
+
+### Measured, not shipped
+- At 48 GiB 52.8 % of decode layers are all-hit (45.1 % at 36, 54.2 % at 52). With MiniMax's constants (0.63 ms saved a layer, 0.7 ms rewind) D3 nets +0.1 ms of a 126 ms token; with free rewinds 13 ms. Below the 8 ms stop rule: held.
+
 ## 0.55.0 (2026-10-03)
 
 HANDOFF "Start here (2026-10-03, 0.55.0)" and section 18.54. MiniMax's floor re-measured, MiniMax shown safe against a wired-memory holder, and the first weighted DeepSeek routing trace.

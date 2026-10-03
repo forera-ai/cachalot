@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-03, 0.55.1): D3 priced from the trace and held
+>
+> Hamed: "go, price D3 from the trace." Section 18.55: only 52.8 % of DeepSeek's decode layers are all-hit at 48 GiB (45 % at 36, 54 % at 52), and a layer with a miss rewinds. With MiniMax's constants (0.63 ms saved, 0.7 rewind) the net is +0.1 ms; the free-rewind ceiling is 13 ms of 126. Held below the 8 ms stop rule. Instrument: `benchmarks/d3_layer_hits.py`. Next: D2 priced on the trace, then the Pareto harness.
+
 > ## Start here (2026-10-03, 0.55.0): MiniMax's floor is 44 ms, MiniMax is safe beside a wired-memory holder, the first weighted DeepSeek trace
 >
 > Hamed asked for the handoff and prompts read and their tasks done (v97's first job). Section 18.54:
@@ -8702,6 +8706,26 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.55 D3 priced from the trace: held, below the stop rule — 2026-10-03 (0.55.1)
+
+Hamed: "go, price D3 from the trace" (v98's first job).
+
+**Method.** `benchmarks/d3_layer_hits.py` replays §18.54's weighted trace (1,958 decode tokens, 22k context) through the runtime-shaped LRU store (prefill quotas, then decode) and counts, per decode layer-call, how many of its six experts are not resident. GPU-side selection with the host one layer behind (MiniMax's 0.31.0 design) saves its host round trip only where the layer's experts are all resident; a layer with a miss rewinds and its read cannot be hidden. So `net = 40 x (all_hit x saving - (1 - all_hit) x rewind)` per token.
+
+**Result.**
+
+| budget GiB | layers all-hit | misses per layer-call (0 / 1 / 2 / 3 / 4+) |
+|---:|---:|---|
+| 36 | 45.1 % | 45.1 / 33.4 / 14.9 / 5.0 / 1.6 |
+| 48 | 52.8 % | 52.8 / 30.6 / 11.8 / 3.6 / 1.1 |
+| 52 | 54.2 % | 54.2 / 30.0 / 11.3 / 3.4 / 1.1 |
+
+At 48 GiB, net a token (token 126 ms): saving 0.63 ms a layer with rewind 0 / 0.35 / 0.7 / 1.4 ms = **+13.3 / +6.7 / +0.1 / -13.1 ms**; saving 1.0 with rewind 0.7: +7.9 ms. The research's constants (0.63 saved a layer from MiniMax's 0.31.0, rewind ~0.7) give **+0.1 ms**; the ceiling with free rewinds is 13 ms (10.6 % of a token). DeepSeek's top-six routing with an 88 % expert hit leaves only half the layers all-hit (MiniMax's top-four at 94-95 % leaves ~80 %, which is why 0.31.0 won there).
+
+**Verdict: held (not built).** Priced gain 0 to 7 ms against a stop rule of 8 ms and a large build (CSA, Engram prefetch and hyper-connections complicate the rewind). Reopen only if the all-hit share rises above ~75 % (a much larger resident share, e.g. REAP-style masks or a tiered bank) or a rewind is shown to cost under 0.2 ms. This also lowers D4/D5's value to D3 (fewer misses were to give more all-hit layers). **Not measured:** the real rewind cost on DeepSeek and the host round trip per layer at 48 GiB (the 0.63 ms is MiniMax's).
+
+**Shipped.** The instrument only (`benchmarks/d3_layer_hits.py`); no runtime change, no numerics change. **What is left for DeepSeek:** D2 (DSpark verify: amortises the 70 ms floor over several tokens, but a verified block reads more experts, so price it with the trace first), the Pareto harness, D5. **Needs Hamed:** nothing.
 
 ### 18.54 M0, the MiniMax holder test and the first weighted DeepSeek trace — 2026-10-03 (0.55.0)
 
