@@ -15,6 +15,14 @@ from cachalot.cache.resident_store import (
     ResidentExpertStore,
     tensor_sizes_from_entry,
 )
+from cachalot.cache.wired_governor import (
+    CHECK_EVERY_TOKENS as WIRED_CHECK_EVERY_TOKENS,
+)
+from cachalot.cache.wired_governor import (
+    WiredGovernor,
+    default_ceiling_bytes,
+    system_wired_bytes,
+)
 from cachalot.config import (
     DEFAULT_CONFIG,
     load_config,
@@ -637,6 +645,9 @@ class TextDecodeRuntime:
         # from two threads at once (heartbeat vs. a typing-time prefill that
         # starts while the probe is in flight) can stall the Metal queue.
         self._gpu_lock = Lock()
+        # HANDOFF 18.53: gives expert slots back while the system's wired memory is over the paging edge.
+        self.wired_governor = WiredGovernor(default_ceiling_bytes(), self.expert_store.expert_bytes)
+        self._wired_tokens = 0
         self._heartbeat_stop = Event()
         self._heartbeat_thread: Thread | None = None
         self.heartbeats = 0
@@ -1899,6 +1910,7 @@ class TextDecodeRuntime:
         with self._gpu_lock:
             self._gpu_busy = True
             try:
+                self._wired_fit(force=True)
                 self._engram_lookahead_tokens = (
                     tuple(int(t) for t in next_token_ids)
                     if next_token_ids is not None and image_rows is None
@@ -1915,6 +1927,31 @@ class TextDecodeRuntime:
                 self._gpu_idle_since = perf_counter()
                 self._gpu_busy = False
 
+    def _wired_fit(self, force: bool = False) -> None:
+        """Move the expert capacity to what the system's wired memory allows (HANDOFF 18.53); between tokens, on
+        the GPU lock, every WIRED_CHECK_EVERY_TOKENS decode tokens, at the first token and before a prefill."""
+        gov = self.wired_governor
+        if not gov.enabled:
+            return
+        self._wired_tokens += 1
+        if not force and self._wired_tokens % WIRED_CHECK_EVERY_TOKENS != 1:
+            return
+        store = self.expert_store
+        full = getattr(store, "_full_capacity", store.capacity)
+        wired = system_wired_bytes()
+        want = gov.target(store.capacity, full, wired)
+        if want == store.capacity:
+            return
+        before = store.capacity
+        after = store.set_capacity(want)
+        mx.clear_cache()
+        if after != before:
+            print(
+                f"wired fit: expert slots {before} -> {after} "
+                f"(system wired {wired / 1024**3:.1f} GiB, ceiling {gov.ceiling / 1024**3:.1f})",
+                flush=True,
+            )
+
     def decode_token(
         self,
         token_id: int,
@@ -1924,6 +1961,7 @@ class TextDecodeRuntime:
         with self._gpu_lock:
             self._gpu_busy = True
             try:
+                self._wired_fit()
                 return self._decode_token_impl(token_id)
             finally:
                 self._gpu_idle_since = perf_counter()

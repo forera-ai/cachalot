@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.54.0 (2026-10-03)
+
+HANDOFF "Start here (2026-10-03, 0.54.0)" and section 18.53. A wired-memory governor for DeepSeek, built after §18.52 found the edge.
+
+### Added
+- `src/cachalot/cache/wired_governor.py` and a hook in `TextDecodeRuntime` (`_wired_fit`): between tokens (the first, then every 16) and before a prefill, the runtime reads the system's wired memory (`vm.page_wired_count`, microseconds) and, above a ceiling, gives expert slots back through
+  `ResidentExpertStore.set_capacity`; it takes them back only after 60 s without a shrink and 1.5 GiB under the ceiling. On by default; `CACHALOT_WIRED_CEILING_GIB` (default 76 % of RAM = 73.0 GiB; 0 or negative off), `CACHALOT_WIRED_HYSTERESIS_GIB` (1.5),
+  `CACHALOT_WIRED_GROW_QUIET_S` (60), `CACHALOT_WIRED_CHECK_EVERY` (16). A fit prints `wired fit: expert slots A -> B (system wired X GiB, ceiling Y)`. Outputs are unchanged (only which experts stay resident).
+- 12 tests (`tests/test_wired_governor.py`).
+
+### Changed
+- `serve.sh`'s comment names the real cause. The 0.53.0 changelog, README and HANDOFF suspected the script's 80 GiB wired limit: refuted (a limit of 84 GiB with a 52 GiB budget decoded at the same 4.74 tok/s). The edge is the whole system's wired memory (~74.5 GiB), whoever wires it.
+
+### Measured
+- Floor against system wired memory (same greedy prompt, 3 repeats): 12.7 / 12.6 / 12.4 / 11.0 / 6.3 tok/s at 71.7-72.2 / 72.6-73.4 / 73.6-74.2 / 74.3-74.6 / 75.1-75.3 GiB (budgets 48 / 49 / 50 / 51 / 52).
+- Another process wiring 4 GiB (mlock), the default 48 GiB server on the 12-request mixed set: governor off **4.85 tok/s** (fit `ms = 161 + 1.78 x misses`), governor on **7.92** (`67 + 2.27 x misses`); no holder, governor on 7.98. 52 GiB under the governor: 8.13 (a ceiling of 73.9 GiB gave 7.57: too close to the edge).
+- In-process `decode_resident.py`: all-resident floor 182 ms at a 52 GiB budget (wired 75.5), 76 ms at 36: the floor depends on the pool's wired size alone, not on residents, hits or the server.
+
 ## 0.53.0 (2026-10-03)
 
 HANDOFF "Start here (2026-10-03, 0.53.0)" and section 18.52. D0 ran: DeepSeek measured through `./serve.sh` on a settled machine.

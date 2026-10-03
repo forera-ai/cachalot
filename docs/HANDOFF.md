@@ -25,6 +25,14 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-03, 0.54.0): the DeepSeek wired-memory governor; the edge is the system's wired memory, not the wired limit
+>
+> Hamed: "go, build the DeepSeek memory governor. panic risk confirmed." Section 18.53:
+> - **Correction to 18.52 / 0.53.0:** the cliff is not the script's 80 GiB wired limit (84 GiB changed nothing). All-resident floor against *system* wired memory: 72 ms flat to ~72 GiB, 85 at 74.2, 91 at 74.6, 158-182 at 75.1+. In-process, the floor depends on the pool's wired size alone.
+> - **Built:** `cache/wired_governor.py` + `TextDecodeRuntime._wired_fit`: reads `vm.page_wired_count` between tokens and gives slots back above 73.0 GiB (76 % of RAM, `CACHALOT_WIRED_CEILING_GIB`), grows back after 60 s. On by default, outputs unchanged.
+> - **Proof:** another process wiring 4 GiB takes the default server to 4.85 tok/s; with the governor 7.92 (no holder: 7.98; 52 GiB under it 8.13). `serve.sh` stays at 48.
+> - **Open:** MiniMax has its own governor on a different signal (GPU alloc against the working set): check whether system wired memory is its edge too (M0 session). A weighted DeepSeek trace; D3.
+
 > ## Start here (2026-10-03, 0.53.0): D0 ran; the shipped DeepSeek budget was past a cliff and is now 48 GiB (+66 % decode)
 >
 > Hamed: "go, machine is settled, run D0" (after the offline simulator). Section 18.52:
@@ -8687,6 +8695,38 @@ line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderb
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
+### 18.53 The DeepSeek wired-memory governor — 2026-10-03 (0.54.0)
+
+Hamed: "go, build the DeepSeek memory governor. panic risk confirmed." (about raising the wired limit; the governor made that unnecessary).
+
+**Design check against MiniMax's governor (§18.17).** Its ceiling is "Alloc system memory" against Metal's recommended working set plus 1 GiB (87 GiB here): it would not have protected DeepSeek, whose edge sits near 80.5 GiB of that counter and 75 GiB of system wired memory. The DeepSeek store already had `set_capacity` (slot-granular parking, tested in `tests/test_gpu_select.py`), with no caller.
+
+**The 18.52 hypothesis is refuted.** `CACHALOT_MLX_WIRED_LIMIT_GIB=84` with a 52 GiB budget (killer script on pressure level 4 or +1 GiB swap): 4.74 tok/s, fit `168 + 1.81 x misses`, the same as at 80 (the startup line confirmed `wired 84.0 GiB`). `vm.global_user_wire_limit` is 78.7 GiB but `vm.add_wire_count_over_global_limit` never moved
+(102 before and after, sampled during decode). In-process `decode_resident.py` at a 52 GiB budget: 182 ms all-resident with 100 % hits and the same 2,803 residents that cost 76 ms at 36 GiB: **the floor depends on the pool's wired size alone**, not on residents, hits or the server.
+
+**The edge, measured as system wired memory** (`vm_stat` "Pages wired down" x 16 KiB, sampled during decode; same greedy prompt three times, third request's rate; `floor.sh`): budget 44 / 48 / 49 / 50 / 51 / 52 GiB gave wired 68.2 / 71.7 / 73.4 / 74.2 / 74.6 / 75.3 GiB and floors 8.87 (n=1, an outlier) / 12.73 / 12.62 / 12.43 / 11.01 / **6.31** tok/s.
+The pool is wired when the server starts (wired 6-7 GiB before it, 72.2 / 75.1 after at 48 / 52). The MiniMax notes' "~74.3 GiB in use" is the same edge.
+
+**What was built.** `src/cachalot/cache/wired_governor.py`: `system_wired_bytes()` (`vm.page_wired_count` x `hw.pagesize`, two sysctls), `default_ceiling_bytes()` (`CACHALOT_WIRED_CEILING_GIB`, else 76 % of `hw.memsize` = 72.96 GiB here), and `WiredGovernor.target(capacity, full, wired)`: shrink at once by the excess in whole slots (rounded up, never below 1), grow only
+after `CACHALOT_WIRED_GROW_QUIET_S` (60) without a shrink and into the room that stays `CACHALOT_WIRED_HYSTERESIS_GIB` (1.5) under the ceiling, at least 16 slots. `TextDecodeRuntime._wired_fit` runs it on the GPU lock at the first decode token, every `CACHALOT_WIRED_CHECK_EVERY` (16) tokens and before each prefill, applies
+`set_capacity`, then `mx.clear_cache()`, and prints `wired fit: expert slots A -> B (system wired X GiB, ceiling Y)`. 12 tests (`tests/test_wired_governor.py`, including the runtime method on a stub store). The first draft's ceiling was 77 % (73.9 GiB): it held the system at 74.1-74.2 GiB and gave a 92 ms floor, so it became 76 %.
+
+**Evidence** (12 mixed prompts at 120 tokens, n=11 after the warm-up, `mix.sh` under a killer script; "holder" = a process that mmaps and mlocks 4 GiB):
+
+| arm | tok/s | ms a token | fit `ms =` | notes |
+|---|---|---|---|---|
+| 48 GiB, no holder, governor on (default) | 7.98 | 125.2 | 70 + 2.15 m | the governor costs nothing when the machine is quiet |
+| 48 GiB, 4 GiB holder, governor **off** | **4.85** | 206.3 | 161 + 1.78 m | the cliff, caused by another process |
+| 48 GiB, 4 GiB holder, governor **on** | **7.92** | 126.3 | 67 + 2.27 m | protected |
+| 52 GiB, governor on, ceiling 73.9 (first draft) | 7.57 | 132.2 | 92 + 1.57 m | held at the soft edge |
+| 52 GiB, governor on, ceiling 73.0 | 8.13 | 123.0 | 72 + 2.11 m | equals 48 within noise (+-2.5 %) |
+
+At 52 GiB under the governor the first request parked 5,609 -> 5,332 slots (system wired 74.0 -> 76.1 -> 74.2 GiB during that request: a request's own working memory adds ~2 GiB, which is why the ceiling cannot be the edge itself). `serve.sh` stays at 48 GiB: the governed 52 is not measurably faster.
+
+**Not done / open.** (1) MiniMax's governor reads a different signal and was not re-measured; check whether system wired memory is its edge too (a holder run like the one above, in the M0 session). (2) GLM has the same two-signal question. (3) A holder that wires GPU memory (an MLX array) instead of an mlock was not tried; the governor reads the system total, which includes it.
+(4) `vm_stat`'s wired count here excludes nothing the kernel reports, but a different machine's baseline (more apps) simply shrinks the cache further: that is the point.
+**Closed:** the wired limit (80 -> 84) as the cause or the cure.
+
 ### 18.52 D0: DeepSeek measured as it runs; the 52 GiB budget was past a cliff — 2026-10-03 (0.53.0)
 
 Hamed: "go, start the offline simulator", then "go, machine is settled, run D0".
@@ -8721,7 +8761,7 @@ exactly the README's 76.4. So the runtime and the model are unchanged and the se
 | 52, no hotlist | 4.78 | 209.3 | 24.0 | 157 + 2.19 m | 80.5 | |
 
 The hotlist sits inside the budget (same alloc and misses with it off). 48 repeats within 2.5 %. `serve.sh` with the new default: 7.92 and 7.87 tok/s (two runs), alloc 76.0. The MLX peak at 52 GiB (67.5) matches the README's 67.7; the extra ~13 GiB of system allocation is everything that is not MLX's own heap (about 6 GiB is other processes with the runtime stopped).
-**Reading.** The edge is between 78 and 80.5 GiB of system allocation, and `CACHALOT_MLX_WIRED_LIMIT_GIB` in `serve.sh` is 80: the cliff coincides with the limit, so the suspect is Metal being unable to keep the whole working set wired (the same shape as MiniMax's 62 GiB paging point, §18.17). **Not proven**: no run raised the limit (84 would
+**Reading (corrected in 18.53: the wired limit is NOT the cause; the edge is the system's wired memory, ~74.5 GiB).** The edge is between 78 and 80.5 GiB of system allocation, and `CACHALOT_MLX_WIRED_LIMIT_GIB` in `serve.sh` is 80: the cliff coincides with the limit, so the suspect is Metal being unable to keep the whole working set wired (the same shape as MiniMax's 62 GiB paging point, §18.17). **Not proven**: no run raised the limit (84 would
 leave 12 of 96 GiB to the system: the configuration class that panicked this machine twice, so it needs Hamed's go) or lowered it. The edge also moves with other processes' GPU memory, which is why 52 GiB worked in September. DeepSeek has no memory governor like MiniMax's (§18.17).
 
 **Prefill.** One cold prompt each, different text (HANDOFF lines 1000+ and 3000+), temperature 0, 8 tokens out: 48 GiB 4,501 tokens in 52.05 s (86.5 tok/s); 52 GiB 4,294 tokens in 66.14 s (64.9 tok/s). n=1 per arm.

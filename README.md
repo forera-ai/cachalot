@@ -100,7 +100,7 @@ I/O scheduling** before it is an exercise in kernels. Cachalot is built around t
 ## Status
 
 Cachalot is **alpha**. It produces reference-quality output and runs multi-turn sessions at 9.4–9.6 tok/s
-on the configuration in [Performance](#performance) (0.9.x sessions; 7.9 tok/s through `./serve.sh` on 0.53.0, same section). Decode is no longer bound by SSD bandwidth — the drive is
+on the configuration in [Performance](#performance) (0.9.x sessions; 7.9 tok/s through `./serve.sh` on 0.54.0, same section). Decode is no longer bound by SSD bandwidth — the drive is
 idle 45 % of the time — and is now limited by the share of experts that are already resident. Read
 [Performance](#performance) before deciding whether it fits your use.
 
@@ -293,10 +293,11 @@ The same configuration as a benchmark, with a colder working set than a conversa
 token (5.90 tok/s)** at an 83.5 % hit rate, reading 627 MiB per token, drive busy 55 % of decode,
 reproducible to ±0.3 %.
 
-**0.53.0 (2026-10-03): `./serve.sh` runs DeepSeek at 48 GiB, and the old advice to run 52 GiB is withdrawn on this machine.** Measured on a settled
-Mac Studio (memory pressure normal, screensaver off) with the bank on the internal SSD: at the 80 GiB wired limit the GPU's total system allocation is 63.2 / 71.7 / 76.0 / 78.0 / **80.5** GiB at budgets 36 / 44 / 48 / 50 / 52, and a mixed 12-request
-set decodes at 7.72 / 8.14 / 8.31 / 8.00 / **4.76** tok/s: the all-resident floor is 70 ms up to 48 GiB and 164 ms at 52. The shipped default is now 48 (7.9 tok/s through the server, a miss costs 2.0 ms, 25 misses a token). The 9.4-9.6 tok/s
-rows below are the 0.9.x sessions and have not been reproduced since; the token is `70 ms + 2.0 ms x misses` today. HANDOFF section 18.52 has the table and what is unproven (whether raising the wired limit moves the edge).
+**0.54.0 (2026-10-03): `./serve.sh` runs DeepSeek at 48 GiB, and a wired-memory governor keeps it there when the machine changes.** Measured on a settled
+Mac Studio with the bank on the internal SSD: once the whole system's wired memory passes about 74.5 GiB the GPU pages and the all-resident token costs 160+ ms instead of 70. The old 52 GiB budget crossed it (system wired 75.1 GiB): a mixed 12-request
+set decoded at 4.76 tok/s against 8.31 at 48 GiB (7.72 / 8.14 / 8.31 / 8.00 / 4.76 at 36 / 44 / 48 / 50 / 52). It is the system's total, not the runtime's setting: a wired limit of 84 GiB changed nothing, and another process wiring 4 GiB took the default
+48 GiB to 4.85 tok/s. The runtime now reads `vm.page_wired_count` between tokens and gives expert slots back while it is above a ceiling (76 % of RAM, 73.0 GiB; `CACHALOT_WIRED_CEILING_GIB`, 0 off): the same 4 GiB holder then costs nothing (7.92 tok/s), and
+52 GiB under the governor matches 48 (8.13). The token is `70 ms + 2.0 ms x misses` today. The 9.4-9.6 tok/s rows below are 0.9.x sessions and have not been reproduced since. HANDOFF sections 18.52-18.53 have the tables.
 
 **The 52 GiB row is two sessions now, on 0.9.0 and 0.9.2, and they replicate**: 9.42 and 9.59 tok/s on
 prose, 8.53 and 8.15 on Objective-C, 92.37 % and 92.31 % hit rate, and an MLX peak identical to the byte.
