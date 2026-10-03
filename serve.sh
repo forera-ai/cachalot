@@ -49,8 +49,10 @@ export CACHALOT_SNAPSHOT_DIR=${CACHALOT_SNAPSHOT_DIR-$HOME/.cache/cachalot/prefi
 # A request without max_tokens gets 8192 (cut to what fits in max_seq_len). At 2000, Hermes's context
 # summaries and one long delegate_task call were cut mid-output, and the truncated tool call reached
 # the client as raw markup (HANDOFF section 15.10).
+# 48 GiB, not 52 (HANDOFF 18.52): with the 80 GiB wired limit above, 52 GiB takes the GPU's system allocation to 80.5 GiB, past the
+# limit, and an all-resident token costs 164 ms instead of 70 (4.8 tok/s against 8.3 on a mixed request set). 50 GiB sits on the edge.
 exec ~/venvs/deepseek-v41/bin/python -m cachalot.cli serve \
-    --expert-budget-gib 52 \
+    --expert-budget-gib 48 \
     --max-seq-len 65536 \
     --port 8011 \
     --default-max-tokens 8192 \

@@ -25,3 +25,25 @@ def test_empty_tracer_saves(tmp_path):
     arrays, segments = load_trace(t.save(tmp_path / "e.trace.npz"))
     assert arrays["experts"].shape[0] == 0
     assert segments == []
+
+
+def test_tracer_saves_weights_only_when_every_record_has_them(tmp_path):
+    t = RoutingTracer()
+    t.record("decode", 0, 0, np.array([1, 2]), np.array([0.7, 0.3]))
+    t.record("decode", 1, 0, np.array([3, 4]), np.array([0.6, 0.4]))
+    arrays, _ = load_trace(t.save(tmp_path / "w.trace.npz"))
+    assert np.allclose(arrays["weights"], [[0.7, 0.3], [0.6, 0.4]])
+
+    t = RoutingTracer()
+    t.record("decode", 0, 0, np.array([1, 2]), np.array([0.7, 0.3]))
+    t.record("decode", 1, 0, np.array([3, 4]))
+    arrays, _ = load_trace(t.save(tmp_path / "m.trace.npz"))
+    assert "weights" not in arrays
+
+
+def test_tracer_rejects_mismatched_weights():
+    import pytest
+
+    t = RoutingTracer()
+    with pytest.raises(ValueError):
+        t.record("decode", 0, 0, np.array([1, 2, 3]), np.array([0.5, 0.5]))

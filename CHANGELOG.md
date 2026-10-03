@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.53.0 (2026-10-03)
+
+HANDOFF "Start here (2026-10-03, 0.53.0)" and section 18.52. D0 ran: DeepSeek measured through `./serve.sh` on a settled machine.
+
+### Changed
+- `serve.sh` serves DeepSeek at a 48 GiB expert budget (was 52). With the script's 80 GiB wired limit, 52 GiB takes the GPU's total system allocation to 80.5 GiB and an all-resident token costs 164 ms instead of 70: **4.76 -> 7.92 tok/s on a
+  mixed 12-request set (+66 %)**, and a cold 4.5k-token prefill 52 s instead of 66 s (n=1 each). Same outputs: the budget changes residency, not arithmetic. `chat.sh` (44 GiB, 72 GiB wired) is unchanged; a chat run by hand should use 48, not
+  the 52 the README recommended for 0.9.x.
+
+### Added
+- `benchmarks/cache_sim.py`: a trace-driven decode cost model (hit rate, misses a token, ms a token and tok/s per budget and drive, plus the MiniMax-style miss drop with the dropped router mass as a quality proxy). It warns below 1,000 decode tokens;
+  the only DeepSeek traces in the repo have 160.
+- `RoutingTracer.record(..., weights=)` stores the router weights (saved only when every record has them; older traces load unchanged); the decode and prefill trace hooks pass `route.weights`.
+
+### Measured, not shipped
+- Decode as it runs today (internal bank, settled machine): the fit is `ms = 70 + 2.0 x misses` at budgets 36-48 GiB (r 0.95-0.98), floor and miss cost both as in the 0.9.x README. Prefetch precision 39-41 %, 33-42 predicted loads a token.
+- Engram row reads over USB: 3.90 ms a token (two layers x 24 random rows, 300 trials), prefetched at the top of the token, so not part of the floor. Prediction off at 48 GiB: 7.65 against 7.87-7.92 tok/s (neutral, kept).
+
 ## 0.52.3 (2026-10-03)
 
 HANDOFF "Start here (2026-10-03, 0.52.3)", section 18.51, and `docs/SPEED-RESEARCH-2026-10-03.md` (revision 2: DeepSeek first). No runtime change.

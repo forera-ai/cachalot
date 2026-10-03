@@ -25,6 +25,15 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-03, 0.53.0): D0 ran; the shipped DeepSeek budget was past a cliff and is now 48 GiB (+66 % decode)
+>
+> Hamed: "go, machine is settled, run D0" (after the offline simulator). Section 18.52:
+> - **Through `./serve.sh` at the shipped 52 GiB, DeepSeek decoded at 4.8-4.95 tok/s** (mixed requests), not the research's estimated 9.3: the all-resident floor was **157-164 ms**, the in-process floor (`decode_resident.py`) **76-77 ms** (13 tok/s). The
+>   miss cost is as expected (1.8-2.0 ms, internal drive). The difference was the budget: at 36 / 44 / 48 / 50 / 52 GiB the GPU system allocation is 63.2 / 71.7 / 76.0 / 78.0 / 80.5 GiB and decode 7.72 / 8.14 / 8.31 / 8.00 / **4.76** tok/s.
+> - **`serve.sh` now defaults to 48 GiB: 7.9 tok/s through the server (+66 %), a 4.5k-token cold prefill 52 s instead of 66 s.** Same outputs. Cause *not proven*: the script's 80 GiB wired limit is the suspect (alloc crosses it at 52); raising it was not tried (wired memory this high is the class that panicked this machine).
+> - Engram reads over USB cost 3.9 ms a token and are prefetched: not the floor. Prediction (39-41 % precise) is neutral (+3 %), kept. `ms = 70 + 2.0 x misses` is today's DeepSeek token.
+> - New: `benchmarks/cache_sim.py` (trace-driven cost model) and router weights in routing traces. **Still open: M0 (MiniMax floor), a weighted DeepSeek trace (the server has no tracer knob), D3, the Pareto harness.**
+
 > ## Start here (2026-10-03, 0.52.3): DeepSeek is priority 1 and is back on the internal SSD; the research is redone around it
 >
 > Hamed ranked the models **1 DeepSeek-V4.1-Flash, 2 MiniMax-M3, 3 GLM-5.3-Flash** and asked for the research to cover DeepSeek and the docs to follow. Done (no runtime change; sections 18.50-18.51 and
@@ -8677,6 +8686,53 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.52 D0: DeepSeek measured as it runs; the 52 GiB budget was past a cliff — 2026-10-03 (0.53.0)
+
+Hamed: "go, start the offline simulator", then "go, machine is settled, run D0".
+
+**Offline simulator.** `benchmarks/cache_sim.py` joins `simulate_policies.py`'s runtime-shaped store with the research file's cost model and the MiniMax-style miss drop; the tracer now records router weights (`RoutingTracer.record(..., weights=)`, saved only when
+every record has them; `load_trace` returns `weights` when present; four tests). The only DeepSeek traces (September, `benchmarks/results/trace_routing_v{4,6,7}.trace.npz`) hold 160 decode tokens from four 512-token prompts: at 52 GiB the simulator gives
+87.0 % decode hit against 92.3 % live, so those traces are a smoke test of the tool. The substitute expert cannot be simulated (a trace holds the top six), so the drop arm is a bound. **No weighted DeepSeek trace exists yet**: the server has no tracer knob (wiring one costs
+a device read of the weights per layer, so it must be a separate run from the timing runs).
+
+**D0 method.** Machine: pressure level 1, swap 2.8 GiB (stale, constant), screensaver not running, display on, the Claude desktop app and Chrome open (during part of the first run an `npm exec` MCP process used ~145 % CPU and Spotlight's updater 100 %).
+`./serve.sh` (internal bank, hotlist 863 experts, wired 80) with `CACHALOT_SERVER_DUMP`; driver `d0_driver.py` (scratch; 12 distinct prompts: 5 code, 4 prose, 2 reasoning, a warm-up; non-streaming, temperature 0.6, one at a time); the server's own `[request]` lines and `/v1/stats`.
+Scratch instruments (rebuild from this section): `arm.sh` (a fresh server, the same greedy prompt three times), `mix.sh` (a fresh server, the 12 prompts at 120 tokens, a fit of ms a token on misses a token, the GPU's "Alloc system memory" from `ioreg`), `pf.sh` (one cold ~4k-token prompt from
+`docs/HANDOFF.md` at a given line offset). **They must not be started from a shell whose command text contains `deepseek-v41/bin/python` or `cachalot.cli`: `serve.sh`'s pgrep guard matches the shell itself and refuses to start.**
+
+**Result at the shipped 52 GiB (220-token run, n=11 requests after the warm-up).** Mean 201.8 ms a token (4.95 tok/s), 20.2 misses a token, hit 90-94 %, decode `read=` 2.5 ms, fit `ms = 165 + 1.83 x misses` (r 0.91). Prefill of a 20-40-token prompt 2.0-3.0 s.
+`/v1/stats` after 2,177 tokens: predicted loads 63,670, used 21,868 (34 % over prefill and decode; 39-41 % in later runs), 1.0 TB read.
+
+**The floor.** The same greedy prompt three times through the server: the repeats have 0 misses and 100 % hit and cost **157 ms a token** (6.37 tok/s); `CACHALOT_PREDICT_TOPK=0` 138-141 ms. In-process (`decode_resident.py`, budget 36, `MLX_METAL_FAST_SYNCH=1`): **75.8 / 77.3 / 77.5 ms**,
+exactly the README's 76.4. So the runtime and the model are unchanged and the server configuration doubled the floor. `--max-seq-len 4096` did not help (6.0-6.3 tok/s).
+
+**Engram over USB.** 300 random two-layer reads of 24 rows each (the decode shape, `EngramRowReader`, cold): mean 3.90 ms, p90 4.19, max 7.1. Issued at the top of the token and hidden behind the layers, it is not the floor.
+
+**Budget sweep** (`mix.sh`: 11 requests after the warm-up, 120 tokens each; "alloc" = the driver's "Alloc system memory" read after the run; MLX peak in the last column):
+
+| budget GiB | tok/s | ms a token | misses a token | fit `ms =` | GPU alloc GiB | MLX peak GiB |
+|---|---|---|---|---|---|---|
+| 36 | 7.72 | 129.6 | 31.8 | 71 + 1.83 m (r 0.98) | 63.2 | 51.4 |
+| 44 | 8.14 | 122.8 | 27.1 | 70 + 1.95 m (r 0.97) | 71.7 | 59.5 |
+| 48 | 8.31 / 8.11 | 120.3 / 123.3 | 25.4 / 25.2 | 69 + 2.01 m / 62 + 2.41 m | 76.0 / 76.1 | 63.5 |
+| 50 | 8.00 | 125.0 | 24.5 | 85 + 1.62 m (r 0.86) | 78.0 | 65.5 |
+| **52** | **4.76** | **210.0** | 24.1 | **164 + 1.90 m** (r 0.95) | **80.5** | 67.5 |
+| 52, no hotlist | 4.78 | 209.3 | 24.0 | 157 + 2.19 m | 80.5 | |
+
+The hotlist sits inside the budget (same alloc and misses with it off). 48 repeats within 2.5 %. `serve.sh` with the new default: 7.92 and 7.87 tok/s (two runs), alloc 76.0. The MLX peak at 52 GiB (67.5) matches the README's 67.7; the extra ~13 GiB of system allocation is everything that is not MLX's own heap (about 6 GiB is other processes with the runtime stopped).
+**Reading.** The edge is between 78 and 80.5 GiB of system allocation, and `CACHALOT_MLX_WIRED_LIMIT_GIB` in `serve.sh` is 80: the cliff coincides with the limit, so the suspect is Metal being unable to keep the whole working set wired (the same shape as MiniMax's 62 GiB paging point, §18.17). **Not proven**: no run raised the limit (84 would
+leave 12 of 96 GiB to the system: the configuration class that panicked this machine twice, so it needs Hamed's go) or lowered it. The edge also moves with other processes' GPU memory, which is why 52 GiB worked in September. DeepSeek has no memory governor like MiniMax's (§18.17).
+
+**Prefill.** One cold prompt each, different text (HANDOFF lines 1000+ and 3000+), temperature 0, 8 tokens out: 48 GiB 4,501 tokens in 52.05 s (86.5 tok/s); 52 GiB 4,294 tokens in 66.14 s (64.9 tok/s). n=1 per arm.
+
+**Prediction A/B at 48 GiB.** `CACHALOT_PREDICT_TOPK=0` 7.65 tok/s (fit 69 + 2.37 m) against 7.87 and 7.92 with it: +3 %, inside the noise. Kept. At the old 52 GiB the floor alone showed 17 ms of cost (157 vs 140), but the same arm's first request was 9 ms *slower* without it.
+
+**Shipped.** `serve.sh` `--expert-budget-gib 48` (comment in the script). No numerics change (residency only), no snapshot invalidation. `chat.sh` (44 GiB, wired 72) unchanged. Studio brief `docs/studio/briefs/2026-10-03-runtime-0.53.0.md`.
+
+**Consequences for the research plan.** The research's constants hold at 48 GiB: floor 70 ms, miss 2.0 ms, so `token = 70 + 2.0 x misses` (25 misses = 120 ms). D1 stays moot. What is left, in value order: **a DeepSeek memory governor** (read "Alloc system memory", park slots before the edge; it would make any budget safe and might let 52 return when the machine is quiet), D3 (the floor's
+host round trips), D4/D5 (fewer misses; each miss is 2 ms, so 40 % fewer is -20 ms), D2 (DSpark). **Closed:** Engram USB reads as a floor cost; prediction as a loss; `--max-seq-len` as a floor cost.
+**Needs Hamed:** whether to try the wired limit at 82-84 for a larger budget (risk class above); the weighted trace run; output-changing levers through the harness.
 
 ### 18.50 Speed research, revision 2: priority order DeepSeek, MiniMax, GLM — 2026-10-03 (0.52.2-0.52.3)
 

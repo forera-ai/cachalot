@@ -1659,6 +1659,7 @@ class TextDecodeRuntime:
                 layer_id,
                 start_pos,
                 route.indices,
+                route.weights,
             )
 
         return self._last_token_route(route)
@@ -1675,6 +1676,7 @@ class TextDecodeRuntime:
                 layer_id,
                 start_pos,
                 route.indices,
+                route.weights,
             )
 
         return route

@@ -28,6 +28,7 @@ class RoutingTracer:
     _layer: list[np.ndarray] = field(default_factory=list)
     _position: list[np.ndarray] = field(default_factory=list)
     _experts: list[np.ndarray] = field(default_factory=list)
+    _weights: list[np.ndarray] = field(default_factory=list)
     _segments: list[dict] = field(default_factory=list)
     _count: int = 0
 
@@ -37,15 +38,30 @@ class RoutingTracer:
         layer: int,
         start_pos: int,
         indices,
+        weights=None,
     ) -> None:
         """
         indices: [n_tokens, topk] or [topk] array-like of expert ids for
         consecutive positions starting at start_pos.
+        weights: optional router weights, same shape as indices. Stored only
+        when every record carries them, so a trace is either fully weighted
+        or has no weights at all.
         """
         arr = np.asarray(indices, dtype=np.int16)
 
         if arr.ndim == 1:
             arr = arr[None, :]
+
+        if weights is not None:
+            w = np.asarray(weights, dtype=np.float32)
+
+            if w.ndim == 1:
+                w = w[None, :]
+
+            if w.shape != arr.shape:
+                raise ValueError(f"weights shape {w.shape} != indices shape {arr.shape}")
+
+            self._weights.append(w)
 
         n_tokens = arr.shape[0]
 
@@ -76,12 +92,17 @@ class RoutingTracer:
                 "experts": np.zeros((0, 0), np.int16),
             }
 
-        return {
+        out = {
             "phase": np.concatenate(self._phase),
             "layer": np.concatenate(self._layer),
             "position": np.concatenate(self._position),
             "experts": np.concatenate(self._experts, axis=0),
         }
+
+        if self._weights and len(self._weights) == len(self._experts):
+            out["weights"] = np.concatenate(self._weights, axis=0)
+
+        return out
 
     def save(self, path: str | Path) -> Path:
         path = Path(path)
@@ -102,6 +123,9 @@ def load_trace(path: str | Path) -> tuple[dict[str, np.ndarray], list[dict]]:
             key: data[key]
             for key in ("phase", "layer", "position", "experts")
         }
+
+        if "weights" in data.files:
+            arrays["weights"] = data["weights"]
         segments = json.loads(str(data["segments"]))
 
     return arrays, segments
