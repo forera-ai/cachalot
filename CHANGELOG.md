@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.56.1 (2026-10-04)
+
+HANDOFF "Start here (2026-10-04, 0.56.1)" and section 18.58. The full-size Pareto sweep of DeepSeek's per-layer decode miss budget.
+
+### Changed
+- `benchmarks/pareto_arms.example.json` gains a `miss-budget1` arm.
+
+### Measured, not shipped
+- 576 teacher-forced positions and 21 tasks an arm, seven arms, 48 GiB: `miss_budget` 4 / 2 / 1 are inside the noise band and 0-4 % faster; `miss_budget` 0 (every missing expert dropped) cuts the decode step 131 to 95 ms (-27 %) with dNLL +0.007 [-0.015, +0.028] (the noise arm: +0.008 [-0.007, +0.024]), but a heavier KL tail (mean 0.027 against 0.014, max 1.31 against 0.23) and one more failed task: outside the noise band. A 36 GiB budget is bit-identical and 13 % slower. The budget is reachable only through `V41Model`, not the server, so there is no server-path number yet; default-on is Hamed's call.
+
 ## 0.56.0 (2026-10-03)
 
 HANDOFF "Start here (2026-10-03, 0.56.0)" and section 18.57. The Pareto harness, so output-changing levers can be judged.

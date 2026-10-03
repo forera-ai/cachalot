@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-04, 0.56.1): the full-size Pareto sweep; `miss_budget` 0 is a -27 % decode lever outside the noise band
+>
+> Hamed: "go, run the full-size sweep." Section 18.58 (576 positions, 21 tasks, seven arms): `miss_budget` 1-4 do almost nothing; **`miss_budget` 0 (drop every miss) cuts the decode step 131 to 95 ms** with dNLL +0.007 [-0.015, +0.028] inside the noise arm's interval, but KL mean 1.9x / max 5.7x the noise arm's and one more task failed: "outside noise". It never admits its own misses (the cache follows the prefill), which these texts do not stress. A candidate, not a default. Next: a server knob, a server-path alternation, a Hermes-shaped quality check.
+
 > ## Start here (2026-10-03, 0.56.0): the Pareto harness
 >
 > Hamed: "go, build the Pareto harness." Section 18.57: `benchmarks/pareto.py` runs named arms (env, budget, `miss_budget`, prefill chunk) and reports paired NLL (block-bootstrap CI), KL, top-1, a 21-task checkable battery (Python asserts, JSON, C# `dotnet build`) with Wilson bounds, ms and misses, the frontier and a noise band from a numerically equivalent arm. Quick smoke (144 positions): `miss-budget0` cuts the decode step 141 to 113 ms (misses 34.5 to 18.5), KL outside the noise band, dNLL +0.013 with an interval spanning zero: too little power; the next step is a full-size sweep.
@@ -8714,6 +8718,32 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.58 The full-size Pareto sweep: dropping DeepSeek's decode misses — 2026-10-04 (0.56.1)
+
+Hamed: "go, run the full-size sweep" (v101's first job).
+
+**Machine and method.** Clean tree at 0.56.0, wired limit 88064, no other runtime, no screensaver, no Hermes process, X10Pro mounted, memory level 89 (swap 3.1 GiB, stale). `benchmarks/pareto.py sweep benchmarks/pareto_arms.example.json`: seven arms, each its own process after `settle.sh`, the reference first; 576 teacher-forced decode positions (three texts, 384 prefill + 192 decode each, 48 GiB budget) and the 21-task battery. Display on.
+
+| arm | verdict | dNLL nats [95 % CI] | KL mean / max | top-1 | tasks | decode step | misses a token |
+|---|---|---|---|---|---|---|---|
+| ref | reference | 0 | 0 | 100 % | 20/21 | 131 ms | 29.2 |
+| noise-chunk96 (prefill in 96-token chunks) | noise arm | +0.0081 [-0.0071, +0.0243] | 0.0144 / 0.230 | 92.4 % | 20/21 | 131 | 28.9 |
+| budget36 (36 GiB, residency only) | identical | 0 | 0 | 100 % | 20/21 | 148 | 40.0 |
+| miss-budget4 | inside noise | +0.0053 [-0.0055, +0.0161] | 0.0082 / 0.436 | 96.2 % | 20/21 | 130 | 29.3 |
+| miss-budget2 | inside noise | +0.0026 [-0.0133, +0.0200] | 0.0108 / 0.448 | 94.1 % | 20/21 | 130 | 28.9 |
+| miss-budget1 | inside noise | +0.0079 [-0.0080, +0.0240] | 0.0116 / 0.235 | 93.1 % | 20/21 | 126 | 26.6 |
+| **miss-budget0** | **outside noise** | +0.0073 [-0.0148, +0.0281] | **0.0271 / 1.305** | 92.5 % | 19/21 | **95** | 15.5 |
+
+The `reverse-word` task fails on every arm (the model's error); `rle` fails only on miss-budget0 (one task, n = 1: not a rate). `budget36` equals the reference bit for bit, as a residency-only change must (identity detection works) and costs +13 % a step at 40 misses.
+
+**Reading.** (1) `miss_budget` 1-4 drop almost nothing (a layer seldom has more than one or two misses): inside the noise band, 0-4 % faster. (2) **`miss_budget` 0 (every missing expert dropped, the rest rescaled) cuts the decode step 27 % (131 to 95 ms, ~7.6 to 10.5 tok/s in this loop)** with a mean NLL change inside the noise arm's own interval and top-1 agreement equal to the noise arm's, but a heavier KL tail: mean 1.9x and max 5.7x the noise arm's (max 1.31 nats at one position), and one more task failed. By the harness's rule that is "outside noise". (3) The code shows why this is not a free win: `get_many` with `max_misses` returns skipped experts as `None` and counts them in `skipped_experts`, not in `cache_misses`; so a decode never admits its own misses and the resident set after a decode follows the prefill and the prefetch, not the text being written. These texts were each prefilled first, so the cache fitted them; **a long agent turn that changes topic during decode, or a long free-running reply, is the case this run does not test.** (4) The sweep's `misses` column is the store's `cache_misses` delta; dropped experts are not in it (the harness does not yet record `skipped_experts`).
+
+**Verdict: a candidate lever, not shipped, not default.** The only DeepSeek knob that trades output for speed, the noise-band check says it moves log-probabilities beyond rounding in the tail, and its quality under agentic use is unmeasured. Default-on is Hamed's call, and only after the checks below.
+
+**Not done / next.** (a) A server knob (`CACHALOT_DECODE_MISS_BUDGET`, default off): the budget exists only through `V41Model`; the server cannot set it, so there is no server-path number. (b) The server-path check by per-turn alternation (MEASUREMENT.md): does 131 to 95 ms hold at 22k Hermes context and a 48 GiB pool? (c) Hermes-shaped quality: the dumped body sampled N times per arm at temperature 0.7, interleaved, graded blind, and a tool-call task in the battery. (d) Record `skipped_experts` per step; run texts that change topic inside decode (the frozen-cache case). (e) Router-share substitution as an arm (a substitute instead of a drop: the KL tail may shrink). **Needs Hamed:** nothing for (a)-(e); the default is his.
+
+**Shipped.** `miss-budget1` added to `pareto_arms.example.json`; no runtime change, no numerics change. Results (not committed): `benchmarks/results/pareto-0.56.1/` (gitignored).
 
 ### 18.57 The Pareto harness — 2026-10-03 (0.56.0)
 

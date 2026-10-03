@@ -293,6 +293,8 @@ The same configuration as a benchmark, with a colder working set than a conversa
 token (5.90 tok/s)** at an 83.5 % hit rate, reading 627 MiB per token, drive busy 55 % of decode,
 reproducible to ±0.3 %.
 
+**0.56.1 (2026-10-04): the first full-size Pareto sweep.** Dropping every missing expert in decode (`miss_budget` 0, reachable only through `V41Model`) cuts the DeepSeek decode step 27 % (131 to 95 ms in the harness) with a log-likelihood change inside rounding noise but a heavier tail (KL max 1.3 nats): a candidate, not a default (HANDOFF section 18.58).
+
 **0.56.0 (2026-10-03): a Pareto harness for output-changing levers.** `benchmarks/pareto.py` compares configurations on paired NLL, KL, a checkable task battery (including C# that must build) and decode speed, with a noise band from a numerically equivalent arm. A first quick run shows dropping every decode miss cuts the step 20 % at a KL outside the noise band; the verdict needs the full-size sweep (HANDOFF section 18.57).
 
 **0.55.2 (2026-10-03): D2 priced and held.** A speculative verify of K tokens reads K tokens' worth of experts (28 misses a token at every K), so it only amortises the 70 ms floor: 0.92-1.12x of a 126 ms token depending on the verify's cost per position (HANDOFF section 18.56).

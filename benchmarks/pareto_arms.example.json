@@ -29,6 +29,10 @@
    "miss_budget": 2
   },
   {
+   "name": "miss-budget1",
+   "miss_budget": 1
+  },
+  {
    "name": "miss-budget0",
    "miss_budget": 0
   }
