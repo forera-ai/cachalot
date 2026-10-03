@@ -78,6 +78,10 @@ def simulate(arrays, segments, slots: int, policy: str, tau: float) -> dict:
         raise ValueError("tau > 0 needs a trace recorded with router weights")
 
     st = Store(slots, policy)
+    if not segments:
+        # a server trace carries no marks (nobody calls tracer.mark): split at every prefill/decode change
+        change = np.nonzero(np.diff(phase.astype(np.int8)) != 0)[0] + 1
+        segments = [{"at": 0}] + [{"at": int(i)} for i in change]
     bounds = [s["at"] for s in segments] + [len(layer)]
     tokens = requests = misses = drops = 0
     dropped_mass = 0.0
@@ -117,6 +121,8 @@ def simulate(arrays, segments, slots: int, policy: str, tau: float) -> dict:
                 rows_seen += 1
             tokens += 1
 
+    if tokens == 0:
+        raise ValueError("the trace holds no decode tokens")
     return {
         "tokens": tokens,
         "requests": requests,

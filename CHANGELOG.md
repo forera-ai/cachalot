@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.55.0 (2026-10-03)
+
+HANDOFF "Start here (2026-10-03, 0.55.0)" and section 18.54. MiniMax's floor re-measured, MiniMax shown safe against a wired-memory holder, and the first weighted DeepSeek routing trace.
+
+### Added
+- `CACHALOT_ROUTING_TRACE=path` on the DeepSeek server (`cachalot.cli serve`): installs a `RoutingTracer` on the runtime and saves it, with router weights, when the server stops. The weights cost a device read per layer, so record a trace in its own run, never in a timing run. Outputs are unchanged.
+- `tests/test_cache_sim_segments.py`.
+
+### Fixed
+- `benchmarks/cache_sim.py` replayed zero tokens on a trace without segment marks (every server trace: nothing calls `tracer.mark`), printing 100 % hit and the floor time. It now splits at every prefill/decode change and refuses a trace with no decode tokens.
+
+### Measured, not shipped
+- **MiniMax floor (M0):** an all-hit token is 44-49 ms through the server (0.4-1.1 misses a token); the research's 77 ms was the intercept of a narrow fit. Mixed requests: 82.9 ms at 10.7 misses, fit `27 + 5.2 x misses` (r 0.95).
+- **MiniMax with a 4 GiB mlock holder:** 86.2 ms at 11.6 misses against 82.9 at 10.7, floor unchanged; no cliff at 68 GiB.
+- **DeepSeek weighted trace** (1,958 decode tokens at a 22k Hermes-shaped context, 13,062 of 15,360 experts used): `cache_sim.py` gives 88.3 % hit, 28 misses, 126 ms at 48 GiB against live 87-93 % and 7.7 tok/s. Miss substitution removes 16 % of misses at tau 0.10 (1.6 % routing mass dropped), 52 % at 0.15 (9.5 %).
+
 ## 0.54.0 (2026-10-03)
 
 HANDOFF "Start here (2026-10-03, 0.54.0)" and section 18.53. A wired-memory governor for DeepSeek, built after §18.52 found the edge.

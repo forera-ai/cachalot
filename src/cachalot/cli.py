@@ -212,6 +212,7 @@ def cmd_serve(args) -> None:
     from cachalot.server.app import ServerConfig, create_app
     from cachalot.server.engine import Engine
 
+    tracer = trace_path = None
     if _family(args) in ("glm", "minimax"):
         from cachalot.glm.engine import GlmEngine
 
@@ -230,6 +231,16 @@ def cmd_serve(args) -> None:
         if args.snapshot_dir:
             _attach_snapshot_store(model.runtime, args.snapshot_dir)
         engine = Engine(model, model_id=args.model_id)
+        trace_path = os.environ.get("CACHALOT_ROUTING_TRACE")
+        if trace_path:
+            # HANDOFF 18.54: a weighted routing trace of a live session, saved when the server stops. The weights cost a
+            # device read per layer, so record it in its own run, never in a timing run.
+            from cachalot.metrics.routing_trace import RoutingTracer
+
+            tracer = RoutingTracer()
+            model.runtime.set_tracer(tracer)
+            print(f"routing trace on: {trace_path} (saved at exit; weights cost a device read per layer)",
+                  file=sys.stderr, flush=True)
     app = create_app(
         engine,
         ServerConfig(
@@ -248,6 +259,8 @@ def cmd_serve(args) -> None:
     try:
         uvicorn.run(app, host=args.host, port=args.port, log_level="info", access_log=False)
     finally:
+        if tracer is not None:
+            print(f"routing trace saved: {tracer.save(trace_path)}", file=sys.stderr, flush=True)
         model.close()
 
 

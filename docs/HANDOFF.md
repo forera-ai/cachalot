@@ -25,6 +25,14 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-03, 0.55.0): MiniMax's floor is 44 ms, MiniMax is safe beside a wired-memory holder, the first weighted DeepSeek trace
+>
+> Hamed asked for the handoff and prompts read and their tasks done (v97's first job). Section 18.54:
+> - **M0:** an all-hit MiniMax token is 44-49 ms through the server; the 77 ms of the research was a fit intercept. Mixed requests 82.9 ms at 10.7 misses.
+> - **Holder test:** a process wiring 4 GiB leaves MiniMax at 68 GiB at 86.2 ms (11.6 misses): no cliff.
+> - **Built:** `CACHALOT_ROUTING_TRACE` on the DeepSeek server; `cache_sim.py` fixed for unmarked traces. Trace `benchmarks/results/trace_routing_v8_hermes.trace.npz` (gitignored; rebuild with the recipe in 18.54).
+> - **Result:** simulator at 48 GiB 88.3 % hit, 28 misses, 126 ms against live 87-93 %, 7.7 tok/s. D4 (substitution) is weak: -16 % misses at tau 0.10. Next: D3.
+
 > ## Start here (2026-10-03, 0.54.0): the DeepSeek wired-memory governor; the edge is the system's wired memory, not the wired limit
 >
 > Hamed: "go, build the DeepSeek memory governor. panic risk confirmed." Section 18.53:
@@ -8694,6 +8702,39 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.54 M0, the MiniMax holder test and the first weighted DeepSeek trace — 2026-10-03 (0.55.0)
+
+Hamed asked for the handoff and prompts read and their tasks done: v97's first job (M0 and MiniMax's wired edge) and second (a weighted DeepSeek routing trace).
+
+**Machine.** Clean tree at 0.54.0, wired limit 88064, X10Pro mounted, pressure level 1, swap 2.8 GiB (stale), screensaver off, no Hermes process, `benchmarks/settle.sh` before each arm.
+
+**M0 (MiniMax through `./serve-minimax.sh`, defaults, 68 GiB).** A server, 12 distinct prompts at temperature 0 and 120 tokens, then one prompt four times (repeats reuse the prefix and hit the cache). Mixed requests: mean 82.9 ms a token at 10.7 misses, decode 10.4-15.5 tok/s, fit `ms = 27.1 + 5.20 x misses` (r 0.95, n 12). Repeats: 49.3 / 46.9 / 44.4 ms at 1.1 / 1.1 / 0.4 misses. So the all-hit floor is ~44 ms, inside §18.19's 35-43 ms: the research's 77 ms came from a fit on 14 replies over a narrow miss range. A miss costs ~3.6 ms on average here (read 4.4-4.6 ms a read). **Closed:** the floor discrepancy.
+
+**Holder test.** The same run with a process that mmaps and mlocks 4 GiB (`holder.py`, scratch) started after the server: mean 86.2 ms at 11.6 misses (fit `33.7 + 4.55 x misses`), repeats 50.8 / 45.8 / 42.7 ms. The per-miss cost matches the unheld run (3.7 ms), so the +4 % is the extra misses; there is no cliff, MiniMax's governor (or its smaller wired footprint at 68 GiB of a 6 GiB non-expert model) keeps it clear. n=1 per arm, mixed text, no alternation: it shows the absence of a 2x collapse, not a percent.
+
+**Routing trace.** `CACHALOT_ROUTING_TRACE=path ./serve.sh` installs the tracer (weights recorded, saved at SIGINT). Run: the first request of `/tmp/cachalot-requests-0.46b.jsonl` (system prompt 26.9k characters, 25 tools; 22,332 tokens), then twelve different agent-style user prompts at 220 max tokens, temperature 0.7. 1,958 decode tokens, live 6.9-8.6 tok/s, 17-33 misses a token (mean ~24), hit 86-93 %, the first prefill 205 s (22,351 tokens), later turns reuse 22,332. The trace is 981,280 records (902,960 prefill, 78,320 decode), 13,062 of the 15,360 (layer, expert) pairs appear in decode: DeepSeek's routing at this context is broad.
+
+**Simulator (`cache_sim.py`, floor 70 ms, 2.0 ms a miss).** It first reported 100 % hit: the trace has no segment marks, so it replayed no tokens. Fixed (phase-change split; a trace without decode tokens is refused). Result:
+
+| budget GiB | tau | decode hit | misses a token | ms | tok/s |
+|---:|---:|---:|---:|---:|---:|
+| 36 | 0 | 85.8 % | 34.1 | 138 | 7.2 |
+| 44 | 0 | 87.7 % | 29.4 | 129 | 7.8 |
+| 48 | 0 | 88.3 % | 28.0 | 126 | 7.9 |
+| 52 | 0 | 88.7 % | 27.0 | 124 | 8.1 |
+| 48 | 0.06 | 88.2 % | 27.3 | 125 | 8.0 |
+| 48 | 0.10 | 86.9 % | 23.4 | 117 | 8.6 |
+| 48 | 0.15 | 79.8 % | 13.5 | 97 | 10.3 |
+| 48 | 0.20 | 70.6 % | 7.4 | 85 | 11.8 |
+
+(The tau 0.15-0.30 rows are drop-only; dropped router mass per layer 0.016 at 0.10, 0.095 at 0.15, 0.20 at 0.20.) The simulator at 48 GiB (88.3 %, 28 misses, 126 ms) matches the live run (87-93 %, ~24 misses, 7.7 tok/s) within the live spread. **Reading:** a bigger budget barely helps (36 to 52: 34 to 27 misses); substitution at a quality-safe tau (0.06-0.10) removes 3-16 % of misses, -1 to -9 ms (-1 to -7 %), far below the research's 30-40 %; the large gains need a tau that drops ~10-20 % of the routing mass, which only the quality harness could clear. D4 is therefore a weak lever; **D3 (bit-identical, up to 14-22 ms off the 70 ms floor) is the next build.**
+
+**Shipped.** `CACHALOT_ROUTING_TRACE` (cli.py), `cache_sim.py` fix, `tests/test_cache_sim_segments.py`. No numerics change. Studio brief `docs/studio/briefs/2026-10-03-runtime-0.55.0.md`.
+
+**Instruments (scratch, rebuild from here).** `m0_driver.py` (12 prompts + one repeated, urllib to :8011), `m0_arm.sh` / `m1_arm.sh` (a server, optional holder, the driver, SIGINT; the arm must wait on the port 8011 — DeepSeek's server also listens on 8011), `holder.py` (mmap + mlock N GiB), `ds_driver.py` (dump body 0's system and tools, twelve user prompts), `ds_arm.sh`.
+
+**Open.** D3 on DeepSeek; the Pareto harness (NLL/KL, C# replay, tool battery); GLM's wired edge; a holder run with alternating arms if a percent is wanted. **Needs Hamed:** nothing for D3; output-changing levers (D4/D5) only through the harness and his word.
 
 ### 18.53 The DeepSeek wired-memory governor — 2026-10-03 (0.54.0)
 

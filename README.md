@@ -293,6 +293,8 @@ The same configuration as a benchmark, with a colder working set than a conversa
 token (5.90 tok/s)** at an 83.5 % hit rate, reading 627 MiB per token, drive busy 55 % of decode,
 reproducible to ±0.3 %.
 
+**0.55.0 (2026-10-03): measurements, no speed change.** MiniMax's all-hit token is 44-49 ms through the server (the research's 77 ms was a fit intercept) and a 4 GiB holder costs it nothing at 68 GiB. DeepSeek's first weighted routing trace (`CACHALOT_ROUTING_TRACE`, 1,958 decode tokens at 22k context) reproduces the live 88 % hit and 7.9 tok/s in the simulator; substituting cheap misses would remove only 16 % of misses at a 1.6 % routing-mass cost. HANDOFF section 18.54.
+
 **0.54.0 (2026-10-03): `./serve.sh` runs DeepSeek at 48 GiB, and a wired-memory governor keeps it there when the machine changes.** Measured on a settled
 Mac Studio with the bank on the internal SSD: once the whole system's wired memory passes about 74.5 GiB the GPU pages and the all-resident token costs 160+ ms instead of 70. The old 52 GiB budget crossed it (system wired 75.1 GiB): a mixed 12-request
 set decoded at 4.76 tok/s against 8.31 at 48 GiB (7.72 / 8.14 / 8.31 / 8.00 / 4.76 at 36 / 44 / 48 / 50 / 52). It is the system's total, not the runtime's setting: a wired limit of 84 GiB changed nothing, and another process wiring 4 GiB took the default
