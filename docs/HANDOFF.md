@@ -25,6 +25,14 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-03, 0.52.2): speed research; the next levers change the workload, and MiniMax's floor must be measured first
+>
+> Hamed asked for the literature checked, our own method reviewed, and unseen ways to a large speed gain found. No runtime change; the result is `docs/SPEED-RESEARCH-2026-10-03.md` and section 18.50. Short form:
+> (1) GLM is read-bound (70-75 % of a 365 ms token): every route to a higher hit rate pays (80 % hit = 1.3x, 90 % = 1.9x). (2) MiniMax at chat contexts is only ~one third misses: a fit over 14 replies gives
+> `ms = 77 + 3.4 x misses`, against §18.19's 35-43 ms all-hit floor: **measure where the extra ~34 ms of the floor went before any more MiniMax lever.** (3) The levers left all change the model's workload (output-changing, Hamed's call):
+> miss substitution for GLM, a saliency-aware substitution rule, REAP-style pruning as a router mask over the banks we already have, bit-sliced expert reads. (4) A common Pareto harness (misses/token against NLL/KL and a checkable battery)
+> plus a routing-trace cache simulator is the prerequisite.
+
 > ## Start here (2026-10-02, 0.52.1): an 8-bit GLM hybrid does not fix its garbled code
 >
 > Hamed: "continue with others too" (after "build video for GLM"). Section 18.49: the other GLM-5.3-Flash quantisations on Hugging Face are mixed (attention, delta-rule projections, shared experts at 8 bits, experts at
@@ -8667,6 +8675,31 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.50 Speed research: literature, our own process, and the untried levers — 2026-10-03 (0.52.2)
+
+Hamed: "check again with all online resources in the same area ... find new breakthrough changes we missed ... scientifically analyze the whole procedures ... find another unseen, untested ways to improve the speed by much ... prepare next session's docs".
+The full analysis is `docs/SPEED-RESEARCH-2026-10-03.md`; this section keeps what the next session needs to act.
+
+**Measured this session (the only new numbers).** Fourteen MiniMax replies of one prompt (temperature 0.7 and 0, default server settings, screensaver intermittently on): 114 ms a token (107-127), 10.9 misses a token (9.5-12.8);
+fit `ms = 77 + 3.42 x misses`, r 0.65. The slope equals one expert's raw read time, so reads are not hidden from the token; the user's chat `/stats` shows `decode_wait_ms_per_miss` 1.2 ms, which understates the real
+cost ~3x because reads also slow the GPU's part (§18.4). The intercept (77 ms) is the open question against §18.19's 35-43 ms all-hit floor. GLM's older figures (365 ms a token, ~100 misses, 2.6 ms a miss, 105 ms floor) reproduce.
+Quality, same session (not a speed result): MiniMax's wrong "fabricated data" Swift answer was 1 of 15 (14 reruns real importers; 10 of 14 compile), see the chat review in the transcript; GLM's matched the 4-bit garble pattern in the replay (§18.49).
+
+**What the literature adds (abstracts and model cards, not run).** REAP pruning (ICLR 2026; 25 % pruning ~free on large models, 50 % costs 1-2 % on 160-384-expert models but 11 % on a 128-expert one; calibration domain decisive;
+agentic tool use -5 to -6 %); public REAP checkpoints for both our models (GLM: +0.34 nats at 37 %, +0.56 at 50 % on wikitext-2; MiniMax: 87 of 128 experts with agentic-coder calibration); mixed-precision miss loading (HOBBIT);
+bit-sliced MSB/LSB expert caching (SliceMoE: 1.6-1.8x); per-layer cache quotas and routing-history replacement (MoE-CORE: 1.39-1.75x on DeepSeek-V4-Flash); residency-aware self-speculation with verifier-side expert budgets
+(DraftExpert, AcceptMoE, MoE-Spec, EcoSpec). flash-moe (Qwen3.5-397B on a 48 GB MacBook, 4.4 tok/s) shows our approach is ahead, not behind.
+
+**Method review, in one paragraph.** Only workload-changing levers (bank layout, prefetch, substitution, bytes per expert, memory governor) moved a token by more than 10 %; kernel, ordering and scheduling work landed at 0-5 % and was often below
+the +-10 % process drift. Kernel work is exhausted on this hardware. What is missing is a common currency (misses a token against quality) so approximations can be combined and ranked, and a metric that tells the truth about miss cost.
+
+**Ranked levers (details, gains, costs and gates in the research file, section 4):** N1 re-anatomise MiniMax's floor; the Pareto harness; N2 miss substitution for GLM; N3 saliency-aware thresholds; N4 REAP as a router mask over our banks
+(keep-lists recoverable from the public checkpoints by fingerprinting expert scales, ~1 GB of range reads, no weight download); N5 S1c for GLM above 90 % hits; N6 bit-sliced experts; N7-N10 smaller ideas and the model-tiering option.
+**Combined estimate for GLM: 2.7 -> ~5.5 tok/s if quality survives every gate; MiniMax 1.15-1.5x depending on N1.**
+
+**Closed by this research:** nothing new; two earlier closures got a footnote: speculative decoding stays closed until the harness can price a verifier-side expert budget (N8), and the GLM S1c "reopen above 90 % hits" condition is reachable through N2/N4.
+**Needs Hamed:** permission to try output-changing speed levers against the harness (default only on his word); the screensaver on Never and the Hermes window hidden while benchmarking; whether a second, fully resident model for subagent turns is wanted (N10).
 
 ### 18.49 A mixed 4/8-bit GLM does not stop the garbled code — 2026-10-02 (0.52.1)
 

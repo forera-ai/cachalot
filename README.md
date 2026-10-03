@@ -411,6 +411,9 @@ changing the cache policy or budget.
 Ordered by measured size in a token, not by expected difficulty. The full ranking, with what closed each
 line, is `docs/HANDOFF.md` section 9.25.
 
+**Current speed plan (2026-10-03):** the kernel and scheduling levers are exhausted on this hardware; what is left changes the workload and is measured against quality first: where MiniMax's
+non-miss time goes, miss substitution for GLM, saliency-aware substitution, expert pruning as a router mask, bit-sliced expert reads. See `docs/SPEED-RESEARCH-2026-10-03.md`.
+
 1. ~~Prefix cache, OpenAI-compatible server, batched prefill, memory auto-sizing~~ shipped.
 2. ~~A smaller expert bank~~ shipped in 0.4.0: 2-bit affine g128, 9.49 MiB per expert, half the bytes of FP4
    and equal quality once the hyper-connection defect was fixed.

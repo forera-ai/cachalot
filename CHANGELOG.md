@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.52.2 (2026-10-03)
+
+HANDOFF "Start here (2026-10-03, 0.52.2)", section 18.50, and `docs/SPEED-RESEARCH-2026-10-03.md`. No runtime change.
+
+### Added
+- `docs/SPEED-RESEARCH-2026-10-03.md`: a literature and project survey (REAP, HOBBIT, SliceMoE, MoE-CORE, residency-aware self-speculation, flash-moe, public REAP checkpoints of GLM-5.3-Flash and
+  MiniMax-M3), a review of the project's own method, an estimate of speed against hit rate for both models, and ten ranked untried levers with the measurement each needs first.
+
+### Measured, not shipped
+- A regression of ms a token on misses a token over 14 MiniMax replies (this session, default settings): `ms = 77 + 3.42 x misses` (r 0.65, n 14, narrow range). A miss costs its full raw read time
+  (21.1 MiB at 6.5 GiB/s = 3.2 ms), so reads are not hidden from the token, and `decode_wait_ms_per_miss` (1.2 ms) understates the cost about three times. The 77 ms intercept against the 35-43 ms
+  all-hit floor of 0.38.0 is the open question (up to ~30 % of a token).
+- Public REAP checkpoints exist for GLM-5.3-Flash (`pipenetwork/...REAP25/37/50`: perplexity 3.46 -> 4.88 / 6.08 on wikitext-2) and MiniMax-M3 (`JANGQ-AI/...REAP22/32-Coder`); none publishes its keep-list.
+
 ## 0.52.1 (2026-10-02)
 
 HANDOFF "Start here (2026-10-02, 0.52.1)", section 18.49. The default model path is unchanged.
