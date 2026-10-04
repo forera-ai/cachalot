@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.57.2 (2026-10-04)
+
+HANDOFF "Start here (2026-10-04, 0.57.2)" and section 18.61. What the DeepSeek decode miss budget costs when the text changes topic.
+
+### Added
+- `benchmarks/topic_shift.py`: one teacher-forced stream that shifts topic twice (Python, prose, JSON) after a short prefill, each arm in its own fresh process, reported per 100-token window and per segment (log-likelihood change, KL, experts read and dropped, step time).
+- `benchmarks/topic_shift_gen.py`: six prompts that each ask for three unrelated pieces in one long reply, generated per arm in a fresh process, with a shuffled arm-free grading sheet. Both are live-run instruments built on the tested helpers; they have no unit tests of their own.
+
+### Measured, not shipped as a default
+- Budget 0: +0.11 nats a token in the 100 tokens after a shift (top-1 agreement 83 %), fading within about 200; +0.040 [+0.011, +0.070] over the prose segment, about +0.02 over the stream; the step stays 24-27 % faster. The cache is not frozen: predicted prefetch loads still admit experts. Budget 1: about 6 % faster, no measurable cost. Six generated three-topic replies, graded blind: flawed 1/6 against 1/6, no loops, 120.0 to 90.9 ms a token (-24 %). Small samples, one grader, short context.
+
 ## 0.57.1 (2026-10-04)
 
 HANDOFF "Start here (2026-10-04, 0.57.1)" and section 18.60. The blind agent-quality check of the DeepSeek decode miss budget.

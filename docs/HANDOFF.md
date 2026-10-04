@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-04, 0.57.2): the topic-shift check of the decode miss budget: a transient cost, not a collapse
+>
+> Hamed: "go, run the topic-shift long reply check." Section 18.61. Teacher-forced 1,600 steps through Python, prose, JSON (each arm a fresh process): budget 0 costs **+0.11 nats in the 100 tokens after a shift, fading within about 200**, +0.040 [+0.011, +0.070] over the prose segment, about +0.02 over the whole stream; the step stays -24 to -27 %. The cache is not frozen (predicted prefetch loads still admit experts). Budget 1: about -6 % at no measurable cost. Six generated three-topic replies, graded blind: flawed 1/6 against 1/6, no loops, -24 % a token. The default is Hamed's call.
+
 > ## Start here (2026-10-04, 0.57.1): the blind agent-quality check of `CACHALOT_DECODE_MISS_BUDGET=0`: no sign of harm
 >
 > Hamed: "go, run the blind quality check." Section 18.60: six dumped Hermes bodies (22-25k context, 25 tools), 8 samples per arm at temperature 0.7 through `Engine.chat`, arms interleaved, 96 replies shuffled and graded blind by me before the key was opened: **flawed 14/48 (exact) against 6/48 (budget 0), Fisher p = 0.077**; valid tool calls 8/8 both, no loops; speed on real bodies 136.7 to 111.9 ms a token (-18 %). Not harmful on this set (one grader, six prompts, 700-token cap). Untested: a long reply that changes topic. The default is Hamed's call.
@@ -8726,6 +8730,26 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.61 The topic-shift check: what the decode miss budget costs when the text changes — 2026-10-04 (0.57.2)
+
+Hamed: "go, run the topic-shift long reply check" (v104's first job, item 1). The worry (§18.58-18.60): with `CACHALOT_DECODE_MISS_BUDGET=0` a decode never admits its own misses, so the resident set follows the prefill, and a reply that changes topic might pay for it. Two parts, each arm in its own fresh process (a shared one lets the exact arm warm the cache).
+
+**Part A: teacher-forced, one stream, identical text** (`benchmarks/topic_shift.py`). After a 256-token prefill of Python source (`wired_governor.py`), 1,600 decode steps are teacher-forced through Python (400 tokens), then changelog prose (600), then JSON (600); budgets exact, 0 and 1, 48 GiB. Per segment (budget against exact):
+
+| segment | budget 0: dNLL [95 % CI] | KL mean / max | step ms | budget 1: dNLL [95 % CI] | step ms |
+|---|---|---|---|---|---|
+| python (the prefilled topic) | +0.0022 [-0.0120, +0.0167] | 0.024 / 0.42 | 143 -> 104 | +0.0165 [+0.0020, +0.0308] | 143 -> 131 |
+| prose (first shift) | **+0.0402 [+0.0109, +0.0702]** | 0.048 / 0.60 | 137 -> 105 | -0.0045 [-0.0245, +0.0160] | 137 -> 131 |
+| json (second shift) | +0.0129 [-0.0254, +0.0479] | 0.028 / 1.00 | 134 -> 105 | -0.0039 [-0.0165, +0.0086] | 134 -> 125 |
+
+The cost sits right after a shift and then fades: budget 0, window 400-500 (python to prose) dNLL +0.111, KL 0.069, top-1 agreement 83 %; 500-600 +0.028; 600-700 -0.009. At the second shift (1000-1100) +0.040, KL 0.081, agreement 80 %, then +0.006, +0.023, +0.016, -0.001, -0.007. Over all 1,600 steps the mean is about +0.02 nats (about 2 % perplexity). **Budget 0 is not frozen:** in the shift windows the exact arm's misses jump to 35-42 a token while the budget arm drops a steady 21-28, and the budget arm's own cache-miss counter (predicted prefetch loads, which still admit experts) stays 5-33 a token and falls back: the cache follows the text through the prefetch, with a lag of a hundred or two tokens. **Budget 1** (drop all but one miss in a layer) is small in cost and gain: dNLL within zero except +0.017 on the Python segment, step 143/137/134 -> 131/131/125 ms (about -6 %).
+
+**Part B: generated long replies** (`benchmarks/topic_shift_gen.py`). Six prompts, each asking for three unrelated pieces in one reply (a story, a decorator tutorial and a recipe; TCP congestion control, a poem and a WWI summary; a C# LRU cache, an essay on AI ethics and a SQL schema; and so on), 1,400 tokens at most, temperature 0.7, seeds matched, each arm a fresh process. 12 replies shuffled and graded blind before the key was opened (rubric as §18.60; a reply cut by the cap in its last piece is not a flaw). **Flawed: exact 1/6, budget 0 1/6** (Fisher p = 1.0): the exact arm's was an incoherent macOS note on `date -r` in a bash script, the budget arm's a bash script whose `((count++))` under `set -e` aborts after the first rename (a classic bug). Both arms: no repetition, three replies ended on their own and three hit the cap. Speed: **120.0 -> 90.9 ms a token (-24 %)** over replies of about 1,100 tokens, 19.2 experts dropped a token.
+
+**Reading.** Budget 0 costs a measurable but transient likelihood penalty right after a topic shift (up to +0.11 nats a token in the first 100 tokens, gone within about 200) and about +0.02 nats averaged over a three-topic stream; generated long replies show no derailing, looping or collapse in six blind-graded pairs. The step time gain is steady at -24 to -27 % through every segment. **Limits:** the shift in Part A is an abrupt concatenation (a model's own topic changes are smoother); Part B is six prompts and one grader (me), n = 6 per arm, so it can only exclude gross failure, not a small quality loss; both parts at 48 GiB and a short context (no 22k Hermes block). **Decision state for Hamed** is §18.60's plus this: budget 0 = -22 to -27 % a token, small transient cost at topic shifts, no sign of behavioural harm; budget 1 = -6 % at no measurable cost; the default stays off until he says.
+
+**Shipped.** `benchmarks/topic_shift.py` and `benchmarks/topic_shift_gen.py` (live-run instruments built from the tested helpers; no new unit tests); no runtime change. Results (not committed): `benchmarks/results/topic-shift-0.57.2/` (per-arm `.npz`, the generations, sheet, key, mechanical checks and grades), gitignored. **Open:** (a) router-share substitution as an arm (a substitute instead of a drop: the post-shift penalty may shrink); (b) a second grader and more replies; (c) Hamed's own Hermes session with `CACHALOT_SERVER_DUMP`. **Needs Hamed:** the default.
 
 ### 18.60 The blind agent-quality check of the decode miss budget — 2026-10-04 (0.57.1)
 
