@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-04, 0.57.0): `CACHALOT_DECODE_MISS_BUDGET` (off) and its server-path check: -22.6 % at 22k context
+>
+> Hamed: "go, build the server knob and check it." Section 18.59: the knob exists (`CACHALOT_DECODE_MISS_BUDGET=0 ./serve.sh`, off by default, decode only, changes outputs). Server-path A/B through `Engine.chat` at a 22k Hermes context, budget flipped per turn, parity swapped, A/A control: **140.3 to 108.7 ms a token (-22.6 %, paired -31.7 ms [-37.7, -25.9]; control +0.9 sd 7.2)**, 19.5 experts dropped a token. Quality at agent scale is unmeasured (the blind Hermes-shaped sampling is next); no default proposed.
+
 > ## Start here (2026-10-04, 0.56.1): the full-size Pareto sweep; `miss_budget` 0 is a -27 % decode lever outside the noise band
 >
 > Hamed: "go, run the full-size sweep." Section 18.58 (576 positions, 21 tasks, seven arms): `miss_budget` 1-4 do almost nothing; **`miss_budget` 0 (drop every miss) cuts the decode step 131 to 95 ms** with dNLL +0.007 [-0.015, +0.028] inside the noise arm's interval, but KL mean 1.9x / max 5.7x the noise arm's and one more task failed: "outside noise". It never admits its own misses (the cache follows the prefill), which these texts do not stress. A candidate, not a default. Next: a server knob, a server-path alternation, a Hermes-shaped quality check.
@@ -8718,6 +8722,26 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.59 The server knob for the decode miss budget, and its server-path check — 2026-10-04 (0.57.0)
+
+Hamed: "go, build the server knob and check it" (v102's first job).
+
+**Built.** `CACHALOT_DECODE_MISS_BUDGET=N` on `cachalot.cli serve` (DeepSeek; unset, empty or negative is off, a non-negative integer is the cap, anything else exits with an error): at most N non-resident experts are read per layer in decode, highest router weight first, the rest dropped and the layer's remaining router weights rescaled to the original mass (`V41Model.set_decode_miss_budget`, unchanged). Off by default; `serve.sh` does not set it. The startup line says `decode miss budget N: ...` and `/v1/stats` already carried `decode_miss_budget` and `skipped_experts`. Decode only: prefill does not read it. It changes outputs, so no snapshot or numerics tag moves (prefill KV is unchanged). Tests: `tests/test_decode_miss_budget_env.py` (3). To try it: `CACHALOT_DECODE_MISS_BUDGET=0 ./serve.sh`.
+
+**Server-path check** (`benchmarks/server_miss_budget_ab.py`): `Engine.chat`, the code `serve.sh` runs, on a 22k-token Hermes-shaped context (the system prompt and 25 tools of a dumped body, 22,332 tokens, prefill 221 s once), 48 GiB, 220 greedy tokens, twelve user prompts, one process, the budget flipped every turn; pass 1 odd prompts capped, pass 2 the parity swapped, pass 3 an exact-vs-exact control. Prompt 0 repeats the warm-up request exactly (an all-resident turn, 95.6 ms) and is excluded. Prompts 1-11:
+
+| | ms a token |
+|---|---|
+| exact (alternating) | 140.3 |
+| **budget 0** | **108.7** (-22.6 %; paired -31.7 ms, bootstrap 95 % [-37.7, -25.9]) |
+| A/A control | 141.2 (control - exact +0.9, sd 7.2) |
+
+By parity: pass 1 ratio 0.745 (n = 6), pass 2 0.813 (n = 5). 19.5 experts dropped a token (8 % of the 240 uses); 9 of 11 replies differ from the exact ones (greedy text diverges after the first drop), and the ones read were coherent and structurally close. A second, independent run of the committed driver at 24 tokens a turn: ratio 0.782. **The harness's -27 % step becomes -22.6 % on the server path at 22k context**, because attention and the context's fixed cost dilute it. The all-resident floor at 22k context through the server is 95.6 ms (70 in-process at short context).
+
+**Not measured / caveats.** (1) Quality at agent scale: the harness (§18.58) puts budget 0's mean NLL inside the noise arm's interval but its KL tail 1.9x (max 5.7x) heavier and one more task failed; the blind Hermes-shaped sampling (§18.29's recipe) and a tool-call battery task are still undone, so **no default is proposed.** (2) A decode that never admits its own misses leaves the resident set where prefill and prefetch put it: a long reply that changes topic is untested. (3) Budget 1-4 do almost nothing (§18.58).
+
+**Shipped.** The knob (off), its tests, the A/B driver. Studio brief `docs/studio/briefs/2026-10-04-runtime-0.57.0.md`. **Needs Hamed:** whether to run the blind quality check (autonomous, ~1 h) before he decides; the default is his.
 
 ### 18.58 The full-size Pareto sweep: dropping DeepSeek's decode misses — 2026-10-04 (0.56.1)
 

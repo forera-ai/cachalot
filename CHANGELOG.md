@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.57.0 (2026-10-04)
+
+HANDOFF "Start here (2026-10-04, 0.57.0)" and section 18.59. A server knob for DeepSeek's decode miss budget, off by default, and its server-path check.
+
+### Added
+- `CACHALOT_DECODE_MISS_BUDGET=N` on `cachalot.cli serve` (DeepSeek): at most N non-resident experts are read per layer in decode, the rest dropped and the layer's router weights rescaled. Unset, empty or negative is off (the default; `serve.sh` does not set it); a non-integer exits with an error. It changes outputs; prefill is untouched, so no snapshot or numerics tag moves. The startup line says so. 3 tests (`tests/test_decode_miss_budget_env.py`).
+- `benchmarks/server_miss_budget_ab.py`: the server-path A/B (`Engine.chat`, a 22k Hermes-shaped context, the budget flipped per turn with swapped parity and an exact-vs-exact control) and its report.
+
+### Measured, not shipped as a default
+- Budget 0 through the server path at 22k context and 48 GiB: 140.3 to 108.7 ms a token (-22.6 %, paired -31.7 ms, 95 % interval [-37.7, -25.9]; the control differs by +0.9 ms, sd 7.2), 19.5 experts dropped a token; a second run of the driver at 24 tokens a turn: ratio 0.782. Quality at agent scale is unmeasured, so no default is proposed.
+
 ## 0.56.1 (2026-10-04)
 
 HANDOFF "Start here (2026-10-04, 0.56.1)" and section 18.58. The full-size Pareto sweep of DeepSeek's per-layer decode miss budget.

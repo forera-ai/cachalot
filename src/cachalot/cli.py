@@ -231,6 +231,13 @@ def cmd_serve(args) -> None:
         if args.snapshot_dir:
             _attach_snapshot_store(model.runtime, args.snapshot_dir)
         engine = Engine(model, model_id=args.model_id)
+        budget = _decode_miss_budget_from_env(os.environ)
+        if budget is not None:
+            # HANDOFF 18.59: opt-in approximation, off by default. It changes outputs (a dropped expert is not computed
+            # and the layer's remaining router weights are rescaled).
+            model.set_decode_miss_budget(budget)
+            print(f"decode miss budget {budget}: at most {budget} non-resident experts are read per layer in decode, "
+                  f"the rest dropped (changes outputs; CACHALOT_DECODE_MISS_BUDGET)", file=sys.stderr, flush=True)
         trace_path = os.environ.get("CACHALOT_ROUTING_TRACE")
         if trace_path:
             # HANDOFF 18.54: a weighted routing trace of a live session, saved when the server stops. The weights cost a
@@ -262,6 +269,18 @@ def cmd_serve(args) -> None:
         if tracer is not None:
             print(f"routing trace saved: {tracer.save(trace_path)}", file=sys.stderr, flush=True)
         model.close()
+
+
+def _decode_miss_budget_from_env(env) -> int | None:
+    """CACHALOT_DECODE_MISS_BUDGET: unset, empty or negative is off; a non-negative integer is the per-layer cap."""
+    raw = str(env.get("CACHALOT_DECODE_MISS_BUDGET", "")).strip()
+    if not raw:
+        return None
+    try:
+        value = int(raw)
+    except ValueError:
+        raise SystemExit(f"CACHALOT_DECODE_MISS_BUDGET must be an integer, got {raw!r}") from None
+    return value if value >= 0 else None
 
 
 def _effort(value):
