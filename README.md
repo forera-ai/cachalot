@@ -293,6 +293,8 @@ The same configuration as a benchmark, with a colder working set than a conversa
 token (5.90 tok/s)** at an 83.5 % hit rate, reading 627 MiB per token, drive busy 55 % of decode,
 reproducible to ±0.3 %.
 
+**0.57.1 (2026-10-04): the decode miss budget, checked on agent turns.** Six dumped Hermes requests (22-25k tokens of context, 25 tools) sampled 8 times per arm at temperature 0.7, 96 replies graded blind: 6 of 48 flawed with the budget at 0 against 14 of 48 exact (not significant), valid tool calls 8 of 8 in both, and long replies 18 % faster. It is still off by default and the default is a decision for the owner (HANDOFF section 18.60).
+
 **0.57.0 (2026-10-04): an opt-in decode miss budget for DeepSeek.** `CACHALOT_DECODE_MISS_BUDGET=0 ./serve.sh` drops every expert that is not resident during decode and rescales the layer's router weights: through the server path at a 22k-token agent context the token goes from 140 to 109 ms (-22.6 %, paired and controlled). It changes outputs (the harness puts the log-likelihood change inside rounding noise but the tail heavier), it is off by default, and its quality at agent scale is not yet measured (HANDOFF section 18.59).
 
 **0.56.1 (2026-10-04): the first full-size Pareto sweep.** Dropping every missing expert in decode (`miss_budget` 0, reachable only through `V41Model`) cuts the DeepSeek decode step 27 % (131 to 95 ms in the harness) with a log-likelihood change inside rounding noise but a heavier tail (KL max 1.3 nats): a candidate, not a default (HANDOFF section 18.58).

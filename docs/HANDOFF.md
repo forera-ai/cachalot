@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-04, 0.57.1): the blind agent-quality check of `CACHALOT_DECODE_MISS_BUDGET=0`: no sign of harm
+>
+> Hamed: "go, run the blind quality check." Section 18.60: six dumped Hermes bodies (22-25k context, 25 tools), 8 samples per arm at temperature 0.7 through `Engine.chat`, arms interleaved, 96 replies shuffled and graded blind by me before the key was opened: **flawed 14/48 (exact) against 6/48 (budget 0), Fisher p = 0.077**; valid tool calls 8/8 both, no loops; speed on real bodies 136.7 to 111.9 ms a token (-18 %). Not harmful on this set (one grader, six prompts, 700-token cap). Untested: a long reply that changes topic. The default is Hamed's call.
+
 > ## Start here (2026-10-04, 0.57.0): `CACHALOT_DECODE_MISS_BUDGET` (off) and its server-path check: -22.6 % at 22k context
 >
 > Hamed: "go, build the server knob and check it." Section 18.59: the knob exists (`CACHALOT_DECODE_MISS_BUDGET=0 ./serve.sh`, off by default, decode only, changes outputs). Server-path A/B through `Engine.chat` at a 22k Hermes context, budget flipped per turn, parity swapped, A/A control: **140.3 to 108.7 ms a token (-22.6 %, paired -31.7 ms [-37.7, -25.9]; control +0.9 sd 7.2)**, 19.5 experts dropped a token. Quality at agent scale is unmeasured (the blind Hermes-shaped sampling is next); no default proposed.
@@ -8722,6 +8726,33 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.60 The blind agent-quality check of the decode miss budget — 2026-10-04 (0.57.1)
+
+Hamed: "go, run the blind quality check" (v103's first job, item 1).
+
+**Method** (`benchmarks/quality_blind_ab.py`, §18.29's recipe). The six request bodies of the dumped Hermes session (`/tmp/cachalot-requests-0.46b.jsonl`: "Hi", a tool-call turn, a 4.6k-character `ls` result to summarise, a story, a C# snippet, the same in TypeScript; 22.3k to 25.5k tokens of context with 25 tools) each sampled **8 times per arm at the dump's temperature 0.7 through `Engine.chat`**, exact against `miss_budget` 0 (`set_decode_miss_budget` per sample), interleaved in one process, sample j on the same seed in both arms, the order within a pair alternating; 700 new tokens at most, 48 GiB. 96 replies, shuffled across arms and bodies, written to an arm-free sheet; **I graded all 96 from the sheet (ok / flawed, with a flaw tag) before opening `key.json` or `mech.json`**, then joined. Rubric, fixed before reading: flawed = a factual claim the tool output contradicts or does not support (including "full listing" of a visibly truncated listing), a garbled or invented name, a tool call or no reply where the user asked for text (an unrequested `write_file`), or code that does not compile or does not do what its comment says (wrong API, missing `using`, a boolean compared with a string); a hedged estimate and a replay cut by the 700-token cap are not flaws.
+
+**Result.**
+
+| body | what | exact flawed | budget 0 flawed | Fisher p |
+|---|---|---|---|---|
+| 0 | "Hi" | 0/8 | 0/8 | 1.00 |
+| 1 | tool call (list the Desktop) | 0/8 | 0/8 | 1.00 |
+| 2 | summarise an `ls` result | 4/8 | 1/8 | 0.28 |
+| 3 | 200-word story | 3/8 | 3/8 | 1.00 |
+| 4 | C# import snippet | 4/8 | 1/8 | 0.28 |
+| 5 | the same in TypeScript | 3/8 | 1/8 | 0.57 |
+| **all** | | **14/48 (29 %)** | **6/48 (12.5 %)** | **0.077** |
+
+Flaws by tag (exact / budget 0): wrong-code 7 / 2, wrong-action (a `write_file` with no story in chat) 3 / 3, invented 2 / 0, overclaim 1 / 1, garbled name 1 / 0. Mechanical, identical in both arms: valid tool calls 8/8, loops 0, replies cut by the cap 9. The C# `dotnet build` check passed 0/8 in both arms and means nothing: the cap cut every C# reply inside its code fence. Risk difference (budget 0 minus exact) -16.7 points, Wald 95 % [-32.6, -0.8].
+The same samples' speed: long replies (60+ tokens, n = 40 per arm) **136.7 to 111.9 ms a token (-18 %)**, about 20 experts dropped a token, on real agent bodies at 22-25k context.
+
+**Reading.** No sign that budget 0 harms agent behaviour on this set: tool-call validity is equal, no loops, the flaw rate is not higher and nominally lower (12.5 % against 29 %, p = 0.077: not significant, and I do not read it as budget 0 being better; with one grader and 48 samples a chance gap of this size is plausible). The sample could show a harm of roughly 15-20 points; a few-point harm it could not. **Limits, stated:** one grader (me), blind to the arm but not to the rubric I wrote; the context's earlier assistant turns came from MiniMax, not DeepSeek; text beyond 700 tokens never graded; code judged by reading, not building (the build check failed for the cap); six prompts. The frozen-cache case (a long reply that changes topic while the cache follows the prefill) is still untested.
+
+**Decision state for Hamed.** Budget 0: -22.6 % a token through the server at 22k context (§18.59, A/A-controlled), -18 % on real bodies here; log-likelihood inside rounding noise but a heavier KL tail (§18.58); blind agent quality not worse on 96 replies. Not measured: topic-shift long replies, a second grader, a larger set. Off by default stays until he says; `CACHALOT_DECODE_MISS_BUDGET=0 ./serve.sh` turns it on. His own Hermes session on it (with `CACHALOT_SERVER_DUMP`) would be the strongest evidence.
+
+**Shipped.** `benchmarks/quality_blind_ab.py` (`run`, `sheet`, `score`) and its tests (`tests/test_quality_blind_ab.py`: tool-call checks, repetition share, Fisher exact); no runtime change. Results (not committed): `benchmarks/results/blind-0.57.1/` (`samples.jsonl` with arms, `sheet.md`, `key.json`, `mech.json`, `grades.json`), gitignored. **Open:** (a) the frozen-cache long reply, (b) 1,500-token cap and a second grader (Hamed, or a model with a written rubric), (c) router-share substitution as an arm, (d) the Pareto harness's tool-call task. **Needs Hamed:** the default decision.
 
 ### 18.59 The server knob for the decode miss budget, and its server-path check — 2026-10-04 (0.57.0)
 

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.57.1 (2026-10-04)
+
+HANDOFF "Start here (2026-10-04, 0.57.1)" and section 18.60. The blind agent-quality check of the DeepSeek decode miss budget.
+
+### Added
+- `benchmarks/quality_blind_ab.py` (`run`, `sheet`, `score`) and `tests/test_quality_blind_ab.py` (3 tests): the six request bodies of a dumped Hermes session sampled N times per arm at the dump's temperature through `Engine.chat`, arms interleaved with matched seeds; mechanical checks (tool-call validity, repetition, truncation, C# `dotnet build`); a shuffled arm-free grading sheet with a separate key; an exact (Fisher) comparison of flawed rates.
+
+### Measured, not shipped as a default
+- Budget 0 against exact, 8 samples per arm per body, 96 replies graded blind: flawed 6/48 against 14/48 (Fisher p = 0.077; not significant, not read as an improvement); valid tool calls 8/8 in both arms, no loops; long replies 136.7 to 111.9 ms a token (-18 %). One grader, six prompts, 700-token cap (the C# build check failed in both arms because the cap cut the code): no sign of harm, a small harm not excluded. A long reply that changes topic is untested.
+
 ## 0.57.0 (2026-10-04)
 
 HANDOFF "Start here (2026-10-04, 0.57.0)" and section 18.59. A server knob for DeepSeek's decode miss budget, off by default, and its server-path check.
