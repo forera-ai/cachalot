@@ -135,6 +135,17 @@ class V41Model:
             None if max_misses is None else max(0, int(max_misses))
         )
 
+    def set_decode_substitution(self, tau: float | None, ranks: int = 4) -> None:
+        """
+        Opt-in approximation for faster decode (HANDOFF 18.62): per layer, a non-resident expert whose router share
+        is under `tau` is not read; the best resident expert among the next `ranks` by selection score replaces it
+        and takes its weight. Misses it cannot replace are read (or dropped, if a decode miss budget is set).
+        None restores exact inference. Changes model output; measure before using.
+        """
+        store = self.runtime.expert_store
+        store.decode_substitute_tau = None if tau is None else max(0.0, float(tau))
+        store.decode_substitute_ranks = max(1, int(ranks))
+
     def stats(self) -> dict:
         """Expert-store, prefix-cache and MLX memory counters."""
         import mlx.core as mx
@@ -149,6 +160,8 @@ class V41Model:
             "predicted_loads": self.runtime.expert_store.predicted_loads,
             "predicted_used": self.runtime.expert_store.predicted_used,
             "decode_miss_budget": self.runtime.expert_store.decode_miss_budget,
+            "decode_substitute_tau": self.runtime.expert_store.decode_substitute_tau,
+            "substituted_experts": self.runtime.expert_store.substituted_experts,
             "ssd_bytes_read": s.ssd_bytes_read,
             "expert_reads": getattr(s, "reads", 0),
             "expert_fast_reads": getattr(s, "fast_reads", 0),

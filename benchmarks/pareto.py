@@ -3,7 +3,7 @@ Pareto harness: speed against quality for any DeepSeek configuration ("arm"), ju
 says output-changing levers must be (docs/SPEED-RESEARCH-2026-10-03.md section 5, MEASUREMENT.md "Quality gate").
 
 One arm is a named configuration: environment knobs, the expert budget, an optional per-layer decode miss budget
-(`V41Model.set_decode_miss_budget`, the only output-changing decode knob that exists today) and an optional prefill
+(`V41Model.set_decode_miss_budget`) and/or a router-share substitution (`substitute_tau`, `substitute_ranks`; HANDOFF 18.62) and an optional prefill
 chunk size. A run loads the model once under that arm and measures, in one process:
 
   1. Teacher-forced decode on fixed texts (prose, code, markdown): per position the log-probability of the true
@@ -37,6 +37,7 @@ import hashlib
 import json
 import math
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -229,6 +230,25 @@ def load_arms(path: str | Path) -> dict:
             "reference": cfg.get("reference", cfg["arms"][0]["name"])}
 
 
+def parse_decode_arm(spec: str) -> dict:
+    """'exact', 'N' (decode miss budget N), 'sT' (router-share substitution under T, the rest read) or 'sTbN'
+    (substitution, then the budget N for the misses it could not replace), e.g. 's0.25', 's1.0b0'."""
+    spec = str(spec).strip()
+    if spec == "exact":
+        return {"miss_budget": None, "substitute_tau": None}
+    if spec.isdigit():
+        return {"miss_budget": int(spec), "substitute_tau": None}
+    m = re.fullmatch(r"s(\d+(?:\.\d+)?)(?:b(\d+))?", spec)
+    if not m:
+        raise ValueError(f"unknown decode arm {spec!r}: exact, N, sT or sTbN")
+    return {"miss_budget": int(m.group(2)) if m.group(2) is not None else None, "substitute_tau": float(m.group(1))}
+
+
+def apply_decode_arm(model, cfg: dict) -> None:
+    model.set_decode_miss_budget(cfg.get("miss_budget"))
+    model.set_decode_substitution(cfg.get("substitute_tau"), int(cfg.get("substitute_ranks", 4)))
+
+
 def serve_defaults() -> None:
     """The environment `serve.sh` gives DeepSeek, unless already set (so an arm measures what is served)."""
     home = Path.home()
@@ -348,7 +368,7 @@ def cmd_run(args) -> None:
     with V41Model.from_pretrained(os.environ["CACHALOT_MODEL_PATH"],
                                   max_seq_len=int(base.get("max_seq_len", 4096)),
                                   expert_cache_budget_bytes=int(budget * 2**30)) as model:
-        model.set_decode_miss_budget(arm.get("miss_budget"))
+        apply_decode_arm(model, arm)
         tf = teacher_forced(model, texts, prefill=prefill, decode=decode,
                             prefill_chunk=arm.get("prefill_chunk"), ref_ids=ref_ids)
         tasks = json.loads(TASKS_FILE.read_text())["tasks"]

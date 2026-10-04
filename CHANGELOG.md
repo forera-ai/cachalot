@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.58.0 (2026-10-05)
+
+HANDOFF "Start here (2026-10-05, 0.58.0)" and section 18.62. Router-share substitution (the best resident expert of the next four ranks replaces a missing one whose router share is under tau, MiniMax's 0.39.0 rule) judged as an arm against the decode miss budget on the topic-shift stream. It loses on both axes and is closed for DeepSeek.
+
+### Added
+- `V41Model.set_decode_substitution(tau, ranks=4)` (off by default, decode only, changes outputs): in `moe_layer_metal.moe_layer_forward`, a non-resident expert whose router share is under `tau` is replaced, at its position and with its weight, by the best resident expert among the next `ranks` by selection score (router score plus correction bias). Misses it cannot replace are read, or dropped when a decode miss budget is also set. New module `model/decode_substitution.py` (pure planning functions), `ResidentExpertStore.is_cached`, counters `decode_substitute_tau` and `substituted_experts` in `V41Model.stats()`. No server environment knob, because the result below closes the lever. 7 tests (`tests/test_decode_substitution.py`) and one in `tests/test_resident_store.py`.
+- `benchmarks/pareto.py`: arm keys `substitute_tau` and `substitute_ranks`; `parse_decode_arm` / `apply_decode_arm` read the arm strings `exact`, `N`, `sT` and `sTbN`, now used by `topic_shift.py` and `topic_shift_gen.py` (the topic-shift report gains a substituted-experts column).
+
+### Measured, closed
+- Topic-shift stream (1,600 teacher-forced steps, 48 GiB, each arm a fresh process), against exact (131.3 ms, 26.2 misses a token): budget 0 98.3 ms (-25 %), mean dNLL +0.013; substitution under 0.25, 111.7 ms, dNLL +0.049; substitution under 1.0 (every miss with a resident candidate), 111.4 ms, dNLL +0.127; substitution under 1.0 then budget 0, 92.5 ms, dNLL +0.134, KL max 3.6-3.9 against budget 0's 0.4-1.3. At equal speed the substitute costs about ten times the log-likelihood of a drop. Substitution is closed for DeepSeek (D4).
+
 ## 0.57.2 (2026-10-04)
 
 HANDOFF "Start here (2026-10-04, 0.57.2)" and section 18.61. What the DeepSeek decode miss budget costs when the text changes topic.

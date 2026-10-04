@@ -293,6 +293,8 @@ The same configuration as a benchmark, with a colder working set than a conversa
 token (5.90 tok/s)** at an 83.5 % hit rate, reading 627 MiB per token, drive busy 55 % of decode,
 reproducible to ±0.3 %.
 
+**0.58.0 (2026-10-05): router-share substitution, closed.** A missing expert with a small router share replaced by the best resident expert of the next four ranks (MiniMax's rule) was run against the decode miss budget on the topic-shift stream: at the same speed it costs about ten times the log-likelihood of dropping the expert (substitution then budget 0: 92.5 ms a token, +0.134 nats; budget 0 alone: 98.3 ms, +0.013; exact 131.3 ms), so DeepSeek keeps the drop as its only approximate lever, still off by default (HANDOFF section 18.62).
+
 **0.57.2 (2026-10-04): the decode miss budget at a topic change.** Teacher-forced through Python, prose and JSON, dropping every missing expert costs about 0.11 nats a token in the 100 tokens after a shift, fading within about 200, and about 0.02 averaged over the stream; six generated long replies that change topic twice graded the same as exact; the token is 24-27 % faster throughout. A milder cap of one is about 6 % faster at no measurable cost. Still off by default (HANDOFF section 18.61).
 
 **0.57.1 (2026-10-04): the decode miss budget, checked on agent turns.** Six dumped Hermes requests (22-25k tokens of context, 25 tools) sampled 8 times per arm at temperature 0.7, 96 replies graded blind: 6 of 48 flawed with the budget at 0 against 14 of 48 exact (not significant), valid tool calls 8 of 8 in both, and long replies 18 % faster. It is still off by default and the default is a decision for the owner (HANDOFF section 18.60).

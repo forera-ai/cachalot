@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-05, 0.58.0): router-share substitution against the miss budget: closed
+
+> Hamed asked for the handoff and prompts read and their tasks done (v105's first job, item 1). Section 18.62. `V41Model.set_decode_substitution(tau, ranks)` (off, API only) and the harness arms `sT` / `sTbN`. Topic-shift stream, 1,600 steps: exact 131.3 ms; budget 0 98.3 ms, dNLL +0.013; substitution under 0.25 111.7 ms, +0.049; under 1.0 111.4 ms, +0.127; under 1.0 then budget 0 92.5 ms, +0.134 (KL max 3.6-3.9 against 0.4-1.3). At equal speed the substitute costs about ten times a drop: D4 closed for DeepSeek. Not done: the second grader and N = 16 at a 1,500-token cap (needs a grader that is not me: Hamed's call).
+
 > ## Start here (2026-10-04, 0.57.2): the topic-shift check of the decode miss budget: a transient cost, not a collapse
 >
 > Hamed: "go, run the topic-shift long reply check." Section 18.61. Teacher-forced 1,600 steps through Python, prose, JSON (each arm a fresh process): budget 0 costs **+0.11 nats in the 100 tokens after a shift, fading within about 200**, +0.040 [+0.011, +0.070] over the prose segment, about +0.02 over the whole stream; the step stays -24 to -27 %. The cache is not frozen (predicted prefetch loads still admit experts). Budget 1: about -6 % at no measurable cost. Six generated three-topic replies, graded blind: flawed 1/6 against 1/6, no loops, -24 % a token. The default is Hamed's call.
@@ -8730,6 +8734,30 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.62 Router-share substitution as an arm against the decode miss budget — 2026-10-05 (0.58.0)
+
+Hamed asked for the handoff and prompts read and their tasks done: v105's first job, item 1 (substitute instead of drop: does the post-shift penalty and the KL tail shrink at the same speed?). Item 2 (a second grader, N = 16 per arm, cap 1,500) was not run: see the end.
+
+**Built.** `decode_substitution.py` (pure planning): the router's selection scores (score plus correction bias) rank all 384 experts; for each non-resident routed expert whose weight share is under `tau`, weakest first, the best *resident* expert among the next `ranks` (4) by selection score, not already routed or used, takes its place and its weight (total routing mass unchanged, no rescale). A miss with no resident candidate is read, or dropped when a decode miss budget is also set. `moe_layer_metal.moe_layer_forward` adds `route.scores` to the routing sync only when armed. `ResidentExpertStore.decode_substitute_tau`, `decode_substitute_ranks`, `substituted_experts`, `is_cached` (the LRU proper, transients excluded: what `get_many` counts as a hit); `V41Model.set_decode_substitution(tau, ranks=4)`; stats `decode_substitute_tau` and `substituted_experts`. Off by default, API only, no server knob. Harness: arm strings `exact`, `N`, `sT`, `sTbN` (`pareto.parse_decode_arm`), config keys `substitute_tau`, `substitute_ranks`; `topic_shift.py` reports the substituted column. 8 new tests.
+
+**Measured** (`benchmarks/topic_shift.py`, the 1,600-step Python / prose / JSON stream of §18.61, 48 GiB, each arm in its own fresh process, `benchmarks/results/topic-shift-0.58.0/`, gitignored). Per token, means over all steps; dNLL is exact minus arm (positive = worse):
+
+| arm | step ms | misses read | dropped | substituted | dNLL (all) | dNLL python / prose / json |
+|---|---:|---:|---:|---:|---:|---|
+| exact | 131.3 | 26.2 | 0 | 0 | | |
+| budget 0 | 98.3 | 12.0 | 24.0 | 0 | +0.013 | +0.022 / +0.013 / +0.007 |
+| s0.25 | 111.7 | 5.7 | 0 | 35.9 | +0.049 | +0.021 / +0.061 / +0.057 |
+| s1.0 | 111.4 | 4.5 | 0 | 40.8 | +0.127 | +0.112 / +0.174 / +0.089 |
+| s1.0b0 | 92.5 | 3.1 | 6.0 | 41.4 | +0.134 | +0.119 / +0.160 / +0.118 |
+
+KL mean / max by segment: budget 0 0.023-0.037 / 0.41-1.30; s0.25 0.039-0.058 / 0.70-1.66; s1.0 0.093-0.143 / 4.0-7.2; s1.0b0 0.091-0.152 / 3.6-3.9. (Substituted counts are experts a token over 40 layers.)
+
+**Reading.** Substitution does not shrink the penalty or the KL tail: it enlarges both. A substitute is a wrong expert at the dropped one's full weight, while a drop removes the expert and renormalises the rest; with top-6 weights near 0.17 a replaced expert carries that much of the layer's output through the wrong function. At equal speed (s1.0b0 92.5 ms against budget 0's 98.3) its dNLL is ten times higher and its KL max three to ten times higher; at a gentler tau (s0.25) it is both slower (111.7 ms) and worse than budget 0. Substitution that keeps reading the misses it cannot replace (s0.25, s1.0) is also much slower than a drop, because the reads remain. **D4 (substitution) is closed for DeepSeek**; the drop (budget 0 or 1) stays the only approximate decode lever, off by default, Hamed's decision. The extra routing-sync read (`route.scores`) and host ranking were not timed separately; the s1.0b0 arm shows they do not stop it from being faster than exact. **Not reproduced:** §18.61's post-shift peak for budget 0 (+0.111 in the first 100 tokens) appears here as +0.004 (window 400-500) and -0.053 (window 1000-1100); segment means are +0.022 / +0.013 / +0.007 against +0.002 / +0.040 / +0.013 there. Two single-stream runs at the +-0.03 level: the transient penalty is within run-to-run noise at this n, and §18.61's bound ("about +0.02 over the stream") still holds.
+
+**Not done.** v105's item 2 (a second grader and more replies, a written rubric, N = 16 per arm, cap 1,500 so C# builds can be checked): grading by me again would not be a second grader, and the rubric-grader choice is Hamed's. ~32 replies of up to 1,500 tokens at ~100 ms a token is ~80 minutes of generation, then the grading; ask him which grader (himself, or a model with the §18.60 rubric) before generating.
+
+**Shipped.** The setter, the planning module, the harness arms, tests, no default change, no numerics tag move (decode only, off). No Studio brief: no environment knob, flag, default, endpoint or `/v1/stats` field changed (`V41Model.stats()` is not the server's stats). **Open:** the second grader; Hamed's default for budget 0 / 1 / off; his own Hermes session with `CACHALOT_SERVER_DUMP` and the knob on. **Needs Hamed:** the default decision, the grader, the 111 GiB question, the Hermes window hidden during benchmarks.
 
 ### 18.61 The topic-shift check: what the decode miss budget costs when the text changes — 2026-10-04 (0.57.2)
 

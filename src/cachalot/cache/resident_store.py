@@ -271,6 +271,9 @@ class ResidentExpertStore:
         self.cache_misses = 0
         self.skipped_experts = 0
         self.decode_miss_budget: int | None = None  # opt-in approximation
+        self.decode_substitute_tau: float | None = None  # opt-in approximation (HANDOFF 18.62)
+        self.decode_substitute_ranks = 4
+        self.substituted_experts = 0
         self.ssd_bytes_read = 0
         self.ssd_read_seconds = 0.0
         self.promotion_seconds = 0.0
@@ -1245,6 +1248,11 @@ class ResidentExpertStore:
     def is_resident(self, key: Key) -> bool:
         with self._lock:
             return key in self._items or key in self._transients
+
+    def is_cached(self, key: Key) -> bool:
+        """In the LRU cache proper (what a decode `get_many` counts as a hit); transients excluded."""
+        with self._lock:
+            return key in self._items
 
     def speculative_candidates(self, entries: list[ExpertEntry], limit: int) -> list[ExpertEntry]:
         """

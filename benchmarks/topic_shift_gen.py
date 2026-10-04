@@ -51,7 +51,7 @@ def run(arm: str, out: Path) -> None:
     out.mkdir(parents=True, exist_ok=True)
     model = V41Model.from_pretrained(os.environ["CACHALOT_MODEL_PATH"], max_seq_len=8192,
                                      expert_cache_budget_bytes=int(48 * 2**30))
-    model.set_decode_miss_budget(None if arm == "exact" else int(arm))
+    pareto.apply_decode_arm(model, pareto.parse_decode_arm(arm))
     engine = Engine(model)
     rows = []
     for i, prompt in enumerate(PROMPTS):

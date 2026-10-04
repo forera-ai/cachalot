@@ -213,9 +213,11 @@ def moe_layer_forward(
             mx.async_eval(prelaunched_shared)
 
     # Routing is needed on the CPU to address the resident store.
+    sub_tau = getattr(expert_store, "decode_substitute_tau", None)
     mx.eval(
         route.indices,
         route.weights,
+        *([route.scores] if sub_tau is not None else []),
         *[p_idx for _, p_idx in predicted],
         *([prelaunched_shared] if PRELAUNCH_SHARED == 2 else []),
     )
@@ -230,6 +232,22 @@ def moe_layer_forward(
 
     expert_ids = route.indices.tolist()
     router_weights = route.weights.tolist()
+
+    if sub_tau is not None:
+        # HANDOFF 18.62: a weak non-resident expert is replaced by the best resident one of the next ranks.
+        import numpy as np
+
+        from cachalot.model.decode_substitution import plan_substitution, ranked_candidates
+
+        selection = np.array(route.scores) + np.array(gate_bias.astype(mx.float32))
+        expert_ids, replaced = plan_substitution(
+            expert_ids,
+            router_weights,
+            ranked_candidates(selection, expert_ids, getattr(expert_store, "decode_substitute_ranks", 4)),
+            lambda e: expert_store.is_cached((layer_id, e)),
+            sub_tau,
+        )
+        expert_store.substituted_experts += replaced
 
     routed = mx.zeros(
         x.shape,

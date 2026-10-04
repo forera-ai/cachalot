@@ -63,17 +63,16 @@ def run(arm: str, out: Path, ref: Path | None) -> None:
     from cachalot.model.api import V41Model
 
     out.mkdir(parents=True, exist_ok=True)
-    budget = None if arm == "exact" else int(arm)
     ref_ids = np.load(ref)["ids"] if ref else None
     model = V41Model.from_pretrained(os.environ["CACHALOT_MODEL_PATH"], max_seq_len=4096,
                                      expert_cache_budget_bytes=int(48 * 2**30))
-    model.set_decode_miss_budget(budget)
+    pareto.apply_decode_arm(model, pareto.parse_decode_arm(arm))
     rt = model.runtime
     ids, starts = build_stream(rt.tokenizer)
     rt.reset()
     res = rt.prefill_tokens(ids[:PREFILL])
     logits = res.logits
-    cols: dict[str, list] = {k: [] for k in ("target_logp", "ids", "logp", "top1", "ms", "misses", "skipped")}
+    cols: dict[str, list] = {k: [] for k in ("target_logp", "ids", "logp", "top1", "ms", "misses", "skipped", "substituted")}
     for pos, i in enumerate(range(PREFILL, len(ids) - 1)):
         lp = logits.astype(mx.float32)
         lp = np.array(lp - mx.logsumexp(lp))
@@ -84,12 +83,14 @@ def run(arm: str, out: Path, ref: Path | None) -> None:
         cols["top1"].append(int(lp.argmax()))
         m0 = rt.expert_store.stats().cache_misses
         s0 = rt.expert_store.skipped_experts
+        u0 = rt.expert_store.substituted_experts
         t0 = time.perf_counter()
         logits = rt.decode_token(ids[i]).logits
         mx.eval(logits)
         cols["ms"].append(1000 * (time.perf_counter() - t0))
         cols["misses"].append(rt.expert_store.stats().cache_misses - m0)
         cols["skipped"].append(rt.expert_store.skipped_experts - s0)
+        cols["substituted"].append(rt.expert_store.substituted_experts - u0)
         if pos % 200 == 0:
             print(f"[{arm}] {pos} / {len(ids) - 1 - PREFILL}", file=sys.stderr, flush=True)
     np.savez_compressed(out / f"{arm}.npz", starts=np.array(starts), **{k: np.array(v) for k, v in cols.items()})
@@ -112,14 +113,15 @@ def report(out: Path, arms: list[str]) -> None:
         d = ref["target_logp"] - a["target_logp"]
         kl = pareto.kl_top_tail(ref["logp"], a["logp"])
         print(f"\n## miss budget {arm} against exact ({n} teacher-forced decode steps after a {PREFILL}-token prefill)")
-        print("| window | text | dNLL | KL mean | top-1 | exact misses | dropped (budget) | read (budget) | step ms exact / budget |")
-        print("|---|---|---:|---:|---:|---:|---:|---:|---|")
+        print("| window | text | dNLL | KL mean | top-1 | exact misses | dropped | substituted | read | step ms exact / budget |")
+        print("|---|---|---:|---:|---:|---:|---:|---:|---:|---|")
         for lo in range(0, n, WINDOW):
             hi = min(lo + WINDOW, n)
             sl = slice(lo, hi)
             print(f"| {lo}-{hi} | {segment(lo)} | {d[sl].mean():+.4f} | {kl[sl].mean():.4f} | "
                   f"{(a['top1'][sl] == ref['top1'][sl]).mean():.0%} | {ref['misses'][sl].mean():.1f} | "
-                  f"{a['skipped'][sl].mean():.1f} | {a['misses'][sl].mean():.1f} | "
+                  f"{a['skipped'][sl].mean():.1f} | {a['substituted'][sl].mean() if 'substituted' in a else 0:.1f} | "
+                  f"{a['misses'][sl].mean():.1f} | "
                   f"{ref['ms'][sl].mean():.0f} / {a['ms'][sl].mean():.0f} |")
         print("\n| segment | positions | dNLL [95 % CI] | KL mean | KL max | step ms exact / budget |")
         print("|---|---|---|---|---|---|")
@@ -136,7 +138,7 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
     r = sub.add_parser("run")
-    r.add_argument("arm", help="'exact' or the integer miss budget")
+    r.add_argument("arm", help="'exact', the integer miss budget, 'sT' (substitution) or 'sTbN'")
     r.add_argument("--out", required=True)
     r.add_argument("--ref")
     p = sub.add_parser("report")

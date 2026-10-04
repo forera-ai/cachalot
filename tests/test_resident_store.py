@@ -804,3 +804,9 @@ def test_a_callable_prefetch_is_called_once_the_layers_reads_are_submitted(index
     # a callable that predicts nothing issues nothing
     store.get_many([index[(1, 4)]], prefetch=lambda: [], prefetch_after=False)
     assert _inflight_keys(store) == set()
+
+
+def test_is_cached_ignores_transients(index):
+    store, _ = make_store(slots=4, transient=2)
+    store.get(index[(0, 0)])
+    assert store.is_cached((0, 0)) and not store.is_cached((0, 1))
