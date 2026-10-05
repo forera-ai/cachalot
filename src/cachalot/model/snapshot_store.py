@@ -157,11 +157,16 @@ class SnapshotStore:
     """
 
     INDEX = "index.json"
+    # Chunk pins inside a system block kept on disk (HANDOFF section 18.65): only those up to this many tokens (a
+    # Hermes block's shared head is ~6.2k of 22.5k tokens, so the 4,096 pin is the one that gets reused, ~15 MB),
+    # at most `keep_pins` files, pruned by use apart from the blocks.
+    PIN_MAX_TOKENS = 8192
 
-    def __init__(self, directory, identity: str, keep: int = 32, preload: int = 4, clock=time.time):
+    def __init__(self, directory, identity: str, keep: int = 32, preload: int = 4, clock=time.time, keep_pins: int = 8):
         self.directory = Path(directory)
         self.identity = identity
         self.keep = keep
+        self.keep_pins = keep_pins
         self.preload = preload
         self.clock = clock
         self.fetched = 0
@@ -217,7 +222,7 @@ class SnapshotStore:
         order = sorted(files, key=lambda n: -self._used(n, files))
         out = []
         for name in order:
-            if len(out) < self.preload:
+            if len(out) < self.preload and not self._is_pin(name):
                 snap = self._load_file(name)
                 if snap is None:  # another runtime's file: never matches, ages out
                     continue
@@ -229,10 +234,29 @@ class SnapshotStore:
                     self.tokens[name] = toks
         return out[::-1]
 
+    def _is_pin(self, name: str) -> bool:
+        return bool(self.index.get(name, {}).get("pin"))
+
+    def persist_pin(self, snap: SequenceSnapshot) -> None:
+        """PrefixCache.persist_pin: a chunk boundary inside a system block was snapshotted."""
+        if len(snap.tokens) > self.PIN_MAX_TOKENS:
+            return
+        name = _file_name(snap, self.identity)
+        files = self._files()
+        if name in files and not self._is_pin(name):
+            return  # the same tokens are a system block already
+        self.index[name] = {"used": self.clock(), "pin": True}
+        self.tokens[name] = snap.tokens
+        if name not in files:
+            self._write_file(snap, name)
+            files[name] = self.clock()
+        self._prune(files)
+
     def persist(self, snap: SequenceSnapshot) -> None:
         """PrefixCache.persist: a system block was snapshotted."""
         name = _file_name(snap, self.identity)
-        self.index[name] = {"used": self.clock()}
+        # a pin fetched back into memory joins the cache as a boundary and arrives here again: it stays a pin
+        self.index[name] = {"used": self.clock(), **({"pin": True} if self._is_pin(name) else {})}
         self.tokens[name] = snap.tokens
         files = self._files()
         if name not in files:
@@ -247,6 +271,10 @@ class SnapshotStore:
             name = _file_name(block, self.identity)
             if name in self.tokens:
                 self.index[name] = {"used": self.clock()}
+                touched = True
+        for name, toks in self.tokens.items():  # a pin the request starts with counts as used too
+            if self._is_pin(name) and tokens[: len(toks)] == toks:
+                self.index[name] = {"used": self.clock(), "pin": True}
                 touched = True
         if touched:
             self._write_index()
@@ -265,12 +293,14 @@ class SnapshotStore:
             self.tokens.pop(best[0], None)
             return None
         self.fetched += 1
-        self.index[best[0]] = {"used": self.clock()}
+        self.index[best[0]] = {"used": self.clock(), **({"pin": True} if self._is_pin(best[0]) else {})}
         self._write_index()
         return snap
 
     def _prune(self, files: dict[str, float]) -> None:
-        keep = set(sorted(files, key=lambda n: -self._used(n, files))[: self.keep])
+        by_use = sorted(files, key=lambda n: -self._used(n, files))
+        keep = set([n for n in by_use if not self._is_pin(n)][: self.keep])
+        keep |= set([n for n in by_use if self._is_pin(n)][: self.keep_pins])
         for name in files:
             if name not in keep:
                 self._remove_file(name)

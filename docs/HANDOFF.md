@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-05, 0.59.0): the system block's first chunk survives a restart
+>
+> v108's job 2 priced and built (section 18.65). The in-memory chunk pins inside an agent's system block (4,096, 8,192, ...) now have a disk copy for the first ones (<= 8,192 tokens, 8 files, `SnapshotStore.persist_pin`): a restart plus a block that changed at token ~6.2k (date, model name, provider) reuses 4,096 tokens (~41 s of 227 s) instead of none. Bit-identical by construction (the same snapshot the in-memory cache reuses within a run); no numerics bump. **Not yet measured live**: restart the server, run one Hermes session, change the date/provider line (or compare after midnight), read `reused=` of the first request (expect 4,096). Job 1 (the miss-budget default, the grader, a daily-date reuse) is still Hamed's; job 3 (short side requests) needs the runtime and was not started.
+>
 > ## Start here (2026-10-05, 0.58.2): the system blocks explained, and the first session on the splice fix
 
 > Hamed asked what differs between the system blocks and for an overall quality check of the latest Hermes test. Section 18.64. **Differences (re-rendered from the dumps):** the model name (`minimax-m3` drops a 178-token "Tool-use enforcement" section at token 1,024), the provider string (`custom` against `custom:cachalot`, +3 tokens, exactly 22,490 against 22,493) and the date, all in the first 6.3k of 22.5k tokens with 16.2k of tool schemas after; any change re-prefills the block (227 s). A stable configuration reuses it. **Latest session on 0.58.1:** the image turn 41 s (was 113 s), decode 9.0-9.7 tok/s, the C# and TypeScript snippets compile and parse quoted, multi-line CSV correctly, the image read exactly; flaws are small (story 235 words for 200, "~30 screenshots" for 40, "several .DS_Store" for 2).
@@ -8742,6 +8746,16 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.65 The in-block snapshot, priced and built — 2026-10-05 (0.59.0)
+
+Hamed asked for the handoff and prompts read and their tasks done (v108's first job). Item 1 (the decision state) needs him; item 2 was autonomous and ran; item 3 needs the runtime and was not started.
+
+**Pricing.** §18.64's finding: a Hermes block's first change (the date at token ~6,227, the provider at ~6,269, the model name at 1,024) forces a cold 227 s prefill because the tool schemas after it are position-dependent. What exists: `prefill` takes an in-memory snapshot at every 4,096-token chunk boundary inside a system block and pins it (§15.7), so within one server run a changed block reuses the head up to the last chunk before the change; only the block's end goes to disk, so a restart loses them, and every dump pair in §18.63-18.64 crossed a restart. So the reusable head is the 4,096 pin, not 6.2k: **~4,096 tokens = ~41 s at 99 tok/s** (a 6,144 cut would give ~62 s but moves the chunk partition: not bit-identical by construction, numerics tag). A snapshot is ~5 MB + 3 KB a token: the 4,096 pin ~17 MB, 8,192 ~30 MB.
+
+**Built.** `PrefixCache.persist_pin` (called for in-block pins that are not the block), `SnapshotStore.persist_pin` (<= `PIN_MAX_TOKENS` 8,192 tokens; the index marks the file `"pin": true`; pins are pruned apart from blocks, `keep_pins` 8; startup indexes a pin's tokens but does not preload it; a request that starts with a pin refreshes its use time; a pin fetched into memory and handed to `persist` stays a pin), `cli.py` attaches it. `fetch` already picks the longest file a request starts with. Tests: a pin survives a restart and serves a changed block (`_same` against the original arrays), pruning is separate from blocks, a snapshot over 8,192 tokens is not written, `stream_tokens` sends the pins 4 and 8 to the pin hook and only the block to the block hook (the older test asserting "only the block goes to disk" still holds for the block hook). 536 tests pass.
+
+**Shipped.** The change above, outputs unchanged, no numerics bump, no knob, no default; no Studio brief (no env var, flag, stat or log line changed). **Not measured live** (needs a restart and a changed head). **Open:** the live check (restart, one Hermes session, change the date or provider line, first request `reused=4096`); job 3 (short side requests prefill at 25-45 tok/s). **Needs Hamed:** the budget default (0, 1 or off), the grader for the N = 16 check, the daily-date reuse.
 
 ### 18.64 The system blocks compared, and Hermes on 0.58.1 — 2026-10-05 (0.58.2)
 

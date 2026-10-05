@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.59.0 (2026-10-05)
+
+HANDOFF "Start here (2026-10-05, 0.59.0)" and section 18.65. The DeepSeek server keeps the 4,096-token chunk snapshot inside an agent's system block on disk, so a restart followed by a changed block (a new day, another model name or provider string) reuses the head instead of prefilling the whole block cold.
+
+### Added
+- `PrefixCache.persist_pin` and `SnapshotStore.persist_pin`: the chunk pins inside a system block (until now in memory only, lost at a restart) go to the snapshot directory when they are at most 8,192 tokens (`SnapshotStore.PIN_MAX_TOKENS`), at most 8 pin files (`keep_pins`), pruned by use apart from the 32 system blocks. A pin is indexed at startup but not preloaded into memory; `fetch` loads it (~0.1 s) when a request starts with it and memory holds nothing longer; a request that starts with a pin counts as using it. The server (`cli.py`) attaches the hook.
+
+### Changed
+- Nothing else. Outputs are unchanged: a pin is the very snapshot the in-memory cache already took at that chunk boundary and reused within a server run; the numerics tag does not move and saved blocks stay valid. 536 tests pass, five new.
+
+### Measured, not shipped
+- Priced from the dumped Hermes sessions: the shared head of two session starts is ~6.2k of 22.5k tokens, so the 4,096 pin saves ~41 s of a 227 s first request at 99 tok/s (a cut at 6,144 would save ~62 s but changes the chunk partition and is not bit-identical by construction). Not yet measured live: that needs a restart and a Hermes session with a changed date or provider line.
+
 ## 0.58.2 (2026-10-05)
 
 HANDOFF "Start here (2026-10-05, 0.58.2)" and section 18.64. Measurement and documentation only; no runtime change. Why every Hermes session start prefilled the whole system block, and the first Hermes session on the splice-before-image fix.

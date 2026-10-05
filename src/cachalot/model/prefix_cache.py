@@ -97,6 +97,12 @@ class PrefixCache:
     # tell a block another conversation reuses from one that only its own
     # conversation ever will (snapshot_store.SnapshotStore, HANDOFF 15.12).
     on_find: Callable[[tuple[int, ...], list[SequenceSnapshot]], None] | None = None
+    # Called with the chunk pins inside a system block (not the block itself),
+    # so the disk store can keep the first ones across a restart: a request
+    # whose block changed part-way (the date, the model or provider line)
+    # reuses the head up to the last pin before the change instead of
+    # prefilling all of it cold (HANDOFF section 18.65).
+    persist_pin: Callable[[SequenceSnapshot], None] | None = None
     # Called when memory's best match is shorter than a system block the disk
     # store holds for these tokens: (tokens, length of memory's best) -> the
     # longer block, loaded, or None. The block joins the cache as a boundary.
@@ -138,6 +144,11 @@ class PrefixCache:
                 self.persist(snapshot)
             except Exception as exc:  # a full disk must not fail the request
                 print(f"[prefix-cache] could not persist snapshot: {exc}", flush=True)
+        elif pin and self.persist_pin is not None:
+            try:
+                self.persist_pin(snapshot)
+            except Exception as exc:
+                print(f"[prefix-cache] could not persist pin: {exc}", flush=True)
         # Drop snapshots for the same position (a re-run of the same prefix).
         self._entries = [s for s in self._entries if s.tokens != snapshot.tokens]
         self._entries.append(snapshot)

@@ -235,6 +235,19 @@ def test_chunk_snapshots_inside_the_system_block_are_pinned(monkeypatch):
     assert events[0].reused_prefix_tokens == 8
 
 
+def test_chunk_pins_inside_the_system_block_reach_the_pin_hook(monkeypatch):
+    # HANDOFF section 18.65: the pins go to their own hook, never to the block hook
+    monkeypatch.setattr(generation, "PREFILL_CHUNK", 4)
+    rt = ScriptedRuntime(reply="ok")
+    blocks, pins = [], []
+    rt.prefix_cache.persist = blocks.append
+    rt.prefix_cache.persist_pin = pins.append
+    prompt = list(range(100, 110)) + [7, 7]
+    list(stream_tokens(rt, prompt, SamplingParams(max_new_tokens=1, temperature=0.0), boundaries=(10,)))
+    assert [len(s.tokens) for s in blocks] == [10]
+    assert [len(s.tokens) for s in pins] == [4, 8]
+
+
 def test_chunks_after_the_system_block_are_not_pinned(monkeypatch):
     monkeypatch.setattr(generation, "PREFILL_CHUNK", 4)
     rt = ScriptedRuntime(reply="ok")

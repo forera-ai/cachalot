@@ -126,3 +126,39 @@ def test_a_failing_store_does_not_fail_the_request():
     snap = _block(5)
     cache.add(snap, boundary=True)
     assert cache.find(snap.tokens + (1,)).tokens == snap.tokens
+
+
+def test_a_pin_inside_a_system_block_survives_a_restart_and_changed_block_reuses_it(tmp_path):
+    # HANDOFF section 18.65: the block changes at token 6 (a date line), the pin at 4 is reused after a restart
+    clock = Clock()
+    store = _store(tmp_path, clock)
+    pin = _block(7)
+    store.persist_pin(pin)
+    store.persist(_block(1))
+    store = _store(tmp_path, clock, preload=4)
+    loaded = store.load_all()
+    assert [s.tokens for s in loaded] == [_block(1).tokens]  # a pin is indexed, not preloaded
+    cache = PrefixCache()
+    cache.persist, cache.persist_pin, cache.on_find, cache.fetch = store.persist, store.persist_pin, store.on_find, store.fetch
+    changed = pin.tokens + (900, 901)
+    hit = cache.find(changed)
+    assert hit is not None and hit.tokens == pin.tokens
+    _same(hit, pin)
+    assert store.fetched == 1
+    assert store._is_pin(snapshot_store._file_name(pin, "id"))
+
+
+def test_pins_are_pruned_apart_from_blocks_and_big_ones_are_not_written(tmp_path):
+    clock = Clock()
+    store = _store(tmp_path, clock, keep=2)
+    store.keep_pins = 2
+    for k in range(10, 15):
+        store.persist_pin(_block(k))
+    store.persist(_block(1))
+    store.persist(_block(2))
+    assert len(_on_disk(tmp_path)) == 4  # two blocks, two pins
+    small = snapshot_store.SnapshotStore.PIN_MAX_TOKENS
+    big = dataclasses.replace(_block(3), tokens=tuple(range(small + 1)), position=small + 1)
+    n = len(_on_disk(tmp_path))
+    store.persist_pin(big)
+    assert len(_on_disk(tmp_path)) == n

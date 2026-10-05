@@ -293,6 +293,8 @@ The same configuration as a benchmark, with a colder working set than a conversa
 token (5.90 tok/s)** at an 83.5 % hit rate, reading 627 MiB per token, drive busy 55 % of decode,
 reproducible to ±0.3 %.
 
+**0.59.0 (2026-10-05): the system block's first chunk survives a restart.** The server now writes the 4,096-token chunk snapshot inside an agent's system block to disk (it lived in memory only), so after a restart a Hermes session whose block changed in its first 6.3k tokens (the date, the model name or the provider string) reuses ~4k tokens, about 41 s of the 227 s first request, instead of prefilling it all cold. Outputs are unchanged; not yet measured live. HANDOFF section 18.65.
+
 **0.58.2 (2026-10-05): why a Hermes session start is a 227 s prefill.** Hermes renders the date, the model name and the provider string into the first 6.3k tokens of its 22.5k-token system block and the tool schemas follow, so any change between sessions (the model name decides whether a 178-token tool-use section is added) re-prefills the whole block at 99 tok/s; with an unchanged configuration the saved block is reused and the first message takes ~2 s. On 0.58.1 the image turn of a Hermes conversation took 41 s (113 s before the splice fix) and the decode ran 9.0-9.7 tok/s with the miss budget at 0 (HANDOFF section 18.64).
 
 **0.58.1 (2026-10-05): image turns keep the conversation's saved prefix.** With an image in the request the server did not put its own reply tokens back into the client's re-rendered history, so a Hermes conversation re-prefilled everything after its first tool call on the image turn (7,531 tokens, 80 s at 22k context); it now splices before the image and moves the image spans with it. Output unchanged (HANDOFF section 18.63).

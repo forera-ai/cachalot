@@ -192,6 +192,7 @@ def _attach_snapshot_store(runtime, directory: str) -> None:
         # boundary=True pins it; persist is not attached yet, so nothing is rewritten
         runtime.prefix_cache.add(snap, boundary=True)
     runtime.prefix_cache.persist = store.persist
+    runtime.prefix_cache.persist_pin = store.persist_pin
     runtime.prefix_cache.on_find = store.on_find
     runtime.prefix_cache.fetch = store.fetch
     print(
