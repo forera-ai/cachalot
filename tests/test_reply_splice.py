@@ -8,6 +8,7 @@ because the point is how those two render a re-serialized tool call.
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -166,3 +167,49 @@ def test_an_empty_thinking_block_sent_back_as_a_space_still_matches():
     assert _message_key(mine) == _message_key(theirs)
     theirs["reasoning_content"] = "I should read b.txt instead."
     assert _message_key(mine) != _message_key(theirs)
+
+
+def _span(start, length=4):
+    import mlx.core as mx
+
+    from cachalot.model.vision_prompt import ImageSpan
+
+    return ImageSpan(start=start, length=length, digest="d", rows=mx.zeros((length, 2)))
+
+
+def test_a_reply_before_an_image_is_spliced_and_the_span_moves_with_it(engine):
+    from cachalot.model.vision_prompt import IMAGE_TOKEN_ID
+
+    prompt = _render(engine, [{"role": "system", "content": "You are an agent."}, {"role": "user", "content": "write it"}])
+    reply, text = _model_reply(engine, prompt, json.dumps({"path": "out.txt", "content": "narwhal\n"}))
+    engine._own_replies.clear()
+    engine._remember_reply(prompt, reply, text, "chat")
+    # the reply the model wrote is two tokens longer than the client's copy (the same message, since the extra
+    # tokens are whitespace-only and the parsed key is kept), so the splice changes the length
+    rec = engine._own_replies.pop()
+    extra = tuple(engine.tokenizer.encode("\n\n"))
+    engine._own_replies.append(replace(rec, reply=rec.reply + extra))
+    reply = list(rec.reply + extra)
+
+    client = _next_turn(engine, json.dumps({"content": "narwhal\n", "path": "out.txt"}, indent=2))
+    client = client + [IMAGE_TOKEN_ID] * 4  # the image sits in the newest message, after the reply
+    spans = [_span(len(client) - 4)]
+    spliced = engine._splice_own_replies(client, "chat", spans=spans)
+
+    assert spliced[: len(prompt) + len(reply)] == prompt + reply
+    assert len(spliced) != len(client)  # the span had to move
+    assert spans[0].start == len(spliced) - 4
+    assert spliced[spans[0].start: spans[0].start + 4] == [IMAGE_TOKEN_ID] * 4
+    assert spans[0].digest == "d" and spans[0].length == 4
+
+
+def test_a_span_inside_the_reply_blocks_that_splice(engine):
+    prompt = _render(engine, [{"role": "system", "content": "You are an agent."}, {"role": "user", "content": "write it"}])
+    reply, text = _model_reply(engine, prompt, json.dumps({"path": "out.txt", "content": "narwhal\n"}))
+    engine._own_replies.clear()
+    engine._remember_reply(prompt, reply, text, "chat")
+
+    client = _next_turn(engine, json.dumps({"content": "narwhal\n", "path": "out.txt"}, separators=(",", ":")))
+    spans = [_span(len(prompt) + 1)]
+    assert engine._splice_own_replies(client, "chat", spans=spans) == client
+    assert spans[0].start == len(prompt) + 1

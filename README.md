@@ -293,6 +293,8 @@ The same configuration as a benchmark, with a colder working set than a conversa
 token (5.90 tok/s)** at an 83.5 % hit rate, reading 627 MiB per token, drive busy 55 % of decode,
 reproducible to ±0.3 %.
 
+**0.58.1 (2026-10-05): image turns keep the conversation's saved prefix.** With an image in the request the server did not put its own reply tokens back into the client's re-rendered history, so a Hermes conversation re-prefilled everything after its first tool call on the image turn (7,531 tokens, 80 s at 22k context); it now splices before the image and moves the image spans with it. Output unchanged (HANDOFF section 18.63).
+
 **0.58.0 (2026-10-05): router-share substitution, closed.** A missing expert with a small router share replaced by the best resident expert of the next four ranks (MiniMax's rule) was run against the decode miss budget on the topic-shift stream: at the same speed it costs about ten times the log-likelihood of dropping the expert (substitution then budget 0: 92.5 ms a token, +0.134 nats; budget 0 alone: 98.3 ms, +0.013; exact 131.3 ms), so DeepSeek keeps the drop as its only approximate lever, still off by default (HANDOFF section 18.62).
 
 **0.57.2 (2026-10-04): the decode miss budget at a topic change.** Teacher-forced through Python, prose and JSON, dropping every missing expert costs about 0.11 nats a token in the 100 tokens after a shift, fading within about 200, and about 0.02 averaged over the stream; six generated long replies that change topic twice graded the same as exact; the token is 24-27 % faster throughout. A milder cap of one is about 6 % faster at no measurable cost. Still off by default (HANDOFF section 18.61).

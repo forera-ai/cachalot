@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.58.1 (2026-10-05)
+
+HANDOFF "Start here (2026-10-05, 0.58.1)" and section 18.63. A vision turn no longer re-prefills the whole conversation before its image.
+
+### Fixed
+- `Engine._splice_own_replies` takes the prompt's image spans and shifts the ones behind a splice by the token-count difference, so the model's own reply tokens are put back into a client's re-rendered history before an image as well. Until now, with an image in the request only replies after the last image span were spliced, and an image sits in the newest message, so none were: Hermes's re-serialised tool calls diverged at the first assistant reply and every token after it was prefilled again (a long Hermes conversation: 7,531 tokens, 80 s, on the image turn). A reply whose region overlaps a span is still left as the client sent it. Outputs are unchanged; no numerics tag moves. 2 tests in `tests/test_reply_splice.py`.
+
+### Measured
+- Server-path check (a 304-token tool-call turn, then the same conversation with the tool call re-ordered and an image in the newest message, greedy): reused prefix 304 tokens before, 360 (the whole earlier reply) after, spliced 0 to 1, prefill 7.51 to 5.82 s, identical answer. The gain grows with the history before the image.
+
 ## 0.58.0 (2026-10-05)
 
 HANDOFF "Start here (2026-10-05, 0.58.0)" and section 18.62. Router-share substitution (the best resident expert of the next four ranks replaces a missing one whose router share is under tau, MiniMax's 0.39.0 rule) judged as an arm against the decode miss budget on the topic-shift stream. It loses on both axes and is closed for DeepSeek.

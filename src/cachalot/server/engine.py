@@ -292,7 +292,8 @@ class Engine:
             return n
         return 0
 
-    def _splice_own_replies(self, tokens: list[int], thinking_mode: str, not_before: int = 0) -> list[int]:
+    def _splice_own_replies(self, tokens: list[int], thinking_mode: str, not_before: int = 0,
+                            spans: list | None = None) -> list[int]:
         """
         Put the model's own reply tokens back where a client re-rendered them.
 
@@ -307,6 +308,13 @@ class Engine:
         our tokens for it instead. The model then conditions on exactly what
         it wrote, and the snapshot is a prefix again. Anything that does not
         parse to the same message is left exactly as the client sent it.
+
+        `spans` (the prompt's image spans, edited in place) lets a reply that
+        sits before an image be spliced too: a splice changes the token count
+        after the reply it replaces, so every span that starts after it moves
+        by the difference. Without it a vision turn re-prefilled every
+        assistant reply before its image (HANDOFF section 18.63). A reply
+        whose region overlaps a span is left as the client sent it.
         """
         eos = self.tokenizer.eos_token_id
         for rec in sorted(self._own_replies, key=lambda r: len(r.prompt)):
@@ -330,7 +338,12 @@ class Engine:
             )
             if theirs is None or _message_key(theirs) != rec.message:
                 continue
+            if spans and any(sp.start < e and sp.start + sp.length > p for sp in spans):
+                continue
+            delta = r - (e - p)
             tokens = list(rec.prompt) + list(rec.reply) + tokens[e:]
+            if spans and delta:
+                spans[:] = [replace(sp, start=sp.start + delta) if sp.start >= e else sp for sp in spans]
             self.replies_spliced += 1
         return tokens
 
@@ -369,12 +382,12 @@ class Engine:
             prompt_tokens = images.tokens
             system_end = 0
             spliced_before = self.replies_spliced
-            # A splice changes token counts after the reply it replaces, so it
-            # must not move an image span: only replies after the last image.
-            span_end = max((s.start + s.length for s in images.spans), default=0)
-            prompt_tokens = self._splice_own_replies(prompt_tokens, req.thinking_mode, not_before=span_end)
-            if images.spans:
-                images = type(images)(tokens=prompt_tokens, spans=images.spans)
+            # A splice changes the token count after the reply it replaces, so
+            # the image spans behind it are shifted with it (HANDOFF 18.63).
+            spans = list(images.spans)
+            prompt_tokens = self._splice_own_replies(prompt_tokens, req.thinking_mode, spans=spans)
+            if spans:
+                images = type(images)(tokens=prompt_tokens, spans=spans)
             if not images.spans:
                 system_end = self.system_prefix_len(req, prompt_tokens)
             if images.spans:
