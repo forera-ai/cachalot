@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-05, 0.60.0): Hamed's decisions applied
+>
+> Hamed answered v108's first job (section 18.66): (1) **the decode miss budget is 0 by default** (`serve.sh`; `CACHALOT_DECODE_MISS_BUDGET=off` is the exact arm for any A/B), (2) **a model grades the N = 16 quality check** (the generation is the next job), (3) **the day's first message should not prefill the system block**: `server/system_date.py` shows the first true date of the last 7 days in the "Conversation started" line (`CACHALOT_SYSTEM_DATE_REUSE=0` off). Benchmarks that want the exact path must now pass `off` through `serve.sh`. Not measured live; tests only.
+>
 > ## Start here (2026-10-05, 0.59.0): the system block's first chunk survives a restart
 >
 > v108's job 2 priced and built (section 18.65). The in-memory chunk pins inside an agent's system block (4,096, 8,192, ...) now have a disk copy for the first ones (<= 8,192 tokens, 8 files, `SnapshotStore.persist_pin`): a restart plus a block that changed at token ~6.2k (date, model name, provider) reuses 4,096 tokens (~41 s of 227 s) instead of none. Bit-identical by construction (the same snapshot the in-memory cache reuses within a run); no numerics bump. **Not yet measured live**: restart the server, run one Hermes session, change the date/provider line (or compare after midnight), read `reused=` of the first request (expect 4,096). Job 1 (the miss-budget default, the grader, a daily-date reuse) is still Hamed's; job 3 (short side requests) needs the runtime and was not started.
@@ -8746,6 +8750,18 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.66 Hamed's decisions: budget 0 by default, date reuse, a model grader — 2026-10-05 (0.60.0)
+
+Hamed answered v108's first job: "1 - miss-budget default 0 confirmed. 2 - model. 3 - yes. day's first message prefill".
+
+**1. Budget 0.** `serve.sh` exports `CACHALOT_DECODE_MISS_BUDGET=${CACHALOT_DECODE_MISS_BUDGET-0}`. The parser accepts `off` and `exact` as the exact path. The evidence is §18.58-18.62 (-22 to -27 % a token; blind agent check flawed 6/48 against 14/48 exact, p = 0.077; topic-shift transient about +0.02 nats; substitution closed). `chat.sh` was not changed (not asked). A direct `python -m cachalot.cli serve` without the variable stays exact.
+
+**2. A model grades.** Not run yet. Plan: `benchmarks/quality_blind_ab.py` (run, sheet, score) and `topic_shift_gen.py` at N = 16 per arm with a 1,500-token cap (~80 minutes of generation), budget 0 against `off`, the arm-free sheet graded blind by a different model (a subagent given only the sheet and §18.60's rubric), then the key opened. Needs the runtime and an idle machine.
+
+**3. Date reuse.** §18.30/18.64: the date sits at token ~6.2k of 22.5k, in front of 16k tokens of tool schemas, so a new day prefilled the whole block (227 s). `cachalot/server/system_date.py` replaces the date text of the leading system message's "Conversation started: <weekday, month day, year>" line with the first true date seen within `CACHALOT_SYSTEM_DATE_REUSE_DAYS` (7) days, remembered in `system-dates.json` in the snapshot directory; the saved block then matches token for token. **Cost, stated plainly:** the model reads a date up to 7 days old (an agent asked "what day is it" in the system's terms would answer from it); after the window the true date is used and starts a new one; the dump and the client's history keep the true date. The date line is replaced only in the first system message, only in the system text. `CACHALOT_SYSTEM_DATE_REUSE=0` is the off switch. Together with 0.59.0's pin (a restart plus a changed model/provider reuses the first 4,096 tokens), a changed date no longer costs the block at all; a changed model name or provider still reuses only the head.
+
+**Shipped.** The three items above; no numerics bump (decode and prompt text only; saved blocks stay valid), 542 tests. Studio brief `docs/studio/briefs/2026-10-05-runtime-0.60.0.md`. **Not measured live.** **Open:** the model-graded N = 16 run; the live check of 0.59.0's pin and of the date reuse (next Hermes session: first request `reused` close to the whole block, `[request] system date:` in the log); job 3 (short side requests).
 
 ### 18.65 The in-block snapshot, priced and built — 2026-10-05 (0.59.0)
 

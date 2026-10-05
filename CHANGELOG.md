@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.60.0 (2026-10-05)
+
+HANDOFF "Start here (2026-10-05, 0.60.0)" and section 18.66. Hamed's three decisions on v108's first job: the decode miss budget is 0 by default in `serve.sh`, an agent's system block is reused across days, and a model (not the author) grades the N = 16 quality check.
+
+### Changed
+- `serve.sh` exports `CACHALOT_DECODE_MISS_BUDGET=${CACHALOT_DECODE_MISS_BUDGET-0}`: DeepSeek decode drops every non-resident expert a layer would read (-22 to -27 % a token measured in 18.59-18.61, no sign of harm in the blind checks 18.60-18.61). This changes outputs. `CACHALOT_DECODE_MISS_BUDGET=off` (new spelling; `exact` too) restores the exact path; a direct `cachalot.cli serve` without the variable is still exact.
+- A new system-date reuse (`cachalot/server/system_date.py`, on by default, `CACHALOT_SYSTEM_DATE_REUSE=0` off, `CACHALOT_SYSTEM_DATE_REUSE_DAYS` window, default 7): the "Conversation started: <date>" line of the leading system message shows the first true date seen in the last 7 days (kept in `system-dates.json` beside the snapshots), so the first message of a new day reuses the saved block (about 227 s of cold prefill saved) instead of prefilling it. The model sees a date up to 7 days old; after the window the true date is used and starts a new window. Only the system message's date line is replaced; the client's history and dump are untouched. Startup prints `system date reuse: ...`, a replaced request prints `[request] system date: showing X for Y`.
+
+### Added
+- Tests: six for the date reuse (window, restart, off switch, no-date and user-message cases, and a server-path check that a new day reuses the whole block), one for the budget spelling. 542 tests pass.
+
 ## 0.59.0 (2026-10-05)
 
 HANDOFF "Start here (2026-10-05, 0.59.0)" and section 18.65. The DeepSeek server keeps the 4,096-token chunk snapshot inside an agent's system block on disk, so a restart followed by a changed block (a new day, another model name or provider string) reuses the head instead of prefilling the whole block cold.

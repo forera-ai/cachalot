@@ -202,6 +202,9 @@ class Engine:
     # client's re-rendered history (see _splice_own_replies).
     _own_replies: deque = field(default_factory=lambda: deque(maxlen=64))
     replies_spliced: int = 0
+    # An agent's system-prompt date line, held at a recent saved date so a new day
+    # reuses the saved block (HANDOFF section 18.66). cli.py points it at the snapshot directory.
+    system_date: Any = None
 
     def __post_init__(self):
         if self.encoding is None:
@@ -378,6 +381,11 @@ class Engine:
             if cancel is not None and cancel.is_set():
                 # the client left while this request was queued
                 return
+            if self.system_date is not None:
+                messages, note = self.system_date.apply(req.messages)
+                if note:
+                    req = replace(req, messages=messages)
+                    print(f"[request] {note}", flush=True)
             images = self.encode_chat_images(req)
             prompt_tokens = images.tokens
             system_end = 0

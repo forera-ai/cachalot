@@ -232,6 +232,15 @@ def cmd_serve(args) -> None:
         if args.snapshot_dir:
             _attach_snapshot_store(model.runtime, args.snapshot_dir)
         engine = Engine(model, model_id=args.model_id)
+        from cachalot.server.system_date import SystemDateReuse
+
+        engine.system_date = SystemDateReuse.from_env(
+            Path(args.snapshot_dir) / "system-dates.json" if args.snapshot_dir else None
+        )
+        if engine.system_date.enabled:
+            print(f"system date reuse: an agent's date line shows a date up to {engine.system_date.max_days} days old "
+                  f"so a new day reuses the saved system block (CACHALOT_SYSTEM_DATE_REUSE=0 turns it off)",
+                  file=sys.stderr, flush=True)
         budget = _decode_miss_budget_from_env(os.environ)
         if budget is not None:
             # HANDOFF 18.59: opt-in approximation, off by default. It changes outputs (a dropped expert is not computed
@@ -273,10 +282,10 @@ def cmd_serve(args) -> None:
 
 
 def _decode_miss_budget_from_env(env) -> int | None:
-    """CACHALOT_DECODE_MISS_BUDGET: unset, empty or negative is off; a non-negative integer is the per-layer cap."""
+    """CACHALOT_DECODE_MISS_BUDGET: unset, empty, off, exact or negative is off; a non-negative integer is the per-layer cap."""
     raw = str(env.get("CACHALOT_DECODE_MISS_BUDGET", "")).strip()
-    if not raw:
-        return None
+    if not raw or raw.lower() in ("off", "exact"):
+        return None  # serve.sh defaults to 0 (Hamed, 2026-10-05); "off" restores the exact path
     try:
         value = int(raw)
     except ValueError:
