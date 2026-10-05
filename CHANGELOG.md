@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.60.1 (2026-10-05)
+
+HANDOFF "Start here (2026-10-05, 0.60.1)" and section 18.67. Measurement only, plus instrument changes: the model-graded N = 16 blind quality check of the decode miss budget (now the `serve.sh` default), run on the six bodies of the 0.58.1 Hermes dump.
+
+### Measured
+- 192 replies (6 bodies x 16 samples x 2 arms, temperature 0.7, 1,500 new tokens at most, 48 GiB, one process, seeds matched, order alternating), generated through `Engine.chat`, shuffled and graded blind by six separate model graders (one per body, given only the sheet and the 18.60 rubric; the key opened afterwards). Flawed: **exact 26/96, budget 0 28/96, Fisher p = 0.87**. Per body (exact / budget 0): greeting 0/16 / 0/16; tool call 0/16 / 0/16; summarising an `ls` result 12/16 / 7/16 (p 0.15); 200-word story 4/16 / 5/16; C# importer 4/16 / 9/16 (p 0.15); TypeScript 6/16 / 7/16. No loops, valid tool calls 16/16 in both arms. Decode **121.7 -> 99.4 ms a token (-18.3 %)** (-6 % on 9-100 token replies, -25 % on long ones).
+- The one pattern to watch: the C# body had 5 "invented" flaws (made-up API members) in the budget-0 arm against 0 in exact, and 9 against 4 flawed overall; the `ls` summary leaned the other way (7 against 12). Neither is significant at n = 16, and `dotnet build` passed in 3/16 (exact) and 4/16 (budget 0) because the replies' snippets need a project and usings the check does not give them.
+
+### Changed
+- `benchmarks/quality_blind_ab.py` reads its dump, rows and token cap from `CACHALOT_QB_DUMP`, `CACHALOT_QB_ROWS`, `CACHALOT_QB_MAX_TOKENS`, turns image parts into a text note, and resumes a stopped run (`CACHALOT_QB_BODIES` limits the bodies of a call).
+
 ## 0.60.0 (2026-10-05)
 
 HANDOFF "Start here (2026-10-05, 0.60.0)" and section 18.66. Hamed's three decisions on v108's first job: the decode miss budget is 0 by default in `serve.sh`, an agent's system block is reused across days, and a model (not the author) grades the N = 16 quality check.

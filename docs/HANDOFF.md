@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-05, 0.60.1): the model-graded check of budget 0
+>
+> Hamed's second decision (a model grades) ran (section 18.67): 192 replies on the 0.58.1 dump's six bodies, graded blind by six model graders: flawed exact 26/96, budget 0 28/96 (p = 0.87), decode -18.3 %. No sign of harm overall; **watch code**: the C# body is 9/16 flawed with budget 0 against 4/16 exact (p = 0.15, five invented API members against none). The default stays 0 (his decision); a larger C#/TypeScript sample is the way to settle it. Results in `benchmarks/results/quality-blind-0.60.0/` (gitignored).
+>
 > ## Start here (2026-10-05, 0.60.0): Hamed's decisions applied
 >
 > Hamed answered v108's first job (section 18.66): (1) **the decode miss budget is 0 by default** (`serve.sh`; `CACHALOT_DECODE_MISS_BUDGET=off` is the exact arm for any A/B), (2) **a model grades the N = 16 quality check** (the generation is the next job), (3) **the day's first message should not prefill the system block**: `server/system_date.py` shows the first true date of the last 7 days in the "Conversation started" line (`CACHALOT_SYSTEM_DATE_REUSE=0` off). Benchmarks that want the exact path must now pass `off` through `serve.sh`. Not measured live; tests only.
@@ -8750,6 +8754,18 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.67 The model-graded N = 16 quality check of budget 0 — 2026-10-05 (0.60.1)
+
+Hamed: "go, adapt it to the 0.58.1 dump and run it", then "go, grade it when done" (his answer to v108's grader question was "model").
+
+**Method.** `benchmarks/quality_blind_ab.py` on `/tmp/cachalot-requests-0.58.1.jsonl`, rows 0, 2, 4, 6, 8, 14: a greeting, the Desktop tool call, a 4.6k-character `ls` result to summarise (a 202-entry listing), a 200-word story, the C# JSON/CSV importer and the TypeScript version (row 14's earlier image replaced by a text note; rows 10 and 12 skipped). 16 samples per body per arm at temperature 0.7, 1,500 new tokens at most (so C# fits), `Engine.chat`, 48 GiB, one process, sample j on the same seed in both arms, order alternating. 192 replies were shuffled and written to an arm-free sheet (the sheet shows each reply's last context message and the reply up to 3,500 characters), split by body, and graded by six separate model graders (opus subagents, one per body, told to read only their file, with the 18.60 rubric adapted per body); the key was opened after all six wrote their grades. The run was stopped once by the two-hour background limit and resumed (the instrument now skips samples already in the log; seeds depend on body and j only).
+
+**Result.** Flawed per body (exact / budget 0): 0/16 / 0/16 (greeting), 0/16 / 0/16 (tool call), 12/16 / 7/16 (`ls` summary, p 0.149), 4/16 / 5/16 (story), 4/16 / 9/16 (C#, p 0.149), 6/16 / 7/16 (TypeScript); **all 26/96 / 28/96, Fisher p = 0.87.** No loops, valid tool calls 16/16 in both arms, one reply cut by the cap (exact). Flaw tags: exact unsupported-claim 9, wrong-action 9, wrong-code 7, invented 1; budget 0 wrong-action 9, unsupported-claim 9, invented 6, wrong-code 3, wrong-length 1. Decode **121.7 -> 99.4 ms a token (-18.3 %)** over 192 replies (-6 % on 9-100 token replies, -16 % the story, -25 % the long ones); about 6,700 experts dropped a reply. `dotnet build` passes 3/16 exact and 4/16 budget 0: the mechanical check compiles a bare snippet, so it mostly measures missing project context.
+
+**Reading.** At n = 16 per cell budget 0 is not distinguishable from exact overall. The two body-level differences go opposite ways and neither reaches p = 0.05. One pattern is worth a larger sample: on C# the budget-0 arm's flaws were mostly invented API members (5 against 0 in exact, 9 against 4 flawed), the failure a dropped expert would plausibly cause in precise code; the `ls` summary (exact 12/16 flawed, mostly unsupported counts) is the reverse. Caveats: model graders judging code by reading, six grading agents with a body-specific rubric (a strict or lenient grader moves a whole body, equally in both arms because the sheet is arm-free), one prompt per body, text-only. The default stays 0 (Hamed's decision); a C#/TypeScript-only run at N = 48 per arm (~2 hours) and a compile-checked grader would settle the code question.
+
+**Shipped.** Instrument changes and this section; no runtime change. **Open:** the code-only N = 48 run; the live checks of 0.59.0's pin and 0.60.0's date reuse; job 3 (short side requests). **Needs Hamed:** nothing new.
 
 ### 18.66 Hamed's decisions: budget 0 by default, date reuse, a model grader — 2026-10-05 (0.60.0)
 

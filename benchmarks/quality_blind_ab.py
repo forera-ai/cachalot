@@ -31,14 +31,30 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "benchmarks"))
 
-DUMP = "/tmp/cachalot-requests-0.46b.jsonl"
-BODY_ROWS = (0, 2, 4, 6, 8, 10)
-MAX_TOKENS = 700
+# Defaults are the 0.46b dump of HANDOFF 18.60; HANDOFF 18.67 ran the 0.58.1 dump:
+#   CACHALOT_QB_DUMP=/tmp/cachalot-requests-0.58.1.jsonl CACHALOT_QB_ROWS=0,2,4,6,8,14 CACHALOT_QB_MAX_TOKENS=1500
+# (the same six kinds of body: greeting, tool call, tool result, story, C#, TypeScript; row 14's earlier image is
+# replaced by a text note). Set the same variables for `run` and `sheet`.
+DUMP = os.environ.get("CACHALOT_QB_DUMP", "/tmp/cachalot-requests-0.46b.jsonl")
+BODY_ROWS = tuple(int(x) for x in os.environ.get("CACHALOT_QB_ROWS", "0,2,4,6,8,10").split(","))
+MAX_TOKENS = int(os.environ.get("CACHALOT_QB_MAX_TOKENS", "700"))
+
+
+def _drop_images(body: dict) -> dict:
+    """The same body with image parts turned into a text note (a text-only run; both arms see the same prompt)."""
+    messages = []
+    for m in body["messages"]:
+        c = m.get("content")
+        if isinstance(c, list):
+            parts = [p if p.get("type") == "text" else {"type": "text", "text": "[image omitted]"} for p in c]
+            m = dict(m, content=parts)
+        messages.append(m)
+    return dict(body, messages=messages)
 
 
 def load_bodies() -> list[dict]:
     rows = [json.loads(line) for line in Path(DUMP).read_text().splitlines()]
-    return [rows[i]["body"] for i in BODY_ROWS]
+    return [_drop_images(rows[i]["body"]) for i in BODY_ROWS]
 
 
 def run(budget: int, n: int, out: Path) -> None:
@@ -55,11 +71,19 @@ def run(budget: int, n: int, out: Path) -> None:
                                      expert_cache_budget_bytes=int(48 * 2**30))
     engine = Engine(model)
     log = out / "samples.jsonl"
+    # resume: a sample already in the log (same body, j, arm) is not generated again; seeds depend on (body, j) only,
+    # so a resumed run equals an uninterrupted one. CACHALOT_QB_BODIES=4,5 limits the bodies of this call.
+    done = {(r["body"], r["j"], r["arm"]) for r in map(json.loads, log.read_text().splitlines())} if log.exists() else set()
+    only = {int(x) for x in os.environ["CACHALOT_QB_BODIES"].split(",")} if os.environ.get("CACHALOT_QB_BODIES") else None
     with log.open("a") as fh:
         for bi, body in enumerate(load_bodies()):
+            if only is not None and bi not in only:
+                continue
             for j in range(n):
                 order = ("exact", "capped") if j % 2 == 0 else ("capped", "exact")
                 for arm in order:
+                    if (bi, j, arm) in done:
+                        continue
                     model.set_decode_miss_budget(budget if arm == "capped" else None)
                     skipped0 = model.runtime.expert_store.skipped_experts
                     req = ChatRequest(messages=body["messages"], tools=body["tools"], thinking_mode="chat",
