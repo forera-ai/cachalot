@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.58.2 (2026-10-05)
+
+HANDOFF "Start here (2026-10-05, 0.58.2)" and section 18.64. Measurement and documentation only; no runtime change. Why every Hermes session start prefilled the whole system block, and the first Hermes session on the splice-before-image fix.
+
+### Measured
+- The three saved system blocks differ for three reasons, each checked by re-rendering the dumped prompts: Hermes's model name (session 2 said `Model: minimax-m3`, which drops a 178-token "Tool-use enforcement" section at token 1,024: 22,311 against 22,493 tokens), its provider string (`custom` against `custom:cachalot`, +3 tokens: 22,490 against 22,493, re-rendered exactly), and the date (token ~6,227). All sit in the first 6.3k tokens and the 16.2k tokens of tool schemas follow, so any change re-prefills the whole block (~227 s at 99 tok/s). With a stable Hermes configuration the saved block is reused (first request ~1.7 s).
+- First Hermes session on 0.58.1 (budget 0, the image going in natively): the image turn prefilled 246 tokens in 8.85 s with `spliced=1` (113 s on 0.58.0), decode 8.97-9.70 tok/s, every request's reuse equals the previous prompt plus reply except the last (Hermes rewrote the old image message: 569 tokens, 13 s).
+
+### Open
+- A snapshot at an earlier point of the system block (the shared head of two sessions is ~6.2k tokens of 22.5k) would save ~60 s of the first request after a Hermes configuration or date change; not built.
+
 ## 0.58.1 (2026-10-05)
 
 HANDOFF "Start here (2026-10-05, 0.58.1)" and section 18.63. A vision turn no longer re-prefills the whole conversation before its image.
