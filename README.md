@@ -822,12 +822,12 @@ See `docs/SPEED-RESEARCH-2026-10-03.md`.
     do not compile in 9 of 12 replays, with and without Hermes's system prompt, and temperature 0 gives the same wrong text twice: not the budget, the
     temperature or the context. Traced in 0.51.6 (HANDOFF 18.43): not the decode path (decode and prefill are equally good on neutral text, the prefetch changes no logit), but a numerically noisy model taking the wrong fork where its top choices are close; the same C# replay on MiniMax-M3 garbles 1 of 19 replies against GLM's 12 of 21 (0.51.7, HANDOFF 18.44), so use MiniMax for code; a higher-precision GLM pipeline (fp32 residual stream; the linear-attention state is already fp32) does not lower the prefill-against-decode spread (0.51.8, HANDOFF 18.45), so another GLM quantisation is the only open check on that side.
 
-## Cachalot Studio
+## Cachalot Lab
 
-A desktop app for this runtime, [Cachalot Studio](https://github.com/prooshani/cachalot-studio), is built from
-the brief in [`docs/studio/CODEX-STUDIO-PROMPT.md`](docs/studio/CODEX-STUDIO-PROMPT.md); each runtime release that
+A desktop app for this runtime, [Cachalot Lab](https://github.com/prooshani/cachalot-studio), is built from
+the brief in [`docs/lab/CODEX-LAB-PROMPT.md`](docs/lab/CODEX-LAB-PROMPT.md); each runtime release that
 changes a knob, a default, a stats field, a log line or an endpoint adds a brief under
-[`docs/studio/briefs/`](docs/studio/briefs/).
+[`docs/lab/briefs/`](docs/lab/briefs/).
 
 ## Project layout
 

@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.60.4 (2026-10-05)
+
+HANDOFF "Start here (2026-10-05, 0.60.4)" and section 18.70. Documentation only, no runtime change: the desktop app is renamed from Cachalot Studio to **Cachalot Lab** (Hamed's decision; Codex carries out the app-side rename).
+
+### Changed
+- `docs/studio/` moved to `docs/lab/`; the product brief is `docs/lab/CODEX-LAB-PROMPT.md` (was `CODEX-STUDIO-PROMPT.md`) with a rename notice at its top listing the identifiers Codex migrates (Git remote, working directory, bundle identifier, data directory, keychain service names). Per-release briefs keep their file names under `docs/lab/briefs/`; their text is left as sent.
+- README section "Cachalot Studio" is now "Cachalot Lab"; the current prompt, the research charter and the session skill use the new name. "Mac Studio" (the hardware) is unchanged.
+- `docs/RESEARCH-DIRECTION.md` gains a naming note: "Cachalot Lab" is the app, "the lab" in lower case is the research direction.
+
+### Added
+- `docs/lab/briefs/2026-10-05-runtime-0.60.4.md`: the rename brief for Codex.
+
 ## 0.60.3 (2026-10-05)
 
 HANDOFF "Start here (2026-10-05, 0.60.3)" and section 18.69. Documentation only, no runtime change: the research-direction charter (`docs/RESEARCH-DIRECTION.md`), the README direction section and the prompt amendment, released together as the charter's own section 9 (question 5) recommends.

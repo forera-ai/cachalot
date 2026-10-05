@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-05, 0.60.4): Cachalot Studio is now Cachalot Lab
+>
+> Hamed renamed the desktop app to **Cachalot Lab** (section 18.70). The runtime's briefs live in `docs/lab/` (product brief `docs/lab/CODEX-LAB-PROMPT.md`, per-release briefs `docs/lab/briefs/`); write every new brief as a "Lab brief" about "Cachalot Lab". Codex renames the app and migrates its identifiers (remote, working directory, bundle id, data directory, keychain); until Hamed reports the new remote and path, the old ones (`prooshani/cachalot-studio`, `/Volumes/X10Pro/Cachalot Studio`) stay correct. "the lab" in lower case is the research direction, not the app. No runtime change.
+>
 > ## Start here (2026-10-05, 0.60.3): the research-direction charter
 >
 > `docs/RESEARCH-DIRECTION.md` (section 18.69) is the written direction Hamed gave: the lab is the method for every lane, the lane order "Hermes, vision, speed" and the model priority stand, output-changing defaults stay his, energy arms are run by him with `sudo powermetrics`. Its first work (no machine needed) is L1, the constants and bottleneck ledger, then L0, the manifest and scorecard schema. **Put 0.60.2's result in it:** the budget-0 default invents C# API members (§18.68). The open budget decision is still Hamed's.
@@ -8762,6 +8766,14 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.70 The desktop app renamed to Cachalot Lab — 2026-10-05 (0.60.4)
+
+Hamed: "I decided to effectively change the name of the project Cachalot Studio to Cachalot Lab. This rename will happen through Codex and should affect the /ca skill. Update your memory of that project, and make sure all cross-repo communications included with your briefs use the new naming."
+
+**Shipped (documentation only).** `docs/studio/` moved to `docs/lab/` with `git mv` (history kept); `CODEX-STUDIO-PROMPT.md` became `docs/lab/CODEX-LAB-PROMPT.md`, its prose now says Cachalot Lab and a notice at its top lists what Codex owns: renaming every user-visible string, and migrating the Git remote (`cachalot-studio`), the working directory (`/Volumes/X10Pro/Cachalot Studio`), the bundle identifier, the `Application Support/Cachalot Studio` data directory and the `cachalot-studio/...` keychain service names without losing user data. Those identifiers were deliberately left as they are in every runtime document, because they are still the real ones until Codex changes them. The rename brief is `docs/lab/briefs/2026-10-05-runtime-0.60.4.md`. README's section is "Cachalot Lab"; the current prompt, `docs/RESEARCH-DIRECTION.md` (with a naming note separating the app from "the lab", the research direction) and the shared session skill (`~/.agents/skills/cachalot`, used by `/ca` in Claude Code and by Codex and Hermes; skill v1.4) use the new name. Older briefs, CHANGELOG entries, HANDOFF sections and archived prompts keep "Studio": they record what was sent and decided at the time. "Mac Studio", the hardware, is unchanged everywhere.
+
+**Open, needs Hamed:** the new remote URL, working directory and code-graph project name once Codex has renamed them; the project map, memory and README link follow then.
 
 ### 18.69 The research-direction charter released — 2026-10-05 (0.60.3)
 

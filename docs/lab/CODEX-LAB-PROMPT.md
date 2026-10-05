@@ -1,16 +1,29 @@
-# Cachalot Studio — Build Brief for Codex
+# Cachalot Lab — Build Brief for Codex
 
 > Paste this whole document into Codex as the first message of the project. It is the
 > product brief, the design brief, the runtime contract and the engineering rules in one
 > place. Follow it in order. Where it says **STOP AND ASK**, stop and ask the owner
 > (Hamed) before continuing.
 
+
+> **Renamed 2026-10-05: Cachalot Studio is now Cachalot Lab.** The owner decided the new name;
+> this brief uses it throughout. The product name, window title, menus, docs and every
+> user-visible string become "Cachalot Lab". Identifiers that still say "studio" in this brief
+> (the Git remote `cachalot-studio`, the working directory `/Volumes/X10Pro/Cachalot Studio`,
+> the `Application Support/Cachalot Studio` data directory, the `cachalot-studio/...` keychain
+> service names) are left exactly as they were until you rename them: their migration is yours,
+> including moving existing user data and keychain items so nothing is lost. Report the new
+> remote URL and working directory to the owner so the runtime's docs can follow. In the
+> runtime repository the briefs moved from `docs/studio/` to `docs/lab/` (this file is now
+> `docs/lab/CODEX-LAB-PROMPT.md`). The runtime also uses "the lab" in lower case for its
+> research direction (`docs/RESEARCH-DIRECTION.md`); Cachalot Lab is the app that will show
+> that research's scorecards, not the research itself.
 ---
 
 ## 0. Your role and the first three things you do
 
-You are the lead designer and lead engineer of **Cachalot Studio**, a native-feeling macOS
-desktop application that wraps the **Cachalot** inference runtime. You own the Studio
+You are the lead designer and lead engineer of **Cachalot Lab**, a native-feeling macOS
+desktop application that wraps the **Cachalot** inference runtime. You own the Lab
 repository end to end: brand, design system, application code, packaging, release pipeline
 and in-app updates. You do **not** own the runtime; you consume it.
 
@@ -39,7 +52,7 @@ Then proceed through the milestones in section 12.
 
 ---
 
-## 1. What Cachalot is, and why Studio is not "another LM Studio"
+## 1. What Cachalot is, and why Lab is not "another LM Studio"
 
 **Cachalot** (public repo: `https://github.com/prooshani/cachalot`, MIT, Python 3.12+,
 MLX, hand-written Metal kernels) is an inference runtime for Apple Silicon that runs
@@ -51,7 +64,7 @@ unified memory; the models it serves are 200–550 GB on disk.
 
 LM Studio, Ollama and Unsloth Studio assume the model fits: pick a quantization that fits
 VRAM, load it, chat. Their UI is a model picker plus a chat window. **Cachalot is the
-opposite case**, and the Studio must make that case visible and controllable:
+opposite case**, and the Lab must make that case visible and controllable:
 
 - The memory is **tiered**: resident trunk, wired expert cache (the "budget"), prefix-cache
   snapshots in memory, snapshots on disk, OS page cache, and finally the SSD (internal and
@@ -64,10 +77,10 @@ opposite case**, and the Studio must make that case visible and controllable:
   snapshots), a long prompt's prefill can take **minutes**, and decode speed is a live,
   fluctuating number (tokens/s, expert misses per token, SSD read latency).
 - The runtime serves an **OpenAI-compatible HTTP API** that agent harnesses (Hermes,
-  OpenCode, Continue, aider, any `openai` SDK client) connect to. The Studio is also a
+  OpenCode, Continue, aider, any `openai` SDK client) connect to. The Lab is also a
   first-class chat client for that same server.
 
-The Studio's job: **make an out-of-memory runtime feel as controlled and legible as an
+The Lab's job: **make an out-of-memory runtime feel as controlled and legible as an
 in-memory one**, without hiding what makes it special. The central visual idea is *depth*:
 data moving between the surface (GPU-resident) and the abyss (SSD).
 
@@ -90,7 +103,7 @@ data moving between the surface (GPU-resident) and the abyss (SSD).
    decode tok/s).
 5. An **API panel**: endpoint URL, model id, API key management, copy-paste snippets for
    curl / Python `openai` / JS / Hermes / OpenCode / Continue, and a request log.
-6. **In-app updates** for both the Studio and the Cachalot runtime, with release notes,
+6. **In-app updates** for both the Lab and the Cachalot runtime, with release notes,
    channels (stable / beta), and rollback, like LM Studio and Unsloth Studio (section 10).
 7. A **Doctor** view: hardware, storage speed, memory, model layout checks, and the
    environment prerequisites (section 7.6), with one-click fixes where a fix is safe.
@@ -101,9 +114,9 @@ data moving between the surface (GPU-resident) and the abyss (SSD).
 
 - No model training or fine-tuning.
 - No running two runtimes at once. The runtime refuses to start a second instance
-  (both would fight over the same wired memory); the Studio enforces the same rule.
+  (both would fight over the same wired memory); the Lab enforces the same rule.
 - No hosting of models for other machines beyond binding the server to a chosen host/port.
-- No changes to the runtime repository (`prooshani/cachalot`); you may clone it read-only for reference, outside the Studio working directory. If the Studio needs something the runtime does not
+- No changes to the runtime repository (`prooshani/cachalot`); you may clone it read-only for reference, outside the Lab working directory. If the Lab needs something the runtime does not
   offer, record it in `docs/RUNTIME_REQUESTS.md` (section 9.4) and degrade gracefully.
 - No telemetry leaving the machine. No analytics SDKs. No accounts.
 
@@ -111,7 +124,7 @@ data moving between the surface (GPU-resident) and the abyss (SSD).
 
 ## 3. Platform and technology
 
-The runtime only runs on **Apple Silicon macOS (14+)**. Studio v1 targets the same.
+The runtime only runs on **Apple Silicon macOS (14+)**. Lab v1 targets the same.
 
 Required stack (choose these unless you find a concrete blocker; if you do, **STOP AND ASK**):
 
@@ -154,7 +167,7 @@ purple gradient". Something a person screenshots.
 
 A cachalot (sperm whale) is the deepest-diving animal of its size; it hunts by sonar in
 total darkness and returns to the surface with what it went for. The runtime does the same
-with a 500 GB checkpoint on a 96 GB machine. The Studio is the **instrument panel of a
+with a 500 GB checkpoint on a 96 GB machine. The Lab is the **instrument panel of a
 deep-sea vessel**: calm, precise, luminous data on deep water.
 
 - **Depth as the organizing metaphor.** The memory tiers map to depth zones, and this
@@ -243,7 +256,7 @@ deep-sea vessel**: calm, precise, luminous data on deep water.
 
 The runtime's decode speed is sensitive to other GPU work on the machine — the owner has
 measured a visible chat window of another desktop app costing ~30 % decode, and the macOS
-screensaver ~13 %. The Studio must therefore:
+screensaver ~13 %. The Lab must therefore:
 
 - Pause all non-essential animation (Sonar Field, sonar pings, background shaders) when the
   window is hidden, minimized, occluded, or unfocused for more than 10 s; render at most
@@ -254,8 +267,8 @@ screensaver ~13 %. The Studio must therefore:
 - Poll `/v1/stats` at 1 Hz when visible, 0.2 Hz when hidden, and never while a poll is in
   flight. Never call `/v1/stats` more often than that.
 - Respect `prefers-reduced-motion`: replace all motion with instant state changes.
-- Measure it: add a dev-only overlay showing the Studio's own frame time and GPU usage, and
-  document in `docs/PERFORMANCE.md` the decode tok/s of a reference prompt with the Studio
+- Measure it: add a dev-only overlay showing the Lab's own frame time and GPU usage, and
+  document in `docs/PERFORMANCE.md` the decode tok/s of a reference prompt with the Lab
   closed, open-idle, open-cockpit, and open-silent-running.
 - Never put the display or the machine to sleep, never change power settings.
 
@@ -279,7 +292,7 @@ owner's approval or corrections before implementing screens.
 
 ## 5. Brand and logo (do this first, before the design system)
 
-Design a logo for **Cachalot** (the runtime) and a companion mark for **Cachalot Studio**.
+Design a logo for **Cachalot** (the runtime) and a companion mark for **Cachalot Lab**.
 
 ### Brief
 
@@ -291,7 +304,7 @@ Design a logo for **Cachalot** (the runtime) and a companion mark for **Cachalot
      memory tiers), the tail at the surface line.
   3. **Monogram** — a "C" whose inner counter is the whale's head / an echo ring, usable at
      16 px.
-- The Studio mark is the runtime mark in a containing shape (e.g. a porthole/rounded square)
+- The Lab mark is the runtime mark in a containing shape (e.g. a porthole/rounded square)
   or with an instrument element (gauge tick marks), so the family reads as one.
 - Must work: monochrome, one-color on dark and light, at 16/32/64/128/256/512/1024 px, as a
   macOS app icon (follow Apple's current icon grid and shape, with depth and material in the
@@ -305,9 +318,9 @@ Design a logo for **Cachalot** (the runtime) and a companion mark for **Cachalot
 
 - `design/brand/concepts.html` — one page showing the three directions side by side, each
   on dark and light, at large size and at 16 px, plus the app icon mock and a wordmark
-  lockup ("Cachalot" and "Cachalot Studio") in the chosen typeface.
+  lockup ("Cachalot" and "Cachalot Lab") in the chosen typeface.
 - Vector sources: `design/brand/*.svg` (clean, hand-tuned paths, no embedded rasters).
-- After approval: `design/brand/final/` with the runtime mark, the Studio mark, wordmark
+- After approval: `design/brand/final/` with the runtime mark, the Lab mark, wordmark
   lockups (horizontal and stacked), the `.icns` / `AppIcon` set, the menu-bar template, the
   favicon, and `design/brand/USAGE.md` (clear space, minimum size, color usage, don'ts).
 
@@ -346,10 +359,10 @@ and to a TypeScript module.
 
 ---
 
-## 7. The runtime, as the Studio must understand it
+## 7. The runtime, as the Lab must understand it
 
 Everything in this section is the **runtime contract as of Cachalot 0.38.1 (2026-09-28)**.
-Put it in `docs/RUNTIME_CONTRACT.md` in the Studio repo, and encode the machine-readable
+Put it in `docs/RUNTIME_CONTRACT.md` in the Lab repo, and encode the machine-readable
 parts in `runtime-contract/` (section 9). Read the runtime repository yourself to confirm
 and extend it; the owner's team will send you contract updates later (section 13).
 
@@ -366,14 +379,14 @@ and extend it; the owner's team will send you contract updates later (section 13
   (MiniMax), and `chat*.sh` counterparts. **Read all six scripts**: they are the reference
   profiles, with comments explaining why each value is what it is.
 - A guard in every script refuses to start if a process matching
-  `deepseek-v41/bin/python|cachalot\.cli` is running. The Studio must do the equivalent
+  `deepseek-v41/bin/python|cachalot\.cli` is running. The Lab must do the equivalent
   check (by PID of processes it did not start, too) and offer "Attach to running runtime"
   (monitor-only if it did not start it) or "Stop it" (with confirmation).
 
-**YAML profiles are a Studio feature.** The Studio defines the YAML schema, stores the
+**YAML profiles are a Lab feature.** The Lab defines the YAML schema, stores the
 files, and **compiles** a profile into `{ argv, env, cwd }` for the child process. Design
 the compiler as a pluggable backend so that when the runtime later accepts a native
-`--config profile.yaml`, the Studio can switch to passing the file directly (feature-gated
+`--config profile.yaml`, the Lab can switch to passing the file directly (feature-gated
 on runtime version, see 9.3).
 
 ### 7.2 CLI flags (`serve`; `chat` shares the runtime ones)
@@ -388,7 +401,7 @@ Chat: `--max-new-tokens`, `--temperature`, `--top-p`, `--snapshot-dir`, `--think
 `--reasoning-effort`, `--seed`, `--frequency-penalty`, `--presence-penalty`,
 `--no-repeat-ngram-size`, `--penalty-window`, `--system`, `--no-typing-prefill`.
 
-The Studio launches `serve` only. Its own chat UI talks HTTP to that server. (Do not wrap
+The Lab launches `serve` only. Its own chat UI talks HTTP to that server. (Do not wrap
 the terminal `chat` command.)
 
 ### 7.3 Model families and their reference profiles
@@ -412,7 +425,7 @@ the terminal `chat` command.)
 
 All three serve on the same port (8011) with the same API; switching model = restart with
 another profile. Model paths in the owner's scripts point to the internal SSD and to an
-external drive (`/Volumes/X10Pro/…`); the Studio must detect unmounted volumes and explain
+external drive (`/Volumes/X10Pro/…`); the Lab must detect unmounted volumes and explain
 the consequence (e.g. "mirror drive not mounted — mirror striping off").
 
 ### 7.4 HTTP API (the server started by `serve`)
@@ -445,7 +458,7 @@ the consequence (e.g. "mirror drive not mounted — mirror striping off").
 - `POST /v1/completions` exists but is not available for every model (400 with a message).
 - Auth: when an API key is set, every `/v1/*` route requires `Authorization: Bearer <key>`.
 - The engine is **single-flight**: one generation at a time; other requests queue. A
-  client disconnect cancels its request. The Studio must show "queued behind N" when its
+  client disconnect cancels its request. The Lab must show "queued behind N" when its
   chat request waits, and must cancel cleanly (abort the fetch) when the user stops.
 
 ### 7.5 Logs (stderr) — the richest telemetry source today
@@ -459,7 +472,7 @@ The server prints one line per request:
 (some fields are optional). Parse it with a tolerant parser (named regex per field,
 unknown fields kept as raw key/values), and feed the Requests table and cockpit history.
 Keep all raw log lines in a ring buffer (e.g. 20k lines) and in a rotating log file under
-the Studio's data directory. Startup phases are printed to stderr as well — collect the
+the Lab's data directory. Startup phases are printed to stderr as well — collect the
 distinct startup lines of all three families (run them, or read the code), turn them into
 a phase table in `runtime-contract/startup-phases.yaml`, and drive the Dive (4.2.1) from
 it, falling back to "raw log" mode for unknown lines.
@@ -479,7 +492,7 @@ it, falling back to "raw log" mode for unknown lines.
   the profile to its no-sysctl budget (62 GiB for MiniMax). Never store the admin password.
 - Memory pressure (`memory_pressure` / `vm_stat`) and swap usage right now.
 - Storage read speed (reuse `cachalot doctor`, which measures it).
-- A running runtime that the Studio did not start.
+- A running runtime that the Lab did not start.
 - Known performance hazards, as **advice only**: the screensaver and other visible GPU-heavy
   windows slow decode. Do **not** change any system power, display or screensaver setting.
 
@@ -620,7 +633,7 @@ reset.
 
 ### 8.10 Menu-bar extra
 Template icon showing state (idle / running / busy). Menu: current profile, tok/s, Start /
-Stop / Restart, switch profile, copy API URL, open Studio. The runtime keeps running when the
+Stop / Restart, switch profile, copy API URL, open Lab. The runtime keeps running when the
 main window is closed (ask once whether to stop it on quit).
 
 ### 8.11 Process supervision
@@ -633,9 +646,9 @@ explain). Only one runtime at a time.
 
 ---
 
-## 9. The runtime contract layer (so the Studio can follow the runtime as it changes)
+## 9. The runtime contract layer (so the Lab can follow the runtime as it changes)
 
-The runtime changes weekly. Make the Studio **data-driven** so most runtime changes are a
+The runtime changes weekly. Make the Lab **data-driven** so most runtime changes are a
 contract-file edit, not a code change.
 
 ### 9.1 `runtime-contract/` directory
@@ -647,11 +660,11 @@ contract-file edit, not a code change.
 - `stats.yaml` — every known `/v1/stats` field: family availability, unit, meaning,
   derived metrics built from it, where it is displayed.
 - `log-lines.yaml` — `[request]` fields and startup phase patterns with regexes.
-- `compat.yaml` — which runtime versions the Studio supports and which features each
+- `compat.yaml` — which runtime versions the Lab supports and which features each
   runtime version enables (e.g. `native_yaml_config: ">=X.Y.Z"`).
 
 All of these are loaded at startup, validated, and shipped with the app; an update to them
-ships with a Studio patch release.
+ships with a Lab patch release.
 
 ### 9.2 Knob entry fields
 
@@ -668,18 +681,18 @@ profiles whose `runtime.version` range does not match, and hide/disable knobs wh
 `since`/`removed_in` exclude the installed version, with an explanation.
 
 ### 9.4 `docs/RUNTIME_REQUESTS.md`
-Anything the Studio would like from the runtime (examples you will likely hit:
+Anything the Lab would like from the runtime (examples you will likely hit:
 per-expert residency map endpoint, structured JSON startup events, `/v1/stats` parity for
 GLM/MiniMax, a `--config file.yaml` flag, a machine-readable knob list, an explicit
 "prefill progress" event in the stream, a graceful `/admin/shutdown`). Each request:
-motivation, proposed shape, the Studio's current fallback. The owner's runtime team reads
+motivation, proposed shape, the Lab's current fallback. The owner's runtime team reads
 this file.
 
 ---
 
 ## 10. Versioning, releases and in-app updates
 
-### 10.1 Studio versioning
+### 10.1 Lab versioning
 - Semantic Versioning 2.0.0, starting at **0.1.0**. Pre-1.0: minor for features, patch for
   fixes. 1.0.0 when the milestones in section 12 are all done and the owner approves.
 - The single source of truth is the version in `package.json`, mirrored into
@@ -702,8 +715,8 @@ this file.
   loudly in the release notes; **STOP AND ASK** the owner for the secrets rather than
   skipping signing silently. Never commit keys.
 
-### 10.3 In-app Studio updates
-- `tauri-plugin-updater` against the GitHub Releases `latest.json` of the Studio repo.
+### 10.3 In-app Lab updates
+- `tauri-plugin-updater` against the GitHub Releases `latest.json` of the Lab repo.
 - Check on launch (after 30 s) and every 6 h; channel stable/beta; show release notes
   (rendered Markdown from the release body); "Install on quit" or "Restart now"; never
   install while a generation is in flight; keep the previous version for **rollback**.
@@ -712,11 +725,11 @@ this file.
 Two runtime install modes, per profile:
 
 - **External** (the owner's current setup): point at an existing checkout + venv
-  (e.g. repo at `~/Projects/deepseek-v41-mac`, venv at `~/venvs/deepseek-v41`). The Studio
+  (e.g. repo at `~/Projects/deepseek-v41-mac`, venv at `~/venvs/deepseek-v41`). The Lab
   reads its version and git state (branch, commit, dirty) and never modifies it; "update"
   in this mode shows the newer version available and the exact `git pull` / `pip install`
   commands, and can run them only when the user clicks.
-- **Managed**: the Studio installs runtime versions side by side under
+- **Managed**: the Lab installs runtime versions side by side under
   `~/Library/Application Support/Cachalot Studio/runtimes/<version>/` — the source from the
   runtime repo's GitHub Release (or tag archive) plus a dedicated venv created with `uv`
   (install `uv` if missing, with consent) from the runtime's `pyproject.toml`. Multiple
@@ -762,7 +775,7 @@ The **mock runtime** is mandatory: all UI and e2e work must run without a 500 GB
 It must reproduce the awkward cases: 3-minute prefill with keep-alives, slow startup, a
 crash mid-stream, a 401, a busy queue, fields missing from `/v1/stats`.
 
-Initial commit: `chore: initialize Cachalot Studio 0.1.0`. Ask before the first push.
+Initial commit: `chore: initialize Cachalot Lab 0.1.0`. Ask before the first push.
 
 ---
 
@@ -777,7 +790,7 @@ Initial commit: `chore: initialize Cachalot Studio 0.1.0`. Ask before the first 
 4. **0.4.0 — Cockpit:** Depth Gauge, telemetry strip, readouts, charts, requests table,
    Sonar Field (approximate mode), silent running, performance doc with measurements.
 5. **0.5.0 — API & Models:** API screen and snippets, models discovery, keychain keys.
-6. **0.6.0 — Updates:** release pipeline, Studio updater, managed/external runtimes,
+6. **0.6.0 — Updates:** release pipeline, Lab updater, managed/external runtimes,
    runtime updates with smoke test and rollback.
 7. **0.7.0 — Polish:** menu-bar extra, notifications, accessibility audit (VoiceOver,
    keyboard-only pass, contrast), empty/error states, onboarding (first-run: find the
@@ -791,7 +804,7 @@ no regressions in the mock-runtime e2e suite.
 
 ## 13. Working agreements and handoffs
 
-- **HANDOFF.md** is the living, authoritative state of the Studio: current version, what
+- **HANDOFF.md** is the living, authoritative state of the Lab: current version, what
   is done, what is in progress, known issues, the runtime version the contract was last
   checked against, and the next steps. Update it at the end of every session and every
   milestone. The owner will share the repository with another engineering agent (Claude)
@@ -815,15 +828,15 @@ no regressions in the mock-runtime e2e suite.
 
 ## 14. Definition of done for v1.0
 
-- A new user on an Apple Silicon Mac can install the `.dmg`, let the Studio find or install
+- A new user on an Apple Silicon Mac can install the `.dmg`, let the Lab find or install
   the runtime, point it at a model, import or create a profile, pass Doctor, start the
   runtime, watch the Dive, chat with streaming and reasoning, copy an API snippet into an
   agent harness, and watch the cockpit — without opening a terminal.
 - The owner's three reference profiles (DeepSeek, GLM, MiniMax) import and launch with
   arguments and environment identical to `serve.sh`, `serve-glm.sh`, `serve-minimax.sh`
   (a test proves the compiled argv/env match the scripts).
-- Decode speed with the Studio open in silent running is within measurement noise of the
-  Studio closed (documented in `docs/PERFORMANCE.md`).
-- Studio and runtime updates work end to end, including rollback.
+- Decode speed with the Lab open in silent running is within measurement noise of the
+  Lab closed (documented in `docs/PERFORMANCE.md`).
+- Lab and runtime updates work end to end, including rollback.
 - Both themes, reduced motion, keyboard-only and VoiceOver pass.
 - The first screenshot someone sees makes them ask what it is.
