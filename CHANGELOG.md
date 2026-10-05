@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.60.2 (2026-10-05)
+
+HANDOFF "Start here (2026-10-05, 0.60.2)" and section 18.68. Measurement only, no runtime change: the code-only N = 48 blind check of the decode miss budget (the `serve.sh` default since 0.60.0). **It found a quality cost on C#.**
+
+### Measured
+- C# importer and TypeScript importer bodies of the 0.58.1 Hermes dump, 48 samples per arm each (96 + 96 = 192 replies, temperature 0.7, 1,500 new tokens at most; the first 16 per cell are 0.60.1's, 32 new), shuffled, split in four halves and graded blind by four separate model graders, key opened afterwards. Flawed: **C# exact 11/48, budget 0 26/48 (Fisher p = 0.003)**; TypeScript exact 9/48, budget 0 8/48 (p = 1.0); both 20/96 against 34/96 (p = 0.036). The C# excess is invented API members: 15 in budget 0 against 1 in exact (other wrong code 8 against 10, unsupported claims 3 against 0). The 32 new C# samples per arm alone: 18/32 against 6/32. Decode 138.3 -> 103.5 ms a token (-25 %). `dotnet build` of the bare snippet passes 7/48 and 10/48 (it mostly measures missing project context).
+- 0.60.1's N = 16 read (9/16 against 4/16 on C#, p = 0.15) was this effect at a quarter of the size.
+
+### Not changed
+- `serve.sh` still defaults `CACHALOT_DECODE_MISS_BUDGET=0` (Hamed's decision of 2026-10-05); the evidence now argues against it for code work. Options in HANDOFF 18.68.
+
 ## 0.60.1 (2026-10-05)
 
 HANDOFF "Start here (2026-10-05, 0.60.1)" and section 18.67. Measurement only, plus instrument changes: the model-graded N = 16 blind quality check of the decode miss budget (now the `serve.sh` default), run on the six bodies of the 0.58.1 Hermes dump.

@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-05, 0.60.2): the budget-0 default costs C# quality
+>
+> The code-only N = 48 check (section 18.68) contradicts 0.60.1's "no sign of harm": **C# flawed 26/48 with budget 0 against 11/48 exact (p = 0.003)**, 15 invented API members against 1; TypeScript equal (8/48 against 9/48); decode -25 %. `serve.sh` still defaults to budget 0 (Hamed's 2026-10-05 decision), so **tell Hamed first** and let him choose: keep 0 (fast, worse at precise code), `off` (exact), or budget 1 (about -6 % a token, never tested on code). `CACHALOT_DECODE_MISS_BUDGET=off ./serve.sh` is the exact path.
+>
 > ## Start here (2026-10-05, 0.60.1): the model-graded check of budget 0
 >
 > Hamed's second decision (a model grades) ran (section 18.67): 192 replies on the 0.58.1 dump's six bodies, graded blind by six model graders: flawed exact 26/96, budget 0 28/96 (p = 0.87), decode -18.3 %. No sign of harm overall; **watch code**: the C# body is 9/16 flawed with budget 0 against 4/16 exact (p = 0.15, five invented API members against none). The default stays 0 (his decision); a larger C#/TypeScript sample is the way to settle it. Results in `benchmarks/results/quality-blind-0.60.0/` (gitignored).
@@ -8754,6 +8758,28 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.68 The code-only N = 48 check: budget 0 invents C# API members — 2026-10-05 (0.60.2)
+
+Hamed: "go, run the code-only N=48 check", then "grade it when done".
+
+**Method.** §18.67's instrument and dump, bodies 4 (the C# JSON/CSV importer) and 5 (the TypeScript version) only, 48 samples per arm per body (the first 16 per cell are §18.67's, the next 32 generated now with the same seeds rule, `1000 x body + j`), exact against budget 0, 48 GiB, one process per body, 1,500 new tokens, temperature 0.7. 192 replies shuffled, written to an arm-free sheet, split into four halves of 48 (two per body) and graded by four separate model graders (opus subagents, each reading only its half, with the §18.60 rubric adapted for code: invented or nonexistent API members and other wrong code are flaws, a missing `using` is not, a cut reply is not); the key was opened after all four wrote their grades. The run ran detached (`nohup`, a background command is stopped at two hours) in about 7 hours.
+
+**Result.**
+
+| body | exact flawed | budget 0 flawed | Fisher p |
+|---|---|---|---|
+| 4 C# | 11/48 | 26/48 | 0.003 |
+| 5 TypeScript | 9/48 | 8/48 | 1.000 |
+| both | 20/96 | 34/96 | 0.036 |
+
+Flaw tags: C# exact wrong-code 10, invented 1; C# budget 0 invented **15**, wrong-code 8, unsupported-claim 3; TypeScript exact unsupported-claim 7, wrong-code 2; budget 0 unsupported-claim 5, wrong-code 3. The 32 new C# samples per arm alone: 18/32 against 6/32. Decode 138.3 -> 103.5 ms a token (-25 %). `dotnet build` of the bare snippet: 7/48 exact, 10/48 budget 0.
+
+**Reading.** §18.67's N = 16 read (9/16 against 4/16, p = 0.15) was the same effect at a quarter of the size. Budget 0 makes the model invent library members in C# (APIs that do not exist) more than three times as often as exact, a failure a dropped expert plausibly causes in precise, API-heavy code; it does not show in TypeScript, prose, tool calls or short replies (§18.60-18.67), so the cost is specific to this kind of output. Caveats: one prompt per body, model graders reading code without compiling it (a lenient or strict grader moves a half equally in both arms, the sheet is arm-free; the tags agree across the four graders: invented dominates only the budget-0 C# replies), text-only. The speed (-25 % on long replies) is real, so this is a speed-for-code-quality trade, not a bug.
+
+**Not changed.** `serve.sh` still defaults to budget 0 (Hamed's decision of 2026-10-05, made on §18.58-18.67's earlier evidence). **Options for Hamed:** (a) keep 0 and treat code answers as less reliable, (b) `CACHALOT_DECODE_MISS_BUDGET=off ./serve.sh` as the default again (exact, 8.0 tok/s at 22k), (c) budget 1 (-6 % a token, a cap not a drop-all; untested on code: a 48-per-arm C# run, ~2 hours per arm pair) or a per-request switch (code requests exact; needs a way to tell code from chat, not built).
+
+**Shipped.** Results and this section; no runtime change. **Open:** Hamed's choice among (a)-(c); budget 1 on C#; the live checks of 0.59.0's pin and 0.60.0's date reuse; job 3 (short side requests). Results: `benchmarks/results/quality-blind-0.60.1-code/` (gitignored).
 
 ### 18.67 The model-graded N = 16 quality check of budget 0 — 2026-10-05 (0.60.1)
 

@@ -293,6 +293,8 @@ The same configuration as a benchmark, with a colder working set than a conversa
 token (5.90 tok/s)** at an 83.5 % hit rate, reading 627 MiB per token, drive busy 55 % of decode,
 reproducible to ±0.3 %.
 
+**0.60.2 (2026-10-05): the code-only check found a cost.** With the decode miss budget 0 (the `serve.sh` default), C# replies were flawed 26/48 against 11/48 exact (p = 0.003), mostly invented API members (15 against 1); TypeScript showed none (8/48 against 9/48). Decode -25 %. Graded blind by four model graders. The default is Hamed's call; HANDOFF section 18.68 lists the options.
+
 **0.60.1 (2026-10-05): the model-graded quality check of the new default.** 192 replies on the six bodies of the 0.58.1 Hermes dump, graded blind by six model graders: flawed 26/96 exact against 28/96 with the decode miss budget 0 (Fisher p = 0.87), decode -18 % a token; the C# body leans worse with the budget (9 against 4 flawed, 5 invented API members against none, p = 0.15) and the `ls` summary leans better (7 against 12): no significant difference at n = 16. HANDOFF section 18.67.
 
 **0.60.0 (2026-10-05): DeepSeek decode drops misses by default, and a new day reuses the system block.** `serve.sh` now sets the decode miss budget to 0 (about -22 to -27 % a token; `CACHALOT_DECODE_MISS_BUDGET=off` is the exact path), and an agent's date line in the system prompt shows a date up to 7 days old so the first message of a day reuses the saved block instead of prefilling it for ~227 s (`CACHALOT_SYSTEM_DATE_REUSE=0` turns that off). Both change what the model sees or computes, at Hamed's decision. HANDOFF section 18.66.
