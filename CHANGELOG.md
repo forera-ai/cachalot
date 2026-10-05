@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.60.3 (2026-10-05)
+
+HANDOFF "Start here (2026-10-05, 0.60.3)" and section 18.69. Documentation only, no runtime change: the research-direction charter (`docs/RESEARCH-DIRECTION.md`), the README direction section and the prompt amendment, released together as the charter's own section 9 (question 5) recommends.
+
+### Added
+- `docs/RESEARCH-DIRECTION.md`: Cachalot as a measurement-driven inference systems laboratory. The inventory of instruments and results the repository already has (section 3), the gaps against the direction (G1-G14), the anatomy of one token and its definitions (section 4), the programme L0-L7 (run manifest and scorecard, constants and bottleneck ledger, per-token critical-path trace, sweeps as curves, predictive model and what-ifs, energy, architecture comparison, seams), the workload classes W1-W7, the experiment record, twelve added rules and how they combine with the standing ones. Hamed's decisions of 2026-10-05 are in its section 9: the lab is the method for every lane and the order "Hermes, vision, speed" stands; he runs `sudo powermetrics` himself for energy arms; questions 3-6 stay open. The charter was written against 0.60.1 and does not yet carry 0.60.2's finding that the budget-0 default invents C# API members (HANDOFF 18.68); that result belongs in its ledger (L1) and workload class W4.
+- README: a short "Research direction" paragraph in the roadmap section.
+
 ## 0.60.2 (2026-10-05)
 
 HANDOFF "Start here (2026-10-05, 0.60.2)" and section 18.68. Measurement only, no runtime change: the code-only N = 48 blind check of the decode miss budget (the `serve.sh` default since 0.60.0). **It found a quality cost on C#.**

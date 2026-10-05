@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-05, 0.60.3): the research-direction charter
+>
+> `docs/RESEARCH-DIRECTION.md` (section 18.69) is the written direction Hamed gave: the lab is the method for every lane, the lane order "Hermes, vision, speed" and the model priority stand, output-changing defaults stay his, energy arms are run by him with `sudo powermetrics`. Its first work (no machine needed) is L1, the constants and bottleneck ledger, then L0, the manifest and scorecard schema. **Put 0.60.2's result in it:** the budget-0 default invents C# API members (§18.68). The open budget decision is still Hamed's.
+>
 > ## Start here (2026-10-05, 0.60.2): the budget-0 default costs C# quality
 >
 > The code-only N = 48 check (section 18.68) contradicts 0.60.1's "no sign of harm": **C# flawed 26/48 with budget 0 against 11/48 exact (p = 0.003)**, 15 invented API members against 1; TypeScript equal (8/48 against 9/48); decode -25 %. `serve.sh` still defaults to budget 0 (Hamed's 2026-10-05 decision), so **tell Hamed first** and let him choose: keep 0 (fast, worse at precise code), `off` (exact), or budget 1 (about -6 % a token, never tested on code). `CACHALOT_DECODE_MISS_BUDGET=off ./serve.sh` is the exact path.
@@ -8758,6 +8762,12 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.69 The research-direction charter released — 2026-10-05 (0.60.3)
+
+Hamed asked for the results published, the next session's docs and prompts prepared, and a release round for any awaiting files. One file was waiting: `docs/RESEARCH-DIRECTION.md` (untracked, 53 KB, written by another session on Hamed's long-term direction prompt, against runtime 0.60.1). It was read in full before release; it adds no measurement and changes no code, default or priority. Content: the amended mission, the inventory of existing instruments and results, gaps G1-G14 (no per-token critical-path trace in the server, no energy measurement, no run manifest, no scorecard schema, no standing sweeps, a predictive model that covers one term, single-flight server, predictions not on file, no fixed workload set, stale constants), the anatomy of a token, the programme L0-L7, the scorecard, workload classes W1-W7 (the default ones marked: short decode, cold prefill, code generation, repeated-prefix agent), the experiment record, twelve added rules, and Hamed's decisions of 2026-10-05 (the lab is the method for every lane; he runs `sudo powermetrics`; questions 3-6 open: output format, throttled storage, release shape, batching).
+
+**Shipped.** The charter, a README paragraph, a prompt amendment and this release (patch, documentation only). **How it meets this session's work:** 0.60.2's C# finding is exactly a W4 result that a default-on decision must clear (rule 9: a lever tuned on one class is checked on the default classes before it becomes a default); 0.59.0's pin and 0.60.0's date reuse are W6 levers with predictions on paper and no live result yet. **Open:** the budget decision (§18.68), the charter's questions 3-6, the live checks of 0.59.0 and 0.60.0. **First work from the charter:** L1 (the ledger) then L0 (the schema), both without the machine.
 
 ### 18.68 The code-only N = 48 check: budget 0 invents C# API members — 2026-10-05 (0.60.2)
 

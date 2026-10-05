@@ -447,6 +447,8 @@ changing the cache policy or budget.
 Ordered by measured size in a token, not by expected difficulty. The full ranking, with what closed each
 line, is `docs/HANDOFF.md` section 9.25.
 
+**Research direction (2026-10-05).** Cachalot is now also run as a measurement-driven inference systems laboratory: every non-trivial lever gets a prediction written before the build, a measurement after it, and an explanation of any gap; the per-token critical path, curves with their knees, a validated predictive model, energy and a cross-architecture comparison are the standing goals. The charter, the inventory of what the repository already measures and the programme (tracks L0 to L7) are in `docs/RESEARCH-DIRECTION.md`; it changes no default and no priority.
+
 **Current speed plan (2026-10-03).** Model priority: DeepSeek-V4.1-Flash, then MiniMax-M3, then GLM-5.3-Flash. DeepSeek's 2-bit bank is on the internal SSD again (GLM moved to the external drive). The plan, in that order: re-measure DeepSeek on a settled
 machine; give it the GPU-side expert selection MiniMax already has; miss substitution; DSpark speculation with a decode-shaped verify; expert pruning as a router mask; then the same ideas for MiniMax and GLM, each measured against quality first.
 See `docs/SPEED-RESEARCH-2026-10-03.md`.
