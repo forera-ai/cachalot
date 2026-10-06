@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-07, 0.61.2): the first live Hermes session on 0.61.1
+>
+> Section 18.79. Hamed's session (eight requests, dump and log in `benchmarks/results/hermes-live-0.61.1/`): decode 9.8-10.7 tok/s at 22-27k context, first request a cold 212 s prefill (expected: no earlier date or pin existed). **Both live checks pass on a server-path replay: a new day's date line reuses 22,407 of 22,411 tokens (0.95 s against 212 s), a changed provider reuses the 4,096 pin (saves ~26 s).** A prefill of under ~70 tokens costs 1.8-3.8 s: a ~1.5 s fixed cost a chunk. Answers: image transcription exact, story and listing fine (one miscount), **the C# importer does not compile** (`ClassMap.Map(Type, string)`; one error) and its `StreamJson` is not streaming. One sample cannot say whether budget 0 caused it; the dumped body can be replayed N times per arm with `dotnet build` as the grader (not run).
+>
 > ## Start here (2026-10-06, 0.61.1): prefetch on a slow drive depends on its precision
 >
 > Section 18.78. **GLM-5.3-Flash on the X10Pro is measured: 1.52 s a token (0.66 tok/s), 86 misses a token, 91 % of decode waiting on a drive running at 0.95 GB/s.** Its K = 5 prefetch, unlike DeepSeek's, roughly breaks even there: off is -4.4 % (inside drift, one pair), because 72 % of its predicted loads are used (DeepSeek: 35-40 %). DeepSeek at an emulated 1 GB/s under the shipped budget 0: 281 ms (exact 446); with prediction off too, 76 ms but 78 of 240 expert uses dropped a token (a bound, not a candidate). The 2-bit and FP8 kernels on the read-size curve: at 3 MiB a launch 56 % and 37 % of 819 GB/s (bf16 GEMV 77 %), never above ~72 % / 65 %. GLM's and MiniMax's `/v1/stats` now carry the store counters. No default changed.
@@ -8798,6 +8802,38 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.79 The first live Hermes session on 0.61.1: the pin and the date reuse checked, short prefills, and the answers read — 2026-10-07 (0.61.2)
+
+Prompt v122 first job, item 1. Hamed ran `./serve.sh` with `CACHALOT_SERVER_DUMP` (budget 0, 48 GiB, 22.4k-token Hermes block; model `deepseek-v4.1-flash`, provider `custom`, temperature 0.7, `reasoning_effort` none) through eight requests: "Hi", a Desktop listing with `search_files`, a 200-word story, a C# importer, an image transcription (tool call, then answer), and the same importer in TypeScript. Files: `benchmarks/results/hermes-live-0.61.1/` (`requests.jsonl`, `server.log`, `hermes-session-export.json`, the two code replies, `replay_pin_date.py`, `replay-server.log`).
+
+**Speed (measured, W6).** Decode 9.8-10.7 tok/s at 22-27k context (miss/tok 9-17, hit 92-96 %, mean read 2.0-2.5 ms), against §18.59's 108.7 ms (9.2 tok/s) at 22k: no regression. The first request prefilled 22,411 tokens cold in 212 s (106 tok/s); every follow-up reused 22,420-27,410 tokens. A tool result of 2,891 tokens prefilled at 98 tok/s (29.5 s); the image turn needed 8.3 s. No stalls, memory pressure normal (the wired governor moved 5,115-5,178 slots, as designed).
+
+**The two live checks (0.59.0 pin, 0.60.0 date reuse).** The first request reused nothing, and that was expected: `system-dates.json` was created by this very session (00:47:40, one date), so there was no earlier date to show, and the two pin files (4,096 and 8,192 tokens, written 00:48 and 00:49) did not exist yet, because every earlier session ran before 0.59.0 or wrote none. Both mechanisms were then checked with server-path replays of the first dumped body, one request each (`replay_pin_date.py`, a fresh `./serve.sh`, max 1 token):
+
+| request | reused | prefill | log line |
+|---|---|---|---|
+| A: date line moved to Thursday, October 08 | **22,407 of 22,411** | **0.95 s** (against 212 s cold) | `system date: showing Wednesday, October 07, 2026 for Thursday, October 08, 2026` |
+| B: A plus `Provider: custom:cachalot` (a token at ~6.2k) | **4,096** (the pin) | 186.1 s for the other 18,318 tokens (98 tok/s) | the same line |
+
+Both mechanisms work live. The pin saves about 26 s of the 212 (priced at ~41 s: the prefill speed of that arm was a little higher than the cold 106 tok/s, which also moves the baseline). The date reuse needs one session to anchor: today's block carries October 07 and will be reused until October 14 for the same configuration.
+
+**Short side requests (DS-PREFILL-SHORT, measured, not explained).** Prefill seconds against tokens, all with 22-27k reused: 18 tokens 2.10 s, 19 tokens 1.80 s, 34 tokens 2.46 s, 69 tokens 3.76 s, 246 tokens (image) 8.34 s, 579 tokens 12.73 s, 2,891 tokens 29.48 s. A chunk of under ~70 tokens costs 1.8-3.8 s (about 10-18 tokens a second); the marginal cost falls with size (39 ms a token from 19 to 69 tokens, 18 from 69 to 579, 7 from 579 to 2,891). So a short prefill is dominated by a fixed cost of roughly 1.5 s a chunk, not by its tokens, consistent with §18.63's 25-45 tok/s at 200-400 tokens. What the fixed cost is (expert reads for a chunk that routes to many layers' experts, host syncs, attention over the 22k cache) is not isolated; a per-chunk trace would split it.
+
+**Quality of the answers (read, with a build and a transcription check; one sample each, budget 0 on).**
+
+| turn | verdict |
+|---|---|
+| "Hi" | fine |
+| Desktop listing | the tool call is valid and the answer follows the result; one count is off ("~25 screenshots": the 100 visible entries hold 37), and the items are the paths of a recursive, truncated search presented as top-level entries |
+| 200-word story | coherent, 190 words |
+| C# importer | **does not compile**: `Map(typeof(T), property)` with a `string` (CsvHelper's `ClassMap.Map(Type, MemberInfo)` takes a `MemberInfo`; `dotnet build`, net9.0, CsvHelper 33.1.0, one error CS1503). Everything else builds. `StreamJson` is described as streaming but calls `JsonSerializer.Deserialize<IEnumerable<JsonElement>>`, which materialises the array (`DeserializeAsyncEnumerable` is the streaming API) |
+| image transcription | **exact**: the label, the typed `1227`, all five addresses with their cities, the highlighted row, the disabled Continue button (checked against the image file) |
+| TypeScript importer | reads correct and idiomatic (`stream-json`, `stream-chain`); not compiled (no `tsc` installed) |
+
+The C# defect is the kind §18.68 counted (an API member that does not exist). One sample cannot place it: on this body's kind of task the evidence is split (26/48 against 11/48 flawed in §18.68, 13/48 against 10/48 in §18.72, 2/48 against 2/48 in §18.74). The dump holds the exact request (`requests.jsonl`, the fifth body), so the question can now be asked with an objective grader: replay it N times per arm (exact against budget 0) and count `dotnet build` failures. Not run; ~45 minutes of machine.
+
+**Kind.** Engineering plus verification (the two live checks, which had predictions on paper in §18.65 and §18.66, held). **No default changed.** **Open:** the C# replay above (Hamed's call whether it is worth the machine time); what the ~1.5 s fixed prefill cost is.
 
 ### 18.78 Prefetch on a slow drive: GLM on the X10Pro, DeepSeek at 1 GB/s under budget 0, and quantized kernels on the read-size curve — 2026-10-06 (0.61.1)
 

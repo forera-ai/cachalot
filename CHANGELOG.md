@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.61.2 (2026-10-07)
+
+HANDOFF "Start here (2026-10-07, 0.61.2)" and section 18.79. Measurement and documentation only; no code, default or output changed.
+
+### Measured
+- First live Hermes session on 0.61.1 (budget 0, 48 GiB, 22.4k-token system block, eight requests): decode 9.8-10.7 tok/s at 22-27k context, miss/tok 9-17; the first request was a cold 212 s prefill, as expected (no earlier date or pin existed).
+- Server-path replays of the dumped body: **a new day's date line reuses 22,407 of 22,411 tokens (0.95 s against 212 s cold)**, and a changed provider string reuses the 4,096-token pin (saves ~26 s). Both 0.59.0 and 0.60.0 mechanisms work live.
+- A prefill of under ~70 tokens costs 1.8-3.8 s whatever its size (a ~1.5 s fixed cost a chunk); 579 tokens 12.7 s, 2,891 tokens 29.5 s.
+- Answers read: image transcription exact; the C# importer snippet does not compile (`ClassMap.Map(Type, string)`, one CS1503 under CsvHelper 33.1.0) and its "streaming" method materialises the array. One sample; whether budget 0 caused it is open (a replay with `dotnet build` as the grader was priced, not run).
+
+### Changed
+- `docs/LEDGER.md`: DS-PIN-4096 and the new DS-DATE-REUSE and DS-LIVE-0.61.1 measured; DS-PREFILL-SHORT carries its curve.
+
 ## 0.61.1 (2026-10-06)
 
 HANDOFF "Start here (2026-10-06, 0.61.1)" and section 18.78. Measurement, one additive stats change; no default changed, outputs unchanged.
