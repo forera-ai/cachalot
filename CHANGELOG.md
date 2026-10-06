@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.61.0 (2026-10-06)
+
+HANDOFF "Start here (2026-10-06, 0.61.0)" and section 18.77. The first storage-bandwidth curve (research charter L3 item 2). No default changed; outputs unchanged.
+
+### Added
+- `CACHALOT_READ_THROTTLE_GBPS=B` (off by default; unset, empty or 0 = off): emulates a slower expert drive for sweeps. Every expert read the drive served (slower than 1 ms; page-cache hits pass free) occupies one shared pipe of B GB/s and is held until its bytes would have crossed it, so concurrent reads queue as on a queue-depth-one USB drive. Timing only, bit-identical outputs. `src/cachalot/storage/reader.py`, tests in `tests/test_reader_throttle.py`.
+
+### Measured
+- DeepSeek, exact path, 48 GiB, 12 mixed prompts x 120 greedy tokens (W1), one fresh `serve.sh` per arm: **118.6 ms a token on the internal SSD, 139.3 at 4 GB/s, 227.4 at 2, 445.7 at 1, 390.1 on the real X10Pro** (the emulation is within 13 % of the drive it imitates). Misses a token are 23.5 in every arm; the all-resident token stays 77-88 ms.
+- Below ~2.6 GB/s the token is the drive's time to move every read, `token ~ 453 MB / B` (1 % off at 1 and 2 GB/s), not `80 + misses x cost(B)` (which predicted 318-327 ms at 1 GB/s): 45.6 expert reads a token, of which ~18.6 are speculative loads that are never used (185 MB a token).
+- Decode prediction off (`CACHALOT_PREDICT_TOPK=0`) on a 1 GB/s drive: **367.7 against 445.7 ms (-17.5 %) emulated, 345.6 against 390.1 ms (-11.4 %) on the X10Pro**. On the internal SSD prediction nets ~1 ms (section 18.76), so the right prefetch depends on the drive's bandwidth.
+
+### Changed
+- `docs/LEDGER.md`: ST-BW-CURVE, DS-PRED-USB and ST-THROTTLE-VALID added; ST-X10's effective rate (~1.15 GB/s on this workload) recorded.
+
 ## 0.60.10 (2026-10-06)
 
 HANDOFF "Start here (2026-10-06, 0.60.10)" and section 18.76. Measurement only, no change to inference.

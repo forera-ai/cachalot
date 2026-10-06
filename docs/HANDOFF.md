@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-06, 0.61.0): storage bandwidth against the token
+>
+> Section 18.77. New off-by-default `CACHALOT_READ_THROTTLE_GBPS` (an emulated slower expert drive, validated against the X10Pro within 13 %). DeepSeek, exact, 48 GiB, mixed W1: **118.6 ms internal, 139.3 at 4 GB/s, 227.4 at 2, 445.7 at 1, 390.1 on the real X10Pro**; below ~2.6 GB/s the token is `453 MB / B` (every read, 41 % of them unused speculative loads), not `80 + misses x cost`. **Prediction off is -17.5 % (emulated) and -11.4 % (X10Pro) at 1 GB/s**, against a ~1 ms win on the internal SSD. No default changed. Next: GLM (on the X10Pro) with its prefetch off, one pair of arms.
+>
 > ## Start here (2026-10-06, 0.60.10): the server floor is 80 ms; 70 was a fit intercept
 >
 > Section 18.76. Same-day server arms at 48 GiB: the all-resident token through `serve.sh` is **79.2-80.3 ms** (in-process 75-77); the mixed-prompt fit gave intercepts of 93.4 and 73.4 on the same workload, so **DS-FLOOR-48's 70 ms is contradicted** and the model is `token = 80 + 2.0 x misses`. Prediction costs ~5 ms of an all-resident token and nets ~1 ms on tokens with misses. Under budget 0, 26.4 % of decode layers route to a predicted load still in flight, so GPU-side selection (D3) prices at +1 to +11 ms (central ~7): still held. New `benchmarks/micro_read_size_roofline.py`: a batch-1 GEMV reaches 47 / 71 / 87 % of 819 GB/s at 2 / 4 / 16 MiB a launch.
@@ -8790,6 +8794,38 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.77 Storage bandwidth against the DeepSeek token: an emulated-drive knob, the curve, and prefetch on slow storage — 2026-10-06 (0.61.0)
+
+Prompt v120, first job item 2 (autonomous; Hamed away, "run throttling test in the mean time"). Charter L3 item 2; Hamed allowed throttled-storage sweeps (charter question 4). Machine: sysctl 88064, X10Pro mounted, no screensaver, pressure 1, swap flat at 274 MB in every arm.
+
+**Instrument.** `CACHALOT_READ_THROTTLE_GBPS=B` (new, off by default) in `ExpertReader.read_expert_into`: a read the drive served (one that took over 1 ms; a page-cache hit passes free, as it would on a real slower drive; Jev chose this rule over charging every byte at 0.76) occupies one process-wide pipe of B GB/s and is held until its bytes would have crossed it, so concurrent reads queue as on a queue-depth-one drive. It changes timing only. Three unit tests (`tests/test_reader_throttle.py`).
+
+**Record.** Fields 1-3 were written before the first arm: `benchmarks/results/throttle-sweep-0.61.0/RECORD-before.md` (baseline, hypotheses H1 per-miss and H2 pipe-bound, predictions P3-P5 with falsifiers), plus an addendum before the seventh arm. Every arm: a fresh `./serve.sh` under `guarded_run.sh --budget-gib 48 --force` (peak wired 69.6-72.1 GiB), `CACHALOT_DECODE_MISS_BUDGET=off` (exact; budget 0 drops the misses this curve is about), `CACHALOT_SNAPSHOT_DIR=`, page cache on as shipped, a manifest from `run_manifest.py`, a quiet gate (5-minute load under 2.5, now really the 5-minute field) and `settle.sh` between arms. Driver: §18.76's unchanged (warm-up, floor prompt x3, 12 mixed prompts, floor x2; greedy, 120 tokens). Arms ran 17:12-19:28; one quiet-gate wait of ~27 minutes (18:02-18:30) while the machine was busy. Scorecard rows in `scorecard.jsonl`, per-arm numbers in `summary.txt` (`summarize.py`, `scorecard.py`). Workload class W1 only.
+
+**Result.**
+
+| arm | drive | mixed ms a token | all-resident (repeats 1-2) | expert reads a token | mean read |
+|---|---|---|---|---|---|
+| INT | internal SSD (~6.8 GB/s) | **118.6** | 78.8, 77.0 | 45.6 | 2.7 ms |
+| T4 | throttled 4 GB/s | **139.3** | 77.5, 76.3 | 45.6 | 3.8 ms |
+| T2 | throttled 2 GB/s | **227.4** | 89.3, 86.9 | 45.6 | 8.0 ms |
+| T1 | throttled 1 GB/s | **445.7** | 78.4, 76.7 | 45.5 | 19.0 ms |
+| USB | the X10Pro bank copy (real, 1.0 GB/s wall) | **390.1** | 90.0, 78.3 | 45.6 | 17.3 ms |
+| T1P0 | throttled 1 GB/s, `CACHALOT_PREDICT_TOPK=0` | **367.7** | 79.7, 80.2 | 26.9 | 14.7 ms |
+| USBP0 | X10Pro, `CACHALOT_PREDICT_TOPK=0` | **345.6** | 77.9, 80.3 | 26.9 | 16.6 ms |
+
+Misses a token were 23.5 in every arm (routing is greedy and identical); predicted loads 28.8 a token, 10.2 used (35 %). Reads a token are whole-run counts (prefill included) over tokens generated; 45.6 x 9.95 MB = 453 MB a token.
+
+**Against the predictions.** H1 (`80 + 23.5 x c(B)`, 327 ms at 1 GB/s): **falsified**, T1 445.7 > 400. H2 (pipe-bound, 450-600 ms at 1 GB/s): **held**, at its lower edge; with the measured 453 MB a token the bound is 453 / 227 / 113 ms at 1 / 2 / 4 GB/s against 445.7 / 227.4 / 139.3 measured. P3 (prediction off at 1 GB/s 330-420 ms, at least 10 % faster): **held**, 367.7 (-17.5 %). P4 (the real X10Pro within +-15 % of T1): **held**, -12.5 %: the drive delivers ~1.15 GB/s on this workload and the emulated serial pipe is slightly pessimistic. P5 (all-resident 78-84 ms in every arm, falsified above 90 in T1): **held** in T1 (77-79); T2 and USB read 87-90 on a repeat (the slower prompt's speculative loads; inside the falsifier). Addendum prediction (USBP0 300-350 ms, at least 8 % faster than USB): **held**, 345.6 (-11.4 %).
+
+**Model.** `token = max(78 + 23.5 x (1.73 + 9.95 x (1/B - 1/6.8)), 453 MB / B)` with today's INT arm setting 1.73 ms a miss: 118.7 / 142.7 / 227 / 453 ms against 118.6 / 139.3 / 227.4 / 445.7 measured (within 3 %). The two terms cross at **~2.6 GB/s**: above it the token is the floor plus exposed misses (DS-MISS-48's world), below it the drive is busy for the whole token and every byte it moves, used or not, is on the critical path. Marginal value of expert-drive bandwidth on this workload: ~219 ms a token per GB/s between 1 and 2 GB/s, ~44 between 2 and 4, ~7 between 4 and 6.8 (derived from the points).
+
+**Explanation (field 5).** At 1 GB/s a token needs ~453 ms of drive time and has ~80 ms of compute; nothing hides that. 41 % of those bytes (18.6 loads, 185 MB a token) are speculative loads never used, and on one pipe they queue ahead of the demand misses, so the prefetch that nets ~1 ms on the internal SSD (DS-PRED-AB, §18.76) costs 11-18 % at 1 GB/s. Without prediction the 1 GB/s token (346-368 ms) is above the per-miss model (318) because the 23.5 demand misses of a token now arrive layer by layer with nothing read ahead. **Generalization (field 6):** a general systems principle with a measured instance: speculative reads are free only while the device has idle time; once the device is the bottleneck their waste is paid in full, so prefetch depth should depend on the device's bandwidth (architecture-relevant inputs: 9.95 MB experts, 35 % prediction precision, 45 reads a token). **Bottleneck after (field 7):** unchanged on the shipped configuration (internal SSD, the floor plus misses); on a drive under ~2.6 GB/s, the drive. **Kind (field 8):** research (predicted, measured, H1 falsified and explained).
+
+**Not shipped, and why.** No default changed. A bandwidth-aware prefetch (prediction off, or a smaller top-K, when the expert bank is on the X10Pro) would be -11 % on DeepSeek's USB fallback, which `serve.sh` uses only when no verified internal bank exists (one does). It changes no output (prediction only decides what is read early), so it is not Hamed's quality call, but the shipped path never takes it today, and GLM (on the X10Pro, prefetch K = 5 tuned on the internal drive, GLM-PRED) is the model it would matter for; that needs its own arm.
+
+**Ledger.** New ST-X10-EFF, ST-THROTTLE-VALID, ST-BW-CURVE, DS-PRED-USB; open question 6 (prefetch depth against bandwidth). **Open.** GLM on the X10Pro with `CACHALOT_GLM_PREDICT_TOPK=0` against its K = 5 (one pair of arms, W1); a top-K sweep at 1-2 GB/s to find where prediction turns; the same curve under budget 0 (the shipped decode drops misses, so its curve should be flatter; one arm at 1 GB/s would say); W2/W6 (longer context) unmeasured. **Needs Hamed:** nothing for these; the live Hermes checks (v120 item 1) still need his session.
 
 ### 18.76 The server floor measured the same day: 70 ms was a fit intercept; D3 under budget 0 priced; the read-size curve — 2026-10-06 (0.60.10)
 

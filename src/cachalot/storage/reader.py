@@ -4,7 +4,8 @@ import fcntl
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from threading import RLock
+from threading import Lock, RLock
+from time import perf_counter, sleep
 
 from cachalot.storage.index import ExpertEntry, merge_contiguous_ranges
 
@@ -13,6 +14,30 @@ from cachalot.storage.index import ExpertEntry, merge_contiguous_ranges
 # each reader's own setting, 0 reads through the page cache, 1 bypasses it (F_NOCACHE). Descriptors are cached
 # per (path, bypass), so both settings can alternate token by token.
 BYPASS_OVERRIDE = -1
+
+# Emulated slower drive for storage-bandwidth sweeps (research charter L3 item 2), off by default.
+# CACHALOT_READ_THROTTLE_GBPS=B makes every expert read that the drive served (one slower than
+# READ_THROTTLE_FAST_SECONDS; page-cache hits pass free, as they would on a real slower drive) occupy a
+# single shared pipe of B GB/s: the read is held until nbytes / B seconds have passed on that pipe, so
+# concurrent reads queue behind one another the way they do on the X10Pro's queue depth of one.
+READ_THROTTLE_BPS = float(os.environ.get("CACHALOT_READ_THROTTLE_GBPS", "0") or 0) * 1e9
+READ_THROTTLE_FAST_SECONDS = 0.001
+_throttle_lock = Lock()
+_throttle_free_at = 0.0
+
+
+def _throttle(nbytes: int, started: float) -> None:
+    """Hold a finished drive read until the emulated pipe would have delivered it."""
+    global _throttle_free_at
+    if perf_counter() - started < READ_THROTTLE_FAST_SECONDS:
+        return
+    with _throttle_lock:
+        begin = max(started, _throttle_free_at)
+        _throttle_free_at = begin + nbytes / READ_THROTTLE_BPS
+        done_at = _throttle_free_at
+    wait = done_at - perf_counter()
+    if wait > 0:
+        sleep(wait)
 
 
 @dataclass(frozen=True)
@@ -164,6 +189,18 @@ class ExpertReader:
         one per tensor short name ("w1.weight", ...). Contiguous tensors
         are gathered with a single preadv. Returns bytes read.
         """
+        if READ_THROTTLE_BPS > 0:
+            started = perf_counter()
+            total = self._read_expert_into(entry, views)
+            _throttle(total, started)
+            return total
+        return self._read_expert_into(entry, views)
+
+    def _read_expert_into(
+        self,
+        entry: ExpertEntry,
+        views: dict[str, memoryview | bytearray | object],
+    ) -> int:
         total = 0
 
         ranges = merge_contiguous_ranges(entry)
