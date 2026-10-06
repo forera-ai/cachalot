@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-06, 0.61.1): prefetch on a slow drive depends on its precision
+>
+> Section 18.78. **GLM-5.3-Flash on the X10Pro is measured: 1.52 s a token (0.66 tok/s), 86 misses a token, 91 % of decode waiting on a drive running at 0.95 GB/s.** Its K = 5 prefetch, unlike DeepSeek's, roughly breaks even there: off is -4.4 % (inside drift, one pair), because 72 % of its predicted loads are used (DeepSeek: 35-40 %). DeepSeek at an emulated 1 GB/s under the shipped budget 0: 281 ms (exact 446); with prediction off too, 76 ms but 78 of 240 expert uses dropped a token (a bound, not a candidate). The 2-bit and FP8 kernels on the read-size curve: at 3 MiB a launch 56 % and 37 % of 819 GB/s (bf16 GEMV 77 %), never above ~72 % / 65 %. GLM's and MiniMax's `/v1/stats` now carry the store counters. No default changed.
+>
 > ## Start here (2026-10-06, 0.61.0): storage bandwidth against the token
 >
 > Section 18.77. New off-by-default `CACHALOT_READ_THROTTLE_GBPS` (an emulated slower expert drive, validated against the X10Pro within 13 %). DeepSeek, exact, 48 GiB, mixed W1: **118.6 ms internal, 139.3 at 4 GB/s, 227.4 at 2, 445.7 at 1, 390.1 on the real X10Pro**; below ~2.6 GB/s the token is `453 MB / B` (every read, 41 % of them unused speculative loads), not `80 + misses x cost`. **Prediction off is -17.5 % (emulated) and -11.4 % (X10Pro) at 1 GB/s**, against a ~1 ms win on the internal SSD. No default changed. Next: GLM (on the X10Pro) with its prefetch off, one pair of arms.
@@ -8794,6 +8798,55 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.78 Prefetch on a slow drive: GLM on the X10Pro, DeepSeek at 1 GB/s under budget 0, and quantized kernels on the read-size curve — 2026-10-06 (0.61.1)
+
+Prompt v121, first job items 2 and 3 (item 1, the live Hermes checks, needs Hamed). Hamed was away; the machine was free (no runtime, Hermes Desktop not running, sysctl 88064, X10Pro mounted).
+
+**Record.** Fields 1-3 were written before the first arm: `benchmarks/results/prefetch-slow-drive-0.61.1/RECORD-before.md` (baseline, predictions G1-G3 with intervals and falsifiers, intervention). Every arm: a fresh server under `guarded_run.sh --force`, quiet gate before it (5-minute load under 2.5, no runtime or `dotnet`), `settle.sh` after it, nothing preloaded (snapshot directories empty), page cache on as shipped, a manifest from `run_manifest.py` (`ecb7d5b3...` GU5, `cf280c8a...` GU0, `5ed4eeb9...` D1B0, `7101d100...` D1B0P0), and the 0.60.10 driver's prompts (warm-up, one greedy prompt three times, twelve mixed prompts, the first prompt twice more; 120 greedy tokens each) with `/v1/stats` read before and after the mixed block. Workload class W1 only. Scorecard rows in `scorecard.jsonl`; one line an arm from `summarize.py`. One deviation: `settle.sh` timed out before GU0 (79.8 of the 81 GiB it wants for a 52 GiB budget, pressure 1, no swap growth) and `run-all.sh` does not stop on that; the arm ran 47 minutes later behind the quiet gate.
+
+**Instrument added for it.** GLM's (and MiniMax's, which shares the engine) `/v1/stats` carried only `expert_hit_rate`; it now carries the store's counters under DeepSeek's names: `expert_hits`, `expert_misses`, `predicted_loads`, `predicted_used`, `ssd_bytes_read`, `expert_reads`, `expert_fast_reads`, `expert_read_seconds`, plus `expert_read_busy_seconds`, `decode_wait_seconds`, `decode_waited_misses` (which DeepSeek's does not show). Counters only, no behaviour change; `tests/test_glm_backend.py::test_stats_carry_the_store_counters`. Lab brief `docs/lab/briefs/2026-10-06-runtime-0.61.1.md`.
+
+**GLM-5.3-Flash on the X10Pro, prefetch K = 5 (shipped) against off.** 52 GiB, `./serve-glm.sh`:
+
+| arm | mixed token | misses a token | reads a token | GB a token | predicted a token (used) | decode waiting on reads | drive while reading | repeats of one prompt |
+|---|---|---|---|---|---|---|---|---|
+| GU5, K = 5 | **1,518 ms** (0.66 tok/s) | 86.0 | 120.9 | 1.711 | 48.4 (72 %), 13.4 unused | 91 % | 0.95 GB/s | 1,362-1,431 ms |
+| GU0, `CACHALOT_GLM_PREDICT_TOPK=0` | **1,451 ms** (-4.4 %) | 86.0 | 107.5 | 1.521 (-11 %) | 0 | 91 % | 0.92 GB/s | 1,321-1,391 ms (-3.3 %) |
+
+Counters are the mixed block's deltas over its tokens, prefill reads included. GLM's "floor" repeats are not all-resident: a 120-token reply needs more distinct experts than the 52 GiB budget keeps between repeats (77 misses a token on the second and third pass). Short prompts prefill at ~0.7 tok/s over this drive (365 tokens of the twelve mixed prompts in 517-541 s): on the X10Pro a cold GLM prefill token costs about what a decode token does.
+
+**DeepSeek at 1 GB/s (emulated, `CACHALOT_READ_THROTTLE_GBPS=1`) under the shipped budget 0.** 48 GiB, internal bank, `./serve.sh` (budget 0 as shipped):
+
+| arm | mixed token | awaited (miss/tok) | dropped a token | reads a token | predicted a token (used) | repeats |
+|---|---|---|---|---|---|---|
+| T1, exact (§18.77) | 445.7 ms | 23.5 | 0 | 45.6 | ~29 (~36 %) | 77-88 |
+| D1B0, budget 0 | **281.2 ms** (-37 %) | 12.8 | 17.0 | 39.6 | 32.1 (40 %), 19.3 unused | 128-324 |
+| D1B0P0, budget 0 + `CACHALOT_PREDICT_TOPK=0` | **76.1 ms** | 0 | **78.0** | 4.9 (prefill) | 0 | 74-78 |
+
+**Against the predictions.** G1 (GLM K = 5 mixed token 0.9-1.8 s): **held**, 1.52 s; LEDGER GLM-TOKEN-USB's estimate of ~1.4 s becomes a measurement. G2 (prefetch off 10-30 % faster; falsified under 5 %): **falsified**, -4.4 % on mixed tokens and -3.3 % on repeats, inside process drift (MC-DRIFT, one pair). G3 (DeepSeek budget 0 at 1 GB/s in 120-350 ms, predicted 150-300; budget 0 with prediction off at 80-100 ms, falsified above 110): **held**, 281 and 76 ms (76 is under the interval because prediction itself costs ~5 ms of a resident token, DS-PRED-FLOOR's 72.8-76.8 ms arm).
+
+**Explanation (field 5).** Both models are pipe-bound on a 1 GB/s drive (GLM: 91 % of decode waits on reads, the drive at 0.92-0.95 GB/s while it reads). The difference is precision. DeepSeek's predicted loads are used 35-40 % of the time (top-6 of 384), so ~19 of ~30 loads a token are pure extra bytes on the only pipe and prediction loses 11-18 % (DS-PRED-USB). GLM's top-5 of 288 is used 72 % of the time and its predicted reads wait for the layer's own demand reads (`CACHALOT_GLM_PREDICT_AFTER_DEMAND=1`), so its 13.4 unused loads (190 MB, ~0.19 s of pipe time) are mostly paid back by the 35 used ones that read while the GPU computes: net -4 %, not the -10 to -30 % the record predicted from bytes alone. Under budget 0 DeepSeek waits only for predicted loads a later layer routes to, so its slow-drive token falls from 446 to 281 ms; with prediction off as well decode reads nothing and runs at the resident speed, but it then drops 78 of its 240 routed expert uses a token (32.5 %, against 17 with prediction on and ~16.5 on the internal drive, DS-MB0-HOSTLAYERS): the resident set is frozen at whatever the prefill left. That arm is a timing bound, not a candidate: its quality is unmeasured and almost certainly worse than budget 0's.
+
+**Generalization (field 6).** Architecture-specific, transferable: on a link that is already saturated, speculative loads are only near-free when most of them are used. Two points on one machine: precision 35-40 % costs 11-18 %, 72 % costs ~4 % (within drift). The break-even precision on a 1 GB/s queue-depth-one drive is therefore above ~70 % for these expert sizes (9.5-13.5 MiB) and one-layer lead; a bandwidth-aware prefetch would gate on precision or on the bank's drive, not on K alone. Hardware-specific: the 1 GB/s drive itself. **Bottleneck after (field 7):** unchanged in kind for both: the drive's bandwidth (GLM on the X10Pro; DeepSeek only where its bank sits on a slow drive, which it does not in the shipped configuration). **Kind (field 8):** research (predicted, measured, one prediction falsified and explained).
+
+**No default changed.** GLM's K = 5 stays: -4.4 % for off is inside drift from one pair and GLM is the lowest model priority; a swapped-pair `TF_ALTERNATE` run (the method that tuned K = 5) would settle a few-percent effect. DeepSeek's bank is on the internal SSD, where prediction nets ~1 ms, so nothing changes there either.
+
+**Item 3a, the read-size curve with quantized kernels.** `benchmarks/micro_read_size_roofline.py` has two new arms at the same bytes a launch as the bf16 ones: `q2` (`mx.quantized_matmul`, 2-bit affine group 128, the routed-expert bank's format; packed weights plus bf16 scales and biases counted) and `fp8` (the trunk's `fp8_linear_quantized`, E4M3 uint8 weights plus block scales, activation quantized outside the timing). Share of 819 GB/s, best of 7, no model loaded (`benchmarks/results/read-size-quant-0.61.1/roofline.json`):
+
+| MiB a launch | 1 | 2 | 3 | 4 | 8 | 11 | 16 | 32 | 128 |
+|---|---|---|---|---|---|---|---|---|---|
+| bf16 GEMV | 32 % | 64 % | 77 % | 77 % | 87 % | 86 % | 87 % | 88 % | 90 % |
+| 2-bit qmm | 31 % | 43 % | 56 % | 61 % | 68 % | 70 % | 70 % | 70 % | 72 % |
+| FP8 GEMV | 17 % | 33 % | 37 % | 46 % | 56 % | 58 % | 60 % | 62 % | 65 % |
+
+At a routed expert projection's ~3 MiB the 2-bit kernel alone reaches 56 % (the bf16 GEMV 77 %), and it never passes ~72 % however large the launch: dequantization caps it. In the model the routed experts run at ~29 % (LEDGER DS-FLOOR-SPLIT-0609), so of the gap from the bf16 GEMV's 77 % to 29 %, about 21 points are the 2-bit kernel and about 27 are what the model adds around it (six experts' three projections as separate small launches, the gather, the per-layer sync). The FP8 trunk measured ~45 % in the model and 37-58 % alone at its launch sizes: the FP8 GEMV kernel itself is its limit. For the "2x memory bandwidth" what-if (charter L4(f)) this says the weight-streaming kernels are not bandwidth-bound at decode sizes: the 2-bit and FP8 kernels would gain far less than 2x, and the in-model overhead around the routed experts not at all. LEDGER MC-READ-SIZE-Q.
+
+**Item 3b, skipping prediction on layers whose predicted set is resident: priced and closed on paper.** The prediction's ~5 ms on an all-resident token (DS-PRED-FLOOR) is not spent on layers whose predicted experts are already resident: `ResidentExpertStore.prefetch_decode` skips a resident key before it acquires a slot or submits a read, so such a layer already costs only its share of the fused router (~0.9 ms of GPU for all 40 layers, §18.75) and a short host loop. The 5 ms is the cost of issuing the wrong guesses, predicted experts that are not resident and are then not used (§9.18: `CACHALOT_PREDICT_SUBMIT=0` removes it; 23 such loads a token in a resident replay, DS-SPEC-RESIDENT). Skipping "resident" layers therefore saves ~0. What would save it is fewer unused loads (a confidence gate on the predicted router weight, or the bandwidth-aware prefetch above): not priced, needs a trace with the predicted sets, which `RoutingTracer` does not record.
+
+**Ledger.** GLM-TOKEN-USB measured (1.52 s); new GLM-PRED-USB, GLM-PREFILL-USB, DS-MB0-USB, MC-READ-SIZE-Q; open question 6 answered for GLM.
+
+**Open.** A swapped-pair run of GLM's K (if GLM speed ever matters again); a precision-gated prefetch, priced from a trace that records predicted sets; the live Hermes checks (Hamed). **Needs Hamed:** nothing new.
 
 ### 18.77 Storage bandwidth against the DeepSeek token: an emulated-drive knob, the curve, and prefetch on slow storage — 2026-10-06 (0.61.0)
 

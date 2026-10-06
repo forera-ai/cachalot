@@ -105,3 +105,33 @@ def test_a_snapshot_is_not_changed_by_later_in_place_cache_updates():
     assert mx.all(restored[0][0].keys[..., :3, :] == 1).item()
     assert mx.all(restored[1][0] == 0).item()
     assert restored[0][1].size() == -1  # the projected-cache stand-in survives the round trip
+
+
+def test_stats_carry_the_store_counters():
+    """0.61.1: GLM's and MiniMax's /v1/stats expose the store's counters under DeepSeek's names."""
+    from types import SimpleNamespace
+
+    from cachalot.cache.resident_store import ResidentStoreStats
+    from cachalot.glm.engine import GlmEngine
+
+    counters = ResidentStoreStats(cache_hits=90, cache_misses=10, ssd_bytes_read=4096, ssd_read_seconds=0.5,
+                                  promotion_seconds=0.0, reads=12, fast_reads=2, read_wall_seconds=0.4,
+                                  read_bytes=4096, read_busy_seconds=0.3, decode_wait_seconds=0.2,
+                                  decode_waited_misses=7)
+
+    class Store:
+        predicted_loads = 5
+        predicted_used = 3
+
+        def stats(self):
+            return counters
+
+        def __len__(self):
+            return 42
+
+    model = SimpleNamespace(tokenizer=None, store=Store(), prefix=[])
+    s = GlmEngine(model=model).stats()
+    assert (s["expert_hits"], s["expert_misses"], s["expert_hit_rate"]) == (90, 10, 0.9)
+    assert (s["predicted_loads"], s["predicted_used"], s["resident_experts"]) == (5, 3, 42)
+    assert (s["expert_reads"], s["expert_fast_reads"], s["ssd_bytes_read"]) == (12, 2, 4096)
+    assert (s["decode_wait_seconds"], s["decode_waited_misses"], s["expert_read_busy_seconds"]) == (0.2, 7, 0.3)

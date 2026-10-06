@@ -39,6 +39,7 @@ Architecture: 40 MoE layers x 384 routed experts = 15,360, top-6 (240 expert use
 | DS-PRED-PREC | predicted expert loads that are used | 34 % (prefill + decode), 39-41 % in later runs; 36 % in the 2026-10-03 smoke run | measured | 0.53.0 | int bank | `/v1/stats` counters | §18.52, SPEED-RESEARCH §0 | current | three runs |
 | DS-PRED-AB | value of prediction at 48 GiB | +3 % (inside noise); kept | measured | 0.53.0 | int bank, 48 GiB | `CACHALOT_PREDICT_TOPK=0` arm | §18.52 | current | none |
 | DS-PRED-USB | value of prediction on a 1 GB/s expert drive | **prediction off is faster**: -17.5 % emulated (445.7 to 367.7 ms), -11.4 % on the X10Pro (390.1 to 345.6); reads a token 45.6 to 26.9 (the ~18.6 unused speculative loads, 185 MB a token, queue ahead of demand misses on one pipe) | measured | 0.61.0, 2026-10-06 | 48 GiB, sysctl 88064, exact path | two pairs of fresh `serve.sh` arms, W1 | §18.77 | current, n = 1 a pair | the emulated and the real pair agree in sign |
+| DS-MB0-USB | decode token on a 1 GB/s expert drive under budget 0 (shipped) | **281.2 ms** (exact 445.7, -37 %): 12.8 predicted loads awaited and 17.0 experts dropped a token, 32.1 predicted loads a token (40 % used); with prediction off as well **76.1 ms** but 78.0 of 240 routed uses dropped a token (frozen resident set; quality unmeasured, a bound only) | measured | 0.61.1, 2026-10-06 | int bank throttled to 1 GB/s, 48 GiB, sysctl 88064 | two fresh `serve.sh` arms, W1 | §18.78 | current, n = 1 an arm | none |
 | DS-MB0-STEP | decode step with miss budget 0 | -27 % harness (131 to 95 ms), -22.6 % server at 22k (140.3 to 108.7), -18 % on mixed replies, -25 % on long C# replies | measured | 0.56.1-0.60.2 | int bank, 48 GiB, sysctl 88064 | Pareto harness; per-turn alternation; blind runs | §18.58, §18.59, §18.67, §18.68 | current | four runs |
 | DS-MB1-STEP | decode step with miss budget 1 | -4 % harness (131 to 126 ms); about -6 % topic-shift; **-2.7 % paired [0.967, 0.978] on 1,000-token C# replies at 26k context** (2,112 experts dropped a reply, ~10 % of budget 0's) | measured | 0.56.1-0.60.6 | int bank, 48 GiB, sysctl 88064 | harness; `topic_shift.py`; three-arm blind run, W4 | §18.58, §18.61, §18.72 | current | three runs |
 | DS-FLOOR-SPLIT | the floor's parts (internal-drive era) | trunk GEMV 14.0 ms (5.14 GB at ~367 GB/s), routing prediction 11, 40 router `mx.eval` round trips 9-12, routed experts 6.9, compressor/indexer 5.5, `wo_a` 4.3, hyper-connection glue 4.2, head/Engram/router 3.2, sparse attention 2.6, Engram reads 1.9; 56 ms inside `mx.eval`, 21.5 ms CPU outside | measured | 0.9.x, 2026-09 | int bank, 52 GiB (pre-cliff), floor 77-80 | profiling (§9.15) | SPEED-RESEARCH §1.1, README | superseded by DS-FLOOR-SPLIT-0609 | none |
@@ -85,7 +86,10 @@ Architecture: 42 MoE layers x 288 experts = 12,096, top-8 (336 uses a token), 13
 | GLM-BUDGET-CURVE | decode against budget, live Hermes | 44 / 48 / 50 GiB: 2.79 / 3.00 / 3.10 tok/s (~1.7 % a GiB) | measured | 0.51.5 | int, n = 1 per arm | Hermes sessions, W6 | §18.42 | stale (drive moved) | |
 | GLM-CLIFF-64 | 64 GiB budget | tokens 1.5-2.3x slower, wired 87-90 GiB, swap rising; GLM's wired set is budget + ~24 GiB | measured | 0.48.1 | int, wired limit 84 | | §18.33 | current | |
 | GLM-PRED | next-layer prediction | top 8 holds 67 % of the next layer's experts and 59 % of its misses; K = 5 shipped, -8 to -14 % | measured | 0.50.0 | int, 52 GiB | `TF_ALTERNATE` swapped pairs | §18.35 | current in hit terms | |
-| GLM-TOKEN-USB | decode token, X10Pro | ~14 ms a miss x ~100 misses = ~1.4 s a token (~0.7 tok/s) | estimate | 0.52.3 | X10 | arithmetic | SPEED-RESEARCH §0 | estimate, never measured | |
+| GLM-TOKEN-USB | decode token, X10Pro | ~14 ms a miss x ~100 misses = ~1.4 s a token (~0.7 tok/s) | estimate | 0.52.3 | X10 | arithmetic | SPEED-RESEARCH §0 | **superseded** by GLM-TOKEN-USB-M | |
+| GLM-TOKEN-USB-M | decode token, X10Pro, K = 5 (shipped) | **1,518 ms** (0.66 tok/s) on 12 mixed prompts, 86.0 misses a token, 120.9 reads (1.71 GB) a token, 91 % of decode waiting on reads, drive 0.95 GB/s while reading, mean read 52.9 ms (queueing); repeats of one prompt 1,362-1,431 ms (not all-resident at 52 GiB) | measured | 0.61.1, 2026-10-06 | X10, 52 GiB, sysctl 88064 | fresh `serve-glm.sh`, W1 | §18.78 | current, n = 1 | none |
+| GLM-PRED-USB | value of K = 5 prediction on the X10Pro | off is -4.4 % on mixed tokens (1,451 ms), -3.3 % on repeats: inside drift; 48.4 predicted loads a token, **72 % used**, 13.4 unused (190 MB); bytes a token -11 % without it | measured | 0.61.1 | as GLM-TOKEN-USB-M | one pair of fresh arms | §18.78 | current, one pair | none |
+| GLM-PREFILL-USB | cold prefill of short prompts, X10Pro | ~0.7 tok/s (365 tokens of 12 prompts in 517-541 s; 25-62-token prompts 36-80 s) | measured | 0.61.1 | as GLM-TOKEN-USB-M | `[request]` lines of the two arms | §18.78 | current | two arms |
 | GLM-CODE | garbled C# in replays | 12/21 (MiniMax 1/19); 8-bit non-expert hybrid 12/12 | measured | 0.51.7-0.52.1 | | C# replay, W4 | §18.44, §18.49 | current | two runs |
 
 ## 4. Storage and machine
@@ -103,6 +107,7 @@ Architecture: 42 MoE layers x 288 experts = 12,096, top-8 (336 uses a token), 13
 | MC-SCREENSAVER | Flurry screensaver | ~13 % slower decode | measured | memory "slow decode window" | current |
 | MC-HERMES-WINDOW | visible Hermes Desktop window | up to 30 % slower | measured | §18.19 (M28) | current |
 | MC-READ-SIZE | GPU streaming read rate against bytes a launch reads | dense bf16 GEMV: 47 % of 819 GB/s at 2 MiB, 71 % at 4, 83 % at 8, 87-89 % at 16 MiB and above; `mx.sum` 31 / 50 / 63 / 76 % at 2 / 4 / 8 / 16 MiB, 93 % at 128 MiB+; ~5 us a launch | measured | §18.76, `benchmarks/micro_read_size_roofline.py` | current |
+| MC-READ-SIZE-Q | quantized kernels at the same bytes a launch | 2-bit `quantized_matmul` (g128, scales and biases counted): 31 / 43 / 56 / 61 / 68 / 70 / 72 % of 819 GB/s at 1 / 2 / 3 / 4 / 8 / 11-32 / 128 MiB; FP8 GEMV (`fp8_linear_quantized`): 17 / 33 / 37 / 46 / 56 / 58-62 / 65 %; the bf16 GEMV beside them 32 / 64 / 77 / 77 / 87 / 86-88 / 90 % | measured | §18.78, `benchmarks/micro_read_size_roofline.py --arms` | current |
 | MC-DRIFT | process-to-process drift | +-10 %; levers under ~15 % need per-token alternation | measured | SPEED-RESEARCH §2 | current |
 
 ## 5. Quality constants
@@ -149,7 +154,7 @@ What bound each model, what removed it, and what bound next. "Bound" means the t
 | version | bound by | removed or moved by | next bound |
 |---|---|---|---|
 | 0.48.1-0.51.x | store wait, 70-75 % of a token (GLM-TOKEN-INT) | contiguous bank (0.49.0), next-layer prediction (0.50.0, -8 to -14 %) | store wait |
-| 0.52.3-now | the USB drive (moved there by priority; GLM-TOKEN-USB, estimated) | none planned | |
+| 0.52.3-now | the USB drive (moved there by priority): 1.52 s a token, 91 % of decode waiting on reads (GLM-TOKEN-USB-M, measured 0.61.1) | none planned; prefetch off -4 % (inside drift) | the drive |
 
 ## 7. Stale constants in code
 
@@ -164,7 +169,7 @@ What bound each model, what removed it, and what bound next. "Bound" means the t
 
 1. **No DeepSeek constant has been measured at the default sysctl.** One floor arm (`mix.sh`-shaped, 48 GiB) would say whether DS-FLOOR-48 and DS-TOKEN-48 hold today.
 2. ~~DS-FLOOR-SPLIT is stale~~ re-profiled in 0.60.9 (DS-FLOOR-SPLIT-0609). ~~The 70 ms against 75-77 gap~~ settled in 0.60.10: the server's all-resident token is 79-80 ms (DS-FLOOR-SRV), 70 was a fit intercept. ~~What limits the weight-streaming kernels~~ partly answered (MC-READ-SIZE): at the bytes a decode launch reads (~3 MiB an expert projection, ~11 MiB a shared-expert projection) a dense bf16 GEMV reaches 60-85 % of 819 GB/s, so launch size explains part of the gap; the rest (routed experts at ~29 %) is the 2-bit dequantizing kernel itself, not the memory system. Doubling memory bandwidth would therefore move those kernels far less than 2x.
-3. **MiniMax and GLM have no constants measured since GLM moved to the X10Pro** and since MiniMax's substitution defaults; GLM-TOKEN-USB is an estimate only.
+3. **MiniMax has no constants measured since its substitution defaults.** GLM's X10Pro token is measured since 0.61.1 (GLM-TOKEN-USB-M).
 4. **DS-PREFILL-SHORT (25-45 tok/s on 200-400 tokens)** is a measured cost with no explanation.
 5. **Queue depth (ST-X10) and read latency distributions** are recorded as part of a wall, never swept.
-6. **Prefetch depth against storage bandwidth** (DS-PRED-USB, DS-PRED-AB): prediction is a ~1 ms win on the internal SSD and an 11-18 % loss at 1 GB/s. Where between them it turns, and whether GLM's K = 5 prefetch (GLM-PRED, tuned on the internal drive; GLM now lives on the X10Pro) also loses there, is unmeasured.
+6. **Prefetch depth against storage bandwidth** (DS-PRED-USB, DS-PRED-AB, GLM-PRED-USB): prediction is a ~1 ms win on the internal SSD and an 11-18 % loss at 1 GB/s for DeepSeek (precision 35-40 %); GLM's K = 5 at 72 % precision roughly breaks even at 1 GB/s (-4.4 % off, inside drift; answered in 0.61.1). Where between the drives DeepSeek's turns is still unmeasured; a precision-gated prefetch needs a trace that records the predicted sets.

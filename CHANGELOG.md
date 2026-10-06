@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.61.1 (2026-10-06)
+
+HANDOFF "Start here (2026-10-06, 0.61.1)" and section 18.78. Measurement, one additive stats change; no default changed, outputs unchanged.
+
+### Added
+- GLM's and MiniMax's `/v1/stats` carry the expert store's counters under DeepSeek's names (`expert_hits`, `expert_misses`, `predicted_loads`, `predicted_used`, `ssd_bytes_read`, `expert_reads`, `expert_fast_reads`, `expert_read_seconds`) plus `expert_read_busy_seconds`, `decode_wait_seconds` and `decode_waited_misses`. Counters only.
+- `benchmarks/micro_read_size_roofline.py --arms sum,gemv,q2,fp8`: a 2-bit `quantized_matmul` arm and the trunk's FP8 GEMV at the same bytes a launch as the bf16 arms.
+
+### Measured
+- **GLM-5.3-Flash on the X10Pro (52 GiB, 12 mixed prompts x 120 greedy tokens, W1): 1,518 ms a token (0.66 tok/s)**, 86 misses a token, 91 % of decode waiting on reads with the drive at 0.95 GB/s; short prompts prefill at ~0.7 tok/s. Its K = 5 prefetch roughly breaks even there: off is 1,451 ms (-4.4 %, inside drift from one pair), because 72 % of its predicted loads are used (DeepSeek's 35-40 % loses 11-18 % on the same kind of drive). K = 5 stays.
+- DeepSeek at an emulated 1 GB/s under the shipped budget 0: 281 ms a token (exact 446). With prediction off too: 76 ms, but 78 of 240 routed expert uses dropped a token (a timing bound, not a candidate; quality unmeasured).
+- Share of 819 GB/s at 3 MiB a launch (a routed expert projection): bf16 GEMV 77 %, 2-bit `quantized_matmul` 56 %, FP8 GEMV 37 %; the quantized kernels never pass ~72 % and ~65 %. In the model the routed experts run at ~29 %: about half the gap is the 2-bit kernel, half what the model adds around it.
+
+### Closed
+- Skipping the decode prediction on layers whose predicted experts are resident: priced at ~0 (the store already skips resident keys; the ~5 ms of an all-resident token is unused loads of non-resident guesses).
+
+### Changed
+- `docs/LEDGER.md`: GLM-TOKEN-USB measured (GLM-TOKEN-USB-M), GLM-PRED-USB, GLM-PREFILL-USB, DS-MB0-USB, MC-READ-SIZE-Q; open question 6 answered for GLM.
+
 ## 0.61.0 (2026-10-06)
 
 HANDOFF "Start here (2026-10-06, 0.61.0)" and section 18.77. The first storage-bandwidth curve (research charter L3 item 2). No default changed; outputs unchanged.

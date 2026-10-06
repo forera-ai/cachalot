@@ -404,7 +404,8 @@ class GlmEngine:
         )
 
     def stats(self) -> dict[str, Any]:
-        s = self.model.store.stats()
+        store = self.model.store
+        s = store.stats()
         return {
             "model": self.model_id,
             "uptime_seconds": time.time() - self.started_at,
@@ -412,7 +413,20 @@ class GlmEngine:
             "tokens_generated": self.tokens_generated,
             "busy": self._lock.locked(),
             "expert_hit_rate": s.hit_rate,
-            "resident_experts": len(self.model.store),
+            "resident_experts": len(store),
             "prefix_snapshots": len(self.model.prefix),
             "images_served": self.images_served,
+            # the store's counters, named as DeepSeek's /v1/stats names them (0.61.1): misses, bytes and
+            # predicted loads a token can be read from deltas between two calls
+            "expert_hits": s.cache_hits,
+            "expert_misses": s.cache_misses,
+            "predicted_loads": store.predicted_loads,
+            "predicted_used": store.predicted_used,
+            "ssd_bytes_read": s.ssd_bytes_read,
+            "expert_reads": s.reads,
+            "expert_fast_reads": s.fast_reads,
+            "expert_read_seconds": s.read_wall_seconds,
+            "expert_read_busy_seconds": s.read_busy_seconds,
+            "decode_wait_seconds": s.decode_wait_seconds,
+            "decode_waited_misses": s.decode_waited_misses,
         }
