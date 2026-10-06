@@ -295,6 +295,8 @@ reproducible to ±0.3 %.
 
 **0.60.7 (2026-10-06): review fixes.** The run manifest no longer records credentials such as `CACHALOT_API_KEY` by value, and its Hermes Desktop check needs one process line. HANDOFF section 18.73.
 
+**0.60.8 (2026-10-06): a second C# task shows no cost of budget 0.** A short CsvHelper + System.Text.Json task, graded blind: exact 2/48 flawed, decode miss budget 0 2/48 at -22 % a token. Across three C# results the budget-0 code cost showed once (0.60.2, long free-form code in an agent context), so the default stays; `CACHALOT_DECODE_MISS_BUDGET=off` is the exact path. HANDOFF section 18.74.
+
 **0.60.6 (2026-10-06): budget 1 on C#, and the first lab tracks.** On a C# request rebuilt from Hermes's store, three arms graded blind: exact 10/48 flawed, decode miss budget 1 10/48 at -2.7 % a token, budget 0 13/48 at -25 %; 0.60.2's budget-0 code cost did not reproduce on this body, so the code evidence is split and budget 1 (3 %) is not a useful middle setting. New: `docs/LEDGER.md` (every recorded constant with its regime and status), `benchmarks/run_manifest.py` (run manifests and scorecard rows), `benchmarks/batch_union.py` (batched decode priced offline: more misses a token, 1.27-1.42x aggregate at four streams, not built). HANDOFF section 18.72.
 
 **0.60.2 (2026-10-05): the code-only check found a cost.** With the decode miss budget 0 (the `serve.sh` default), C# replies were flawed 26/48 against 11/48 exact (p = 0.003), mostly invented API members (15 against 1); TypeScript showed none (8/48 against 9/48). Decode -25 %. Graded blind by four model graders. The default is Hamed's call; HANDOFF section 18.68 lists the options.

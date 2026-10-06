@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.60.8 (2026-10-06)
+
+HANDOFF "Start here (2026-10-06, 0.60.8)" and section 18.74. Measurement only, no runtime change: the decode miss budget 0 (the `serve.sh` default) on a second, independent C# task.
+
+### Measured
+- A short CsvHelper + System.Text.Json configuration task, 48 samples per arm, one process, graded blind by two model graders: flawed **exact 2/48, budget 0 2/48 (p 1.00)**; decode a token, paired, **0.776** [0.769, 0.782]. 96 replies in 48 minutes.
+- By the decision rule written before the run, 0.60.2's C# cost (26/48 against 11/48) is not reproducible across C# tasks: across three C# results it showed once, on long free-form code in an agent context. The task's base rate is low (4 %), so it rules out a large effect, not a small one.
+
+### Not changed
+- `serve.sh` keeps `CACHALOT_DECODE_MISS_BUDGET=0` (Hamed's default). `CACHALOT_DECODE_MISS_BUDGET=off ./serve.sh` is the exact path for long free-form code.
+
 ## 0.60.7 (2026-10-06)
 
 HANDOFF "Start here (2026-10-06, 0.60.7)" and section 18.73. Review fixes to 0.60.6's run manifest; no runtime change.

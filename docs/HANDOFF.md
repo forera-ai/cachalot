@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-06, 0.60.8): a second C# task shows no cost of budget 0
+>
+> Section 18.74. A new, short CsvHelper + System.Text.Json task, 48 per arm, graded blind: **exact 2/48 flawed, budget 0 2/48 (p 1.00)**, decode -22 %. By the rule fixed before the run, the C# cost of 0.60.2 is not reproducible across C# tasks and `serve.sh`'s budget 0 stays (Hamed's default). It showed once, on long free-form code in agent context; for that, `CACHALOT_DECODE_MISS_BUDGET=off ./serve.sh` is the exact path. Limit: this task's base rate is 4 %, so it rules out only a large effect.
+>
 > ## Start here (2026-10-06, 0.60.7): review fixes to the run manifest
 >
 > Section 18.73. A review of 0.60.6 found that `run_manifest.py` would have written `CACHALOT_API_KEY`'s value into a manifest; credentials are now redacted, and the Hermes Desktop check no longer gives false positives. Everything in 0.60.6's block below still holds. No runtime change.
@@ -8778,6 +8782,22 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.74 A second, independent C# task: budget 0 equals exact — 2026-10-06 (0.60.8)
+
+Hamed: "go with (c), run the second C# task but if it is not another lengthy workload of several hours" (the third option of §18.72's decision state).
+
+**Method.** A new task, chosen to force specific configuration members where invented API members show up: read `people.csv` into `List<Person>` with CsvHelper configured to ignore missing fields, trim whitespace and match headers in any letter case, then write JSON with System.Text.Json in camelCase, indented, nulls omitted; code only (`benchmarks/results/quality-blind-0.60.7-csharp2/csharp2-body.jsonl`, a one-line system prompt, no tools; W4 without the agent context). Exact against budget 0, 48 samples each, one process, seeds j, order alternating, temperature 0.7, 700 new tokens at most, 48 GiB, sysctl 88064. Replies ~275 tokens, so 96 replies took 48 minutes. The record (`RECORD-before.md` in the results directory) fixed the decision rule before the first sample. The arm-free sheet was graded by two model graders on separate halves (the §18.72 rubric with the task's required behaviours added); the key was opened after both wrote their grades; two "ok" replies were checked by hand against the real APIs (`TrimOptions.Trim`, `PrepareHeaderForMatch = args => args.Header.ToLower()`, `HeaderValidated = null`, `MissingFieldFound = null`, `JsonIgnoreCondition.WhenWritingNull`: all correct).
+
+**Result.** Flawed **exact 2/48, budget 0 2/48 (p 1.00)**: exact one invented (`HeaderValidationCallback`), one wrong-code (no case-insensitive header match); budget 0 two invented (`HeaderValidationCallback`, a nonexistent `HeaderValidationMode.CaseInsensitive`). No loop, nothing truncated. Decode 115.8 to 89.8 ms a token, paired ratio **0.776** [0.769, 0.782]. The bare-snippet `dotnet build` fails 48/48 in both arms (the snippet needs the CsvHelper package), so the mechanical check says nothing here.
+
+**Reading against the record.** Inside the "within -4 to +5" band, so by the rule fixed before the run **the C# cost of budget 0 is not reproducible across C# tasks, and keeping 0 is defensible.** The three C# results together: §18.68 26/48 against 11/48 (a long, open-ended importer in a 22k agent context), §18.72 13/48 against 10/48 (a rebuild of that request), §18.74 2/48 against 2/48 (a short, specified task). **Limit stated plainly:** this task has a low base rate (4 % flawed; most replies converge on one canonical answer), so it could not show a small effect; it rules out a large one on short, well-specified code. The open-ended, long case is the only one that ever showed the cost, once.
+
+**Generalization.** Workload-specific (W4): whatever budget 0 costs in code, it is not a general rise in invented API members; it showed once, on long free-form code in agent context, and not on a rebuild of it or on a short specified task. **Kind:** research (predicted, measured, against a rule fixed in advance; the speed prediction of -15 to -30 % held at -22.4 %).
+
+**Decision state.** `serve.sh` stays at budget 0 (Hamed's decision of 2026-10-05; this run gives no reason to change it). For long free-form code where exactness matters, `CACHALOT_DECODE_MISS_BUDGET=off ./serve.sh` remains the exact path. Nothing else changes.
+
+**Shipped.** This section, a ledger row (Q-MB0-CSHARP-3), results; no code change.
 
 ### 18.73 Review of 0.60.6: the run manifest's credentials and Hermes check — 2026-10-06 (0.60.7)
 
