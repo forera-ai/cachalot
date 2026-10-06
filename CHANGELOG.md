@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.61.4 (2026-10-07)
+
+HANDOFF "Start here (2026-10-07, 0.61.4)" and section 18.81. An offline instrument and its price; nothing in `src/` changed, no default, output or speed changed.
+
+### Added
+- `benchmarks/pred_gate_price.py`: replays a routing trace that carries predicted sets through the expert store's residency rule (a predicted load fills a transient slot, never evicts, becomes resident only when the next layer routes it) and prices a router-weight gate on decode prefetch at any drive bandwidth with the LEDGER's bandwidth curve, in the exact mode and in budget 0. Tests in `tests/test_pred_gate_price.py`.
+
+### Measured
+- Calibration against the measured arms: misses a token 23.2 against 23.5, token 435 against 445.7 ms at 1 GB/s and 118 against 118.6 internal; but the prediction-off token is underestimated by 14 % and budget 0's 1 GB/s token overestimated by 33 %, so the tables are used for ordering and drop counts only.
+- A gate is not worth building: on the exact path no gate beats prediction off (`CACHALOT_PREDICT_TOPK=0`, already -11 to -18 % at 1 GB/s); under budget 0 a gate trades dropped experts for bytes (weight >= 0.15: -13 % at 1 GB/s for +3.2 dropped a token; >= 0.20: -43 % for +12.6) with quality measured only at the shipped ~20 drops; on the internal drive >= 0.20 is -7 %.
+
 ## 0.61.3 (2026-10-07)
 
 HANDOFF "Start here (2026-10-07, 0.61.3)" and section 18.80. A recording option and one instrument; no default, output or speed changed (the recording is off unless a routing tracer is installed).

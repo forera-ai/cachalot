@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-07, 0.61.4): a weight gate on decode prefetch, priced offline
+>
+> Section 18.81. `benchmarks/pred_gate_price.py` replays the 0.61.3 trace through the store's residency rule and the LEDGER bandwidth curve. It reproduces the prediction-on exact arm (misses 23.2 against 23.5, 435 ms against 445.7 at 1 GB/s, 118 against 118.6 internal) but **underestimates the prediction-off token by 14 % and budget 0's 1 GB/s token by +33 %**, so only orderings and drop counts are used. **Result: a gate is not built.** Exact path: no gate beats prediction off (misses stay 23.2; a gate only removes bytes); budget 0: a gate moves along a speed against dropped-experts frontier (0.15: -13 % at 1 GB/s for +3 drops a token; 0.20: -43 % for +12.6) with no quality data beyond the shipped ~20 drops; on the internal drive 0.20 is -7 %. No default or speed changed.
+>
 > ## Start here (2026-10-07, 0.61.3): predicted sets in routing traces
 >
 > Section 18.80. A routing trace (`CACHALOT_ROUTING_TRACE`) now also records, per decode layer, the next-layer prediction's experts and the predictor's own router weights; `routing_trace.predicted_used_mask` joins them to what the next layer routed (by token ordinal: **decode positions restart each request, so (position, layer) collides across requests**, which first read as 14 % overlap). On a 2,407-token run: top-6 overlap 72 %; weight >= 0.20 keeps 66 % of predicted loads at 82 % precision (recall 0.75), >= 0.25 keeps 38 % at 93 % (recall 0.50). A screen, not a price: next is `cache_sim.py` with a weight gate on the 1 GB/s drive, where DeepSeek's prediction loses 11-18 %. Hamed dropped the 45-minute C# replay (v123 item 1): do not offer it again. No default or speed changed.
@@ -8806,6 +8810,59 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.81 Pricing a router-weight gate on decode prefetch, offline — 2026-10-07 (0.61.4)
+
+Prompt v124 first job, item 1 (item 2, the machine sweeps, was not run: they need the Cachalot Lab app closed and Hamed's go for a quiet machine).
+
+**Experiment record (written before the script existed; `benchmarks/results/pred-gate-price-0.61.4/RECORD-before.md`).** Baseline: DeepSeek, exact, 48 GiB, W1; measured 118.6 ms internal, 445.7 ms at an emulated 1 GB/s with prediction on (45.6 reads, ~29 predicted loads, ~36 % used), 367.7 ms with it off (§18.77). Hypothesis and prediction: at 1 GB/s the best weight gate lands between "all" and "off" and does not beat "off" by more than 5 %; on the internal drive every gate is within 3 ms of "all". Falsifier: a gate whose modelled token beats "off" by 5 % or more (then build a knob), or a replay that misses its calibration (then residency must be recorded). Kind: engineering (a price). Workload class W1. Tags: derived from the 0.61.3 trace.
+
+**What was built.** `benchmarks/pred_gate_price.py` (nothing in `src/`; three tests in `tests/test_pred_gate_price.py`, 565 pass). It replays `pred-trace-0.61.3/smoke.trace.npz` (2,407 decode tokens, 93,873 predicted sets) through the runtime store's residency rule: a predicted expert that is not resident is read into a transient slot, never evicting a resident, and becomes resident only when the next layer routes it (`ResidentExpertStore.prefetch_decode`); an unused predicted load is drive time with no residency. Cost is LEDGER ST-BW-CURVE: `token = max(78 + M x (1.73 + 9.95 x (1/B - 1/6.8)), bytes / B)`, M = misses (demand plus used predicted loads), bytes = every read. Two modes: exact, and budget 0 (the shipped `serve.sh` default: a demand miss is dropped, a predicted load the layer routes is still awaited).
+
+**Calibration (the replay against the measured arms; 48 GiB = 5,179 slots).**
+
+| quantity | replay, no gate | measured | gap |
+|---|---|---|---|
+| misses a token, exact | 23.2 | 23.5 (§18.52) | -1 % |
+| predicted loads a token, used share | 33.3, 38 % | ~29-32, 35-41 % (§18.77, §18.78) | inside |
+| reads a token | 43.7 | 45.6 (§18.77) | -4 % |
+| token, exact, internal / 1 GB/s / 2 GB/s | 118 / 435 / 217 ms | 118.6 / 445.7 / 227.4 | -0.5 / -2.4 / -4.6 % |
+| token, prediction off, 1 GB/s | 315 ms (23.2 reads) | 367.7 (26.9 reads) | **-14 %, outside the +-10 % written** |
+| budget 0 at 1 GB/s: awaited, dropped, predicted loads | 15.4, 20.2, 37.5 | 12.8, 17.0, 32.1 (§18.78) | +17 to +20 % |
+| budget 0 at 1 GB/s, token | 373 ms | 281.2 | **+33 %** (the throttle passes page-cache reads free, which the byte term charges) |
+
+So the replay is trustworthy for the prediction-on exact arm (the arm the curve was fitted on), counts and residency; it is **not** for the prediction-off token (the byte-or-miss model underestimates a serial demand-miss token by about 14 %: 26.9 reads at ~13.7 ms is 368, not 352 or 315) and not for absolute milliseconds under budget 0. Orderings and drop counts are what the tables below are used for.
+
+**Exact path (the path before 0.60.0, and `CACHALOT_DECODE_MISS_BUDGET=off`).** Misses a token are 23.2 at every gate (an unread predicted load only becomes a demand miss, which costs the same read), so a gate changes only bytes:
+
+| gate | predicted loads | used | reads | 1 GB/s | 2 GB/s | 6.8 GB/s |
+|---|---|---|---|---|---|---|
+| off | 0 | - | 23.2 | 315 | 200 | 118 |
+| all (shipped) | 33.3 | 38 % | 43.7 | 435 | 217 | 118 |
+| >= 0.15 | 28.1 | 41 % | 39.9 | 397 | 200 | 118 |
+| >= 0.20 | 16.8 | 50 % | 31.6 | 315 | 200 | 118 |
+| >= 0.25 | 6.8 | 74 % | 25.0 | 315 | 200 | 118 |
+
+The model ties every gate from 0.20 up with "off" (both are miss-bound at 315), so **no gate beats "off"**; the prediction held (the falsifier did not fire). Read with the calibration: the real "off" arm was 367.7 ms, so a 0.20 gate is expected near it, about 17 % under "all" (446) and not better. The internal drive is unaffected (118 at every gate). Limit of the model: it charges a predicted-and-used load the same as a demand miss, so it cannot show the compute overlap that is prediction's real benefit (a ~1 ms win on the internal SSD, DS-PRED-AB); it can only show that a gate cannot beat having no prediction when the bytes are the bound.
+
+**Budget 0 (shipped).** Here prediction decides what is read at all, so a gate trades drops for bytes:
+
+| gate | awaited a token | predicted loads | dropped a token (of 240) | 1 GB/s (model) | 6.8 GB/s (model) |
+|---|---|---|---|---|---|
+| all (shipped) | 15.4 | 37.5 | 20.2 | 373 | 105 |
+| >= 0.15 | 14.3 | 32.5 | 23.4 | 324 | 103 |
+| >= 0.20 | 11.8 | 21.2 | 32.8 | 211 | 98 |
+| >= 0.25 | 8.4 | 10.5 | 49.8 | 163 | 92 |
+| >= 0.30 | 5.8 | 6.3 | 66.9 | 138 | 88 |
+| off | 0 | 0 | 124.9 | 78 | 78 |
+
+Each row is a point on a speed against drops frontier, not a free win: ~12-15 ms of the modelled 1 GB/s token per extra dropped expert from "all" to 0.20, then ~3 ms. The only quality evidence for dropping is at the shipped point (about 19.5 dropped a token: dNLL inside noise, one C# body worse, §18.60-§18.74); 33 or more drops a token is untested. On the internal drive (where DeepSeek's bank lives) the whole frontier from "all" to 0.20 is 105 to 98 ms (-7 %) for +12.6 drops a token, and a 0.15 gate is -2 %.
+
+**Verdict (derived, W1, one trace).** Not built. On the drive Cachalot uses, a gate is worth at most a few percent and only by dropping more experts; on a 1 GB/s drive under the exact path the existing `CACHALOT_PREDICT_TOPK=0` already takes the whole -11 to -18 %, and no gate was modelled better; under budget 0 a gate only moves along a quality frontier that has no data beyond the shipped point. Reopen if DeepSeek's bank returns to a 1 GB/s drive under budget 0 and Hamed wants a speed point between 281 ms and the 76 ms bound: then the 0.15 gate (-13 % modelled for +3 drops a token) is the first candidate, and the measurement is a quality run at that drop count, not more traces. **Bottleneck after:** unchanged (the all-resident floor of ~80 ms on the internal drive).
+
+**Not done / open.** The model underestimates the prediction-off token by 14 %; a second trace at a longer context (the smoke trace is short prompts, W1) would show whether the weight-to-use relation holds at 22k (W6). Nothing here is a live measurement. LEDGER rows DS-PRED-GATE and DS-PRED-GATE-CAL added.
+
+**What needs Hamed.** Nothing new.
 
 ### 18.80 Predicted sets in routing traces, and a first look at the predictor's weight — 2026-10-07 (0.61.3)
 
