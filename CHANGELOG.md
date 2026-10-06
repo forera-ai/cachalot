@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.61.3 (2026-10-07)
+
+HANDOFF "Start here (2026-10-07, 0.61.3)" and section 18.80. A recording option and one instrument; no default, output or speed changed (the recording is off unless a routing tracer is installed).
+
+### Added
+- `RoutingTracer.record_predicted` and the decode hook in `moe_layer_metal.py`: a routing trace (`CACHALOT_ROUTING_TRACE`) now also stores, for every decode layer, the experts the next-layer prediction chose and the predictor's own router weights (`pred_source`, `pred_target`, `pred_position`, `pred_experts`, `pred_weights`). Older traces load unchanged; with no tracer the hot path pays one `getattr`. The predictor's weights are read from the arrays the layer's single router sync already evaluates, so there is no extra GPU round trip.
+- `routing_trace.predicted_used_mask`: joins each predicted set to the routes of the same decode token. Decode positions restart with every request, so the join is by token ordinal, not by (position, layer).
+- `benchmarks/pred_gate_table.py`: predictor weight against precision and recall, from a trace that carries predicted sets.
+
+### Measured
+- One server run (48 GiB, exact, 17 greedy requests of 120 tokens, 2,407 decode tokens, W1): the predicted top-6 overlaps the next layer's routed set 72 % of the time (the recorded recall at top-6 was ~73 %). The weight carries signal: predictions with weight >= 0.20 are 66 % of all and 82 % precise (recall 0.75); >= 0.25 are 38 % and 93 % precise (recall 0.50). A set-overlap screen only; it does not know what was already resident, so a gate is not priced yet.
+
+### Notes
+- `guarded_run.sh` refuses to start while the Cachalot Lab app runs (its process matches the runtime pattern); the smoke run used `serve.sh` directly with Lab open and was a correctness check, not a speed arm.
+
 ## 0.61.2 (2026-10-07)
 
 HANDOFF "Start here (2026-10-07, 0.61.2)" and section 18.79. Measurement and documentation only; no code, default or output changed.

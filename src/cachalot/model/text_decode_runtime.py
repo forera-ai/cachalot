@@ -1657,6 +1657,9 @@ class TextDecodeRuntime:
     ) -> None:
         """Install (or remove) a routing tracer for offline analysis."""
         self.tracer = tracer
+        # The decode MoE layer reads the tracer off the store to record the
+        # predicted next-layer sets; None leaves the hot path one getattr.
+        self.expert_store.pred_tracer = tracer
 
     def _trace_prefill_route(
         self,
@@ -2645,6 +2648,9 @@ class TextDecodeRuntime:
                 "Decode position exceeds "
                 f"max_seq_len={self.max_seq_len}"
             )
+
+        if self.tracer is not None:
+            self.tracer.decode_position = start_pos
 
         hash_rows = (
             self.engram_hash.push(

@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-07, 0.61.3): predicted sets in routing traces
+>
+> Section 18.80. A routing trace (`CACHALOT_ROUTING_TRACE`) now also records, per decode layer, the next-layer prediction's experts and the predictor's own router weights; `routing_trace.predicted_used_mask` joins them to what the next layer routed (by token ordinal: **decode positions restart each request, so (position, layer) collides across requests**, which first read as 14 % overlap). On a 2,407-token run: top-6 overlap 72 %; weight >= 0.20 keeps 66 % of predicted loads at 82 % precision (recall 0.75), >= 0.25 keeps 38 % at 93 % (recall 0.50). A screen, not a price: next is `cache_sim.py` with a weight gate on the 1 GB/s drive, where DeepSeek's prediction loses 11-18 %. Hamed dropped the 45-minute C# replay (v123 item 1): do not offer it again. No default or speed changed.
+>
 > ## Start here (2026-10-07, 0.61.2): the first live Hermes session on 0.61.1
 >
 > Section 18.79. Hamed's session (eight requests, dump and log in `benchmarks/results/hermes-live-0.61.1/`): decode 9.8-10.7 tok/s at 22-27k context, first request a cold 212 s prefill (expected: no earlier date or pin existed). **Both live checks pass on a server-path replay: a new day's date line reuses 22,407 of 22,411 tokens (0.95 s against 212 s), a changed provider reuses the 4,096 pin (saves ~26 s).** A prefill of under ~70 tokens costs 1.8-3.8 s: a ~1.5 s fixed cost a chunk. Answers: image transcription exact, story and listing fine (one miscount), **the C# importer does not compile** (`ClassMap.Map(Type, string)`; one error) and its `StreamJson` is not streaming. One sample cannot say whether budget 0 caused it; the dumped body can be replayed N times per arm with `dotnet build` as the grader (not run).
@@ -8802,6 +8806,32 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.80 Predicted sets in routing traces, and a first look at the predictor's weight — 2026-10-07 (0.61.3)
+
+Prompt v123 first job, item 2 (item 1, the C# replay, was dropped by Hamed: "I would not want to test a 45 minutes gate for a small test"; item 3 not started).
+
+**Experiment record (written before the build).** Baseline: `RoutingTracer` stores routes and router weights, not what the prefetch predicted. Hypothesis: recording the predicted set and the predictor's own weight lets a precision-gated prefetch (submit a load only above a weight threshold) be priced offline; the prediction is that the predicted top-6 overlaps the next layer's routed set at about the recorded 73 % recall, and that weight separates used from unused predictions. Falsifier: overlap far from 73 %, or used and unused predictions with the same weight distribution. Kind: engineering (an instrument). Workload class W1 (short interactive decode). Bit-identical: recording only, behind the tracer.
+
+**What shipped.** `RoutingTracer.record_predicted(source, target, indices, weights)` and the arrays `pred_source`, `pred_target`, `pred_position`, `pred_experts`, `pred_weights` (decode only, saved when present, loaded when present, so old traces are unchanged); `ResidentExpertStore.pred_tracer` set by `set_tracer`; `moe_layer_metal` reads the predictor's `weights` from the one `mx.eval` it already does (they join the eval list only when a tracer is installed), so there is no second GPU round trip; `decode_position` is set at the start of each decode token. `predicted_used_mask(arrays)` joins by token ordinal; `benchmarks/pred_gate_table.py` prints the weight table. Tests: 562 pass (three new in `tests/test_routing_trace.py`).
+
+**Measured (manifest: commit 0.61.2 plus this change, `serve.sh` direct, `CACHALOT_DECODE_MISS_BUDGET=off`, 48 GiB, internal bank, sysctl 88064, `CACHALOT_ROUTING_TRACE`, `benchmarks/results/pred-trace-0.61.3/`; the driver sent the floor prompt x3 and the 12 mixed prompts, 120 greedy tokens each).** 2,407 decode tokens, 93,873 predicted sets (every layer 0-38 predicts the next). Decode 7.5-12.7 tok/s, hit 91-92 %, which is the usual W1 range with the trace on (not a speed arm: load average ~6.7, no settle gate). The first join read 14 % overlap and was wrong: positions restart per request. Joined by token ordinal the top-6 overlap is **72 %** (consistent with the recorded ~73 %), so the prediction held.
+
+| predictor weight | predicted loads kept | precision | recall of the routed set |
+|---|---|---|---|
+| all | 100 % | 0.72 | 1.00 |
+| >= 0.15 | 90 % | 0.75 | 0.94 |
+| >= 0.20 | 66 % | 0.82 | 0.75 |
+| >= 0.25 | 38 % | 0.93 | 0.50 |
+| >= 0.30 | 23 % | 0.97 | 0.31 |
+
+Used predictions average weight 0.27, unused 0.19: the weight separates them, so the falsifier did not fire. **This is set overlap, not the `/v1/stats` precision (DS-PRED-PREC 34-41 %), which counts only loads of non-resident experts that are then used**; the trace does not record residency, so the table cannot say how many of the gated-out loads were real reads. Explanation of the gap to price: on the 1 GB/s drive about 41 % of a token's bytes are unused speculative loads (DS-PRED-USB), so the question for a gate is how many of those carry a low weight.
+
+**Not done, next.** Price a weight gate with `cache_sim.py` (the trace has the predictions, add a residency replay and the throttled drive's cost), then build it behind a knob only if the prediction is a clear win on the 1 GB/s drive; on the internal SSD prediction is a ~1 ms win, so a gate would not matter there. Residency at submission time is the missing field if the replay cannot reconstruct it.
+
+**Environment notes.** `guarded_run.sh` refuses to start while the Cachalot Lab app is open (its process matches the runtime pattern, and `--force` does not override a process refusal): this smoke run used `serve.sh` directly, unguarded, with Lab open at first. Lab was closed afterwards (Hamed). `benchmarks/results/` is gitignored, so the trace (5.8 MB) and the scripts stay local; `gate-table.txt` holds the table. `driver.py` imports the floor-server driver, whose module body runs the full 17-request sequence on import.
+
+**What needs Hamed.** Nothing new. Dropped by Hamed this session: the C# replay (item 1).
 
 ### 18.79 The first live Hermes session on 0.61.1: the pin and the date reuse checked, short prefills, and the answers read — 2026-10-07 (0.61.2)
 

@@ -31,6 +31,17 @@ class RoutingTracer:
     _weights: list[np.ndarray] = field(default_factory=list)
     _segments: list[dict] = field(default_factory=list)
     _count: int = 0
+    # Decode-time next-layer predictions (what the prefetch would submit), one
+    # record per (source layer, target layer, token). Empty unless the model
+    # path calls record_predicted, so a trace without them is unchanged.
+    _pred_source: list[np.ndarray] = field(default_factory=list)
+    _pred_target: list[np.ndarray] = field(default_factory=list)
+    _pred_position: list[np.ndarray] = field(default_factory=list)
+    _pred_experts: list[np.ndarray] = field(default_factory=list)
+    _pred_weights: list[np.ndarray] = field(default_factory=list)
+    # Position of the decode token being traced; set by the runtime at the
+    # start of each decode token so predictions can be joined to routes.
+    decode_position: int = -1
 
     def record(
         self,
@@ -75,6 +86,39 @@ class RoutingTracer:
         self._experts.append(arr)
         self._count += n_tokens
 
+    def record_predicted(
+        self,
+        source_layer: int,
+        target_layer: int,
+        indices,
+        weights,
+        position: int | None = None,
+    ) -> None:
+        """
+        One decode-time prediction: the experts that `source_layer`'s input
+        scored highest under `target_layer`'s router, with the predictor's own
+        router weights (the confidence a precision-gated prefetch would use).
+        Shapes are [topk]. Join to the target layer's decode route by
+        (position, target_layer) to learn which predicted experts were used.
+        """
+        idx = np.asarray(indices, dtype=np.int16).reshape(-1)
+        w = np.asarray(weights, dtype=np.float32).reshape(-1)
+
+        if w.shape != idx.shape:
+            raise ValueError(f"weights shape {w.shape} != indices shape {idx.shape}")
+
+        pos = self.decode_position if position is None else position
+
+        self._pred_source.append(np.array([source_layer], dtype=np.int16))
+        self._pred_target.append(np.array([target_layer], dtype=np.int16))
+        self._pred_position.append(np.array([pos], dtype=np.int32))
+        self._pred_experts.append(idx[None, :])
+        self._pred_weights.append(w[None, :])
+
+    @property
+    def predicted_records(self) -> int:
+        return len(self._pred_experts)
+
     def mark(self, label: str, **meta) -> None:
         """Annotate a boundary (new turn, new prompt) at the current record count."""
         self._segments.append({"label": label, "at": self._count, **meta})
@@ -102,7 +146,21 @@ class RoutingTracer:
         if self._weights and len(self._weights) == len(self._experts):
             out["weights"] = np.concatenate(self._weights, axis=0)
 
+        out.update(self._predicted_arrays())
+
         return out
+
+    def _predicted_arrays(self) -> dict[str, np.ndarray]:
+        if not self._pred_experts:
+            return {}
+
+        return {
+            "pred_source": np.concatenate(self._pred_source),
+            "pred_target": np.concatenate(self._pred_target),
+            "pred_position": np.concatenate(self._pred_position),
+            "pred_experts": np.concatenate(self._pred_experts, axis=0),
+            "pred_weights": np.concatenate(self._pred_weights, axis=0),
+        }
 
     def save(self, path: str | Path) -> Path:
         path = Path(path)
@@ -126,6 +184,40 @@ def load_trace(path: str | Path) -> tuple[dict[str, np.ndarray], list[dict]]:
 
         if "weights" in data.files:
             arrays["weights"] = data["weights"]
+
+        for key in ("pred_source", "pred_target", "pred_position", "pred_experts", "pred_weights"):
+            if key in data.files:
+                arrays[key] = data[key]
         segments = json.loads(str(data["segments"]))
 
     return arrays, segments
+
+
+def predicted_used_mask(arrays: dict[str, np.ndarray]) -> np.ndarray:
+    """
+    For each predicted record, a bool [n, topk] mask: was that predicted expert
+    among the experts the target layer then routed to, in the same decode token.
+
+    Decode positions restart with every request, so (position, layer) is not a
+    unique key across a multi-request trace. Records are written in generation
+    order, so a decode token starts at each layer-0 route and each source-layer-0
+    prediction; the token ordinal is the join key.
+    """
+    decode = np.where(arrays["phase"] == PHASE_DECODE)[0]
+    layers = arrays["layer"][decode]
+    route_token = np.cumsum(layers == 0) - 1
+    routed = {
+        (int(t), int(l)): set(e.tolist())
+        for t, l, e in zip(route_token, layers, arrays["experts"][decode])
+    }
+
+    pred_token = np.cumsum(arrays["pred_source"] == 0) - 1
+    mask = np.zeros(arrays["pred_experts"].shape, dtype=bool)
+
+    for i, (t, target, experts) in enumerate(
+        zip(pred_token, arrays["pred_target"], arrays["pred_experts"])
+    ):
+        used = routed.get((int(t), int(target)), set())
+        mask[i] = [int(e) in used for e in experts]
+
+    return mask

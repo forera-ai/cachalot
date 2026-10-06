@@ -47,3 +47,46 @@ def test_tracer_rejects_mismatched_weights():
     t = RoutingTracer()
     with pytest.raises(ValueError):
         t.record("decode", 0, 0, np.array([1, 2, 3]), np.array([0.5, 0.5]))
+
+
+def test_tracer_saves_predicted_sets_and_old_traces_load(tmp_path):
+    t = RoutingTracer()
+    t.decode_position = 41
+    t.record("decode", 5, 41, np.array([1, 2, 3]), np.array([0.5, 0.3, 0.2]))
+    t.record_predicted(4, 5, [1, 2, 9], [0.4, 0.35, 0.25])
+    t.record_predicted(5, 6, [7, 8, 9], [0.5, 0.3, 0.2], position=42)
+    assert t.predicted_records == 2
+
+    arrays, _ = load_trace(t.save(tmp_path / "p.trace.npz"))
+    assert arrays["pred_source"].tolist() == [4, 5]
+    assert arrays["pred_target"].tolist() == [5, 6]
+    assert arrays["pred_position"].tolist() == [41, 42]
+    assert arrays["pred_experts"].tolist() == [[1, 2, 9], [7, 8, 9]]
+    assert np.allclose(arrays["pred_weights"], [[0.4, 0.35, 0.25], [0.5, 0.3, 0.2]])
+
+    plain = RoutingTracer()
+    plain.record("decode", 0, 0, np.array([1, 2]))
+    arrays, _ = load_trace(plain.save(tmp_path / "n.trace.npz"))
+    assert not any(k.startswith("pred_") for k in arrays)
+
+
+def test_tracer_rejects_mismatched_predicted_weights():
+    import pytest
+
+    with pytest.raises(ValueError):
+        RoutingTracer().record_predicted(0, 1, [1, 2, 3], [0.5, 0.5])
+
+
+def test_predicted_used_mask_joins_by_token_across_requests(tmp_path):
+    from cachalot.metrics.routing_trace import predicted_used_mask
+
+    t = RoutingTracer()
+    # Two requests whose decode positions both start at 10: position alone is ambiguous.
+    for request_experts in ([1, 2], [5, 6]):
+        t.decode_position = 10
+        t.record("decode", 0, 10, np.array(request_experts))
+        t.record_predicted(0, 1, [request_experts[0], 99], [0.6, 0.4])
+        t.record("decode", 1, 10, np.array(request_experts))
+
+    arrays, _ = load_trace(t.save(tmp_path / "j.trace.npz"))
+    assert predicted_used_mask(arrays).tolist() == [[True, False], [True, False]]

@@ -186,6 +186,8 @@ def moe_layer_forward(
     # Predicted routing of the next layer(s), evaluated with this layer's
     # routing in one sync.
     predicted = []
+    predicted_weights = []
+    pred_tracer = getattr(expert_store, "pred_tracer", None)
     gates = expert_store.decode_gates if PREDICT_TOPK > 0 else None
     if gates:
         # PREDICT_LEAD shifts the window; PREDICT_AHEAD sets its width. The
@@ -194,7 +196,10 @@ def moe_layer_forward(
             nxt = layer_id + ahead
             if nxt in gates:
                 w_next, b_next = gates[nxt]
-                predicted.append((nxt, route_topk_fused(x, w_next, b_next, topk=PREDICT_TOPK).indices))
+                p_route = route_topk_fused(x, w_next, b_next, topk=PREDICT_TOPK)
+                predicted.append((nxt, p_route.indices))
+                if pred_tracer is not None:
+                    predicted_weights.append(p_route.weights)
 
     # Work that does not depend on the routing, queued before the round trip
     # the routing costs, so the GPU runs it while the CPU waits.
@@ -219,8 +224,15 @@ def moe_layer_forward(
         route.weights,
         *([route.scores] if sub_tau is not None else []),
         *[p_idx for _, p_idx in predicted],
+        *predicted_weights,
         *([prelaunched_shared] if PRELAUNCH_SHARED == 2 else []),
     )
+
+    if pred_tracer is not None:
+        # Host values of arrays the one sync above already evaluated: no
+        # extra GPU round trip.
+        for (nxt, p_idx), p_w in zip(predicted, predicted_weights, strict=True):
+            pred_tracer.record_predicted(layer_id, nxt, p_idx.tolist(), p_w.tolist())
 
     prefetch_entries = []
     for nxt, p_idx in predicted if PREDICT_SUBMIT else ():
