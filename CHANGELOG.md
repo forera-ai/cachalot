@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.60.9 (2026-10-06)
+
+HANDOFF "Start here (2026-10-06, 0.60.9)" and section 18.75. The DeepSeek floor re-profiled (charter L4(f)), and a fix to the one-runtime guard. No change to inference.
+
+### Measured
+- All-resident decode token in-process at 48 GiB, sysctl 88064: 75.4 ms (median, sync profiler) to 77.4 ms (mean of five passes): 55.5 ms inside `mx.eval`, 17.9 ms of CPU between the 44 host syncs (GPU idle ~27 %); GPU work on the shipped path 52.2 ms (attention 25.6, routed experts 10.1, shared expert 6.0). Predictions written before the run: P1-P2 held, P3 partly, P4 falsified on the generous count (`docs/LEDGER.md` DS-FLOOR-SPLIT-0609, DS-GPU-IDLE, DS-EVAL-DRAIN).
+- A resident replay still issues 23 speculative expert loads a token, all unused (218 MiB a token; DS-SPEC-RESIDENT).
+
+### Fixed
+- The one-runtime guard in `serve.sh`, `serve-glm.sh`, `serve-minimax.sh`, `chat.sh`, `chat-glm.sh`, `chat-minimax.sh`, `benchmarks/decode_vs_context.sh`, `benchmarks/guarded_run.sh`, `benchmarks/settle.sh` and `benchmarks/run_manifest.py` did not see benchmarks started from the venv, which run as Homebrew's `Python.app/Contents/MacOS/Python`; it does now.
+- `guarded_run.sh --force` skipped the other-runtime check along with the memory arithmetic; it now skips only the arithmetic.
+
 ## 0.60.8 (2026-10-06)
 
 HANDOFF "Start here (2026-10-06, 0.60.8)" and section 18.74. Measurement only, no runtime change: the decode miss budget 0 (the `serve.sh` default) on a second, independent C# task.

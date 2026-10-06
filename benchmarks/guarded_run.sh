@@ -92,8 +92,11 @@ PS=$(page_size)
 # ---- preflight -------------------------------------------------------------
 fail=0
 note() { echo "preflight: $*"; }
-if pgrep -f "deepseek-v41/bin/python|cachalot" >/dev/null; then
-  note "FAIL another runtime process is running:"; pgrep -fl "deepseek-v41/bin/python|cachalot"; fail=1
+if pgrep -f "deepseek-v41/bin/python|cachalot|Python\.app/Contents/MacOS/Python .*benchmarks/" >/dev/null; then
+  # Not overridable by --force: --force skips the memory arithmetic only (0.60.8; a forced run once started beside
+  # another session's benchmark process).
+  note "FAIL another runtime process is running (--force does not override this):"
+  pgrep -fl "deepseek-v41/bin/python|cachalot|Python\.app/Contents/MacOS/Python .*benchmarks/"; echo "preflight: aborting"; exit 3
 fi
 lvl=$(pressure_level)
 [ "$lvl" -eq 1 ] || { note "FAIL memory pressure level is $lvl (1 = normal)"; fail=1; }

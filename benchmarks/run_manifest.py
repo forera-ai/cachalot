@@ -102,7 +102,12 @@ def runtime_processes(ps_text: str, own_pid: int) -> list[str]:
         cmd = parts[1]
         if os.path.basename(cmd.split(None, 1)[0]) in ("zsh", "bash", "sh", "-zsh", "pgrep", "grep"):
             continue  # a shell whose command text names the runtime is not a runtime (serve.sh's pgrep pitfall)
-        if "cachalot.cli" in cmd or ("deepseek-v41/bin/python" in cmd and "run_manifest" not in cmd):
+        # The venv's python is a symlink to Homebrew's framework build, which re-executes as
+        # .../Python.app/Contents/MacOS/Python, so a venv run never shows "deepseek-v41/bin/python" (0.60.8).
+        framework_run = "Python.app/Contents/MacOS/Python" in cmd and ("benchmarks/" in cmd or "cachalot" in cmd)
+        if "run_manifest" in cmd:
+            continue
+        if "cachalot.cli" in cmd or "deepseek-v41/bin/python" in cmd or framework_run:
             found.append(cmd[:160])
     return found
 

@@ -77,7 +77,7 @@ while true; do
   # and calls this gate between arms, if that script was passed as text rather
   # than as a file. Such a script waits for itself and never starts its next
   # arm (2026-09-21). Put the arms in a file and run `bash the-file`.
-  pgrep -f "deepseek-v41/bin/python|cachalot" >/dev/null && { ok=0; runtime_alive=1; }
+  pgrep -f "deepseek-v41/bin/python|cachalot|Python\.app/Contents/MacOS/Python .*benchmarks/" >/dev/null && { ok=0; runtime_alive=1; }
   lvl=$(sysctl -n kern.memorystatus_vm_pressure_level)
   [ "$lvl" -eq 1 ] || ok=0
   swap=$(swap_used_mb)

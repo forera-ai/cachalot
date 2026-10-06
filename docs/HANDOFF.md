@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-06, 0.60.9): the DeepSeek floor re-profiled
+>
+> Section 18.75. The in-process all-resident token is **75.4-77.4 ms** (not 70: that is the server-path fit intercept, still unreproduced): **55.5 ms inside `mx.eval`, 17.9 ms of CPU graph building between 44 host syncs**, GPU idle ~27 %; GPU work 52.2 ms, led by attention (25.6) and routed experts (10.1). The weight-streaming kernels run at 29-45 % of the chip's bandwidth. A resident replay still issues 23 speculative loads a token, all unused (218 MiB). **The one-runtime guard missed every venv-started benchmark** (they run as Homebrew's `Python.app`); fixed in all launch scripts, `guarded_run.sh` (whose `--force` no longer skips the check) and `run_manifest.py`.
+>
 > ## Start here (2026-10-06, 0.60.8): a second C# task shows no cost of budget 0
 >
 > Section 18.74. A new, short CsvHelper + System.Text.Json task, 48 per arm, graded blind: **exact 2/48 flawed, budget 0 2/48 (p 1.00)**, decode -22 %. By the rule fixed before the run, the C# cost of 0.60.2 is not reproducible across C# tasks and `serve.sh`'s budget 0 stays (Hamed's default). It showed once, on long free-form code in agent context; for that, `CACHALOT_DECODE_MISS_BUDGET=off ./serve.sh` is the exact path. Limit: this task's base rate is 4 %, so it rules out only a large effect.
@@ -8782,6 +8786,34 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.75 The DeepSeek floor re-profiled, and the runtime guard that missed venv runs — 2026-10-06 (0.60.9)
+
+Hamed: "keep budget 0 and start the floor profile", then "VM is off, go ahead once the C# run finishes" and "run the arms when it's quiet". Charter track L4(f); LEDGER DS-FLOOR-SPLIT was stale (the 0.9.x split of a 77-80 ms floor).
+
+**Record.** Fields 1-3 were written before any arm: `benchmarks/results/floor-profile-0.60.7/RECORD-before.md` (baseline, predictions P1-P4 with intervals and falsifiers, intervention, and two deviations written before the reruns). Arms, each under `guarded_run.sh --budget-gib 48`, serve.sh's environment (internal verified bank, page cache, wired limit 80, `MLX_METAL_FAST_SYNCH=1`), sysctl 88064, a manifest from `run_manifest.py` before each (valid: `d0f6c5b6...` resident, `3bf3d5e5...` sync, `c0b026a1...` gpu), and a quiet-machine gate before each (5-minute load under 2.5, no benchmark, dotnet or runtime process); scorecard rows in `scorecard.jsonl`. `guarded_run.sh` needed `--force` because its arithmetic wants 77 GiB available for a 48 GiB budget and the machine offered 72-73; the runs peaked at 70.1 GiB wired with no swap growth and pressure 1.
+
+**A contaminated first run, kept out.** The first resident run started with `--force`, which also skipped guarded_run's other-runtime check, while another session's `quality_blind_ab.py sheet` was compiling 96 C# replies (load 7.8): passes read 89.3 / 86.8 / 83.0 ms. It is kept as `resident-contaminated.log` and not used. Its manifest did record the other process, which is what the manifest is for.
+
+**Result.**
+
+| arm | measured |
+|---|---|
+| resident (`decode_resident.py`, 16 tokens x 6 passes) | pass 1 184.8 ms (cold, 175 misses a token); passes 2-6 all-resident **76.7 / 79.8 / 76.3 / 75.7 / 78.5 ms, mean 77.4** |
+| sync (`profile_decode_sync.py --mode resident`, 512-token context, 12 repeats) | token min 72.7, **median 75.4 ms**: inside `mx.eval` **55.5** (73.6 %), CPU outside **17.9** (23.8 %), store-blocked 1.0, Engram reads on the CPU 1.2; **44 evals** a token, 40 of them the MoE router sync (53.8 ms in eval, 16.5 ms CPU in the gap before it) |
+| gpu (`profile_decode_gpu.py`, 17-token context) | whole token min 71.3-72.4, median 75.7-76.9 with async MoE (73.5-76.2 / 79.3-81.0 without); chained GPU rows on the shipped path: compressed reuse attention 15.9 (30 layers), compressed source attention 8.7, sliding-window attention 1.0, **routed experts 10.1**, **shared expert 6.0**, hyper-connection glue 4.9, compressor/indexer extra 2.3, head 1.6, fused router 0.9, Engram forwards 0.8: **sum 52.2 ms** (this session's sum of the shipped rows; the script's own "75.3" total also adds retired alternatives); router eval drain 0.272 ms over a 0.019 ms kernel |
+
+**Against the predictions (record fields 4-5).** P1 (72-80 ms all-resident): **held**, 75.4-77.4. P2 (inside eval 48-58, CPU 17-24, 40-46 evals): **held**, 55.5 / 17.9 / 44. P3: eval round trips (8-13 ms) **held** as an isolated cost, 0.272 x 44 = 11.9 ms, though inside the token most of it overlaps (inside-eval exceeds the chained GPU sum by only ~3.3 ms); routing prediction (8-12 ms) **missed**: the fused router made it ~0.9 ms of GPU a call, so the 0.9.x "11 ms" no longer exists as a GPU cost; the trunk FP8 GEMV family (12-15 ms) was **not isolated** by these instruments (it hides inside the attention and shared-expert rows). **P4 (weight-bound work under 40 % of the floor, falsified above 50 %): falsified on the generous count.** Without attention, the weight-streaming rows (routed experts, shared expert, head) are 17.7 ms (24 %); with 0.9.x's measurement that attention is ~86 % weight streaming, they are ~40 ms (53 %). But those kernels run far below the chip: routed experts move ~2.39 GB in 10.1 ms (~237 GB/s, 29 % of 819 GB/s), the trunk GEMV was 367 GB/s (45 %). So "2x memory bandwidth" is bounded above by about -20 ms (-26 %) only if every such kernel were bandwidth-bound, which they are not; P4's claim that it would cut the floor by under 20 % is neither confirmed nor refuted.
+
+**Explanation (field 5).** The all-resident token is ~70 % GPU work and ~27 % GPU idle (DS-GPU-IDLE: 17.9 ms of CPU graph building between the 44 syncs, plus 2.2 ms of store and Engram calls). The floor did not fall from 77-80 to 70 in-process: the in-process all-resident token is still 75-77 ms, and the 70 ms is the server-path fit intercept of 0.53.0. That gap is now an open ledger question (same day, same path, both measured).
+
+**Wasted data movement, found on the way.** Even with every needed expert resident, the predictor issued **23 speculative loads a token, all 23 expired unused, 218 MiB a token** (~2.8 GB/s of drive traffic at the floor; LEDGER DS-SPEC-RESIDENT). It is off the critical path (store-blocked 1.0 ms), so it costs drive time and energy, not latency, in this arm. Whether the same waste happens in live decode, where DS-PRED-PREC says 34-41 % of predicted loads are used, is for the per-token trace (L2).
+
+**Generalization (field 6).** Architecture-specific, transferable: a MoE runtime that addresses its expert store from the host pays one synchronization per MoE layer; here 40 such syncs leave the GPU idle for about a quarter of an all-resident token while the CPU builds the next layer's graph. Halving that idle time is worth ~10 ms (13 %) of the floor, more than doubling any single kernel except attention. **Bottleneck (field 7):** unchanged in kind (the floor plus misses); inside the floor it is attention (25.6 ms) and the host-sync idle time (~20 ms), not the routed experts. **Kind (field 8):** research: predicted before the run, measured, P1-P2 held, P3 partly, P4 falsified on one count and explained.
+
+**Fixed on the way (safety).** The one-runtime guard (`serve.sh`, `serve-glm.sh`, `serve-minimax.sh`, `chat.sh`, `chat-glm.sh`, `chat-minimax.sh`, `benchmarks/decode_vs_context.sh`, `guarded_run.sh`, `settle.sh`) and `run_manifest.runtime_processes` matched only `deepseek-v41/bin/python` and `cachalot.cli`. The venv's python is a symlink to Homebrew's framework build, which re-executes as `.../Python.app/Contents/MacOS/Python`, so every benchmark started from the venv (for example `quality_blind_ab.py run`) was invisible to the guard; only guarded_run's memory arithmetic stopped a second runtime today. The pattern now also matches `Python.app/Contents/MacOS/Python` running `benchmarks/` or `cachalot`; checked against the live process (old pattern: nothing, new: the run). And `guarded_run.sh --force` no longer skips the other-runtime check: it skips only the memory arithmetic. Test: `test_runtime_processes_sees_a_venv_run_as_framework_python`.
+
+**Open.** The server-path floor on the same day (a `serve.sh` arm, `mix.sh`-shaped, to settle 70 against 75-77); what limits the weight-streaming kernels at 29-45 % of the chip's bandwidth (single-row GEMV occupancy or launch latency: a micro-benchmark); the speculative waste in live decode (L2). **Needs Hamed:** nothing.
 
 ### 18.74 A second, independent C# task: budget 0 equals exact — 2026-10-06 (0.60.8)
 

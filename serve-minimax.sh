@@ -12,9 +12,9 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-if pgrep -fl "deepseek-v41/bin/python|cachalot\.cli" >/dev/null 2>&1; then
+if pgrep -fl "deepseek-v41/bin/python|cachalot\.cli|Python\.app/Contents/MacOS/Python .*(benchmarks/|cachalot)" >/dev/null 2>&1; then
     echo "a runtime is already running; not starting a second one:" >&2
-    pgrep -fl "deepseek-v41/bin/python|cachalot\.cli" >&2
+    pgrep -fl "deepseek-v41/bin/python|cachalot\.cli|Python\.app/Contents/MacOS/Python .*(benchmarks/|cachalot)" >&2
     exit 1
 fi
 

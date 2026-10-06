@@ -69,3 +69,9 @@ def test_collect_and_write(tmp_path):
     assert saved["id"] == mid and rm.manifest_id(man) == mid
     rm.append_rows(tmp_path / "s.jsonl", [rm.row(mid, "a", {"tokens": (5, "measured")})])
     assert json.loads((tmp_path / "s.jsonl").read_text())["manifest"] == mid
+
+
+def test_runtime_processes_sees_a_venv_run_as_framework_python():
+    ps = "44955 /opt/homebrew/Cellar/python@3.14/3.14.8/Frameworks/Python.framework/Versions/3.14/Resources/" \
+         "Python.app/Contents/MacOS/Python benchmarks/quality_blind_ab.py run --budget 0"
+    assert len(rm.runtime_processes(ps, own_pid=1)) == 1

@@ -2,7 +2,7 @@
 # One arm of decode_vs_context.py under serve.sh's environment. Usage: decode_vs_context.sh FILLER_TOKENS [OUT]
 set -euo pipefail
 cd "$(dirname "$0")/.."
-if pgrep -fl "deepseek-v41/bin/python" >/dev/null 2>&1; then
+if pgrep -fl "deepseek-v41/bin/python|cachalot\.cli|Python\.app/Contents/MacOS/Python .*(benchmarks/|cachalot)" >/dev/null 2>&1; then
     echo "a runtime is already running; not starting a second one" >&2; exit 1
 fi
 export CACHALOT_MODEL_PATH=/Volumes/X10Pro/Flash4-1/DeepSeek-V4.1-Flash
