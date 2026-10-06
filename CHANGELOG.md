@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.60.5 (2026-10-06)
+
+HANDOFF "Start here (2026-10-06, 0.60.5)" and section 18.71. Documentation only, no runtime change: the runtime's docs follow Codex's completed rename of the app.
+
+### Changed
+- README's Cachalot Lab link points to `https://github.com/prooshani/cachalot-lab`.
+- `docs/lab/CODEX-LAB-PROMPT.md`'s rename notice records the finished rename: repository `prooshani/cachalot-lab`, working directory `/Volumes/X10Pro/Cachalot Lab` (the old Studio path is a compatibility alias), code graph `Volumes-X10Pro-Cachalot-Lab`, and the app's decision (its `docs/RENAME.md`) to keep the bundle identifier `com.prooshani.cachalotstudio`, the Keychain service `com.cachalot.studio.runtime-api-key` and the preference key `cachalot-studio-ui` so existing data is not stranded.
+
 ## 0.60.4 (2026-10-05)
 
 HANDOFF "Start here (2026-10-05, 0.60.4)" and section 18.70. Documentation only, no runtime change: the desktop app is renamed from Cachalot Studio to **Cachalot Lab** (Hamed's decision; Codex carries out the app-side rename).

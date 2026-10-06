@@ -6,18 +6,19 @@
 > (Hamed) before continuing.
 
 
-> **Renamed 2026-10-05: Cachalot Studio is now Cachalot Lab.** The owner decided the new name;
-> this brief uses it throughout. The product name, window title, menus, docs and every
-> user-visible string become "Cachalot Lab". Identifiers that still say "studio" in this brief
-> (the Git remote `cachalot-studio`, the working directory `/Volumes/X10Pro/Cachalot Studio`,
-> the `Application Support/Cachalot Studio` data directory, the `cachalot-studio/...` keychain
-> service names) are left exactly as they were until you rename them: their migration is yours,
-> including moving existing user data and keychain items so nothing is lost. Report the new
-> remote URL and working directory to the owner so the runtime's docs can follow. In the
-> runtime repository the briefs moved from `docs/studio/` to `docs/lab/` (this file is now
-> `docs/lab/CODEX-LAB-PROMPT.md`). The runtime also uses "the lab" in lower case for its
-> research direction (`docs/RESEARCH-DIRECTION.md`); Cachalot Lab is the app that will show
-> that research's scorecards, not the research itself.
+> **Renamed 2026-10-05: Cachalot Studio is now Cachalot Lab.** Codex completed the app-side
+> rename on 2026-10-05: the repository is `https://github.com/prooshani/cachalot-lab`, the working
+> directory is `/Volumes/X10Pro/Cachalot Lab` (the old `/Volumes/X10Pro/Cachalot Studio` path is a
+> compatibility alias), and the code graph is `Volumes-X10Pro-Cachalot-Lab`. By the app's own
+> decision, recorded in its `docs/RENAME.md`, stable identities that would strand existing data keep
+> their old values: bundle identifier `com.prooshani.cachalotstudio`, Keychain service
+> `com.cachalot.studio.runtime-api-key` and preference key `cachalot-studio-ui`. The app's
+> `docs/RENAME.md` governs its identifiers; this brief is historical for anything the rename
+> touched. Sections below that still name the old remote or path record the brief as first
+> written. In the runtime repository the briefs live in `docs/lab/` (this file is
+> `docs/lab/CODEX-LAB-PROMPT.md`). The runtime uses "the lab" in lower case for its research
+> direction (`docs/RESEARCH-DIRECTION.md`); Cachalot Lab is the app that will show that
+> research's scorecards, not the research itself.
 ---
 
 ## 0. Your role and the first three things you do

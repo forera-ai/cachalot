@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-06, 0.60.5): the Lab rename is complete
+>
+> Codex finished the app rename (section 18.71): repository `prooshani/cachalot-lab`, working directory `/Volumes/X10Pro/Cachalot Lab`, code graph `Volumes-X10Pro-Cachalot-Lab`. The bundle id, Keychain service and preference key keep their "studio" values by the app's decision (its `docs/RENAME.md` governs identifiers). Write runtime briefs in `docs/lab/briefs/` as before. No runtime change.
+>
 > ## Start here (2026-10-05, 0.60.4): Cachalot Studio is now Cachalot Lab
 >
 > Hamed renamed the desktop app to **Cachalot Lab** (section 18.70). The runtime's briefs live in `docs/lab/` (product brief `docs/lab/CODEX-LAB-PROMPT.md`, per-release briefs `docs/lab/briefs/`); write every new brief as a "Lab brief" about "Cachalot Lab". Codex renames the app and migrates its identifiers (remote, working directory, bundle id, data directory, keychain); until Hamed reports the new remote and path, the old ones (`prooshani/cachalot-studio`, `/Volumes/X10Pro/Cachalot Studio`) stay correct. "the lab" in lower case is the research direction, not the app. No runtime change.
@@ -8766,6 +8770,10 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.71 The Lab rename completed on the app side — 2026-10-06 (0.60.5)
+
+Hamed: "Codex finished with the rename", then "release it". Verified before editing: `/Volumes/X10Pro/Cachalot Lab` exists with remote `https://github.com/prooshani/cachalot-lab.git`; `/Volumes/X10Pro/Cachalot Studio` is a symlink to it; the code-graph registry lists `Volumes-X10Pro-Cachalot-Lab` (and still the old Studio graph); the app's `src-tauri/tauri.conf.json` keeps identifier `com.prooshani.cachalotstudio`. Codex had already updated the shared session skill and the project memory. **Shipped (documentation only):** the README link and the rename notice at the top of `docs/lab/CODEX-LAB-PROMPT.md` now state the finished rename and the identifiers the app kept on purpose. The uncommitted research work in the tree at release time (`docs/LEDGER.md`, `benchmarks/run_manifest.py`, `benchmarks/batch_union.py`, their tests, and edits to `benchmarks/cache_sim.py` and `benchmarks/quality_blind_ab.py`) belongs to another session and was deliberately not included.
 
 ### 18.70 The desktop app renamed to Cachalot Lab — 2026-10-05 (0.60.4)
 

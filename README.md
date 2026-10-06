@@ -824,7 +824,7 @@ See `docs/SPEED-RESEARCH-2026-10-03.md`.
 
 ## Cachalot Lab
 
-A desktop app for this runtime, [Cachalot Lab](https://github.com/prooshani/cachalot-studio), is built from
+A desktop app for this runtime, [Cachalot Lab](https://github.com/prooshani/cachalot-lab), is built from
 the brief in [`docs/lab/CODEX-LAB-PROMPT.md`](docs/lab/CODEX-LAB-PROMPT.md); each runtime release that
 changes a knob, a default, a stats field, a log line or an endpoint adds a brief under
 [`docs/lab/briefs/`](docs/lab/briefs/).
