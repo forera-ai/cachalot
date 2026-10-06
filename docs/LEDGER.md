@@ -16,9 +16,12 @@ Architecture: 40 MoE layers x 384 routed experts = 15,360, top-6 (240 expert use
 
 | id | constant | value | tag | version, date | regime | method, W-class | source | status | reproduced by |
 |---|---|---|---|---|---|---|---|---|---|
-| DS-FLOOR-48 | all-resident token, server path, short context | 70 ms (fit intercept 69-71 at 36-48 GiB) | measured | 0.53.0, 2026-10-03 | int bank, 48 GiB, wired limit 80, sysctl 88064, ctx < 1k | `mix.sh` 11 requests x 120 tokens, fit of ms on misses, W1 | §18.52 | current | §18.53 governor-on arm: 70 + 2.15 m |
-| DS-MISS-48 | cost of one decode miss | 2.0 ms (fits 1.83-2.41) | measured | 0.53.0 | as DS-FLOOR-48 | slope of the same fits | §18.52, §18.53 | current | §18.53 (2.15, 2.27) |
-| DS-TOKEN-48 | decode token at 48 GiB | 120-125 ms (7.9-8.3 tok/s) at 25 misses | measured | 0.53.0-0.54.0 | as DS-FLOOR-48 | `mix.sh`, `serve.sh` twice | §18.52, §18.53 | current | §18.53 (125.2 ms) |
+| DS-FLOOR-48 | all-resident token, server path, short context | 70 ms (fit intercept 69-71 at 36-48 GiB) | measured | 0.53.0, 2026-10-03 | int bank, 48 GiB, wired limit 80, sysctl 88064, ctx < 1k | `mix.sh` 11 requests x 120 tokens, fit of ms on misses, W1 | §18.52 | **contradicted** by DS-FLOOR-SRV (0.60.10): a fit intercept, not a floor; the same workload fit 93.4 + 1.40 m and 73.4 + 2.30 m in two arms on one day | §18.53 governor-on arm: 70 + 2.15 m |
+| DS-FLOOR-SRV | all-resident token, server path, short context, exact | **79.2-80.3 ms** (repeats 1-2 of one greedy prompt, 0 misses); 87.8 after 12 mixed prompts in the same process; budget 0 (shipped): 81.3-81.9 | measured | 0.60.10, 2026-10-06 | int bank, 48 GiB, wired limit 80, sysctl 88064, no snapshots preloaded, ctx 27 | `serve.sh` + `floor-server-0.60.10/driver.py`, W1 | §18.76 | current | §18.53 `floor.sh` 78.6 ms (12.73 tok/s) at 48 GiB; in-process DS-FLOOR-INPROC 75-77 the same day |
+| DS-PRED-FLOOR | cost of decode prediction on an all-resident server token | ~5 ms (A 79.2-80.3 against `CACHALOT_PREDICT_TOPK=0` 72.8-76.8); on 23.5-miss tokens prediction nets ~1 ms (126.2 against 127.4 ms) | measured | 0.60.10 | as DS-FLOOR-SRV | two fresh servers, same driver, n = 2-3 floor requests and 12 mixed each | §18.76 | current, small n | §9.15 (2026-09-21, in-process): ~6 ms (3.9 CPU + 2.5 eval) |
+| DS-MB0-HOSTLAYERS | budget 0: decode layer-calls that route to a predicted load still in flight | **26.4 %** (12.6 experts a token; 73.6 % of layers could skip the host); server arm 11.5 awaited a token, 16.5 dropped | measured | 0.60.10 | int bank, 48 GiB, budget 0, in-process, 12 mixed prompts x 120 greedy tokens | `floor-server-0.60.10/layer_share.py` (a monkeypatched counter), W1 | §18.76 | current | none |
+| DS-MISS-48 | cost of one decode miss | 2.0 ms (fits 1.83-2.41) | measured | 0.53.0 | as DS-FLOOR-48 | slope of the same fits | §18.52, §18.53 | current | §18.53 (2.15, 2.27); 0.60.10: 1.97 from the mean token over the measured floor (the fits' slopes, 1.40 and 2.30, are not stable) |
+| DS-TOKEN-48 | decode token at 48 GiB | 120-125 ms (7.9-8.3 tok/s) at 25 misses | measured | 0.53.0-0.54.0 | as DS-FLOOR-48 | `mix.sh`, `serve.sh` twice | §18.52, §18.53 | current | §18.53 (125.2 ms); 0.60.10: 126.2 ms at 23.5 misses (= 79.8 + 1.97 m against DS-FLOOR-SRV) |
 | DS-FLOOR-INPROC | all-resident token, in-process | 75.8-77.5 ms (README 76.4) | measured | 0.53.0 | int bank, budget 36, `MLX_METAL_FAST_SYNCH=1`, short ctx | `decode_resident.py` | §18.52 | current | 0.60.9 (§18.75): 77.4 mean of five all-resident passes (75.7-79.8), 75.4 median in the sync profiler, 75.7-76.9 in the GPU profiler; 48 GiB, sysctl 88064 |
 | DS-FLOOR-22K | all-resident token, server, 22k Hermes context | 95.6 ms | measured | 0.57.0, 2026-10-04 | int bank, 48 GiB, sysctl 88064, ctx 22k | one repeated warm-up turn in `server_miss_budget_ab.py`, W6 | §18.59 | current, n = 1 | none |
 | DS-TOKEN-22K-EXACT | decode token, server, 22k context, exact | 140.3 ms (7.1 tok/s) | measured | 0.57.0 | as DS-FLOOR-22K | per-turn alternation, 11 prompts x 220 greedy tokens, W2/W6 | §18.59 | current | §18.68: 138.3 ms on 1,500-token C# replies |
@@ -95,6 +98,7 @@ Architecture: 42 MoE layers x 288 experts = 12,096, top-8 (336 uses a token), 13
 | MC-WORKSET | Metal recommended working set | 77.76 GiB at default sysctl; 86 GiB at 88064 | measured | §18.18; read again 2026-10-06 | current |
 | MC-SCREENSAVER | Flurry screensaver | ~13 % slower decode | measured | memory "slow decode window" | current |
 | MC-HERMES-WINDOW | visible Hermes Desktop window | up to 30 % slower | measured | §18.19 (M28) | current |
+| MC-READ-SIZE | GPU streaming read rate against bytes a launch reads | dense bf16 GEMV: 47 % of 819 GB/s at 2 MiB, 71 % at 4, 83 % at 8, 87-89 % at 16 MiB and above; `mx.sum` 31 / 50 / 63 / 76 % at 2 / 4 / 8 / 16 MiB, 93 % at 128 MiB+; ~5 us a launch | measured | §18.76, `benchmarks/micro_read_size_roofline.py` | current |
 | MC-DRIFT | process-to-process drift | +-10 %; levers under ~15 % need per-token alternation | measured | SPEED-RESEARCH §2 | current |
 
 ## 5. Quality constants
@@ -124,7 +128,7 @@ What bound each model, what removed it, and what bound next. "Bound" means the t
 | 0.9.x | hit rate and the 77-80 ms floor (9.4-9.6 tok/s at 52 GiB, internal) | README "Performance" | | (regime change) |
 | 0.48.1-0.52.2 | the USB drive (bank on X10Pro, ~10 ms a miss; estimated 3.8 tok/s) | SPEED-RESEARCH §1.1 (estimate) | bank back on the internal SSD (0.52.3) | the GPU allocation cliff |
 | 0.52.3 | GPU allocation cliff at 52 GiB (floor doubled to 157 ms) | DS-CLIFF-GPU52 | budget 48 (0.53.0), wired governor (0.54.0) | the floor |
-| 0.53.0-now | the 70 ms floor (58 % of a 120 ms token) plus 25 misses x 2 ms | DS-FLOOR-48, DS-MISS-48 | every bit-identical lever priced below its stop rule (D1 moot, D2 held, D3 held); budget 0 drops the misses (default since 0.60.0) | the floor: GPU busy ~70 % (attention 25.6 ms, routed experts 10.1, shared expert 6.0) and GPU idle ~27 % while the CPU builds graphs between 44 host syncs (DS-FLOOR-SPLIT-0609, DS-GPU-IDLE) |
+| 0.53.0-now | the floor (80 ms through the server, DS-FLOOR-SRV; 70 was a fit intercept) plus 25 misses x 2 ms | DS-FLOOR-48, DS-MISS-48 | every bit-identical lever priced below its stop rule (D1 moot, D2 held, D3 held); budget 0 drops the misses (default since 0.60.0) | the floor: GPU busy ~70 % (attention 25.6 ms, routed experts 10.1, shared expert 6.0) and GPU idle ~27 % while the CPU builds graphs between 44 host syncs (DS-FLOOR-SPLIT-0609, DS-GPU-IDLE) |
 | agent turns | the 22k system block's cold prefill (205-227 s) | DS-PREFILL-BLOCK | date reuse (0.60.0), in-block pin (0.59.0), not measured live | short side requests (DS-PREFILL-SHORT) |
 
 ### MiniMax-M3
@@ -147,15 +151,15 @@ What bound each model, what removed it, and what bound next. "Bound" means the t
 
 | where | constant | ledger row it should cite | action |
 |---|---|---|---|
-| `benchmarks/cache_sim.py` `--floor-ms` default | 77.0 | DS-FLOOR-48 (70) | changed to 70 in 0.60.6 |
+| `benchmarks/cache_sim.py` `--floor-ms` default | 77.0 | DS-FLOOR-SRV (80) | changed to 70 in 0.60.6 (DS-FLOOR-48), to 80 in 0.60.10 (DS-FLOOR-SRV) |
 | `benchmarks/cache_sim.py` `--miss-ms` default | `internal=1.7,usb=10.2` | DS-MISS-48 (2.0, internal bank, 48 GiB) | changed to `internal=2.0,usb=10.2` in 0.60.6; the USB figure stays an estimate (ST-X10) |
-| `benchmarks/d2_verify_union.py` defaults | floor 70, miss 2.0, marginal 8, draft 15 | DS-FLOOR-48, DS-MISS-48; marginal 8 is Rapid-MLX's, DS-D2-VERIFY is ours (26.9) | unchanged; the section-18.56 table prints both |
-| `benchmarks/d3_layer_hits.py` | saving 0.63, rewind 0.7 | DS-D3-SAVE (borrowed) | unchanged; flagged |
+| `benchmarks/d2_verify_union.py` defaults | floor 70, miss 2.0, marginal 8, draft 15 | DS-FLOOR-SRV (80, was DS-FLOOR-48), DS-MISS-48; marginal 8 is Rapid-MLX's, DS-D2-VERIFY is ours (26.9) | unchanged; the section-18.56 table prints both |
+| `benchmarks/d3_layer_hits.py` | saving 0.63, rewind 0.7 | DS-D3-SAVE (borrowed) | unchanged; flagged. Under budget 0 the all-hit share is DS-MB0-HOSTLAYERS's 73.6 %, not the trace's 52.8 % |
 
 ## 8. Open questions this ledger exposes
 
 1. **No DeepSeek constant has been measured at the default sysctl.** One floor arm (`mix.sh`-shaped, 48 GiB) would say whether DS-FLOOR-48 and DS-TOKEN-48 hold today.
-2. ~~DS-FLOOR-SPLIT is stale~~ re-profiled in 0.60.9 (DS-FLOOR-SPLIT-0609). **New gap:** the in-process all-resident token is 75-77 ms while the server-path fit intercept (DS-FLOOR-48) is 70 ms; nobody has measured both on the same day and path. The floor's weight-streaming kernels run at 29-45 % of the chip's 819 GB/s (routed experts 2.39 GB in 10.1 ms = ~237 GB/s), so what limits them (single-row GEMV occupancy, launch latency) is unmeasured.
+2. ~~DS-FLOOR-SPLIT is stale~~ re-profiled in 0.60.9 (DS-FLOOR-SPLIT-0609). ~~The 70 ms against 75-77 gap~~ settled in 0.60.10: the server's all-resident token is 79-80 ms (DS-FLOOR-SRV), 70 was a fit intercept. ~~What limits the weight-streaming kernels~~ partly answered (MC-READ-SIZE): at the bytes a decode launch reads (~3 MiB an expert projection, ~11 MiB a shared-expert projection) a dense bf16 GEMV reaches 60-85 % of 819 GB/s, so launch size explains part of the gap; the rest (routed experts at ~29 %) is the 2-bit dequantizing kernel itself, not the memory system. Doubling memory bandwidth would therefore move those kernels far less than 2x.
 3. **MiniMax and GLM have no constants measured since GLM moved to the X10Pro** and since MiniMax's substitution defaults; GLM-TOKEN-USB is an estimate only.
 4. **DS-PREFILL-SHORT (25-45 tok/s on 200-400 tokens)** is a measured cost with no explanation.
 5. **Queue depth (ST-X10) and read latency distributions** are recorded as part of a wall, never swept.

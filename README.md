@@ -295,6 +295,8 @@ reproducible to ±0.3 %.
 
 **0.60.7 (2026-10-06): review fixes.** The run manifest no longer records credentials such as `CACHALOT_API_KEY` by value, and its Hermes Desktop check needs one process line. HANDOFF section 18.73.
 
+**0.60.10 (2026-10-06): the server floor is 80 ms.** Measured through `serve.sh` the same day as the in-process profile, an all-resident DeepSeek token is 79-80 ms; the 70 ms the docs carried was the intercept of a fit, and the same workload fits 73 or 93 ms depending on the run. A token is `80 ms + 2.0 ms x misses`. Prediction costs ~5 ms of an all-resident token, GPU-side expert selection under budget 0 prices at ~7 ms (held), and a new read-size curve shows a batch-1 GEMV needs 16 MiB a launch to reach ~87 % of the chip's bandwidth. HANDOFF section 18.76.
+
 **0.60.9 (2026-10-06): the floor re-profiled.** An all-resident DeepSeek token in-process is 75-77 ms: 55.5 ms inside `mx.eval` and 17.9 ms of CPU building the next graph between 44 host syncs (the GPU idles about a quarter of the token); GPU work is 52 ms, led by attention (25.6) and the routed experts (10.1), whose kernels run at 29-45 % of the chip's memory bandwidth. The one-runtime guard now sees benchmarks started from the venv. HANDOFF section 18.75.
 
 **0.60.8 (2026-10-06): a second C# task shows no cost of budget 0.** A short CsvHelper + System.Text.Json task, graded blind: exact 2/48 flawed, decode miss budget 0 2/48 at -22 % a token. Across three C# results the budget-0 code cost showed once (0.60.2, long free-form code in an agent context), so the default stays; `CACHALOT_DECODE_MISS_BUDGET=off` is the exact path. HANDOFF section 18.74.
@@ -335,7 +337,7 @@ reproducible to ±0.3 %.
 Mac Studio with the bank on the internal SSD: once the whole system's wired memory passes about 74.5 GiB the GPU pages and the all-resident token costs 160+ ms instead of 70. The old 52 GiB budget crossed it (system wired 75.1 GiB): a mixed 12-request
 set decoded at 4.76 tok/s against 8.31 at 48 GiB (7.72 / 8.14 / 8.31 / 8.00 / 4.76 at 36 / 44 / 48 / 50 / 52). It is the system's total, not the runtime's setting: a wired limit of 84 GiB changed nothing, and another process wiring 4 GiB took the default
 48 GiB to 4.85 tok/s. The runtime now reads `vm.page_wired_count` between tokens and gives expert slots back while it is above a ceiling (76 % of RAM, 73.0 GiB; `CACHALOT_WIRED_CEILING_GIB`, 0 off): the same 4 GiB holder then costs nothing (7.92 tok/s), and
-52 GiB under the governor matches 48 (8.13). The token is `70 ms + 2.0 ms x misses` today. The 9.4-9.6 tok/s rows below are 0.9.x sessions and have not been reproduced since. HANDOFF sections 18.52-18.53 have the tables.
+52 GiB under the governor matches 48 (8.13). The token is `80 ms + 2.0 ms x misses` (0.60.10 measured the 80 ms floor directly; the 70 ms these runs fitted was an intercept). The 9.4-9.6 tok/s rows below are 0.9.x sessions and have not been reproduced since. HANDOFF sections 18.52-18.53 have the tables.
 
 **The 52 GiB row is two sessions now, on 0.9.0 and 0.9.2, and they replicate**: 9.42 and 9.59 tok/s on
 prose, 8.53 and 8.15 on Objective-C, 92.37 % and 92.31 % hit rate, and an MLX peak identical to the byte.

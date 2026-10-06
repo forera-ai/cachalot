@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.60.10 (2026-10-06)
+
+HANDOFF "Start here (2026-10-06, 0.60.10)" and section 18.76. Measurement only, no change to inference.
+
+### Measured
+- The DeepSeek all-resident token through `serve.sh` at 48 GiB (exact path, sysctl 88064): **79.2-80.3 ms**, against 75-77 ms in-process the same day. A fit of ms a token on misses a token over 12 mixed requests gave intercepts of 93.4 and 73.4 ms on the same workload in two arms, so the ledger's 70 ms floor (DS-FLOOR-48) was a fit intercept; the token model is `80 + 2.0 x misses` (126.1 predicted, 126.2 measured at 23.5 misses).
+- Decode prediction costs ~5 ms of an all-resident token (`CACHALOT_PREDICT_TOPK=0`: 72.8-76.8 ms) and nets ~1 ms on tokens with ~24 misses.
+- Budget 0 (the shipped decode): 93.3 ms a token on the same mixed prompts (-26 %); 26.4 % of decode layer-calls route to a predicted load still in flight, so GPU-side expert selection (D3) prices at +1 to +11 ms a token and stays held.
+- New `benchmarks/micro_read_size_roofline.py`: a batch-1 bf16 GEMV reaches 47 / 71 / 83 / 87-89 % of the M3 Ultra's 819 GB/s at 2 / 4 / 8 / 16+ MiB read a launch; decode launches read 3-11 MiB.
+
+### Changed
+- `benchmarks/cache_sim.py --floor-ms` defaults to 80 (LEDGER DS-FLOOR-SRV), was 70.
+- `docs/LEDGER.md`: DS-FLOOR-48 contradicted; DS-FLOOR-SRV, DS-PRED-FLOOR, DS-MB0-HOSTLAYERS and MC-READ-SIZE added.
+
 ## 0.60.9 (2026-10-06)
 
 HANDOFF "Start here (2026-10-06, 0.60.9)" and section 18.75. The DeepSeek floor re-profiled (charter L4(f)), and a fix to the one-runtime guard. No change to inference.
