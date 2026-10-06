@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.60.7 (2026-10-06)
+
+HANDOFF "Start here (2026-10-06, 0.60.7)" and section 18.73. Review fixes to 0.60.6's run manifest; no runtime change.
+
+### Fixed
+- `benchmarks/run_manifest.py` recorded every `CACHALOT_*` variable by value, so a run with `CACHALOT_API_KEY` set would have written the server's API key into a manifest meant to be shared. Variables ending in `_KEY`, `_TOKEN`, `_SECRET` or `_PASSWORD` are now recorded as `<redacted>`; knobs such as `CACHALOT_QB_MAX_TOKENS` keep their values. The one manifest written so far (0.60.6's C# run) holds no credential.
+- `hermes_desktop_running` was true whenever any process line contained "Hermes" and any other line contained ".app/" (for example the Hermes CLI plus any open app); it now needs both in one process's command line.
+- `docs/LEDGER.md`'s regime warning records that Hamed re-applied the sysctl (88064) after the reboot.
+
+### Added
+- Two tests in `tests/test_run_manifest.py` (redaction that keeps token-count knobs; the one-line Hermes check).
+
 ## 0.60.6 (2026-10-06)
 
 HANDOFF "Start here (2026-10-06, 0.60.6)" and section 18.72. Measurement and instruments, no runtime change: decode miss budget 1 on C#, the first two tracks of the research charter (L1 ledger, L0 manifest and scorecard), and batched decode priced offline.

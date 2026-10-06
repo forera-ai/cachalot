@@ -136,8 +136,19 @@ def content_hash(text: str | bytes | None) -> str | None:
     return hashlib.sha256(data).hexdigest()[:16]
 
 
+SECRET_SUFFIXES = ("_KEY", "_TOKEN", "_SECRET", "_PASSWORD")
+
+
 def environment(env: dict[str, str]) -> dict[str, str]:
-    return {k: v for k, v in sorted(env.items()) if k.startswith(("CACHALOT_", "MLX_", "TF_", "PYTHONPATH"))}
+    """The run's knobs. A credential (`CACHALOT_API_KEY` and any name ending in a secret suffix) is recorded as set,
+    never by value: manifests are meant to be shared."""
+    return {k: ("<redacted>" if k.endswith(SECRET_SUFFIXES) else v) for k, v in sorted(env.items())
+            if k.startswith(("CACHALOT_", "MLX_", "TF_", "PYTHONPATH"))}
+
+
+def hermes_desktop_running(ps_text: str) -> bool:
+    """A Hermes app bundle in one process's command line (not "Hermes" in one line and ".app/" in another)."""
+    return any("Hermes" in line and ".app/" in line for line in ps_text.splitlines())
 
 
 def machine_state() -> dict:
@@ -150,7 +161,7 @@ def machine_state() -> dict:
         "system_wired_gib": round(wired_pages * page / GiB, 2) if wired_pages and page else None,
         "gpu_alloc_gib": gpu_alloc_gib(),
         "screensaver_running": "Flurry.appex" in ps or "ScreenSaverEngine" in ps,
-        "hermes_desktop_running": "Hermes" in ps and ".app/" in ps,
+        "hermes_desktop_running": hermes_desktop_running(ps),
         "other_runtimes": runtime_processes(ps, os.getpid()),
         "x10pro_mounted": Path("/Volumes/X10Pro").is_dir(),
         "uptime": _run("uptime"),

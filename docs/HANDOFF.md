@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-06, 0.60.7): review fixes to the run manifest
+>
+> Section 18.73. A review of 0.60.6 found that `run_manifest.py` would have written `CACHALOT_API_KEY`'s value into a manifest; credentials are now redacted, and the Hermes Desktop check no longer gives false positives. Everything in 0.60.6's block below still holds. No runtime change.
+>
 > ## Start here (2026-10-06, 0.60.6): budget 1 on C#, the constants ledger, the run manifest, batching priced
 >
 > Section 18.72. **Budget 1 on a rebuilt C# body: 10/48 flawed, the same as exact (10/48), at -2.7 % a token; budget 0 13/48 (p 0.63) at -25 %.** The positive control did not reproduce §18.68's budget-0 C# cost, so the run is inconclusive about budget 1's safety and the code evidence on budget 0 is now split (one body: large cost; a rebuild of the same request: none). Budget 1 is not worth a default (3 %); the choice stays 0 or `off`, Hamed's. New: `docs/LEDGER.md` (every constant with its regime and status; `cache_sim.py` defaults now 70 ms + 2.0 ms a miss), `benchmarks/run_manifest.py` (manifest + JSONL scorecard rows), `benchmarks/batch_union.py` (batched decode priced offline: misses a token rise with B, aggregate gain 1.27-1.42x at B = 4 from the floor alone, not built). **The 0.58.1 dump was lost to a reboot: keep workloads under `benchmarks/results/`.** The sysctl resets at reboot (Hamed re-applied 88064 on 2026-10-06).
@@ -8774,6 +8778,14 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.73 Review of 0.60.6: the run manifest's credentials and Hermes check — 2026-10-06 (0.60.7)
+
+Hamed asked for the other session's work reviewed and released; that session committed and pushed it as 0.60.6 (e5c7673) during the review, so the review's fixes ship separately as a patch (Hamed's choice over renumbering a pushed release). Reviewed: `docs/LEDGER.md`, `benchmarks/run_manifest.py`, `benchmarks/batch_union.py`, the `quality_blind_ab.py` multi-arm change, the `cache_sim.py` defaults and their tests. The ledger's rows were spot-checked against the charter and SPEED-RESEARCH (DS-FLOOR-SPLIT, DS-BYTES-TOKEN at 70 ms = ~107 GB/s, MM-FLOOR-77 contradicted by MM-FLOOR) and agree; `batch_union.py`'s replay and its two floor models are labelled hypotheses as the charter requires; the three-arm rotation in `quality_blind_ab.py` keeps the two-arm labels.
+
+**Fixed.** (1) `environment()` recorded every `CACHALOT_*` variable by value; the server reads `CACHALOT_API_KEY`, so a manifest written beside a keyed server would have carried the key into `benchmarks/results/` and into anything that later shows manifests (Cachalot Lab, charter question 3). Names ending in `_KEY`, `_TOKEN`, `_SECRET` or `_PASSWORD` are now `<redacted>`; `_TOKENS` knobs are kept. The only manifest written so far (`benchmarks/results/quality-blind-0.60.5-budget1/manifest-d1c7b9f7daa4b479.json`) was checked and holds no credential. (2) `hermes_desktop_running` tested "Hermes" and ".app/" across the whole process list, so the Hermes CLI plus any open app read as the Desktop window; it now needs both on one process line. (3) The ledger's regime warning now records that the sysctl was re-applied (88064 at this release). Tests: 8 in `tests/test_run_manifest.py`.
+
+**Not changed, noted.** `batch_union.py` replays streams that share one system block, so its union share is optimistic for unrelated users (its docstring says so). `quality_blind_ab.py` still reads its dump path from the environment; the rule from 0.60.6 (workloads under `benchmarks/results/`) covers it.
 
 ### 18.72 The constants ledger, the run manifest, batching priced offline, and budget 1 on C# — 2026-10-06 (0.60.6)
 

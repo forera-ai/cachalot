@@ -8,7 +8,7 @@ Written 2026-10-06 against runtime 0.60.4, as track L1 of `docs/RESEARCH-DIRECTI
 
 **Regime fields used below.** drive: `int` = internal SSD (~6.8 GB/s), `X10` = X10Pro over USB (1.0 GB/s, queue depth 1), `int+X10` = MiniMax's mirror over both. sysctl: `88064` = `iogpu.wired_limit_mb=88064` (an 86 GiB GPU working set; Hamed sets it, it resets at reboot), `default` = unset (Metal recommends 77.76 GiB on this machine, read 2026-10-06). ctx = context length at decode. W-class = the charter's workload classes (section 7.1).
 
-**Regime warning, 2026-10-06.** The machine rebooted on 2026-10-06 and the sysctl reads 0 (default). Every DeepSeek speed row from 0.53.0 to 0.60.2 was measured at `88064`. No DeepSeek row has been measured at the default sysctl; the wired governor (`DS-CLIFF-WIRED`) acts on system wired memory, not on the GPU working set, so the 48 GiB rows probably hold, but that is a hypothesis until one arm reproduces `DS-FLOOR-48`.
+**Regime warning, 2026-10-06.** The machine rebooted on 2026-10-06 and the sysctl read 0 (default) until Hamed re-applied 88064 the same morning (it read 88064 again at 0.60.7); check it before every speed arm. Every DeepSeek speed row from 0.53.0 to 0.60.2 was measured at `88064`. No DeepSeek row has been measured at the default sysctl; the wired governor (`DS-CLIFF-WIRED`) acts on system wired memory, not on the GPU working set, so the 48 GiB rows probably hold, but that is a hypothesis until one arm reproduces `DS-FLOOR-48`.
 
 ## 1. DeepSeek V4.1 Flash (priority 1)
 

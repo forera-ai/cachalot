@@ -31,6 +31,16 @@ def test_environment_filter():
     assert rm.environment(env) == {"CACHALOT_X": "1", "MLX_METAL_FAST_SYNCH": "1"}
 
 
+def test_environment_redacts_credentials_but_keeps_token_knobs():
+    env = {"CACHALOT_API_KEY": "sk-secret", "CACHALOT_QB_MAX_TOKENS": "1500"}
+    assert rm.environment(env) == {"CACHALOT_API_KEY": "<redacted>", "CACHALOT_QB_MAX_TOKENS": "1500"}
+
+
+def test_hermes_desktop_needs_one_line():
+    assert rm.hermes_desktop_running("1 /Applications/Hermes.app/Contents/MacOS/Hermes")
+    assert not rm.hermes_desktop_running("1 hermes chat\n2 /Applications/Safari.app/Contents/MacOS/Safari")
+
+
 def test_row_schema_rules():
     r = rm.row("abc", "exact", {"ms_token": (120.0, "measured"), "hit_rate": (None, "measured")})
     assert r["fields"] == {"ms_token": {"value": 120.0, "unit": "ms", "tag": "measured"}}
