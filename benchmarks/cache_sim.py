@@ -10,9 +10,10 @@ It joins three things the repo already has but kept apart:
     runtime's own paths;
   * the cost model of docs/SPEED-RESEARCH-2026-10-03.md section 1.1,
     `token = floor + misses x cost per miss`, with the cost per miss of each
-    drive as a parameter (internal SSD 1.7 ms, USB X10Pro 10.2 ms; both are
-    estimates from the README's 0.9.x session and the 1.0 GB/s wall, to be
-    replaced by D0's measured values via --floor-ms and --miss-ms);
+    drive as a parameter. Defaults cite docs/LEDGER.md: floor 70 ms
+    (DS-FLOOR-48) and 2.0 ms a miss on the internal bank (DS-MISS-48), both
+    measured by D0 at 48 GiB; the USB figure (10.2 ms) is still an estimate
+    from the 1.0 GB/s wall (ST-X10);
   * the miss-drop rule of the MiniMax substitution (a missing expert whose
     router share of its layer is under tau is not read). It needs router
     weights, which traces recorded by 0.52.4 and later carry; older traces
@@ -141,8 +142,9 @@ def main() -> None:
     ap.add_argument("--taus", default="0", help="comma list; > 0 needs a weighted trace")
     ap.add_argument("--policy", default="lru", choices=("lru", "slru", "lfu"))
     ap.add_argument("--expert-bytes", type=int, default=Q2_EXPERT_BYTES)
-    ap.add_argument("--floor-ms", type=float, default=77.0, help="all-resident token time (research 1.1)")
-    ap.add_argument("--miss-ms", default="internal=1.7,usb=10.2", help="name=ms per miss, comma list")
+    ap.add_argument("--floor-ms", type=float, default=70.0, help="all-resident token time (docs/LEDGER.md DS-FLOOR-48)")
+    ap.add_argument("--miss-ms", default="internal=2.0,usb=10.2",
+                    help="name=ms per miss, comma list (LEDGER DS-MISS-48; usb is an estimate, ST-X10)")
     args = ap.parse_args()
 
     arrays, segments = load_trace(args.trace)

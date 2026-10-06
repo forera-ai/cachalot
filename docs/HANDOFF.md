@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-06, 0.60.6): budget 1 on C#, the constants ledger, the run manifest, batching priced
+>
+> Section 18.72. **Budget 1 on a rebuilt C# body: 10/48 flawed, the same as exact (10/48), at -2.7 % a token; budget 0 13/48 (p 0.63) at -25 %.** The positive control did not reproduce §18.68's budget-0 C# cost, so the run is inconclusive about budget 1's safety and the code evidence on budget 0 is now split (one body: large cost; a rebuild of the same request: none). Budget 1 is not worth a default (3 %); the choice stays 0 or `off`, Hamed's. New: `docs/LEDGER.md` (every constant with its regime and status; `cache_sim.py` defaults now 70 ms + 2.0 ms a miss), `benchmarks/run_manifest.py` (manifest + JSONL scorecard rows), `benchmarks/batch_union.py` (batched decode priced offline: misses a token rise with B, aggregate gain 1.27-1.42x at B = 4 from the floor alone, not built). **The 0.58.1 dump was lost to a reboot: keep workloads under `benchmarks/results/`.** The sysctl resets at reboot (Hamed re-applied 88064 on 2026-10-06).
+>
 > ## Start here (2026-10-06, 0.60.5): the Lab rename is complete
 >
 > Codex finished the app rename (section 18.71): repository `prooshani/cachalot-lab`, working directory `/Volumes/X10Pro/Cachalot Lab`, code graph `Volumes-X10Pro-Cachalot-Lab`. The bundle id, Keychain service and preference key keep their "studio" values by the app's decision (its `docs/RENAME.md` governs identifiers). Write runtime briefs in `docs/lab/briefs/` as before. No runtime change.
@@ -8770,6 +8774,54 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.72 The constants ledger, the run manifest, batching priced offline, and budget 1 on C# — 2026-10-06 (0.60.6)
+
+Hamed (v114's first job): "Test budget 1 on C#"; scorecard rows as JSON lines under `benchmarks/results/` with a patch release (charter questions 3 and 5); throttled-storage sweeps allowed (question 4); batched decode priced offline (question 6); then "go, grade it when done and release". He re-applied `sudo sysctl iogpu.wired_limit_mb=88064` after the morning's reboot.
+
+**Machine.** Clean tree at 0.60.4; the Mac had rebooted (uptime 39 minutes at the start), so the sysctl read 0 until Hamed re-applied it; pressure 93, swap 0, X10Pro mounted, no screensaver, no runtime.
+
+**1. L1, the constants and bottleneck ledger (`docs/LEDGER.md`).** Every constant the decisions rest on, per model and regime (drive, budget, sysctl, context), with its tag, version, method, source section, status (current / stale / contradicted) and reproduction. Findings while assembling it: (a) `cache_sim.py` still defaulted to the internal-drive era's 77 ms floor and 1.7 ms a miss; its defaults are now D0's measured 70 ms and 2.0 ms (rows DS-FLOOR-48, DS-MISS-48), the USB figure stays an estimate; (b) every DeepSeek speed constant from 0.53.0 on was measured at sysctl 88064, none at the default; (c) the floor's split (trunk GEMV 14 ms, routing prediction 11, 40 router syncs 9-12, ...) is from the 77-80 ms era and was never re-profiled at 70 ms, so L4(f) needs a fresh profile; (d) GLM has no measured constant since it moved to the X10Pro; (e) the short side requests' 25-45 tok/s is a measured cost without an explanation. Bottleneck-migration tables for all three models are in the ledger's section 6.
+
+**2. L0, the run manifest and scorecard (`benchmarks/run_manifest.py`).** `collect(workload="W<n>:name", ...)` records git sha and dirty files, version, model and bank paths, the budget, the workload's class and content hash, every `CACHALOT_*`/`MLX_*`/`TF_*` variable, hardware and OS, and machine state (sysctl, memory pressure, swap, system wired memory, every process's GPU allocation through the GLM governor's reader, screensaver, Hermes Desktop, other runtimes, X10Pro); `write_manifest` names the file by the content hash; `row()` builds a scorecard row from a fixed schema (charter section 7: performance, memory, storage, compute, energy, quality fields with units), refuses unknown fields and tags other than measured / derived / estimated, and drops absent values (never zero); `percentiles` refuses fewer than 200 tokens. `quality_blind_ab.py run` now writes a manifest first. Tests: `tests/test_run_manifest.py` (6). Not yet in the server (`/v1/stats`): that would need a Lab brief and is not built.
+
+**3. Batched decode priced offline (`benchmarks/batch_union.py`, charter L3 item 7).** The weighted 22k-context trace of §18.54 holds 13 replies to different prompts after one shared system block. They were dealt round-robin into B lanes and replayed through the runtime-shaped store at 48 GiB; a batched step requests, per layer, the union of its lanes' experts. B = 1 gives 24.9 misses a token (live ~24, §18.54: the replay matches).
+
+| B | mean width | union share of uses | requests a token | misses a token | ms a token, floor paid once a step | ms a token, +15 ms a lane |
+|---|---|---|---|---|---|---|
+| 1 | 1.00 | 100 % | 240 | 24.9 | 119.9 | 119.9 |
+| 2 | 1.74 | 96.5 % | 232 | 28.2 | 96.7 | 103.1 |
+| 4 | 2.97 | 89.4 % | 215 | 30.5 | 84.7 | 94.6 |
+| 8 | 4.45 | 81.9 % | 197 | 34.9 | 85.5 | 97.1 |
+| 13 | 8.90 | 77.1 % | 185 | 40.0 | 87.9 | 101.2 |
+
+**Reading.** (1) Concurrent streams share few experts (at B = 2, 96.5 % of routed uses are still distinct), and a batch's working set is larger than one stream's, so **misses a token rise** (24.9 to 30.5 at B = 4): the same arithmetic that held D2 (§18.56), from the other side. (2) All of the aggregate gain is the floor spread over the lanes: 1.27x (a lane adds 15 ms, a guess) to 1.42x (the floor is free per lane, the optimistic bound) at B = 4, with nothing past B = 4. (3) Each user's own tokens slow down about 2x (a B = 4 step is ~250 ms). For one person's agent, which is sequential, there is nothing to batch except Hermes's side requests and subagents. **Verdict: not built (question 6).** Both floor models are hypotheses; a measured batched step would replace them. Streams that share a system block overlap more than unrelated users would, so the union share is if anything optimistic. Tests: `tests/test_batch_union.py` (2; one states that with room for everything a batch saves requests, not misses).
+
+**4. Budget 1 on C#.** Hamed chose this over keeping or dropping the budget-0 default. The 0.58.1 dump of §18.67-18.68 was gone (see the lesson below), so the body was rebuilt from Hermes's own store (`benchmarks/results/quality-blind-0.60.5-budget1/csharp-body.jsonl`: the system prompt Hermes saved on 2026-10-05 for DeepSeek, hash a84f3531; that session's messages up to the C# request; the tool schemas of the 2026-09-23 request dump; 25,855 prompt tokens). It is approximate, not the 0.60.2 body, so all three arms were run on it: exact, budget 1, budget 0 (the positive control), 48 samples each, one process, seeds j, arm order rotating with j, temperature 0.7, 1,500 new tokens at most, 48 GiB, sysctl 88064 (re-applied by Hamed; a first launch at the default sysctl was stopped before the model loaded). 144 replies in ~5.6 hours. The experiment record's fields 1-3 (`RECORD-before.md` in the results directory) were written before the first sample.
+
+**Grading.** The arm-free sheet was split into three thirds of 48 and graded by three separate model graders (opus subagents, each told to read only its own file, the 0.60.2 code rubric: invented or nonexistent API members and other wrong code are flaws; a missing `using`, a missing package note or a cut reply is not); the key was opened after all three had written their grades.
+
+**Result.**
+
+| arm | flawed | invented | wrong-code | unsupported-claim | ms a token | paired ratio to exact [95 % bootstrap] | experts dropped a reply |
+|---|---|---|---|---|---|---|---|
+| exact | 10/48 | 6 | 4 | 0 | 125.0 | 1 | 0 |
+| budget 1 | 10/48 (p 1.00) | 2 | 6 | 2 | 121.6 | **0.973** [0.967, 0.978] | 2,112 |
+| budget 0 | 13/48 (p 0.63) | 7 | 5 | 1 | 93.6 | **0.749** [0.745, 0.754] | 20,256 |
+
+`dotnet build` of the bare snippet: 12 / 9 / 15 of 48. No loops; 2 / 1 / 4 replies cut by the cap. No budget-1 reply equals its exact twin (one dropped expert changes the sampled text). The invented members are the same kinds in every arm: `JsonSerializerOptions.AllowTrailingComma` (the real one is `AllowTrailingCommas`; 5 of budget 0's 7, 1 of exact's), `JsonDocument.Parse` with `JsonSerializerOptions`, `RegisterClassMap` with a model type, a nonexistent CsvHelper `AutoMap<T>`.
+
+**Against the prediction (record fields 4-5).** Speed: budget 1 -2.7 % (predicted -2 to -10 %: inside), budget 0 -25.1 % (predicted -18 to -30 %: inside). Quality: budget 1 equal to exact (predicted -4 to +5: inside). **The positive control failed**: budget 0 was +3 flawed against a predicted +6 or more, under the record's +4 threshold, so by the rule written before the run **this run cannot say budget 1 is safe on code; it says only that on this body none of the three arms differs.** The more important reading is about §18.68: its budget-0 C# cost (26/48 against 11/48, p 0.003) did not reproduce on a rebuilt body of the same request (13/48 against 10/48). Either the effect depends on the exact context (the 0.58.1 body had a different system prompt revision and tool schemas), or §18.68's graders and this run's graders draw the line differently (a strict or lenient grader moves both arms of a third equally, so this does not explain an arm difference by itself), or §18.68's p = 0.003 was a single-body extreme. One prompt per run is the standing caveat of both.
+
+**Generalization (field 6) and bottleneck (field 7).** Workload-specific: budget 1 drops ~10 % as many experts as budget 0 (a layer has more than one miss in about a sixth of layer-calls, LEDGER DS-ALLHIT-LAYERS) and buys ~3 %, so it is not a middle setting worth a default: the real choice stays between budget 0 (-25 %) and exact. The decode bottleneck is unchanged (the 70 ms floor plus misses). **Kind (field 8): research** (predicted, measured, explained for speed; the quality control failed and is reported as such).
+
+**Decision state for Hamed.** `serve.sh` still runs budget 0 (his decision of 2026-10-05). The code evidence is now split: one body showed a large cost, a rebuilt body of the same request showed none. Options: (a) keep 0; (b) `off`; (c) settle it with a second, independent C# prompt (a different task, not a rebuild) at N = 48 for exact and budget 0, ~4 hours. Budget 1 is not recommended as a default: it is measurably equal to exact here and only 3 % faster.
+
+**Lesson recorded.** The 0.58.1 dump that §18.67-18.68 were measured on lived in `/tmp` and the reboot deleted it; the body used here is in `benchmarks/results/quality-blind-0.60.5-budget1/csharp-body.jsonl` (gitignored but persistent). Workloads a result depends on belong under `benchmarks/results/`, not `/tmp`. `settle.sh`'s 77 GiB target for a 48 GiB arm is not reachable on a fresh boot of this machine (71 GiB available at pressure 1); the launcher passed `--timeout 120`.
+
+**Shipped.** `docs/LEDGER.md`, `benchmarks/run_manifest.py`, `benchmarks/batch_union.py`, `quality_blind_ab.py --budget 1,0` (several capped arms in one process; the old two-arm labels and table unchanged, re-scoring 0.60.2's directory prints the same table; the C# build check keys on the body text, not on body index 4; `run` writes a manifest), `cache_sim.py` defaults from the ledger, tests. No runtime change, no numerics change.
+
+**Open.** The budget default (Hamed: options above); the live checks of 0.59.0's pin and 0.60.0's date reuse in his next Hermes session with `CACHALOT_SERVER_DUMP` (keep the dump under `benchmarks/results/`, not only `/tmp`); the short side requests (LEDGER DS-PREFILL-SHORT); one DeepSeek floor arm to refresh DS-FLOOR-SPLIT (L4(f)); throttled-storage sweeps are allowed (Hamed, question 4) and not yet run. **Needs Hamed:** the budget choice.
 
 ### 18.71 The Lab rename completed on the app side — 2026-10-06 (0.60.5)
 

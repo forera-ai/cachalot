@@ -36,3 +36,16 @@ def test_fisher_matches_known_values():
     assert q.fisher_two_sided(0, 10, 10, 10) < 1e-4
     # 1 of 8 against 6 of 8: two-sided p = 0.0406 (hypergeometric)
     assert q.fisher_two_sided(1, 8, 6, 8) == pytest.approx(0.0406, abs=1e-3)
+
+
+def test_arm_names_keep_the_two_arm_labels():
+    assert q.arm_names([0]) == {"exact": None, "capped": 0}
+    assert q.arm_names([1, 0]) == {"exact": None, "b1": 1, "b0": 0}
+
+
+def test_arm_order_rotates():
+    assert q.arm_order(["exact", "capped"], 0) == ["exact", "capped"]
+    assert q.arm_order(["exact", "capped"], 1) == ["capped", "exact"]
+    three = ["exact", "b1", "b0"]
+    firsts = [q.arm_order(three, j)[0] for j in range(6)]
+    assert sorted(firsts) == sorted(three * 2)

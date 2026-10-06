@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.60.6 (2026-10-06)
+
+HANDOFF "Start here (2026-10-06, 0.60.6)" and section 18.72. Measurement and instruments, no runtime change: decode miss budget 1 on C#, the first two tracks of the research charter (L1 ledger, L0 manifest and scorecard), and batched decode priced offline.
+
+### Measured
+- Budget 1 against exact and budget 0 on a C# request rebuilt from Hermes's own store (the 0.58.1 dump was deleted by a reboot): 48 samples per arm, one process, blind sheet graded by three model graders. Flawed: exact 10/48, **budget 1 10/48 (p 1.00), budget 0 13/48 (p 0.63)**. Decode a token, paired against exact: budget 1 **0.973** [0.967, 0.978], budget 0 **0.749** [0.745, 0.754].
+- The positive control did not reproduce 0.60.2's budget-0 C# cost (26/48 against 11/48 there), so by the rule written before the run the budget-1 result is inconclusive about safety; the code evidence on budget 0 is now split across two bodies of the same request. Budget 1 buys only ~3 %, so it is not proposed as a default; the choice stays 0 or `off` (Hamed's).
+- Batched decode, offline (`benchmarks/batch_union.py`, the 22k-context trace's 13 replies dealt into B lanes): concurrent streams share few experts (96.5 % of routed uses distinct at B = 2) and misses a token rise (24.9 at B = 1, 30.5 at B = 4); the aggregate gain is 1.27-1.42x at B = 4 and comes from spreading the 70 ms floor over the lanes, with each user's tokens ~2x slower. Not built.
+
+### Added
+- `docs/LEDGER.md` (charter track L1): every constant the decisions rest on, per model and regime, with tag, source section, status and reproduction; bottleneck-migration tables for the three models; stale constants in code; open questions (no DeepSeek constant at the default sysctl; the floor's split is from the 77-80 ms era).
+- `benchmarks/run_manifest.py` (track L0): a run manifest (commit, environment, workload class and hash, hardware, sysctl, pressure, swap, wired and GPU memory, screensaver, other runtimes) and JSON-line scorecard rows from a fixed schema with measured / derived / estimated tags; absent fields are absent, never zero. `tests/test_run_manifest.py`.
+- `benchmarks/batch_union.py`, `tests/test_batch_union.py`.
+- `quality_blind_ab.py run --budget 1,0`: several capped arms in one process (arms exact, b1, b0; the two-arm path keeps its labels and table); the C# build check keys on the body's text; `run` writes a manifest.
+
+### Changed
+- `benchmarks/cache_sim.py` defaults: floor 70 ms and 2.0 ms a miss on the internal bank (LEDGER DS-FLOOR-48, DS-MISS-48; were the internal-drive era's 77 and 1.7).
+
 ## 0.60.5 (2026-10-06)
 
 HANDOFF "Start here (2026-10-06, 0.60.5)" and section 18.71. Documentation only, no runtime change: the runtime's docs follow Codex's completed rename of the app.

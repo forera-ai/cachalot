@@ -4,7 +4,8 @@ Blind agent-quality A/B of the decode miss budget (HANDOFF 18.60; the recipe of 
 The six request bodies of a dumped Hermes session (`/tmp/cachalot-requests-0.46b.jsonl`: a greeting, a tool call, a tool
 result to summarise, a story, a C# snippet, the same in TypeScript) are each sampled N times per arm at the dump's
 temperature through `Engine.chat`, the server's code path. The arms (exact, and the miss budget under test) are interleaved
-in one process: sample j of a body uses the same seed in both arms, and the order within a pair alternates with j.
+in one process: sample j of a body uses the same seed in every arm, and the order of the arms rotates with j.
+`--budget 1,0` runs three arms (exact, b1, b0) in one process; a single budget keeps the arm names exact / capped.
 
     run    sample everything; writes samples.jsonl (arm labels inside, never shown to the grader)
     sheet  mechanical checks (tool-call validity, loops, truncation, C# `dotnet build`) and a shuffled, arm-free
@@ -57,7 +58,20 @@ def load_bodies() -> list[dict]:
     return [_drop_images(rows[i]["body"]) for i in BODY_ROWS]
 
 
-def run(budget: int, n: int, out: Path) -> None:
+def arm_names(budgets: list[int]) -> dict[str, int | None]:
+    """Arm name -> per-layer decode miss budget (None = exact). One budget keeps the historical name "capped"."""
+    if len(budgets) == 1:
+        return {"exact": None, "capped": budgets[0]}
+    return {"exact": None, **{f"b{b}": b for b in budgets}}
+
+
+def arm_order(arms: list[str], j: int) -> list[str]:
+    """Arms rotated by j, so every arm runs first equally often (two arms: the old even/odd swap)."""
+    k = j % len(arms)
+    return arms[k:] + arms[:k]
+
+
+def run(budgets: list[int], n: int, out: Path) -> None:
     import pareto
 
     pareto.serve_defaults()
@@ -66,10 +80,17 @@ def run(budget: int, n: int, out: Path) -> None:
     from cachalot.model.generation import SamplingParams
     from cachalot.server.engine import ChatRequest, Engine
 
+    import run_manifest
+
     out.mkdir(parents=True, exist_ok=True)
+    run_manifest.write_manifest(out, run_manifest.collect(
+        workload="W6:quality-blind", workload_text=json.dumps(load_bodies(), sort_keys=True), budget_gib=48,
+        instrument="quality_blind_ab run", params={"budgets": budgets, "n": n, "max_tokens": MAX_TOKENS,
+                                                   "dump": DUMP, "rows": BODY_ROWS}))
     model = V41Model.from_pretrained(os.environ["CACHALOT_MODEL_PATH"], max_seq_len=65536,
                                      expert_cache_budget_bytes=int(48 * 2**30))
     engine = Engine(model)
+    arms = arm_names(budgets)
     log = out / "samples.jsonl"
     # resume: a sample already in the log (same body, j, arm) is not generated again; seeds depend on (body, j) only,
     # so a resumed run equals an uninterrupted one. CACHALOT_QB_BODIES=4,5 limits the bodies of this call.
@@ -80,17 +101,16 @@ def run(budget: int, n: int, out: Path) -> None:
             if only is not None and bi not in only:
                 continue
             for j in range(n):
-                order = ("exact", "capped") if j % 2 == 0 else ("capped", "exact")
-                for arm in order:
+                for arm in arm_order(list(arms), j):
                     if (bi, j, arm) in done:
                         continue
-                    model.set_decode_miss_budget(budget if arm == "capped" else None)
+                    model.set_decode_miss_budget(arms[arm])
                     skipped0 = model.runtime.expert_store.skipped_experts
                     req = ChatRequest(messages=body["messages"], tools=body["tools"], thinking_mode="chat",
                                       params=SamplingParams(max_new_tokens=MAX_TOKENS, temperature=body["temperature"],
                                                             seed=1000 * bi + j))
                     res = engine.chat(req)
-                    row = {"body": bi, "j": j, "arm": arm, "budget": budget if arm == "capped" else None,
+                    row = {"body": bi, "j": j, "arm": arm, "budget": arms[arm],
                            "tokens": res.completion_tokens, "finish": res.finish_reason,
                            "ms_tok": round(1000 * res.decode_seconds / max(res.completion_tokens, 1), 1),
                            "skipped": model.runtime.expert_store.skipped_experts - skipped0,
@@ -179,7 +199,7 @@ def sheet(out: Path) -> None:
             problems = tool_call_problems(s["tool_calls"], bodies[bi]["tools"]) if bi == 1 else None
             m = {"finish": s["finish"], "tokens": s["tokens"], "repetition": round(repetition_share(s["text"]), 3),
                  "tool_problems": problems}
-            if bi == 4:
+            if "C#" in _context(bodies[bi]):
                 m["csharp_builds"] = bool(pareto.check_csharp(s["text"], {}))
             mech[sid] = m
             shown = s["text"] if s["text"].strip() else "(no text)"
@@ -205,18 +225,22 @@ def score(out: Path) -> None:
         t = tally.setdefault((k["arm"], k["body"]), [0, 0])
         t[1] += 1
         t[0] += grades[sid]["verdict"] == "flawed"
-    print("| body | exact flawed | capped flawed | Fisher p |")
-    print("|---|---|---|---|")
-    tot = {"exact": [0, 0], "capped": [0, 0]}
+    arms = ["exact"] + sorted({a for a, _ in tally} - {"exact"})
+    print("| body | " + " | ".join(f"{a} flawed" for a in arms) + " | " + " | ".join(f"p {a}" for a in arms[1:]) + " |")
+    print("|---" * (2 * len(arms)) + "|")
+    tot = {a: [0, 0] for a in arms}
     for bi in sorted({b for _, b in tally}):
-        e, c = tally[("exact", bi)], tally[("capped", bi)]
-        print(f"| {bi} | {e[0]}/{e[1]} | {c[0]}/{c[1]} | {fisher_two_sided(e[0], e[1], c[0], c[1]):.3f} |")
-        for arm, t in (("exact", e), ("capped", c)):
-            tot[arm][0] += t[0]
-            tot[arm][1] += t[1]
-    e, c = tot["exact"], tot["capped"]
-    print(f"| all | {e[0]}/{e[1]} | {c[0]}/{c[1]} | {fisher_two_sided(e[0], e[1], c[0], c[1]):.3f} |")
-    for arm in ("exact", "capped"):
+        cells = {a: tally.get((a, bi), [0, 0]) for a in arms}
+        e = cells["exact"]
+        ps = [f"{fisher_two_sided(e[0], e[1], c[0], c[1]):.3f}" for c in (cells[a] for a in arms[1:])]
+        print(f"| {bi} | " + " | ".join(f"{c[0]}/{c[1]}" for c in cells.values()) + " | " + " | ".join(ps) + " |")
+        for a, t in cells.items():
+            tot[a][0] += t[0]
+            tot[a][1] += t[1]
+    e = tot["exact"]
+    ps = [f"{fisher_two_sided(e[0], e[1], tot[a][0], tot[a][1]):.3f}" for a in arms[1:]]
+    print("| all | " + " | ".join(f"{tot[a][0]}/{tot[a][1]}" for a in arms) + " | " + " | ".join(ps) + " |")
+    for arm in arms:
         ids = [s for s, k in key.items() if k["arm"] == arm]
         loops = sum(mech[s]["repetition"] > 0.3 for s in ids)
         trunc = sum(mech[s]["finish"] == "length" for s in ids)
@@ -224,7 +248,7 @@ def score(out: Path) -> None:
         cs = [mech[s]["csharp_builds"] for s in ids if "csharp_builds" in mech[s]]
         print(f"{arm}: loops {loops}, truncated {trunc}, valid tool calls {sum(not p for p in tool)}/{len(tool)}, "
               f"C# builds {sum(cs)}/{len(cs)}")
-    flaws: dict[str, dict[str, int]] = {"exact": {}, "capped": {}}
+    flaws: dict[str, dict[str, int]] = {a: {} for a in arms}
     for sid, k in key.items():
         if grades[sid]["verdict"] == "flawed":
             f = grades[sid].get("flaw", "unspecified")
@@ -236,14 +260,14 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
     r = sub.add_parser("run")
-    r.add_argument("--budget", type=int, default=0)
+    r.add_argument("--budget", default="0", help="one budget, or a comma list for several capped arms (1,0)")
     r.add_argument("--n", type=int, default=8)
     r.add_argument("--out", required=True)
     for name in ("sheet", "score"):
         sub.add_parser(name).add_argument("out")
     args = ap.parse_args()
     if args.cmd == "run":
-        run(args.budget, args.n, Path(args.out))
+        run([int(b) for b in args.budget.split(",")], args.n, Path(args.out))
     else:
         {"sheet": sheet, "score": score}[args.cmd](Path(args.out))
 
