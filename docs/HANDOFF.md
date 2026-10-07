@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-07, 0.61.10): the context term of the floor in `cache_sim.py`
+>
+> Section 18.87. Instrument only: `benchmarks/cache_sim.py --context-tokens N` adds LEDGER DS-FLOOR-CTX to the floor (+4 ms by 1.8k tokens, then 0.09 ms per 1k; 85.1 ms at 25k against the measured 84.8). No machine used, no default changed. Item 3 of v130's first job (L6 table, L7 seam map) is still open.
+>
 > ## Start here (2026-10-07, 0.61.9): the full GLM bank through the server, on by default
 >
 > Section 18.86. The full bank (43 layers, 163 GB) is at `/Volumes/X10Pro/models/GLM-5.3-Flash-bank`. **Four server arms in ABBA order: the bank takes a GLM token from 1,631 to 1,531 ms (-6.1 %), every generated text is identical in all four arms and the store counters are identical to the digit (bit-identical); the drive's busy rate rises 0.952 to 1.011 GB/s.** `serve-glm.sh` uses the bank when it exists (`CACHALOT_GLM_BANK=` empty or `CACHALOT_GLM_BANK_ENABLED=0` off). **All arms ran at a 46 GiB budget** (52 GiB was killed twice by the guardian: this machine's memory is tight today), so the absolute token is not §18.78's. New rule from Hamed: estimate and confirm every lengthy test first, and report approximate minutes remaining at checkpoints.
@@ -8830,6 +8834,18 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.87 The context term of the decode floor in the cache simulator — 2026-10-07 (0.61.10)
+
+**Goal.** v130 first job item 3: fold DS-FLOOR-CTX into `cache_sim.py`, so that a milliseconds-a-token column at an agent's context stops using the short-prompt floor. No machine needed. Kind: engineering (an instrument), tagged derived.
+
+**Record (written before the edit).** Baseline: `cache_sim.py` prints `floor + misses x cost` with one floor (80 ms, DS-FLOOR-SRV), correct only for a short prompt. Prediction: with the term, the 25k floor reads 85 +- 1 ms (DS-FLOOR-CTX measured 84.8 over a 79.1 probe). Falsifier: a model more than 1.5 ms off any of DS-FLOOR-CTX's five points.
+
+**What changed.** `context_floor(floor_ms, n)`: `floor + 4.0 x min(n, 1800) / 1800 + 0.09 x max(n - 1800, 0) / 1000`; flag `--context-tokens` (default 0, tables unchanged); the header line shows both floors. Below 1.8k the step is a linear interpolation, an assumption: DS-FLOOR-CTX has no point there.
+
+**Result (derived).** Against DS-FLOOR-CTX's points over a 79.1 ms probe: 1.8k 83.1 (measured 83.4), 5.9k 83.5 (82.3), 12.2k 84.1 (83.8), 18.6k 84.7 (84.6), 25.0k 85.3 (84.8). All within 1.2 ms; prediction held. One caveat the ledger already carries: one clean arm, n = 3 a point. On `trace_routing_v6.trace.npz` (160 decode tokens, a noisy trace) at 48 GiB and 25k context: floor 86.1 ms (80 + 6.1), 33.8 misses a token, 154 ms internal.
+
+**Open.** v130 items: 1 (live GLM Hermes session, Hamed's yes and an estimate first), 2 (the per-chunk trace of a short prefill's 1.5 s, machine free, estimate first), 3's L6 and L7 (no machine), 4 (mcpo respawn, VMware, the 163 GB bank). `benchmarks/lane_cost.py` is an untracked, unreleased instrument from an earlier session; not touched.
 
 ### 18.86 The contiguous GLM bank through the server: -6.1 % a token, identical text, on by default — 2026-10-07 (0.61.9)
 

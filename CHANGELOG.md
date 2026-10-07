@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.61.10 (2026-10-07)
+
+HANDOFF "Start here (2026-10-07, 0.61.10)" and section 18.87. Instrument only; nothing in `src/` besides the version string changed.
+
+### Changed
+- `benchmarks/cache_sim.py` takes `--context-tokens N` and adds the context term of LEDGER row DS-FLOOR-CTX to `--floor-ms`: +4.0 ms over the short-prompt floor by 1.8k tokens (interpolated below that, not measured), then 0.09 ms per 1k tokens. At 25,000 tokens the model gives 84.8-85.1 ms against the measured 84.8 ms (0.61.5). Default 0 leaves every earlier table unchanged. One test added.
+
 ## 0.61.9 (2026-10-07)
 
 HANDOFF "Start here (2026-10-07, 0.61.9)" and section 18.86. A default switched on (bit-identical); nothing else in `src/` changed.

@@ -34,3 +34,12 @@ def test_trace_without_decode_tokens_is_refused():
     arrays = _trace(0)
     with pytest.raises(ValueError):
         simulate(arrays, [], slots=400, policy="lru", tau=0.0)
+
+
+def test_context_floor_follows_ledger_ds_floor_ctx():
+    from cache_sim import context_floor
+
+    assert context_floor(79.0, 0) == 79.0
+    assert context_floor(79.0, 1800) == pytest.approx(83.0)
+    # DS-FLOOR-CTX measured 84.8 ms at 25.0k tokens over a 79.1 ms short probe
+    assert context_floor(79.1, 25_000) == pytest.approx(84.8, abs=0.5)

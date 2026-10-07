@@ -10,7 +10,7 @@ It joins three things the repo already has but kept apart:
     runtime's own paths;
   * the cost model of docs/SPEED-RESEARCH-2026-10-03.md section 1.1,
     `token = floor + misses x cost per miss`, with the cost per miss of each
-    drive as a parameter. Defaults cite docs/LEDGER.md: floor 80 ms
+    drive as a parameter. `--context-tokens N` adds DS-FLOOR-CTX's context term. Defaults cite docs/LEDGER.md: floor 80 ms
     (DS-FLOOR-SRV, the server's all-resident token measured in 0.60.10; the
     70 ms of DS-FLOOR-48 was a fit intercept) and 2.0 ms a miss on the
     internal bank (DS-MISS-48, reproduced as 1.97 against that floor); the USB figure (10.2 ms) is still an estimate
@@ -56,6 +56,19 @@ from simulate_policies import GIB, N_LAYERS, Store  # noqa: E402
 # The 2-bit affine g128 bank record (docs/SPEED-RESEARCH-2026-10-03.md section 1.1).
 Q2_EXPERT_BYTES = 9_950_000
 MIN_DECODE_TOKENS = 1_000
+# docs/LEDGER.md DS-FLOOR-CTX (0.61.5, one clean arm): over the short-prompt floor the server token adds
+# +4.0 ms by 1.8k tokens of context, then 0.09 ms per 1k (fit 82.7 + 0.09 x N/1k; 84.8 measured at 25k).
+CTX_STEP_MS = 4.0
+CTX_STEP_TOKENS = 1_800
+CTX_SLOPE_MS_PER_1K = 0.09
+
+
+def context_floor(floor_ms: float, context_tokens: int) -> float:
+    """All-resident token at a context length. Below 1.8k tokens the +4 ms step is interpolated (not measured)."""
+    if context_tokens <= 0:
+        return floor_ms
+    step = CTX_STEP_MS * min(context_tokens, CTX_STEP_TOKENS) / CTX_STEP_TOKENS
+    return floor_ms + step + CTX_SLOPE_MS_PER_1K * max(context_tokens - CTX_STEP_TOKENS, 0) / 1000
 
 
 def _prefill_segment(st: Store, layer: np.ndarray, experts: np.ndarray) -> None:
@@ -144,11 +157,14 @@ def main() -> None:
     ap.add_argument("--policy", default="lru", choices=("lru", "slru", "lfu"))
     ap.add_argument("--expert-bytes", type=int, default=Q2_EXPERT_BYTES)
     ap.add_argument("--floor-ms", type=float, default=80.0, help="all-resident token time (docs/LEDGER.md DS-FLOOR-SRV)")
+    ap.add_argument("--context-tokens", type=int, default=0,
+                    help="decode context length; adds LEDGER DS-FLOOR-CTX's context term to --floor-ms (0: short prompt)")
     ap.add_argument("--miss-ms", default="internal=2.0,usb=10.2",
                     help="name=ms per miss, comma list (LEDGER DS-MISS-48; usb is an estimate, ST-X10)")
     args = ap.parse_args()
 
     arrays, segments = load_trace(args.trace)
+    floor_ms = context_floor(args.floor_ms, args.context_tokens)
     costs = {n: float(v) for n, v in (kv.split("=") for kv in args.miss_ms.split(","))}
     taus = [float(x) for x in args.taus.split(",")]
     if "weights" not in arrays:
@@ -157,7 +173,8 @@ def main() -> None:
 
     decode_tokens = int((arrays["phase"] == 1).sum() // N_LAYERS)
     print(f"trace {args.trace}: {decode_tokens} decode tokens, policy {args.policy}, "
-          f"expert {args.expert_bytes / 1e6:.2f} MB, floor {args.floor_ms:g} ms")
+          f"expert {args.expert_bytes / 1e6:.2f} MB, floor {floor_ms:.1f} ms"
+          + (f" (short {args.floor_ms:g} + context {args.context_tokens:,} tokens)" if args.context_tokens else ""))
     if decode_tokens < MIN_DECODE_TOKENS:
         print(f"WARNING: under {MIN_DECODE_TOKENS} decode tokens; hit rates are noisy and "
               f"say nothing about a long session. Record a real trace (D0) before trusting them.\n")
@@ -176,7 +193,7 @@ def main() -> None:
             line = (f"| {b:g} | {slots:,} | {tau:g} | {r['hit']:.1%} | {r['misses_per_token']:.1f} "
                     f"| {r['mean_dropped_mass_per_layer']:.3f} |")
             for c in costs.values():
-                ms = args.floor_ms + r["misses_per_token"] * c
+                ms = floor_ms + r["misses_per_token"] * c
                 line += f" {ms:.0f} | {1000 / ms:.1f} |"
             print(line, flush=True)
 

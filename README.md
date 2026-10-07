@@ -295,6 +295,8 @@ reproducible to ±0.3 %.
 
 **0.60.7 (2026-10-06): review fixes.** The run manifest no longer records credentials such as `CACHALOT_API_KEY` by value, and its Hermes Desktop check needs one process line. HANDOFF section 18.73.
 
+**0.61.10 (2026-10-07): instrument only.** `benchmarks/cache_sim.py --context-tokens N` folds the measured context term of the decode floor (LEDGER DS-FLOOR-CTX: +4 ms by 1.8k tokens, then 0.09 ms per 1k) into its milliseconds-a-token column, so a Hermes-sized context (25k: 84-85 ms floor, not 79) is priced without a hand correction. HANDOFF section 18.87.
+
 **0.61.9 (2026-10-07): the contiguous GLM bank is on by default.** A four-arm interleaved A/B through the server (46 GiB budget) puts a GLM-5.3-Flash token on the X10Pro at 1,531 ms with the contiguous bank against 1,631 ms with the shipped layout (-6.1 %); generated text and expert counts are identical, so it is bit-identical, and `serve-glm.sh` now uses the bank (163 GB at `/Volumes/X10Pro/models/GLM-5.3-Flash-bank`) when it exists. HANDOFF section 18.86.
 
 **0.61.8 (2026-10-07): the real contiguous GLM bank on the X10Pro, and a correction.** With the layers 3-5 bank written to the X10Pro, a paired interleaved run reads the contiguous layout 6.6 % faster than the shipped one (about -5.6 % of a GLM token, bit-identical). The raw-block rates behind 0.61.6's "the USB link does 1.14-1.24 GB/s" and 0.61.7's "-16 % of a GLM token" were page-cache hits and are withdrawn (the same instrument now reads 0.97-1.0 GB/s); the queue-depth results stand. No default or speed changed. HANDOFF section 18.85.
