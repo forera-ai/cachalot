@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.61.8 (2026-10-07)
+
+HANDOFF "Start here (2026-10-07, 0.61.8)" and section 18.85. A measurement and a correction of 0.61.6 and 0.61.7; nothing in `src/` changed, no default, output or speed changed.
+
+### Changed
+- `benchmarks/expert_read_qd.py`: `--skip` (offset into the shuffled experts, for paired slices) and a docstring that says what the page cache does to a run.
+- `.gitignore`: `*.textClipping`.
+
+### Measured
+- The contiguous GLM bank for layers 3-5, written to the X10Pro (11 GB), against the shipped layout in a paired ABBA run: +6.6 % rate (0.999 against 0.9375 GB/s at two in flight), read time -6.2 %, about -5.6 % of a GLM token (derived), p99 latency halved.
+
+### Corrected
+- 0.61.6 and 0.61.7 reported raw 0.25-13.5 MiB block rates of 1.05-1.24 GB/s on the X10Pro and derived from them that DeepSeek's record layout leaves ~18 % of the link unused and that GLM's contiguous layout would take ~16 % off its token. Those rates were page-cache hits (the same instrument on the same shard later reads 0.97-1.0 GB/s); the derived claims are withdrawn. The expert-record queue-depth results (0.92-0.97 GB/s from one to sixteen in flight, internal 5.0 then 7.0-7.3) stand.
+
 ## 0.61.7 (2026-10-07)
 
 HANDOFF "Start here (2026-10-07, 0.61.7)" and section 18.84. A measurement and an instrument option; nothing in `src/` changed, no default, output or speed changed.

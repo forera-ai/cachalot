@@ -11,6 +11,12 @@ at random aligned offsets of one shard (the drive and link without the record si
     PYTHONPATH=src ~/venvs/deepseek-v41/bin/python benchmarks/expert_read_qd.py BANK --levels 1,2,4,8,16 --reads 400 --out OUT.jsonl
 
 Order matters: pass the levels in the order to run, and repeat one at the end as a drift control.
+
+Page cache: F_NOCACHE does not keep pages out of it (HANDOFF 18.1, 18.85). Experts are disjoint within a run, but
+a second run, a raw run on a shard an earlier run read, or a file just written reads partly or wholly from RAM and
+reports 1.1-26 GB/s on a 1 GB/s drive. Read a rate above the drive's wall as a cache hit; flush with a large read of
+other files (never `sudo purge`) between runs that share files, and compare layouts in paired, interleaved (ABBA)
+slices (`--skip` offsets each slice) so a drive-state drift hits both.
 """
 
 from __future__ import annotations
@@ -80,6 +86,7 @@ def main() -> None:
     ap.add_argument("--glm", action="store_true", help="BANK is a GLM-5.3-Flash checkpoint (per-expert MLX tensors)")
     ap.add_argument("--glm-bank", default="", help="with --glm: read through this contiguous bank (cachalot.glm.bank)")
     ap.add_argument("--layers", default="", help="restrict to these layers, comma list (a bank may cover only some)")
+    ap.add_argument("--skip", type=int, default=0, help="start this many experts into the shuffled list (paired runs over the same experts)")
     ap.add_argument("--no-expert", action="store_true", help="skip the expert-record mode (raw only)")
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
@@ -100,7 +107,7 @@ def main() -> None:
         keep = {int(x) for x in args.layers.split(",")}
         keys = [k for k in keys if k[0] in keep]
     random.Random(args.seed).shuffle(keys)
-    need = 0 if args.no_expert else args.reads * len(levels)
+    need = 0 if args.no_expert else args.skip + args.reads * len(levels)
     if need > len(keys):
         raise SystemExit(f"{need} reads need more experts than the bank has ({len(keys)})")
     expert_bytes = sum(t.size for t in index[keys[0]].tensors)
@@ -113,7 +120,7 @@ def main() -> None:
         views = views or make_views(index[key])
         return rd.read_expert_into(index[key], views), views
 
-    cursor = 0
+    cursor = args.skip
     out = open(args.out, "a")
     print("| mode | K | reads | wall s | GB/s | p50 ms | p95 ms | p99 ms | max ms |")
     print("|---|---:|---:|---:|---:|---:|---:|---:|---:|")

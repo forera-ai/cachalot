@@ -20,3 +20,6 @@ venv/
 benchmarks/results/
 .cachalot/
 .openrouter-key
+
+# Finder clippings dropped into the repo
+*.textClipping

@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-07, 0.61.8): the real contiguous GLM bank on the X10Pro, and a correction
+>
+> Section 18.85. The layers 3-5 bank (11 GB) is written to `/Volumes/X10Pro/models/GLM-5.3-Flash-bank-l3-5` (Hamed's yes). **Paired ABBA run: the contiguous layout reads +6.6 % over the shipped one (0.999 against 0.9375 GB/s at K = 2; read time -6.2 %, ~-5.6 % of a GLM token, derived, bit-identical).** **0.61.6 and 0.61.7 are corrected: every raw-block rate (1.05-1.24 GB/s) was page-cache residue** (the same instrument on the same shard now reads 0.97-1.0), so the "link does 1.14-1.24", DeepSeek's "18 % unused" and GLM's "-16 % of a token" are withdrawn; the expert-record queue-depth results stand. A rate above the drive's wall is a cache hit: flush and pair. `*.textClipping` is gitignored. No runtime change, no default changed.
+>
 > ## Start here (2026-10-07, 0.61.7): GLM's record layout on the X10Pro, priced
 >
 > Section 18.84 (`benchmarks/results/glm-layout-0.61.7/`). Read-only, nothing written to the X10Pro. The shipped GLM layout (5-9 ranges an expert) plateaus at **0.939 GB/s** on the X10Pro from two in flight (the live 0.95); raw contiguous 13.5 MiB blocks on the same drive read at **1.142 GB/s**: -17.8 % read time, **~-245 ms (-16 %) of GLM's 1,518 ms token, derived**. The contiguous bank (`CACHALOT_GLM_BANK`, 0.49.0, bit-identical) is already built for layers 3-5 on the internal SSD. The stand-in is raw blocks, not a bank file: **Hamed's yes/no is open: write the 11 GB layers 3-5 bank to the X10Pro for the real check.** No runtime change, no default changed.
@@ -8823,7 +8827,37 @@ line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderb
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
+### 18.85 The real contiguous GLM bank on the X10Pro, a paired run, and a correction of the raw-rate claims — 2026-10-07 (0.61.8)
+
+Prompt v128 first job, item 1 (Hamed: "yes, write the layers 3-5 bank to the X10Pro"). Record and addenda: `benchmarks/results/glm-layout-0.61.7/RECORD-before.md`.
+
+**Done.** `benchmarks/glm_bank.py --write` of layers 3-5 from the X10Pro checkpoint to `/Volumes/X10Pro/models/GLM-5.3-Flash-bank-l3-5` (11 GB, 23 s, each layer byte-checked on 16 experts, `--verify` 64 per layer: ok; the X10Pro has ~530 GB free). The directory stays; delete it only with Hamed's yes. `.gitignore` gained `*.textClipping` (Hamed asked for the Finder clipping in `docs/next-session-prompts/` to be untracked; the file itself is untouched).
+
+**What went wrong first, and was caught.** The first read of the new bank returned 9.4-26 GB/s: the files had just been written, so they were in the page cache (F_NOCACHE does not bypass it). Discarded (`x10pro-bank-CACHED-discarded.*`). After a 110 GB cache-flushing read the cold read gave 0.973 GB/s at K = 1 and 1.004 at K = 2-4, against 0.908 / 0.939 for the shipped layout an hour earlier: only +7 %, where the raw stand-in had promised +21 %. A probe of seven files (old shards and new bank layers alike, 13.5 MiB at QD 1) then read 0.976-0.981 GB/s, against 1.121-1.147 on a DeepSeek shard before: either the drive had slowed or the earlier raw numbers were wrong. The decisive run: the same raw instrument on the same shard (`x10pro-raw13-rerun.txt`) now reads 0.970 / 0.999 / 0.996 / 0.978 GB/s. **The earlier raw rates were page-cache hits.** That shard had been partly read by the same session's expert-record runs (400 reads x 10 levels over the 142 GB bank) with no flush between, so about a tenth of the raw blocks came from RAM (derived from the rate, not counted).
+
+**Paired result (the number to use).** After a second flush, eight slices of 100 reads in ABBA order on layers 3-5, each slice a different set of experts (`--skip`), same shuffle for both layouts:
+
+| layout | K = 1 GB/s | K = 2 GB/s |
+|---|---|---|
+| shipped (5-9 ranges) | 0.914, 0.909 (mean 0.9115) | 0.937, 0.938 (0.9375) |
+| contiguous bank on the X10Pro | 0.975, 0.971 (0.973) | 0.999, 0.999 (0.999) |
+| gain | +6.7 % | +6.6 % |
+
+The bank's latency is also cleaner (K = 2 p99 30 ms against 63-64 ms; K = 1 p50 14.5 ms against 15.4). **Read time -6.2 %; applied to GLM's token (§18.78: 91 % of 1,518 ms waiting on reads) about -85 ms, ~-5.6 % (0.66 to ~0.70 tok/s), derived.** The prediction (>= +12 %, contiguous >= 1.10 GB/s) is falsified; the written falsifier (within 6 %) just missed, so the layout effect is small and real. The clean link ceiling for 13.5 MiB blocks is ~1.0 GB/s (raw, K >= 2 0.997), which the contiguous bank reaches; DeepSeek's nine-range 9.95 MB record at 0.967 is ~3 % under it.
+
+**Withdrawn.** Every raw-block rate of §18.83 and §18.84 (0.25 / 1 / 4 / 13.5 MiB, 1.05-1.24 GB/s) and what was derived from them: the "link does 1.14-1.24 GB/s" statement, DeepSeek's "~18 % unused" and "-17 % read time for a contiguous record", GLM's "-18 % read time, ~-16 % of a token". The expert-record queue-depth results (0.92-0.97 GB/s, 10.3 ms x K, internal 5.0 then 7.0-7.3) read cold, disjoint experts and agree with the live 0.95 GB/s, so they stand.
+
+**Lesson (new rule).** A rate above the drive's wall is a cache hit, not a finding; any run that touches files an earlier run touched, and any file just written, needs a flush (a large read of other files; never `sudo purge`) and a drift control; a layout A/B is paired and interleaved (ABBA slices). The instrument's docstring now says so; `expert_read_scaling.py` already did (2026-09-17) and the 0.61.6 raw mode forgot it.
+
+**Verdict on the lever.** The contiguous GLM bank is bit-identical (byte-verified in 0.49.0 and again here) and worth ~-5.6 % of a GLM token and a cleaner latency tail, for 160 GB on the X10Pro (free: ~530 GB) and a full bank build of ~42 layers x 6-8 s on that drive, plus a `serve-glm.sh` A/B with `CACHALOT_GLM_BANK` through the server, resolvable only with swapped-pair alternation (the method's drift is +-10 %). GLM is priority 3 and its token is 1.5 s; this is Hamed's choice, not built.
+
+**Not done.** The full bank; any server arm; the X10Pro's temperature (not readable: `nand_temp.c` reads the internal SSD). The tails of the shipped layout (p99 up to 64 ms at K = 2) are unexplained beyond uneven range sizes.
+
+**What needs Hamed.** Whether the full GLM bank on the X10Pro is worth building for ~5.6 % (and whether to delete `/Volumes/X10Pro/models/GLM-5.3-Flash-bank-l3-5`, 11 GB, when done).
+
 ### 18.84 GLM's expert record layout on the X10Pro, priced from the contiguous bank and a raw-block stand-in — 2026-10-07 (0.61.7)
+
+**Correction (0.61.8, §18.85): the price in this section is withdrawn.** The raw 13.5 MiB stand-in (1.142 GB/s) was inflated by page-cache residue; the real contiguous bank written to the X10Pro reads only +6.6 % over the shipped layout in a paired run (~-5.6 % of a GLM token, derived), not -17.8 % of read time.
 
 Prompt v127 first job, item 1 (Hamed: "go, price the GLM layout from the internal copy first"). Record before the runs: `benchmarks/results/glm-layout-0.61.7/RECORD-before.md`. Read-only: nothing was written to the X10Pro, no server ran.
 
@@ -8855,6 +8889,8 @@ Prompt v127 first job, item 1 (Hamed: "go, price the GLM layout from the interna
 **What needs Hamed.** One yes or no: write the layers 3-5 bank (11 GB) to the X10Pro, then possibly the full ~160 GB bank.
 
 ### 18.83 Queue depth on the X10Pro: reads plateau at 0.97 GB/s from two in flight, and the record layout costs ~18 % — 2026-10-07 (0.61.6)
+
+**Correction (0.61.8, §18.85): the raw-block rates below are withdrawn.** They were inflated by page-cache residue from earlier runs in the same session; the same instrument on the same shard later reads 0.97-1.0 GB/s, and the link's clean ceiling for large contiguous blocks is ~1.0 GB/s, not 1.14-1.24. The expert-record rates in this section (0.92-0.97 GB/s, K plateau) stand. DeepSeek's nine-range layout therefore leaves ~3 % of the link unused, not ~18 %.
 
 Prompt v126 first job, item 1 (Hamed: "go, run the X10Pro queue-depth sweep"). Record before the instrument existed: `benchmarks/results/qd-sweep-0.61.6/RECORD-before.md` (with an addendum after the runs).
 
