@@ -37,6 +37,13 @@ export MLX_METAL_FAST_SYNCH=${MLX_METAL_FAST_SYNCH:-1}
 # The snapshot where an agent's system prompt ends survives a restart (HANDOFF 17.1), in a directory of its
 # own next to DeepSeek's. Empty disables it.
 export CACHALOT_SNAPSHOT_DIR=${CACHALOT_GLM_SNAPSHOT_DIR-$HOME/.cache/cachalot/prefix-snapshots-glm}
+# The contiguous expert bank (one pread an expert instead of 5-9; bit-identical, HANDOFF 18.34, 18.86): on the X10Pro it reads
+# 6.6 % faster and a token is 6.1 % shorter. Used when its directory exists; CACHALOT_GLM_BANK= (empty) or
+# CACHALOT_GLM_BANK_ENABLED=0 turns it off. Build: benchmarks/glm_bank.py --write MODEL OUT (~7 min, 163 GB).
+GLM_BANK_DEFAULT=/Volumes/X10Pro/models/GLM-5.3-Flash-bank
+if [ -z "${CACHALOT_GLM_BANK+x}" ] && [ -f "$GLM_BANK_DEFAULT/bank.json" ]; then
+    export CACHALOT_GLM_BANK=$GLM_BANK_DEFAULT
+fi
 
 exec ~/venvs/deepseek-v41/bin/python -m cachalot.cli serve \
     --model "$CACHALOT_MODEL_PATH" \

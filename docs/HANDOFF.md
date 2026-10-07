@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-07, 0.61.9): the full GLM bank through the server, on by default
+>
+> Section 18.86. The full bank (43 layers, 163 GB) is at `/Volumes/X10Pro/models/GLM-5.3-Flash-bank`. **Four server arms in ABBA order: the bank takes a GLM token from 1,631 to 1,531 ms (-6.1 %), every generated text is identical in all four arms and the store counters are identical to the digit (bit-identical); the drive's busy rate rises 0.952 to 1.011 GB/s.** `serve-glm.sh` uses the bank when it exists (`CACHALOT_GLM_BANK=` empty or `CACHALOT_GLM_BANK_ENABLED=0` off). **All arms ran at a 46 GiB budget** (52 GiB was killed twice by the guardian: this machine's memory is tight today), so the absolute token is not §18.78's. New rule from Hamed: estimate and confirm every lengthy test first, and report approximate minutes remaining at checkpoints.
+>
 > ## Start here (2026-10-07, 0.61.8): the real contiguous GLM bank on the X10Pro, and a correction
 >
 > Section 18.85. The layers 3-5 bank (11 GB) is written to `/Volumes/X10Pro/models/GLM-5.3-Flash-bank-l3-5` (Hamed's yes). **Paired ABBA run: the contiguous layout reads +6.6 % over the shipped one (0.999 against 0.9375 GB/s at K = 2; read time -6.2 %, ~-5.6 % of a GLM token, derived, bit-identical).** **0.61.6 and 0.61.7 are corrected: every raw-block rate (1.05-1.24 GB/s) was page-cache residue** (the same instrument on the same shard now reads 0.97-1.0), so the "link does 1.14-1.24", DeepSeek's "18 % unused" and GLM's "-16 % of a token" are withdrawn; the expert-record queue-depth results stand. A rate above the drive's wall is a cache hit: flush and pair. `*.textClipping` is gitignored. No runtime change, no default changed.
@@ -8826,6 +8830,35 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.86 The contiguous GLM bank through the server: -6.1 % a token, identical text, on by default — 2026-10-07 (0.61.9)
+
+Prompt v129 first job, item 1 (Hamed: "go, build the full GLM bank and run the A/B", then "go, Lab is closed, run the A/B"). Record and addenda: `benchmarks/results/glm-bank-ab-0.61.9/RECORD-before.md`.
+
+**Record in short.** Baseline: GLM on the X10Pro, W1, exact, K = 5 prefetch; GLM-LAYOUT-PAIRED (§18.85) priced the bank at -6.2 % read time, derived ~-5.6 % of a token. Prediction: the server's token falls 3-7 % (central -5.6 %), the drive's busy rate rises from ~0.95 to ~1.0 GB/s, the mean read falls ~6 %, text identical. Falsifiers: paired mean under 2.5 % faster; any text differing between arms. Intervention: the full bank (below), then four fresh `./serve-glm.sh` arms under `guarded_run.sh --force` in ABBA order (shipped, bank, bank, shipped), a ~110 GB cache-flushing read before each, exact, no snapshots, sysctl 88064, page cache as shipped, driver `driver.py` (warm-up, the floor prompt x2, mixed prompts, 96 greedy tokens, `/v1/stats` before and after the mixed block, a hash of every completion).
+
+**Bank built.** `benchmarks/glm_bank.py --write` of every MoE layer (3-45, 43 layers; 45 is the MTP block, not loaded) from the X10Pro checkpoint to `/Volumes/X10Pro/models/GLM-5.3-Flash-bank` (163 GB, 6 min 45 s, each layer byte-checked on 16 experts; `--verify` 32 a layer, 1,376 experts: ok). The test directory of 0.61.8 (`...-bank-l3-5`) became this one (renamed after the A/B; the arms used the same files).
+
+**Result (measured; four arms, W1, 46 GiB budget; decode ms a token, the floor request twice and mixed prompts 0-3, 96 tokens each).**
+
+| arm | mean ms a token (6 requests) | drive busy GB/s | mean read ms | store counters a mixed token |
+|---|---|---|---|---|
+| A1 shipped | 1,637 | (killed late, no after-mix stats) | | |
+| B1 bank | 1,532 | 1.012 | 54.8 | 122.7 misses, 136.5 reads, 1.932 GB |
+| B2 bank | 1,530 | 1.010 | 55.0 | 122.7, 136.5, 1.932 |
+| A2 shipped | 1,624 | 0.952 | 56.3 | 122.7, 136.5, 1.932 |
+
+**Paired mean bank against shipped: -6.1 %** (1,531 against 1,631 ms; 0.653 against 0.613 tok/s). The two repeats of each layout agree to 0.1 % (bank) and 0.8 % (shipped), far inside the effect; per request the bank is faster by 6.4, 6.3, 6.3, 6.2, 5.6, 5.8 %. The drive's busy rate rises 0.952 to 1.011 GB/s (+6.2 %), matching §18.85's +6.6 %. **All six generated texts have the same hash in all four arms, and the store counters (misses, reads, bytes a token) are identical to the digit: the bank is bit-identical through the server path.** The prediction held (-5.6 % central, 3-7 % range; -6.1 %), neither falsifier fired. Decode still waits on reads for 91-93 % of its time; the layout changed the rate of the same reads, not their number.
+
+**Deviations, all recorded in the record.** (1) The 52 GiB budget of §18.78 cannot run on this machine today: arm A1 was killed twice by the guardian at 52 GiB ("memory pressure warning for 10 s, free 0.1 GiB, wired 74.8 GiB"); every arm therefore ran at **46 GiB** (`--expert-budget-gib 46`), where the server holds ~68-70 GiB wired and a mixed token has 122.7 misses (86 at 52 GiB). **The absolute token (1.53-1.64 s) is not comparable with §18.78's 1,518 ms; only the paired difference is.** The layout effect should transfer (it is a rate on the same reads) but is measured at 46 GiB only. (2) The cache-flushing read leaves RAM full of reclaimable cache, which killed the first launches; arm.sh now touches and frees 64 GiB after the flush and aborts if less than 58 GiB is free. `settle.sh` never clears after such a flush and was dropped. (3) A1 (six mixed prompts) was killed at its sixth request when swap grew 543 to 2,632 MB (free 0.0-0.8 GiB for the whole run, VMware Fusion running); the driver was cut to four mixed prompts and the comparison uses the floor requests and mixed 0-3 of every arm. A1 therefore has no after-mix counters; the shipped counters come from A2. Swap rose to 4.7 GB by the end of A2. (4) Another session's DeepSeek benchmark (`lane_cost.py`) ran for two minutes before the first launch and was waited out, not touched. (5) Wall clock was ~3 hours with three guardian kills; see the new rule below.
+
+**Decision (shipped on, bit-identical).** `serve-glm.sh` now sets `CACHALOT_GLM_BANK=/Volumes/X10Pro/models/GLM-5.3-Flash-bank` when `bank.json` exists there and the variable is unset; `CACHALOT_GLM_BANK=` (empty) or `CACHALOT_GLM_BANK_ENABLED=0` turns it off. Not output-changing, so not Hamed's call under his rule on defaults; the bank costs 163 GB on the X10Pro (~350 GB free). A server log line `GLM expert bank: <dir>` confirms it is in use. Lab brief `docs/lab/briefs/2026-10-07-runtime-0.61.9.md`.
+
+**New project rule (Hamed, 2026-10-07).** Estimate and confirm every lengthy test, A/B or sweep (many minutes) before running it, and report approximate minutes remaining at reasonable checkpoints. Saved to the prompt's rules and to memory.
+
+**Not done / limits.** The 52 GiB budget (the machine's memory is tight: VMware Fusion, swap 2.7-4.7 GB); a live Hermes session on the bank; prefill on the bank (the instrument priced ~6 % too, not measured through a server); the same layout for DeepSeek (priced ~3 %, its bank is internal) and MiniMax (its mirror path).
+
+**What needs Hamed.** Nothing new; the 163 GB bank may stay.
 
 ### 18.85 The real contiguous GLM bank on the X10Pro, a paired run, and a correction of the raw-rate claims — 2026-10-07 (0.61.8)
 

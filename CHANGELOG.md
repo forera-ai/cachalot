@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.61.9 (2026-10-07)
+
+HANDOFF "Start here (2026-10-07, 0.61.9)" and section 18.86. A default switched on (bit-identical); nothing else in `src/` changed.
+
+### Changed
+- `serve-glm.sh` uses the contiguous expert bank at `/Volumes/X10Pro/models/GLM-5.3-Flash-bank` when `bank.json` exists there and `CACHALOT_GLM_BANK` is unset (`CACHALOT_GLM_BANK=` empty or `CACHALOT_GLM_BANK_ENABLED=0` turns it off). One pread an expert instead of 5-9.
+
+### Measured
+- GLM-5.3-Flash on the X10Pro, four server arms in ABBA order (shipped, bank, bank, shipped), a cache flush before each, 46 GiB budget: the bank takes a token from 1,631 to 1,531 ms (-6.1 %, 0.613 to 0.653 tok/s); the repeats of a layout agree to 0.1-0.8 %. Every generated text is identical across the four arms and misses, reads and bytes a token are identical to the digit; the drive's busy rate rises 0.952 to 1.011 GB/s.
+- The 52 GiB budget was killed twice by the guardian on today's memory state (swap 2.7-4.7 GB, free 0.1 GiB); arms ran at 46 GiB and the absolute token is not comparable with 0.61.1's.
+
 ## 0.61.8 (2026-10-07)
 
 HANDOFF "Start here (2026-10-07, 0.61.8)" and section 18.85. A measurement and a correction of 0.61.6 and 0.61.7; nothing in `src/` changed, no default, output or speed changed.

@@ -295,6 +295,8 @@ reproducible to ±0.3 %.
 
 **0.60.7 (2026-10-06): review fixes.** The run manifest no longer records credentials such as `CACHALOT_API_KEY` by value, and its Hermes Desktop check needs one process line. HANDOFF section 18.73.
 
+**0.61.9 (2026-10-07): the contiguous GLM bank is on by default.** A four-arm interleaved A/B through the server (46 GiB budget) puts a GLM-5.3-Flash token on the X10Pro at 1,531 ms with the contiguous bank against 1,631 ms with the shipped layout (-6.1 %); generated text and expert counts are identical, so it is bit-identical, and `serve-glm.sh` now uses the bank (163 GB at `/Volumes/X10Pro/models/GLM-5.3-Flash-bank`) when it exists. HANDOFF section 18.86.
+
 **0.61.8 (2026-10-07): the real contiguous GLM bank on the X10Pro, and a correction.** With the layers 3-5 bank written to the X10Pro, a paired interleaved run reads the contiguous layout 6.6 % faster than the shipped one (about -5.6 % of a GLM token, bit-identical). The raw-block rates behind 0.61.6's "the USB link does 1.14-1.24 GB/s" and 0.61.7's "-16 % of a GLM token" were page-cache hits and are withdrawn (the same instrument now reads 0.97-1.0 GB/s); the queue-depth results stand. No default or speed changed. HANDOFF section 18.85.
 
 **0.61.7 (2026-10-07): GLM's record layout on the X10Pro, priced (corrected in 0.61.8: ~-5.6 % of a token, not ~-16 %).** GLM's shipped expert layout reads from the USB drive at 0.94 GB/s from two in flight; contiguous 13.5 MiB blocks on the same drive read at 1.14 GB/s, which would take about 18 % off GLM's read time and ~16 % off its 1.5 s token (derived; a contiguous GLM bank exists since 0.49.0 and is bit-identical). The real check needs the bank copied to the X10Pro. No default or speed changed. HANDOFF section 18.84.
