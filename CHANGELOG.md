@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.61.5 (2026-10-07)
+
+HANDOFF "Start here (2026-10-07, 0.61.5)" and section 18.82. A measurement only; nothing in `src/` changed, no default, output or speed changed.
+
+### Measured
+- DeepSeek's all-resident decode floor against context length, through `serve.sh` (exact, 48 GiB, internal bank), two fresh servers: 79 ms at 27 tokens, 83.4 at 1.8k, 84.8 at 25k in the clean arm (short probes after every context stayed at 79.1 +-0.5): about +4 ms over the first ~2k tokens, then 0.09 ms per 1k. The written prediction (80 + 0.65 ms per 1k, 96 ms at 24k) is falsified.
+- The ledger's 95.6 ms at 22k context was drift: the ascending arm reproduced 94-95 ms at 25k but its own end-of-run short probe read 91.6 against 78.8 at the start (+16 % in 11 minutes). A context sweep needs a short probe after every point.
+- Cold-prefill requests decode at 117 +-3 ms a token (20-23 misses a token) at every context from 1.8k to 25k, i.e. `80 + 2.0 x misses` with no visible context term.
+
 ## 0.61.4 (2026-10-07)
 
 HANDOFF "Start here (2026-10-07, 0.61.4)" and section 18.81. An offline instrument and its price; nothing in `src/` changed, no default, output or speed changed.

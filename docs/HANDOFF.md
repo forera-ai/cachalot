@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-07, 0.61.5): the DeepSeek decode floor against context length
+>
+> Section 18.82. Two fresh-server arms (record first; `benchmarks/results/ctx-sweep-0.61.5/`). **The all-resident floor is 79 ms at a 27-token context, ~83 at 1.8k, ~85 at 25k** (clean arm B, short probes after every context: +4 ms from the first ~2k tokens, then ~0.09 ms per 1k): the predicted `80 + 0.65 ms x N/1k` (96 ms at 24k) is falsified, and LEDGER DS-FLOOR-22K (95.6) is contradicted: it was drift. Arm A, ascending with one control at the end, drifted +16 % in 11 minutes (its end-of-run short probe read 91.6 against 78.8 at its start). New rule: probe the short prompt after every context. Cachalot Lab was closed; the 5-minute load gate never cleared because Hamed's `com.desktopcommander.mcpo` launchd job respawns in a loop (left alone). No runtime change, no default changed.
+>
 > ## Start here (2026-10-07, 0.61.4): a weight gate on decode prefetch, priced offline
 >
 > Section 18.81. `benchmarks/pred_gate_price.py` replays the 0.61.3 trace through the store's residency rule and the LEDGER bandwidth curve. It reproduces the prediction-on exact arm (misses 23.2 against 23.5, 435 ms against 445.7 at 1 GB/s, 118 against 118.6 internal) but **underestimates the prediction-off token by 14 % and budget 0's 1 GB/s token by +33 %**, so only orderings and drop counts are used. **Result: a gate is not built.** Exact path: no gate beats prediction off (misses stay 23.2; a gate only removes bytes); budget 0: a gate moves along a speed against dropped-experts frontier (0.15: -13 % at 1 GB/s for +3 drops a token; 0.20: -43 % for +12.6) with no quality data beyond the shipped ~20 drops; on the internal drive 0.20 is -7 %. No default or speed changed.
@@ -8810,6 +8814,38 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.82 The DeepSeek decode floor against context length (W2) — 2026-10-07 (0.61.5)
+
+Prompt v125 first job, item 1 (Hamed: "go, Lab is closed, run the context-length sweep"). Record before the run: `benchmarks/results/ctx-sweep-0.61.5/RECORD-before.md` (with a dated addendum written after arm A and before arm B).
+
+**Record in short.** Baseline: DS-FLOOR-SRV 79-80 ms at context 27 and DS-FLOOR-22K 95.6 ms at 22k (n = 1, an in-turn repeat), never on one curve. Prediction (derived, linear through those two points): floor(N) = 80 + 0.65 ms x N/1k, i.e. 96 ms at 24k, +-4; falsifier: the 24k point under 85 or over 108 ms. Intervention: none to the runtime; one fresh `./serve.sh` per arm under `guarded_run.sh --force`, exact (`CACHALOT_DECODE_MISS_BUDGET=off`), no snapshots, prediction default, 48 GiB, internal bank, sysctl 88064. Driver (system python3, `driver.py`): a warm-up, the short greedy 120-token prompt, then five contexts cut from docs/HANDOFF.md (nested prefixes; actual 1,833 / 5,855 / 12,153 / 18,567 / 25,005 tokens) four requests each (request 1 cold-prefills the new tail, requests 2-4 are all-resident repeats with 0 misses a token, read from the `[request]` lines). Workload class W2, one process per arm.
+
+**Deviations.** The quiet gate (5-minute load under 2.5) never cleared in 25 minutes (2.6-3.0): Hamed's launchd job `com.desktopcommander.mcpo` respawned every few seconds (~0.4 core). I did not touch it and ran at load ~3. Hermes Desktop was running but hidden (not visible, not frontmost); Cachalot Lab was closed. Manifests `896b6664...` (A) and `020b40e1...` (B).
+
+**Arm A (ascending, one short control at the end) did not hold still.** Floors, ms a token (mean of repeats 2-4, all 0 misses): ctx 27 78.8-80.5, 1.8k 85.6, 5.9k 91.1, 12.2k 91.1, 18.6k 93.7, 25.0k 94.8 (fit 86.9 + 0.34 ms per 1k), **but the short prompt asked again at the end read 91.6**, as slow as the long contexts. A cannot separate context from the process's age: it drifted +12 ms (+16 %) over its 11 minutes, outside the +-10 % LEDGER MC-DRIFT.
+
+**Arm B (descending, a short probe after every context) is the clean one.** Its probes stayed flat (77.8, 77.4 at the start; 79.2, 79.7, 78.8, 78.5, 79.4 after each context; mean 79.1, +1.5 ms over the run):
+
+| context (tokens) | floor, ms a token (repeats 2-4) | adjacent short probe | context minus probe |
+|---|---|---|---|
+| 1,833 | 83.4 | 79.4 | +4.0 |
+| 5,855 | 82.3 | 78.5 | +3.8 |
+| 12,153 | 83.8 | 78.8 | +5.0 |
+| 18,567 | 84.6 | 79.7 | +4.9 |
+| 25,005 | 84.8 | 79.2 | +5.6 |
+
+Fit over 1.8k-25k: 82.7 + 0.09 ms per 1k tokens. Arm A against its own end-of-run probe agrees: 25k floor minus short probe = +3.2 (94.8 against 91.6). Cold-prefill requests (request 1 of a context) cost 116-123 ms a token at 20-23 misses a token at every context (117 +-3), the same `80 + 2.0 x misses` as DS-TOKEN-48, with no context term visible under it.
+
+**Result (derived from measured, W2, n = 3 repeats a point, two processes).** The all-resident floor rises about 4 ms between a 27-token and a ~2k-token context and then almost nothing: about 1.4 ms more by 25k, +5.6 ms over the short probe in all. The prediction (96 ms at 24k) is falsified: B's 24k floor is 84.8 ms (the written falsifier was under 85) and the drift-controlled difference is +5.6 against a predicted +16. **LEDGER DS-FLOOR-22K (95.6 ms at 22k) is contradicted: it was a drifted reading** (arm A reproduces the same number, 94-95, and its own control shows the process, not the context, was slow). The Hermes-context decode (DS-LIVE-0.61.1: 9.8-10.7 tok/s = 94-102 ms at 22-27k with budget 0 and 9-17 misses a token) is therefore a floor of ~85 plus its misses, not a floor of ~95. **Mechanism not isolated:** the early +4 ms step is consistent with attention going from the 128-token sliding window alone to window plus compressed sources, and the near-flat rest with the compressed KV growing slowly; a per-layer GPU profile at 27 / 2k / 25k tokens would say which (`profile_decode_gpu.py`), not run.
+
+**What this changes.** The L4(e) context term for `cache_sim.py` and the what-ifs is `floor(N) = 79 + 4 + 0.09 x N/1k` ms for N >= ~2k (derived from one clean arm; the +-10 % method noise applies), not `80 + 0.65 N/1k`. Context length is not a DeepSeek speed lever at agent sizes: the Hermes floor is ~85 ms, so the remaining decode cost there is misses (~2 ms each) and the 80 ms floor itself. **Bottleneck after:** unchanged.
+
+**Process lesson (new rule).** A single ascending arm at the process's start is not a context curve: put a short probe after every point (the 0.61.5 driver's `desc` order) or alternate orders (MEASUREMENT's TF_ALTERNATE rule), and read any rise against it. A process can drift +16 % in 11 minutes on this machine with nothing visible running.
+
+**Not done.** The same sweep under budget 0 (the shipped default; the floor has no misses so it should match, but unmeasured); MiniMax and GLM context floors (MiniMax measured to 64k in 0.21.0, stale); the per-layer profile of the +4 ms step; the cause of arm A's drift (not isolated; the mcpo respawn also ran in B, which did not drift).
+
+**What needs Hamed.** Nothing new. For the next machine arm: `launchctl list com.desktopcommander.mcpo` is respawning in a loop and keeps the load gate from clearing; it is his service and was left alone.
 
 ### 18.81 Pricing a router-weight gate on decode prefetch, offline — 2026-10-07 (0.61.4)
 
