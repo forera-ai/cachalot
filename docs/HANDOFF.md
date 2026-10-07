@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-07, 0.61.6): queue depth on the X10Pro
+>
+> Section 18.83 (record first; `benchmarks/results/qd-sweep-0.61.6/`; new `benchmarks/expert_read_qd.py`). **The X10Pro delivers 9.95 MB expert records at 0.967 GB/s from two in flight to sixteen, and p50 latency is 10.3 ms x K**: queue depth is not a lever there (the runtime's 8 loaders are on the plateau; a read in decode is slow because it queues). **But the link does 1.14-1.24 GB/s for contiguous blocks (1-13 MiB), so the nine-range DeepSeek record leaves ~18 % unused.** Internal drive: 5.0 GB/s at one expert in flight, 7.0-7.3 from two. Lead: a cold read of GLM's contiguous bank (built in 0.49.0, never timed cold) against the shipped layout on the X10Pro could take ~15 % off GLM's 1.52 s token. No runtime change, no default changed.
+>
 > ## Start here (2026-10-07, 0.61.5): the DeepSeek decode floor against context length
 >
 > Section 18.82. Two fresh-server arms (record first; `benchmarks/results/ctx-sweep-0.61.5/`). **The all-resident floor is 79 ms at a 27-token context, ~83 at 1.8k, ~85 at 25k** (clean arm B, short probes after every context: +4 ms from the first ~2k tokens, then ~0.09 ms per 1k): the predicted `80 + 0.65 ms x N/1k` (96 ms at 24k) is falsified, and LEDGER DS-FLOOR-22K (95.6) is contradicted: it was drift. Arm A, ascending with one control at the end, drifted +16 % in 11 minutes (its end-of-run short probe read 91.6 against 78.8 at its start). New rule: probe the short prompt after every context. Cachalot Lab was closed; the 5-minute load gate never cleared because Hamed's `com.desktopcommander.mcpo` launchd job respawns in a loop (left alone). No runtime change, no default changed.
@@ -8814,6 +8818,37 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.83 Queue depth on the X10Pro: reads plateau at 0.97 GB/s from two in flight, and the record layout costs ~18 % — 2026-10-07 (0.61.6)
+
+Prompt v126 first job, item 1 (Hamed: "go, run the X10Pro queue-depth sweep"). Record before the instrument existed: `benchmarks/results/qd-sweep-0.61.6/RECORD-before.md` (with an addendum after the runs).
+
+**Record in short.** Baseline: LEDGER ST-X10 (1.0 GB/s wall, "queue depth 1", never swept), ST-X10-EFF (~1.15 GB/s, mean read 17.3 ms in decode). Prediction: the drive is link-bound, so more queue depth adds latency (Little's law, ~10 ms x K), not bandwidth: K = 1 at 0.85-1.15 GB/s, K = 2-16 within 12 % of K = 1 and never above 1.25 GB/s, no collapse at K = 16; a raw 1 MiB random mode latency-bound (< 0.7 GB/s) at QD 1 and on the same plateau by QD 4-8. Falsifiers: any K >= 4 above 1.25 GB/s; high-K throughput under 0.9 x peak; raw QD 1 already on the plateau. Intervention: none to the runtime; new read-only `benchmarks/expert_read_qd.py` (the shipped `ExpertReader`, F_NOCACHE, K threads drawing disjoint experts from one shuffle, per-read latency, throughput over the level's wall, a raw pread mode; tests in `tests/test_expert_read_qd.py`). Order 1, 2, 4, 8, 16, 6, 3, 12, then 1 and 4 again as the drift control; 400 reads a level. Bank: the X10Pro copy of the q2g128 bank (`/Volumes/X10Pro/Flash4-1/...`, 9.95 MB an expert in 9 ranges). Raw rows: `x10pro.jsonl`, `x10pro-raw.jsonl`, `internal.jsonl`.
+
+**Expert records on the X10Pro (measured; one process, 400 reads a level).**
+
+| K in flight | GB/s | p50 ms | p95 ms | p99 ms | max ms |
+|---|---|---|---|---|---|
+| 1 | 0.919 (repeat 0.922) | 10.7 | 11.7 | 13.3 | 14.3 |
+| 2 | 0.968 | 20.4 | 21.3 | 31.6 | 31.8 |
+| 3 | 0.969 | 30.7 | 31.5 | 32.9 | 43.7 |
+| 4 | 0.967 (repeat 0.969) | 41.0 | 42.0 | 43.0 | 52.5 |
+| 6 | 0.966 | 61.5 | 63.1 | 65.0 | 73.1 |
+| 8 | 0.965 | 82.4 | 83.9 | 84.6 | 93.0 |
+| 12 | 0.966 | 123.3 | 125.3 | 125.6 | 125.7 |
+| 16 | 0.966 | 164.6 | 166.9 | 175.3 | 176.3 |
+
+Throughput is flat at 0.966-0.969 GB/s from K = 2 to 16 (+5 % over K = 1); the K = 1 repeats agree to 0.4 %, so the drift control passes. p50 latency is 10.3 ms x K (Little's law to the digit), tails within 1-3 %. So **queue depth is not a lever on the X10Pro**: the runtime's 8 loader threads and 2 prediction workers all sit on the plateau, and the 17.3 ms mean read of ST-X10-EFF is queueing behind in-flight reads (about 1.7 reads in flight), not slow media. Predictions held (K = 1 inside 0.85-1.15; K >= 2 within 12 % and under 1.25; p50 at K = 8 82 ms; no collapse). Note the drive sees K x 9 requests: every expert is nine preads (three 2,880 KiB weight pieces and six 180 KiB scale and bias pieces, far apart in the shard), issued concurrently by the reader's 16-thread piece pool, so "queue depth 1" in the ledger meant one expert, nine requests.
+
+**The link is faster than the expert records use (measured, derived).** Raw random preads of one shard, the same drive, same F_NOCACHE: 1 MiB 1.17-1.19 GB/s at QD 2-12 (QD 1 0.84-0.91, falsifying "< 0.7"); 0.25 MiB 1.05-1.14 at QD 2-4 (QD 1 0.57); 4 MiB 1.05 / 1.14 / **1.24** / 1.15 at QD 1 / 2 / 4 / 8; 13 MiB at QD 1 1.14. Large contiguous blocks reach 1.14-1.24 GB/s, so **the DeepSeek record layout (nine scattered ranges) leaves ~18-22 % of the link unused (0.967 against 1.15-1.2)**. If the bank sat on the X10Pro, a contiguous record would take about 0.967 / 1.17 = 17 % off the read time (derived, not built; the 1 GB/s regime is not DeepSeek's production drive: its bank is internal at 6.8 GB/s).
+
+**Internal drive contrast (measured, same bank format).** K = 1 5.03 GB/s (p50 2.1 ms), K = 2 6.97, K = 4 7.07, K = 8 7.26, K = 16 7.32 (p50 21.8 ms); the second K = 1 repeat 4.96. Here queue depth does matter: one expert in flight leaves ~30 % of the drive unused, and two reach 95 % of the plateau; the runtime's 8 loaders are on it.
+
+**What this changes.** Nothing in the runtime. LEDGER rows ST-X10-QD, ST-X10-LAYOUT, ST-INT-QD; ST-X10's "queue depth 1" is replaced by "one expert, nine requests; plateau from two experts". The model for any X10Pro read arm: `GB/s = 0.967` for 9.95 MB experts (K >= 2), per-read latency `10.3 ms x K`. **Lead, not built:** the same layout question for the models that do live on the X10Pro. GLM's record is 13.5 MiB; its measured 0.95 GB/s while reading (§18.78) matches the scattered-piece plateau, and a contiguous GLM bank exists (`CACHALOT_GLM_BANK`, `benchmarks/glm_bank.py`, 0.49.0, built on the internal drive, effect never measured because the read test hit the page cache); a cold read of the contiguous GLM bank against the shipped layout on the X10Pro, with this instrument, would price up to ~17 % of GLM's 91 % read-bound token (~15 % of 1.52 s) before any runtime change. **Bottleneck after:** unchanged (the X10Pro link, now with its achievable ceiling stated).
+
+**Not done / limits.** One process per drive, one bank copy, n = 400 reads a level; raw rows are 150-400 reads and the 4 MiB and 13 MiB runs hit the shard's size (a short last level, 13 MiB measured at QD 1 only). The X10Pro temperature was not read (`nand_temp.c`) and no mirror (MiniMax) path was tested. The runs shared the machine with a respawning launchd job (load 2.7-4.0), harmless to a read benchmark but noted. No manifest: `run_manifest.collect` only takes workload classes W1-W7.
+
+**What needs Hamed.** Nothing new; whether to price the GLM contiguous-bank read on the X10Pro (next job) is the open choice, and it is autonomous.
 
 ### 18.82 The DeepSeek decode floor against context length (W2) — 2026-10-07 (0.61.5)
 

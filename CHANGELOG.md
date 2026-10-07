@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.61.6 (2026-10-07)
+
+HANDOFF "Start here (2026-10-07, 0.61.6)" and section 18.83. A new instrument and its measurements; nothing in `src/` changed, no default, output or speed changed.
+
+### Added
+- `benchmarks/expert_read_qd.py`: read queue depth against bandwidth and latency (p50/p95/p99) on one expert bank, through the shipped `ExpertReader` with disjoint experts per level, plus a raw random-pread mode. Tests in `tests/test_expert_read_qd.py`.
+
+### Measured
+- X10Pro, 9.95 MB expert records: 0.92 GB/s with one expert in flight, 0.966-0.969 from two to sixteen; p50 latency 10.3 ms times the number in flight, tails within 1-3 %. Queue depth is not a lever; the runtime's loaders sit on the plateau.
+- Raw preads on the same drive reach 1.14-1.24 GB/s for 1-13 MiB blocks, so the nine scattered ranges of a DeepSeek record leave ~18 % of the link unused.
+- Internal drive, same bank: 5.0 GB/s at one expert in flight, 7.0-7.3 at two to sixteen.
+
 ## 0.61.5 (2026-10-07)
 
 HANDOFF "Start here (2026-10-07, 0.61.5)" and section 18.82. A measurement only; nothing in `src/` changed, no default, output or speed changed.
