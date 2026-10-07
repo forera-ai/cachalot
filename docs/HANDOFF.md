@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-07, 0.61.12): the short-prefill cost split
+>
+> Section 18.89. `benchmarks/short_prefill_trace.py` ran (44 GiB, sysctl 88064; the guardian refused 48 by 1.8 GiB): with experts resident a 19-token chunk costs 0.55 s and a 34-token chunk 0.78 s at 512 and at 22k context (about 0.26 s plus 15 ms a token); the live 1.8-2.1 s is mostly expert reads (240-1,023 a chunk). Context adds at most ~0.2 s (chunk 69 only). Hamed's reboot reset `iogpu.wired_limit_mb` to 0; he re-applied 88064.
+>
 > ## Start here (2026-10-07, 0.61.11): L6 and L7
 >
 > Section 18.88. Documentation only: `docs/ARCHITECTURE-COMPARISON.md` (L6) and `docs/SEAMS.md` (L7). Two findings worth knowing before building: the routing tracer exists for DeepSeek only (no `cache_sim` run is possible for MiniMax or GLM), and the read throttle does not reach MiniMax's coded bank. `benchmarks/lane_cost.py` was discarded at Hamed's request (residue of a temporary test); 0.61.10's text that called it an unreleased instrument is superseded.
@@ -8838,6 +8842,36 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.89 What a short prefill costs, split by a per-chunk trace — 2026-10-07 (0.61.12)
+
+**Goal.** v131 first job item 2 (Hamed confirmed it): split the ~1.5 s fixed cost of a short prefill after a long context (DS-PREFILL-SHORT, §18.79). Honest process note: the written prediction was not recorded before the run (it should have been); the question and the design were fixed first, the reading below is after the fact and is tagged as such.
+
+**Method.** `benchmarks/short_prefill_trace.py`, one runtime, 44 GiB budget (the guardian refused 48: 75.2 GiB free for 77 needed; 46 was queued when the machine rebooted), sysctl 88064 re-applied by Hamed after the reboot, `guarded_run.sh` without `--force`, load under 3 at start, W6-like shape. Contexts 512 and 22,000 tokens (22k prefilled in 171 s); for each, chunk sizes 19, 34, 69, 246 restored from one snapshot and prefilled three times with the same tokens (rep 1 meets whatever experts are missing, reps 2-3 find them resident). Wrapper marks from `profile_prefill_timeline.py`; walls are instrumented, so not speed baselines. Files: `benchmarks/results/short-prefill-trace-0.61.12/` (`trace.json`, `run.out`, `guardian.csv`). Footprint: peak swap 0 MB, pressure 1.
+
+| context | chunk | rep 1 wall, reads | reps 2-3 wall, reads | between-layer s | evals |
+|---|---|---|---|---|---|
+| 512 | 19 | 2.03 s, 1,023 | 0.55 s, 0 | 0.07 | 255 |
+| 512 | 34 | 1.49 s, 628 | 0.78 s, 0 | 0.10 | 362 |
+| 512 | 69 | 2.58 s, 1,158 | 1.17 s, 176 | 0.09 | 556 |
+| 512 | 246 | 7.12 s, 3,546 | 6.69 s, ~3,250 | 0.34 | 996 |
+| 22,000 | 19 | 0.87 s, 240 | 0.55 s, 0 | 0.07 | 252 |
+| 22,000 | 34 | 0.94 s, 262 | 0.79 s, 0 | 0.09 | 350 |
+| 22,000 | 69 | 1.96 s, 741 | 1.36 s, 160 | 0.12 | 556 |
+| 22,000 | 246 | 7.01 s, 3,547 | 6.79 s, ~3,290 | 0.43 | 1,006 |
+
+**What it shows (measured; the reading is derived).**
+1. With the experts resident the cost is small and linear: 0.55 s at 19 tokens and 0.78 s at 34, i.e. about 15 ms a token plus ~0.26 s, the same at 512 and at 22,000 tokens of context. A fixed cost of ~1.5 s a chunk is not there.
+2. The expert reads are the rest: 1.5 s more at 512 tokens with 1,023 reads (matches the live 1.8-2.1 s for 18-19 tokens), 0.3 s more at 22k with 240 reads (the context prefill had left more of the chunk's experts resident). So the live short-chunk cost depends on how many of its experts are resident, which differs by session state, not by a constant.
+3. Context length adds at most 0.14-0.24 s, and only on the 69-token chunk (1.36 against 1.17 s); 19, 34 and 246 show none. One run, two repetitions a cell: not established.
+4. A 246-token chunk is read-bound on every repeat (about 3,250 reads of 5.2 s drive time, 6.3 of 6.8 s inside the MoE phase): it routes to more experts than stay resident, at both contexts.
+5. Per-layer overhead between MoE phases is 0.07-0.43 s, 1-10 % of a chunk; route building is 1 ms.
+
+**Not isolated.** The 0.26 s intercept (embedding, Engram, attention, hyper-connection glue, host syncs: 252-255 evals for 19 tokens) was not split further; an uninstrumented wall was not measured; one run, repeats reuse the same tokens, so a repeat is a best case for residency; the budget was 44 GiB, not the shipped 48; the live sessions use budget 0 and a different resident set.
+
+**Kind.** Engineering plus measurement (tagged measured; the reading derived). **No default changed.** Lever it points to: nothing new for the chunk's compute; short-prefill latency is a residency question (prediction and read-ahead for prefill chunks), which §18.50-18.62 already covered for decode, not for short prefill. Priced on paper only: reading ahead a short chunk's experts needs a prediction of them from the prompt's first tokens, which the repo does not have.
+
+**Open.** The live GLM Hermes session (v131 item 1, Hamed confirmed; needs him at the desk with `CACHALOT_SERVER_DUMP`, command below in the prompt); the 0.26 s intercept; items 4 of v131.
 
 ### 18.88 L6 architecture comparison and L7 seam map — 2026-10-07 (0.61.11)
 

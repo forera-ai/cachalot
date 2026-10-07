@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.61.12 (2026-10-07)
+
+HANDOFF "Start here (2026-10-07, 0.61.12)" and section 18.89. Measurement only; nothing in `src/` besides the version string changed.
+
+### Added
+- `benchmarks/short_prefill_trace.py`: per-chunk trace of a short prefill after a context (reads and their busy time, MoE and between-layer time, eval count), the same chunk repeated from one snapshot so repetition 1 (cold reads) and repetitions 2-3 (experts resident) separate reads from everything else. Results in `benchmarks/results/short-prefill-trace-0.61.12/`.
+
+### Measured
+- DeepSeek, 44 GiB budget, sysctl 88064, instrumented walls: with every expert resident a 19-token chunk costs 0.55 s and a 34-token chunk 0.78 s at both a 512-token and a 22,000-token context (about 0.26 s fixed plus 15 ms a token); a 69-token chunk 1.17 s at 512 and 1.36 s at 22k; a 246-token chunk is read-bound on every repeat (3,250 reads, 6.7-6.8 s) at both contexts. Cold repetitions add 0.3-1.5 s for 240-1,023 reads. The ~1.5 s a short chunk costs live is mostly expert reads, not a fixed per-chunk cost and not attention over the long cache.
+
 ## 0.61.11 (2026-10-07)
 
 HANDOFF "Start here (2026-10-07, 0.61.11)" and section 18.88. Documentation only; nothing in `src/` besides the version string changed.
