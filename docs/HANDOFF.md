@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-07, 0.61.7): GLM's record layout on the X10Pro, priced
+>
+> Section 18.84 (`benchmarks/results/glm-layout-0.61.7/`). Read-only, nothing written to the X10Pro. The shipped GLM layout (5-9 ranges an expert) plateaus at **0.939 GB/s** on the X10Pro from two in flight (the live 0.95); raw contiguous 13.5 MiB blocks on the same drive read at **1.142 GB/s**: -17.8 % read time, **~-245 ms (-16 %) of GLM's 1,518 ms token, derived**. The contiguous bank (`CACHALOT_GLM_BANK`, 0.49.0, bit-identical) is already built for layers 3-5 on the internal SSD. The stand-in is raw blocks, not a bank file: **Hamed's yes/no is open: write the 11 GB layers 3-5 bank to the X10Pro for the real check.** No runtime change, no default changed.
+>
 > ## Start here (2026-10-07, 0.61.6): queue depth on the X10Pro
 >
 > Section 18.83 (record first; `benchmarks/results/qd-sweep-0.61.6/`; new `benchmarks/expert_read_qd.py`). **The X10Pro delivers 9.95 MB expert records at 0.967 GB/s from two in flight to sixteen, and p50 latency is 10.3 ms x K**: queue depth is not a lever there (the runtime's 8 loaders are on the plateau; a read in decode is slow because it queues). **But the link does 1.14-1.24 GB/s for contiguous blocks (1-13 MiB), so the nine-range DeepSeek record leaves ~18 % unused.** Internal drive: 5.0 GB/s at one expert in flight, 7.0-7.3 from two. Lead: a cold read of GLM's contiguous bank (built in 0.49.0, never timed cold) against the shipped layout on the X10Pro could take ~15 % off GLM's 1.52 s token. No runtime change, no default changed.
@@ -8818,6 +8822,37 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.84 GLM's expert record layout on the X10Pro, priced from the contiguous bank and a raw-block stand-in — 2026-10-07 (0.61.7)
+
+Prompt v127 first job, item 1 (Hamed: "go, price the GLM layout from the internal copy first"). Record before the runs: `benchmarks/results/glm-layout-0.61.7/RECORD-before.md`. Read-only: nothing was written to the X10Pro, no server ran.
+
+**What exists (index headers only).** There is no internal copy of the GLM checkpoint (GLM moved to the X10Pro); the only internal GLM copy is the contiguous bank `~/GLM-5.3-Flash-bank` for layers 3-5 (864 experts, 11 GB, 14,155,776 bytes a record, built in 0.49.0). The shipped checkpoint stores an expert as 5-9 merged byte ranges of 256 KiB to 5 MiB (for example [4864, 256, 4096, 256, 256, 4096] KiB, or nine ranges of 256 and 4096 KiB), 13.5 MiB in all. So "the internal copy" can show the contiguous layout only on the internal drive, which is not link-bound; the X10Pro rate of a contiguous record needs a stand-in.
+
+**Prediction (written first).** Shipped layout plateaus at 0.93-1.00 GB/s from two experts in flight; a contiguous 13.5 MiB block reads at >= 1.10; the gap is >= 12 %, worth ~17 % of GLM's read time. Falsifier: gap under 6 %, or contiguous not faster.
+
+**Measured (read-only, F_NOCACHE, disjoint experts within a run; 200 reads a level on layers 3-5, 60 for the raw rows; levels 1, 2, 4, 1 as drift control).**
+
+| what | K = 1 | K = 2 | K = 4 | K = 1 again |
+|---|---|---|---|---|
+| (a) shipped layout, X10Pro, GB/s | 0.906 | 0.939 | 0.938 | 0.911 |
+| (a) p50 / p99 ms | 15.5 / 17.6 | 29.8 / 63.0 | 51.7 / 153.5 | 15.4 / 16.8 |
+| (c) raw 13.5 MiB blocks, X10Pro, seed 11, GB/s | 1.132 | 1.150 | 1.138 | 1.147 |
+| (c) seed 12, GB/s | 1.121 | 1.164 | 1.146 | 1.141 |
+| (c) p50 ms | 12.5 | 25.2 | 52.3 | 12.5 |
+| (b) contiguous bank, internal SSD, GB/s | 5.33 | 6.35 | 6.02 | 5.24 |
+
+(a) is flat at 0.94 GB/s from two in flight and agrees with the 0.95 GB/s a live GLM session reads at (§18.78); its tails are fatter than DeepSeek's at K >= 2 (p99 63 ms at K = 2, 153 ms at K = 4 against p50 30 and 52), which the six-to-nine uneven preads an expert make plausible. (c) is flat at 1.14 GB/s (mean of eight levels 1.142, K = 1 1.135) and its latency is clean (p50 12.5 ms x K). (b) shows the contiguous record needs two in flight on a fast drive too (5.3 to 6.4 GB/s); there is no shipped-layout run on that drive to compare.
+
+**Price (derived from measured; the stand-in is the weak point).** Contiguous 1.142 against shipped 0.939 at the plateau is +21.6 % rate, i.e. **-17.8 % read time** (K = 1: 1.135 against 0.908, -20 %). Applied to GLM's token (§18.78: 1,518 ms, 91 % of it waiting on reads = 1,381 ms): about **-245 ms, ~-16 % of a token** (0.66 to ~0.79 tok/s), if the wait scales with bytes over rate (queueing at 1.7 reads in flight stays proportional). Prefill on the X10Pro is read-bound too (0.7 tok/s) and would gain the same share. The prediction held (shipped plateau 0.94 inside 0.93-1.00; contiguous 1.14 above 1.10; gap 21.6 % above 12 %); the falsifier did not fire.
+
+**What the stand-in is.** Raw random 13.5 MiB preads on a DeepSeek shard of the same drive, not a GLM bank file, so file placement and fragmentation on a real bank copy are not covered. The real test needs the bank on the X10Pro: layers 3-5 only (11 GB, enough for the instrument to read the real contiguous layout beside the shipped one on the same experts) or the full 42-layer bank (~160 GB; the X10Pro holds the 169 GB checkpoint beside it). Writing there is Hamed's call.
+
+**What this changes.** Nothing in the runtime. LEDGER rows GLM-LAYOUT-X10 and ST-GLM-RAW13; open question 7 (the layout lever). **If Hamed agrees to the copy:** (1) write the layers 3-5 bank to the X10Pro (`benchmarks/glm_bank.py --write MODEL OUT --layers 3-5`, 11 GB), (2) `expert_read_qd.py --glm --glm-bank` on it at K = 1-4 against (a), (3) if the gap holds, the full bank and a guarded `serve-glm.sh` A/B with `CACHALOT_GLM_BANK` through the server (the 0.49.0 bank was byte-verified and bit-identical, so this is a bit-identical lever; the decision to ship it on is then Hamed's only as a default change).
+
+**Not done / limits.** The real contiguous bank on the X10Pro; a GLM decode or prefill arm (priced only); the shipped layout on the internal drive (no copy exists); the 3-5-layer subset may differ from the whole checkpoint's layout (the ranges per expert varied from 5 to 9 across the six experts inspected). n = 200 reads a level (shipped, bank), 60 (raw). Machine load ~3.4-3.9 from the respawning launchd job (harmless to a read benchmark).
+
+**What needs Hamed.** One yes or no: write the layers 3-5 bank (11 GB) to the X10Pro, then possibly the full ~160 GB bank.
 
 ### 18.83 Queue depth on the X10Pro: reads plateau at 0.97 GB/s from two in flight, and the record layout costs ~18 % — 2026-10-07 (0.61.6)
 

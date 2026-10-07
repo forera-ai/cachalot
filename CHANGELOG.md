@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.61.7 (2026-10-07)
+
+HANDOFF "Start here (2026-10-07, 0.61.7)" and section 18.84. A measurement and an instrument option; nothing in `src/` changed, no default, output or speed changed.
+
+### Added
+- `benchmarks/expert_read_qd.py --glm [--glm-bank DIR] [--layers a,b]`: the same queue-depth instrument on a GLM-5.3-Flash checkpoint, optionally through a contiguous bank, restricted to some layers.
+
+### Measured
+- GLM's shipped expert layout (5-9 byte ranges of 256 KiB to 5 MiB an expert) on the X10Pro: 0.906 GB/s with one expert in flight, 0.939 from two to four (the 0.95 a live session reads at). Raw contiguous 13.5 MiB blocks on the same drive: 1.142 GB/s. A contiguous record would take ~18 % off GLM's read time, ~16 % of its 1.5 s token (derived; the stand-in is raw blocks, not a bank file). The contiguous bank on the internal SSD reads 5.3-6.4 GB/s.
+
 ## 0.61.6 (2026-10-07)
 
 HANDOFF "Start here (2026-10-07, 0.61.6)" and section 18.83. A new instrument and its measurements; nothing in `src/` changed, no default, output or speed changed.

@@ -77,13 +77,28 @@ def main() -> None:
     ap.add_argument("--reads", type=int, default=400, help="reads a level")
     ap.add_argument("--seed", type=int, default=20261007)
     ap.add_argument("--raw-mib", type=float, default=0.0, help="also run a raw random pread mode of this many MiB")
+    ap.add_argument("--glm", action="store_true", help="BANK is a GLM-5.3-Flash checkpoint (per-expert MLX tensors)")
+    ap.add_argument("--glm-bank", default="", help="with --glm: read through this contiguous bank (cachalot.glm.bank)")
+    ap.add_argument("--layers", default="", help="restrict to these layers, comma list (a bank may cover only some)")
     ap.add_argument("--no-expert", action="store_true", help="skip the expert-record mode (raw only)")
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
 
     levels = [int(x) for x in args.levels.split(",")]
-    fmt, index = detect_expert_bank(args.bank)
+    if args.glm:
+        from cachalot.glm.experts import build_glm_expert_index
+
+        fmt, index = build_glm_expert_index(args.bank)
+        if args.glm_bank:
+            from cachalot.glm.bank import apply_bank
+
+            index = apply_bank(fmt, index, Path(args.glm_bank))
+    else:
+        fmt, index = detect_expert_bank(args.bank)
     keys = sorted(index)
+    if args.layers:
+        keep = {int(x) for x in args.layers.split(",")}
+        keys = [k for k in keys if k[0] in keep]
     random.Random(args.seed).shuffle(keys)
     need = 0 if args.no_expert else args.reads * len(levels)
     if need > len(keys):
