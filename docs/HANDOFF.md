@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-07, 0.61.11): L6 and L7
+>
+> Section 18.88. Documentation only: `docs/ARCHITECTURE-COMPARISON.md` (L6) and `docs/SEAMS.md` (L7). Two findings worth knowing before building: the routing tracer exists for DeepSeek only (no `cache_sim` run is possible for MiniMax or GLM), and the read throttle does not reach MiniMax's coded bank. `benchmarks/lane_cost.py` was discarded at Hamed's request (residue of a temporary test); 0.61.10's text that called it an unreleased instrument is superseded.
+>
 > ## Start here (2026-10-07, 0.61.10): the context term of the floor in `cache_sim.py`
 >
 > Section 18.87. Instrument only: `benchmarks/cache_sim.py --context-tokens N` adds LEDGER DS-FLOOR-CTX to the floor (+4 ms by 1.8k tokens, then 0.09 ms per 1k; 85.1 ms at 25k against the measured 84.8). No machine used, no default changed. Item 3 of v130's first job (L6 table, L7 seam map) is still open.
@@ -8834,6 +8838,18 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.88 L6 architecture comparison and L7 seam map — 2026-10-07 (0.61.11)
+
+**Goal.** v131 first job item 3, the half that needs no machine. Kind: engineering (documentation), tagged derived; no measurement.
+
+**L6, `docs/ARCHITECTURE-COMPARISON.md`.** Table of the three architectures from the LEDGER and the code (experts, top-k, record size, resident share, floor, miss cost, bytes a token, read share, what binds), nine findings in architectural terms, and the measurements that would close its gaps. Consistency check inside it: GLM's 136.5 reads x 14.16 MB = 1.933 GB, equal to the 1.932 GB a token that §18.86 recorded. Derived resident shares: DeepSeek 33.7 % (5,179 slots, `cache_sim` output), MiniMax about 43 %, GLM about 29 %. Gaps it names: no GLM all-resident floor, no MiniMax constants since the substitution defaults, no routing trace for MiniMax or GLM, no energy.
+
+**L7, `docs/SEAMS.md`.** Seams from the drive up to the server, each with its file, symbol and knob; seven places where measurement and policy share a class (counters inside the store, a duck-typed tracer channel, a DeepSeek-only tracer, the throttle inside the reader, three unrelated predictors and drop rules, MiniMax's weight copy for instruments, governors that read state and act in one method); a table of where the next instrument should attach. Verified in the source while writing: `CodedBankReader.read_expert_into` does not reach `_throttle` for a bank record, so a throttled MiniMax sweep would measure nothing until one call is added. Nothing refactored.
+
+**Housekeeping.** `benchmarks/lane_cost.py` (untracked, from a temporary test) deleted at Hamed's instruction.
+
+**Open.** v131 items 1 and 2 (need Hamed's yes and an estimate), 4 (mcpo respawn, VMware, the 163 GB bank). New small ones the L6/L7 work exposes, none started: a routing tracer for MiniMax and GLM (unlocks L6 finding 2); a `_throttle` call in `CodedBankReader`; a GLM all-resident floor arm (machine).
 
 ### 18.87 The context term of the decode floor in the cache simulator — 2026-10-07 (0.61.10)
 

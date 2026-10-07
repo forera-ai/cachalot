@@ -295,6 +295,8 @@ reproducible to ±0.3 %.
 
 **0.60.7 (2026-10-06): review fixes.** The run manifest no longer records credentials such as `CACHALOT_API_KEY` by value, and its Hermes Desktop check needs one process line. HANDOFF section 18.73.
 
+**0.61.11 (2026-10-07): documentation only.** `docs/ARCHITECTURE-COMPARISON.md` compares DeepSeek, MiniMax and GLM by architecture (expert size, top-k, resident share, floor, miss cost, what binds) with every figure cited to `docs/LEDGER.md`, and `docs/SEAMS.md` maps the policy, execution and instrumentation seams of the runtime. HANDOFF section 18.88.
+
 **0.61.10 (2026-10-07): instrument only.** `benchmarks/cache_sim.py --context-tokens N` folds the measured context term of the decode floor (LEDGER DS-FLOOR-CTX: +4 ms by 1.8k tokens, then 0.09 ms per 1k) into its milliseconds-a-token column, so a Hermes-sized context (25k: 84-85 ms floor, not 79) is priced without a hand correction. HANDOFF section 18.87.
 
 **0.61.9 (2026-10-07): the contiguous GLM bank is on by default.** A four-arm interleaved A/B through the server (46 GiB budget) puts a GLM-5.3-Flash token on the X10Pro at 1,531 ms with the contiguous bank against 1,631 ms with the shipped layout (-6.1 %); generated text and expert counts are identical, so it is bit-identical, and `serve-glm.sh` now uses the bank (163 GB at `/Volumes/X10Pro/models/GLM-5.3-Flash-bank`) when it exists. HANDOFF section 18.86.

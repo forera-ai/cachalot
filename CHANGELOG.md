@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.61.11 (2026-10-07)
+
+HANDOFF "Start here (2026-10-07, 0.61.11)" and section 18.88. Documentation only; nothing in `src/` besides the version string changed.
+
+### Added
+- `docs/ARCHITECTURE-COMPARISON.md` (charter track L6): the three models' architecture, cost terms and bottlenecks in one table, every number cited to a LEDGER row or derived from one, and nine findings stated in architectural terms (read share follows bytes a miss over drive rate; prefetch pays by precision; record size decides which I/O levers pay; and so on). Four measurements it names as missing.
+- `docs/SEAMS.md` (charter track L7): the policy, execution and instrumentation seams in the code, seven places where measurement and policy share a class, and where each new instrument should attach. Finding: the routing tracer exists for DeepSeek only, and `CACHALOT_READ_THROTTLE_GBPS` does not cover MiniMax's coded bank.
+
+### Removed
+- The untracked `benchmarks/lane_cost.py` (residue of a temporary test; Hamed asked for it to be discarded). It was never committed.
+
 ## 0.61.10 (2026-10-07)
 
 HANDOFF "Start here (2026-10-07, 0.61.10)" and section 18.87. Instrument only; nothing in `src/` besides the version string changed.
