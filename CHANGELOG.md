@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.61.14 (2026-10-08)
+
+HANDOFF "Start here (2026-10-08, 0.61.14)" and section 18.91. A one-call instrument fix; no model output, speed default or numerics changed.
+
+### Changed
+- `CACHALOT_READ_THROTTLE_GBPS` now also covers MiniMax's coded bank. `CodedBankReader.read_expert_into` held bank records outside the emulated pipe (only the fallback to a checkpoint read reached `ExpertReader`'s throttle), so a throttled MiniMax sweep would have measured nothing. With the variable unset (the default) the path is unchanged. A test (`tests/test_reader_throttle.py`) checks that a 10 MB bank record is held to 10 ms at 1 GB/s and not held when the knob is off. The SEAMS.md finding it closes: section 2 item 4.
 ## 0.61.13 (2026-10-08)
 
 HANDOFF "Start here (2026-10-08, 0.61.13)" and section 18.90. Measurement only; nothing in `src/` besides the version string changed.

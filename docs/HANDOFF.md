@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-08, 0.61.14): the throttle reaches MiniMax's bank
+>
+> Section 18.91. Prompt v134 first job item 3, the `_throttle` half (no machine used). `CACHALOT_READ_THROTTLE_GBPS` now holds a MiniMax coded-bank record on the emulated pipe too; before, only the checkpoint fallback was throttled, so a throttled MiniMax sweep would have measured the unthrottled drive. Off by default, unchanged when unset. The routing tracer for MiniMax and GLM is not built (hot paths, its own session). Tests: 569 pass.
+>
 > ## Start here (2026-10-08, 0.61.13): the first live GLM Hermes session
 >
 > Section 18.90. Eight requests, 3.7 hours, GLM with the bank on the X10Pro at 46 GiB. Cold 21k block 39.7 min once, then reused; decode 1.61 s a token (0.62 tok/s); short follow-ups 25-49 s, a 2.7k tool result 6 min, an image turn 3 min. Quality: prose and tool calls good, **C# garbled (no usable code)**, image read with two character errors. A cancelled request loses all its prefill work: tell Hermes to wait (or raise its request timeout).
@@ -8846,6 +8850,20 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.91 The read throttle reaches MiniMax's coded bank — 2026-10-08 (0.61.14)
+
+**Goal.** Prompt v134 first job item 3 (autonomous, no machine): close SEAMS section 2 item 4. Jev ranked it ahead of the routing tracer (throttle_first 1.00; routing metadata only): it is tiny, off by default and unit-testable, while the tracer touches `minimax/gpu_select.py` and `glm/experts.py` hot paths and carries the MiniMax weight-copy caveat.
+
+**Prediction (written before the change).** With the knob unset nothing changes (the added branch is one module-global comparison); with it set, a bank record of N bytes that the drive served is held until N / B seconds have passed on the shared pipe, as for DeepSeek's `ExpertReader`. Falsifier: the unit test below failing, or a throttled MiniMax read still taking the unthrottled time.
+
+**Change.** `CodedBankReader.read_expert_into` (`src/cachalot/minimax/coded_bank.py`): when `storage.reader.READ_THROTTLE_BPS > 0` it times `_read_record` and calls `reader._throttle(total, started)`. The fallback to a checkpoint read already goes through `ExpertReader.read_expert_into`, which throttles itself, so it is not throttled twice. Page-cache hits (under 1 ms) still pass free, as in `_throttle`.
+
+**Result.** `tests/test_reader_throttle.py::test_coded_bank_record_read_is_throttled`: knob off, a stubbed 10 MB record returns in under 8 ms; at 1 GB/s it takes at least 9.5 ms. Full suite 569 passed, `git diff --check` clean. Not measured on a real MiniMax run: that needs the machine and Hamed's estimate-and-confirm.
+
+**Kind.** Engineering (instrument). No default, output or numerics changed; no snapshot bump. Bottleneck: unchanged.
+
+**Open.** The routing tracer for MiniMax and GLM (unlocks L6 finding 2); a throttled MiniMax bandwidth sweep (machine, estimate first); first-job items 1, 2 and 4 of v134 as listed in the prompt. **Needs Hamed:** nothing new.
 
 ### 18.90 The first live Hermes session on GLM-5.3-Flash with the contiguous bank — 2026-10-08 (0.61.13)
 

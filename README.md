@@ -295,6 +295,8 @@ reproducible to ±0.3 %.
 
 **0.60.7 (2026-10-06): review fixes.** The run manifest no longer records credentials such as `CACHALOT_API_KEY` by value, and its Hermes Desktop check needs one process line. HANDOFF section 18.73.
 
+**0.61.14 (2026-10-08): instrument fix.** `CACHALOT_READ_THROTTLE_GBPS` (the emulated slower expert drive, off by default) now also applies to MiniMax's coded-bank reads, which it skipped; nothing else changed. HANDOFF section 18.91.
+
 **0.61.13 (2026-10-08): measurement only.** The first live Hermes session on GLM-5.3-Flash with the contiguous bank (X10Pro, 46 GiB): a cold 21k-token Hermes block takes 39.7 minutes once, later requests reuse it (25-49 s for an 18-34 token follow-up, 6 minutes for a 2.7k tool result, 3 minutes for an image turn); decode 0.53-0.77 tok/s. Prose and tool calls were good, the C# snippet was garbled, the image transcription missed two characters. HANDOFF section 18.90.
 
 **0.61.12 (2026-10-07): measurement only.** The ~1.5 s a short prefill costs after a long context (DS-PREFILL-SHORT) is split by a per-chunk trace: with the experts resident a 19-token chunk costs 0.55 s (about 0.26 s fixed plus 15 ms a token) at 512 and at 22,000 tokens of context; the rest is expert reads (240-1,023 a chunk). Context length adds at most ~0.2 s, on one chunk size. HANDOFF section 18.89.

@@ -46,6 +46,7 @@ from pathlib import Path
 import numpy as np
 
 from cachalot.storage.index import ExpertEntry, ExpertFormat
+from cachalot.storage import reader as _reader_mod
 from cachalot.storage.reader import ExpertReader
 
 BANK_VERSION = 2  # 2 may hold slot records (M24); 1 holds only coded and raw ones
@@ -302,6 +303,13 @@ class CodedBankReader(ExpertReader):
                 # a trimmed checkpoint (index_from_bank) has no other copy of this expert
                 raise LookupError(f"expert {entry.layer}/{entry.expert}: not in {self.bank_dir} and no checkpoint bytes")
             return super().read_expert_into(entry, views)
+        if _reader_mod.READ_THROTTLE_BPS > 0:
+            # the emulated slower drive (CACHALOT_READ_THROTTLE_GBPS) covers a bank record too; the fallback above
+            # goes through ExpertReader.read_expert_into, which throttles itself
+            started = time.perf_counter()
+            total = self._read_record(rec, views, (entry.layer, entry.expert))
+            _reader_mod._throttle(total, started)
+            return total
         return self._read_record(rec, views, (entry.layer, entry.expert))
 
     def _head(self, key, kind, fd, offset) -> bytes | None:
