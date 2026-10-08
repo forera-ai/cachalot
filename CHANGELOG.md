@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.62.6 (2026-10-08)
+
+HANDOFF "Start here (2026-10-08, 0.62.6)" and section 18.98. Measurement only; nothing in `src/` besides the version string changed.
+
+### Measured
+- A longer MiniMax trace: the same eight dumped Hermes requests as 0.62.1, decode cap raised from 120 to 600 tokens, router's own picks, 3,053 slots: **1,904 decode tokens** over 57 layers (2.5 times the first trace), 12 minutes. Busiest-10 % share 33.5 % against 12.4 % for uniform routing at that length: excess 21.0 points; the first trace's 768 tokens gave 21.1. The two agree to a tenth of a point although sampling (temperature 0.7) and the reply lengths differ; a bootstrap over the 57 layers puts about +-1 point on each. MiniMax's cold-prompt excess (25.5, 560 tokens) is outside that interval, so the workload effect for MiniMax (+4.5 points from Hermes to cold prompts) is real; for GLM it was not (+0.6, one trace each).
+- Live MiniMax over the replay: 30.9 misses a token, hit 86.4 %, 4.9-8.3 tok/s on the longer replies; `cache_sim.py` at 3,052 slots says 29.9 and 86.9 %: within 3 %. On the first (768-token) Hermes trace the simulator was 22 % optimistic and on the cold trace 10 % pessimistic, so its MiniMax error shrinks with trace length (a short trace is dominated by cache warm-up) and has no fixed sign.
 ## 0.62.5 (2026-10-08)
 
 HANDOFF "Start here (2026-10-08, 0.62.5)" and section 18.97. Measurement only; nothing in `src/` besides the version string changed.

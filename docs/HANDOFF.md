@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-08, 0.62.6): a longer MiniMax trace
+>
+> Section 18.98. Hamed: "go, record a longer MiniMax trace". Same eight Hermes requests, cap 600, 1,904 decode tokens, 12 minutes. Excess over uniform 21.0 points against the first trace's 21.1: reproducible to about a point (layer bootstrap +-1). `cache_sim.py` within 3 % of live on this trace. Files local only: `benchmarks/results/routing-trace-minimax-long/`.
+>
 > ## Start here (2026-10-08, 0.62.5): GLM on an agent conversation
 >
 > Section 18.97. Hamed: "go, record the GLM trace on an agent conversation". Six dumped Hermes bodies, 229 decode tokens, 46 GiB, 28 minutes (the saved 21,063-token snapshot saved 40). GLM excess over uniform 19.8 points on the agent conversation, 19.2 on cold prompts: GLM is workload-insensitive here. `cache_sim.py` within 3 % of live. Files local only: `benchmarks/results/routing-trace-glm-agent/`.
@@ -8874,6 +8878,25 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.98 A longer MiniMax trace — 2026-10-08 (0.62.6)
+
+**Goal.** Hamed: "go, record a longer MiniMax trace" (open since §18.93): tighten the skew number and see how much of it is the trace's length. Estimate given: about 15 minutes; actual 12 (replies ended earlier than the 600 cap in six of eight requests; two ran to the cap).
+
+**Prediction (before).** With 2.5 times the tokens the excess stays within about 2 points of 21.1; falsifier: a value outside 19-23. Also expected: `cache_sim.py`'s error shrinks with length.
+
+**Method.** `benchmarks/results/routing-trace-minimax-long/` (gitignored): `source-requests.jsonl` (the `hermes-live-0.61.1` dump), `replay_trace.py` (the first MiniMax replay with `max_tokens` 600), `replay.log`, `server.log`, `trace.npz`. `CACHALOT_ROUTING_TRACE=... CACHALOT_MINIMAX_MISS_DROP=0 CACHALOT_MINIMAX_PREFILL_MISS_DROP=0 ./serve-minimax.sh`, memory fit 3,053 slots (62.9 GiB), sysctl 88064, swap 3.8 GB (steady), display on, two system-block snapshots preloaded and used (21,467 tokens reused). Stopped by SIGINT. Not a speed baseline.
+
+**Result (measured).**
+- Rows: 1,904 decode tokens x 57 layers. The completion tokens are 10, 30, 235, 283, 600, 100, 52, 600; the six that stopped on their end token have one decode forward fewer: 9 + 29 + 234 + 282 + 600 + 99 + 51 + 600 = 1,904, exact.
+- **Skew.** Busiest 10 % (13 of 128): 33.5 % of a layer's decode routes; null at 1,904 tokens 12.4 %; excess 21.0 points. The first trace (768 tokens, same conversation): 35.1 % against 14.0 %, excess 21.1; the cold-prompt trace (560 tokens): 40.1 % against 14.6 %, excess 25.5. (Slightly different nulls than §18.93/18.96, which were 13.7 / 14.5 on another seed: the null is a 20-repetition simulation and moves by ~0.5 points; the excess values here are all from one script and one seed.) A layer-level bootstrap of the mean share gives about +-1 point on each excess; it covers the spread across the 57 layers, not the sampling of the tokens, so it is a floor on the uncertainty. The long and the first Hermes traces agree to 0.1 point; the cold prompts differ by 4.5, outside the interval: **a real workload effect for MiniMax, small and of the opposite sign to DeepSeek's** (DeepSeek: 34.6 cold, 37-40 agent, so cold is lower).
+- Live: 30.9 misses a token and 86.4 % hit over the 1,904 tokens (per request 30.5 / 34.8 / 27.6 / 14.0 / 31.9 / 40.6 / 19.9 / 38.2 misses), decode 4.9-8.3 tok/s, prefill 5.8-68 s for 21-26k contexts with the 21,467-token block reused. `cache_sim.py` at 3,052 slots: 29.9 misses and 86.9 %: within 3 %. Errors of the simulator for MiniMax across the three traces: -22 % (768 tokens), +10 % (560, cold), -3 % (1,904): it improves with length, as predicted, and has no fixed sign.
+
+**What it settles and what it does not.** The MiniMax Hermes figure of 21 points is stable (the number in LEDGER MM-ROUTING-SKEW stands, now backed by 2.5 times the tokens). The ordering DeepSeek > MiniMax > GLM is untouched. Still one conversation and one prompt set per cell; the layer bootstrap does not cover a different conversation. A second, different Hermes conversation would test that.
+
+**Kind.** Measurement. No default, output or numerics changed.
+
+**Open.** A second MiniMax conversation (the dump has only one); DeepSeek and GLM longer traces; a simulator store with decode prefetch; weights and predicted sets for MiniMax and GLM. **Needs Hamed:** a yes for any further recording.
 
 ### 18.97 GLM on an agent conversation — 2026-10-08 (0.62.5)
 
