@@ -42,6 +42,9 @@ class RoutingTracer:
     # Position of the decode token being traced; set by the runtime at the
     # start of each decode token so predictions can be joined to routes.
     decode_position: int = -1
+    _next_pos: dict = field(default_factory=dict)
+    # set by a model's prefill so that a one-token prefill chunk is not recorded as a decode token
+    forced_phase: str | None = None
 
     def record(
         self,
@@ -85,6 +88,20 @@ class RoutingTracer:
         )
         self._experts.append(arr)
         self._count += n_tokens
+
+    def record_next(self, phase: str, layer: int, indices) -> None:
+        """
+        `record` for a model path that does not know the sequence position (GLM and MiniMax, which route
+        inside the expert module). Positions are a per-(phase, layer) counter: every layer that routes a token
+        advances its own, so rows of one decode token share a position, which is what `cache_sim.py` groups by.
+        Positions are unique within a run but do not restart with a request; the trace has no router weights.
+        """
+        arr = np.asarray(indices, dtype=np.int16)
+        arr = arr.reshape(-1, arr.shape[-1]) if arr.ndim != 1 else arr[None, :]
+        key = (phase, layer)
+        start = self._next_pos.get(key, 0)
+        self._next_pos[key] = start + arr.shape[0]
+        self.record(phase, layer, start, arr)
 
     def record_predicted(
         self,

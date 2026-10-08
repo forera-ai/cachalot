@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-08, 0.62.0): routing trace for GLM and MiniMax
+>
+> Section 18.92. `CACHALOT_ROUTING_TRACE=<file>` now works on `serve-glm.sh` and `serve-minimax.sh` (unweighted, host arrays only, off by default). Built and unit-tested without the machine; **no trace recorded yet.** Record one with the machine free and your estimate-and-confirm (command in 18.92).
+>
 > ## Start here (2026-10-08, 0.61.14): the throttle reaches MiniMax's bank
 >
 > Section 18.91. Prompt v134 first job item 3, the `_throttle` half (no machine used). `CACHALOT_READ_THROTTLE_GBPS` now holds a MiniMax coded-bank record on the emulated pipe too; before, only the checkpoint fallback was throttled, so a throttled MiniMax sweep would have measured the unthrottled drive. Off by default, unchanged when unset. The routing tracer for MiniMax and GLM is not built (hot paths, its own session). Tests: 569 pass.
@@ -8850,6 +8854,28 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.92 A routing tracer for GLM and MiniMax — 2026-10-08 (0.62.0)
+
+**Goal.** Hamed: "go, build the routing tracer for MiniMax and GLM" (v135 first job item 3). It unlocks `cache_sim.py` for both models and the L6 routing-skew comparison (ARCHITECTURE-COMPARISON finding 2). No machine used.
+
+**Prediction (before the build).** Tracing adds no device read (the routes are already host arrays at the recording sites) and costs microseconds a layer-token, under 0.2 % of a MiniMax token (44-90 ms) and far less of a GLM token (1.5 s). Falsifier: a micro-measurement of the record call above ~20 us, or a site that needs an `mx` op to get the indices.
+
+**Change.** (1) `RoutingTracer.record_next(phase, layer, indices)`: positions from a per-(phase, layer) counter, because these models route inside the expert module and do not know the sequence position; rows of one decode token share a position, which is the grouping `cache_sim.simulate` uses. (2) `StreamingSwitchGLU.tracer` and `_trace`: records the `routes` array `__call__` already read, phase from the token count, overridden by `tracer.forced_phase` that `GlmModel.prefill` sets so a one-token prefill chunk is not taken for decode. (3) MiniMax's GPU-select decode (which bypasses the switch module): `GpuSelectDecoder._check` records `rec["inds"]`, already read for the residency check. (4) `GlmModel.set_tracer` (MiniMax inherits it) finds every switch module and the decoder; `cli.py serve` installs it from `CACHALOT_ROUTING_TRACE` and saves at exit. Unit tests: positions and phases, forced phase, and `set_tracer` on a stub module tree (checked by hand: four layers found).
+
+**Result.** `record_next` 2.30 us per call (100,000 calls, no model), about 0.1 ms on a 42-layer GLM token. Full suite 571 passed. Not run on a real model.
+
+**Limits, stated.** Unweighted (no `tau` runs in `cache_sim`), no predicted sets. Under MiniMax's default substitution, prefill rows are the experts the store was asked for after the substitution, decode rows the router's own picks (the server warns); start with `CACHALOT_MINIMAX_MISS_DROP=0 CACHALOT_MINIMAX_PREFILL_MISS_DROP=0` for the router's picks only. Positions do not restart with a request. A speculative-rewind path in MiniMax decode records only the checked layer, not the speculative one.
+
+**Kind.** Engineering (instrument), off by default; no default, output or numerics changed. Lab brief: `docs/lab/briefs/2026-10-08-runtime-0.62.0.md`.
+
+**To record a trace (machine free, Hamed's yes first; a MiniMax session of ~10 short requests is roughly 15-20 minutes, GLM far longer because a token is 1.5 s):**
+```bash
+cd /Users/hamedprooshani/Projects/deepseek-v41-mac && CACHALOT_ROUTING_TRACE=benchmarks/results/routing-trace-minimax/trace.npz CACHALOT_MINIMAX_MISS_DROP=0 CACHALOT_MINIMAX_PREFILL_MISS_DROP=0 ./serve-minimax.sh
+```
+Stop the server with Ctrl-C and the trace is saved. Then replay: `~/venvs/deepseek-v41/bin/python benchmarks/cache_sim.py <trace> --budgets-gib 44,52,68 --expert-bytes 22127000` for MiniMax (21.1 MiB a slot image; GLM: `--expert-bytes 14160000 --budgets-gib 40,46,52`). The `--floor-ms` and `--miss-ms` defaults are DeepSeek's constants, so read only the hit rate and misses a token from those runs, not the milliseconds.
+
+**Open.** Record one trace per model and compare skew; weights and predicted sets for these two (a device read per layer, price first). **Needs Hamed:** the machine and a yes for the recording.
 
 ### 18.91 The read throttle reaches MiniMax's coded bank — 2026-10-08 (0.61.14)
 

@@ -174,6 +174,13 @@ class StreamingSwitchGLU(nn.Module):
     codes = False
     # (x [1, D], k) -> (indices, weights) of the next MoE layer's predicted experts, or None; set by GlmModel
     predict = None
+    # a RoutingTracer (cachalot.metrics.routing_trace) or None; set by GlmModel.set_tracer. The routes it records
+    # are the host array this call already read, so tracing adds no device read and no GPU round trip.
+    tracer = None
+
+    def _trace(self, routes, n_tokens: int, k: int) -> None:
+        phase = self.tracer.forced_phase or ("decode" if n_tokens == 1 else "prefill")
+        self.tracer.record_next(phase, self._layer, routes.reshape(n_tokens, k))
 
     def _qmm(self, x, slot, proj):
         w, s, b, *lut = _typed(slot, self._fmt, proj)
@@ -228,6 +235,8 @@ class StreamingSwitchGLU(nn.Module):
                 p_idx, p_w = np.array(pred[0]).reshape(-1), np.array(pred[1]).astype(np.float32).reshape(-1)
                 pred_entries = [self._index[(self._layer + 1, int(e))] for e in p_idx[np.argsort(-p_w, kind="stable")]]
         routes = np.array(indices).reshape(-1).astype(np.int32)
+        if self.tracer is not None:
+            self._trace(routes, flat_x.shape[0], k)
         order = np.argsort(routes, kind="stable")
         experts, starts = np.unique(routes[order], return_index=True)
         ends = np.append(starts[1:], len(order))

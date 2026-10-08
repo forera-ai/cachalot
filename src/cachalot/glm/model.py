@@ -615,6 +615,20 @@ class GlmModel:
     def restore(snap: Snapshot) -> list:
         return _clone(snap.cache)
 
+    def set_tracer(self, tracer) -> int:
+        """Install (or remove, with None) a routing tracer on every streaming MoE layer; the layers installed.
+        MiniMax's GPU-select decode keeps its own routing loop and takes the tracer there too."""
+        self._tracer = tracer
+        n = 0
+        for module in self.model.modules():
+            if isinstance(module, StreamingSwitchGLU):
+                module.tracer = tracer
+                n += 1
+        decoder = getattr(self, "gpu_decoder", None)
+        if decoder is not None:
+            decoder.tracer = tracer
+        return n
+
     def _forward(self, tokens: list[int], cache) -> mx.array:
         out = self.model(mx.array(tokens, dtype=mx.int32)[None], cache=cache)
         return out.logits[:, -1, :]
@@ -662,11 +676,16 @@ class GlmModel:
         # decode's finished wrong predictions (MiniMax, HANDOFF 18.9) give their transient slots back first
         self.store.expire_predictions()
         self._fit_prefill(len(tokens))
+        tracer = getattr(self, "_tracer", None)
+        if tracer is not None:
+            tracer.forced_phase = "prefill"
         try:
             for start in range(0, len(tokens), self.PREFILL_CHUNK):
                 logits = self._forward(tokens[start:start + self.PREFILL_CHUNK], cache)
                 mx.eval(logits)
         finally:
+            if tracer is not None:
+                tracer.forced_phase = None
             self.store.release_prefill()
         return logits
 

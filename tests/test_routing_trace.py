@@ -90,3 +90,36 @@ def test_predicted_used_mask_joins_by_token_across_requests(tmp_path):
 
     arrays, _ = load_trace(t.save(tmp_path / "j.trace.npz"))
     assert predicted_used_mask(arrays).tolist() == [[True, False], [True, False]]
+
+
+def test_record_next_positions_group_a_decode_token_across_layers(tmp_path):
+    import numpy as np
+
+    from cachalot.metrics.routing_trace import RoutingTracer, load_trace
+
+    t = RoutingTracer()
+    t.record_next("prefill", 3, np.arange(12).reshape(3, 4))  # 3 tokens, top-4
+    for _ in range(2):  # two decode tokens through two layers
+        for layer in (3, 4):
+            t.record_next("decode", layer, [1, 2, 3, 4])
+    arrays, _ = load_trace(t.save(tmp_path / "t.npz"))
+    dec = arrays["phase"] == 1
+    assert arrays["position"][~dec].tolist() == [0, 1, 2]
+    assert arrays["position"][dec].tolist() == [0, 0, 1, 1]  # rows of one token share a position
+    assert arrays["experts"].shape == (7, 4) and "weights" not in arrays
+
+
+def test_streaming_switch_traces_routes_and_honours_forced_phase():
+    import numpy as np
+
+    from cachalot.glm.experts import StreamingSwitchGLU
+    from cachalot.metrics.routing_trace import RoutingTracer
+
+    from types import SimpleNamespace
+
+    mod = SimpleNamespace(_layer=5, tracer=RoutingTracer())  # _trace only reads these two
+    StreamingSwitchGLU._trace(mod, np.arange(8, dtype=np.int32), 2, 4)  # two tokens: prefill
+    StreamingSwitchGLU._trace(mod, np.arange(4, dtype=np.int32), 1, 4)  # one token: decode
+    mod.tracer.forced_phase = "prefill"
+    StreamingSwitchGLU._trace(mod, np.arange(4, dtype=np.int32), 1, 4)  # a one-token prefill chunk stays prefill
+    assert mod.tracer.arrays()["phase"].tolist() == [0, 0, 1, 0]

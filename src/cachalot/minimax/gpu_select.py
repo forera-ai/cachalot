@@ -344,6 +344,7 @@ class GpuSelectDecoder:
         self.spec_predicted = 0
         self.dropped = 0
         self.substituted = 0
+        self.tracer = None  # a RoutingTracer: the router's own picks of each decode layer (set by GlmModel.set_tracer)
 
     def _slot_table(self) -> mx.array:
         version = self.store.slot_table_version
@@ -407,6 +408,8 @@ class GpuSelectDecoder:
         slots = np.array(rec["slots"])
         routes = np.array(rec["inds"]).reshape(-1)
         rec["routes"], rec["slot_ids"] = routes, slots
+        if self.tracer is not None:
+            self.tracer.record_next("decode", rec["i"], routes)
         if (slots >= 0).all():
             store = self.store
             with store._lock:

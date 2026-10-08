@@ -227,6 +227,23 @@ def cmd_serve(args) -> None:
         if args.default_top_p is None:
             args.default_top_p = model.generation_defaults().get("top_p", 1.0)
         engine = GlmEngine(model, model_id=args.model_id if args.model_id != "deepseek-v4.1-flash" else default_id)
+        trace_path = os.environ.get("CACHALOT_ROUTING_TRACE")
+        if trace_path:
+            # HANDOFF 18.92: an unweighted routing trace (experts only, no device read), saved when the server stops
+            from cachalot.metrics.routing_trace import RoutingTracer
+
+            tracer = RoutingTracer()
+            layers = model.set_tracer(tracer)
+            print(f"routing trace on: {trace_path} ({layers} streaming MoE layers; saved at exit; no router weights)",
+                  file=sys.stderr, flush=True)
+            if family == "minimax":
+                from cachalot.minimax import gpu_select
+
+                if gpu_select.MISS_DROP > 0 or gpu_select.PREFILL_MISS_DROP > 0:
+                    print("routing trace WARNING: miss substitution is on, so prefill rows record the experts after "
+                          "the substitution and decode rows the router's own picks; for the router's picks only, "
+                          "start with CACHALOT_MINIMAX_MISS_DROP=0 CACHALOT_MINIMAX_PREFILL_MISS_DROP=0",
+                          file=sys.stderr, flush=True)
     else:
         model = _load_model(args)
         if args.snapshot_dir:

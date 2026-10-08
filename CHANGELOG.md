@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.62.0 (2026-10-08)
+
+HANDOFF "Start here (2026-10-08, 0.62.0)" and section 18.92. Instrument only; off by default; no output, speed default or numerics changed.
+
+### Added
+- `CACHALOT_ROUTING_TRACE=<file>` now works for GLM-5.3-Flash and MiniMax-M3 servers too (`serve-glm.sh`, `serve-minimax.sh`), not only DeepSeek: an unweighted trace (phase, layer, position, the routed experts) saved when the server stops, in the format `benchmarks/cache_sim.py` and `load_trace` read. It records from host arrays the model already read (GLM and MiniMax prefill: `StreamingSwitchGLU`; MiniMax decode: `GpuSelectDecoder._check`), so it adds no device read; `RoutingTracer.record_next` costs 2.3 us a layer-token (about 0.1 ms on a 42-layer token, measured by a loop without a model). Positions are a per-(phase, layer) counter. With MiniMax's miss substitution on (the default), prefill rows are the experts after substitution and decode rows the router's own picks; the server prints a warning, and `CACHALOT_MINIMAX_MISS_DROP=0 CACHALOT_MINIMAX_PREFILL_MISS_DROP=0` records the router's picks only.
+- `GlmModel.set_tracer`, `RoutingTracer.record_next` and `forced_phase`, three tests in `tests/test_routing_trace.py`.
+
+### Not done
+- Not run on a real model: it needs the machine and Hamed's estimate-and-confirm. No predicted sets and no router weights for these two models.
 ## 0.61.14 (2026-10-08)
 
 HANDOFF "Start here (2026-10-08, 0.61.14)" and section 18.91. A one-call instrument fix; no model output, speed default or numerics changed.
