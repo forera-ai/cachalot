@@ -295,6 +295,8 @@ reproducible to ±0.3 %.
 
 **0.60.7 (2026-10-06): review fixes.** The run manifest no longer records credentials such as `CACHALOT_API_KEY` by value, and its Hermes Desktop check needs one process line. HANDOFF section 18.73.
 
+**0.62.9 (2026-10-08): pricing weights and predicted sets for GLM and MiniMax.** Recording the predicted next-layer sets is free for both (the hosts already read them); router weights are free for MiniMax under its shipped default and cost ~0.1 % of a GLM token. Priced, not built; the case for building is GLM only. New `benchmarks/router_price.py`. HANDOFF section 18.101.
+
 **0.62.8 (2026-10-08): a longer GLM trace.** Raising the decode cap on the GLM Hermes replay (748 decode tokens, 3.3 times the last): GLM's routing-concentration excess over uniform routing is 17.3 points (its three traces span 17.3-20.0). On the one conversation all three models share, the long traces read DeepSeek 36.1 > MiniMax 21.0 > GLM 17.3. `cache_sim.py` is within 1 % of the live GLM run. HANDOFF section 18.100.
 
 **0.62.7 (2026-10-08): a longer DeepSeek trace.** The same Hermes conversation the MiniMax traces used, through `serve.sh` (2,028 decode tokens): DeepSeek's routing-concentration excess over uniform routing is 36.1 points (its four traces span 34.7-40.3) against MiniMax's 21.0 on the same conversation, a 15-point gap with the workload held fixed. `cache_sim.py` is within 1 % of the live DeepSeek run. HANDOFF section 18.99.

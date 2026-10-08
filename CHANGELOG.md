@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.62.9 (2026-10-08)
+
+HANDOFF "Start here (2026-10-08, 0.62.9)" and section 18.101. Pricing only: one instrument added, nothing in `src/` besides the version string changed.
+
+### Added
+- `benchmarks/router_price.py`: an isolated micro-benchmark of what adding a router's weights to the sync that already reads its indices costs (interleaved A/B, no model, about 10 s of GPU).
+
+### Measured (priced, not built)
+- What recording router weights and predicted next-layer sets would cost for GLM and MiniMax: GLM decode **predicted sets are free** (the predictor's indices and weights are already host arrays in `StreamingSwitchGLU.__call__`), GLM decode **weights cost about +43 us a layer in isolation (+1.8 ms of a ~1,500 ms token, 0.1 %)** and need a gate wrapper to reach the switch module; MiniMax decode **weights are free under the shipped default** (`MISS_DROP_ARMED` already copies them to the host inside the sync; an exact-picks trace needs `CACHALOT_MINIMAX_MISS_DROP_ARMED=1`; the isolated benchmark gives an upper bound of +353 us a layer, which overstates because the weights are used on the GPU anyway) and MiniMax predicted sets are free too (`_predicted` already reads the scores). `predicted_used_mask` assumes every token starts at layer 0, which is true for DeepSeek only (GLM and MiniMax start at layer 3), a small change.
+- Recommendation: build it for GLM only (it is the read-bound model, 91 % of a token, where a precision-gated prefetch could matter); MiniMax's prediction is already ~90 % precise and its substitution already ships.
 ## 0.62.8 (2026-10-08)
 
 HANDOFF "Start here (2026-10-08, 0.62.8)" and section 18.100. Measurement only; nothing in `src/` besides the version string changed.

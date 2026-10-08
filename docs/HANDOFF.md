@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-08, 0.62.9): weights and predicted sets priced for GLM and MiniMax
+>
+> Section 18.101. Hamed: "go, price weights and predicted sets for MiniMax and GLM". Read from the code and one 10-second micro-benchmark, no server. Predicted sets: free on both. Weights: GLM +43 us a layer in isolation (0.1 % of a token), MiniMax free under the shipped default. Nothing built. Recommendation: build for GLM only, one recording (25-35 minutes) would then feed `tau` runs and a precision-gate replay for it.
+>
 > ## Start here (2026-10-08, 0.62.8): a longer GLM trace
 >
 > Section 18.100. Hamed: "go, record a longer GLM trace" (confirmed after the estimate). Six dumped Hermes requests, cap 400, 748 decode tokens, 34.5 minutes. GLM excess 17.3 points (three traces: 17.3-20.0). Shared conversation, long traces: DeepSeek 36.1 > MiniMax 21.0 > GLM 17.3. `cache_sim.py` within 1 % of live. Files local only: `benchmarks/results/routing-trace-glm-long/`.
@@ -8886,6 +8890,40 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.101 Pricing router weights and predicted sets for GLM and MiniMax — 2026-10-08 (0.62.9)
+
+**Goal.** Hamed: "go, price weights and predicted sets for MiniMax and GLM" (the open item of §18.92-18.100). Decide, before any code, what recording them costs, and whether the data buys a lever. Process note: no prediction was written before the measurement this time; the question and the method (read each recording site, then price only what is not already on the host) were fixed first.
+
+**Why these two.** DeepSeek's traces carry both. With weights, `cache_sim.py` can run drop thresholds (`tau > 0`); with the predicted sets, `pred_gate_price.py` can price a router-weight gate on prefetch (§18.81). GLM and MiniMax have neither.
+
+**What each recording site already has on the host (read from the source).**
+
+| item | GLM | MiniMax |
+|---|---|---|
+| predicted next-layer set, decode | `StreamingSwitchGLU.__call__`: `p_idx` and `p_w` (K = `PREDICT_TOPK`, default 5, with the predictor's normalized weights) are numpy arrays when `PREDICT_TOPK > 0`, one token, no caller prefetch. **Free.** | `GpuSelectDecoder._predicted`: `np.array(rec["pred"])` is the next layer's router *scores* (not normalized weights), top `PREFETCH_TOPK`, read inside the sync the layer already runs, once a layer (on the all-hit path or in `_fix`). **Free.** |
+| predicted set, prefill | none | the prefill hook's `pred` (counts over a chunk) is on the host, but a chunk-level set; not comparable with a per-token gate. Not priced. |
+| router weights, decode | the gate returns `(indices, weights)`; `switch_mlp(x, inds)` receives only the indices (`Glm5NextMoE` is vendored third-party code), so the weights never reach the recording site and are not evaluated at the sync. **Not free.** | `rec["w32"]` is the host-readable float32 copy, built only when `MISS_DROP_ARMED`, which is **on in the shipped default** (`MISS_DROP` 0.20). Under the exact-picks recording config (`MISS_DROP=0`) it is off; `CACHALOT_MINIMAX_MISS_DROP_ARMED=1` switches it on with no code. **Free under the default, a knob under exact.** |
+| router weights, prefill | not evaluated | evaluated only when the prefill substitution is on (`light`) |
+
+**What is not free, priced.** `benchmarks/router_price.py` (new; interleaved A/B, 3,000 pairs each, isolated router ops, GPU about 10 s, machine idle): `mx.eval(indices)` against `mx.eval(indices, weights)` plus the two host reads.
+- GLM-shaped router (4,096 to 288, top 8, normalized): 521 us against 564 us, **+43 us a layer, +1.8 ms over 42 layers, 0.1 % of a ~1,500 ms token** (X10Pro GLM, §18.100: 1.3-2.0 s a token).
+- MiniMax-shaped router (6,144 to 128, top 4, bf16 weights): 420 us against 772 us, +353 us a layer, +20 ms over 57 layers. **This is an upper bound and overstates:** in the benchmark nothing else uses the weights, whereas in the model they are consumed on the GPU by the layer's output, so evaluating them at the sync moves work rather than adds it; the shipped default already pays for the host copy. The interquartile ranges overlap on GLM (434-608 against 482-650 us) and do not on MiniMax. A real figure needs a server A/B (`TF_ALTERNATE`-style, `MISS_DROP_ARMED` flipped), which is not worth running for a trace.
+- Plumbing to build (not built): GLM weights need the gate wrapped per layer so the switch module can hold the layer's `scores` and include them in the existing sync (about 25 lines, only when a tracer is installed; output-identical); GLM predicted sets are one `record_predicted(layer, layer + 1, p_idx, p_w)` call (a few lines); MiniMax weights and predicted sets are a few lines in `_check` (and `_predicted`). `predicted_used_mask` in `routing_trace.py` assumes every decode token starts at layer 0 (`cumsum(pred_source == 0)`), true for DeepSeek and false for GLM and MiniMax (layers start at 3): it must find token boundaries from a layer going down instead, about 10 lines plus a test.
+- Host cost of the extra record calls: 2.3 us each (§18.92), about 0.1-0.2 ms a token, negligible.
+
+**What the data would buy.**
+- `tau > 0` in `cache_sim.py` (needs weights): a what-if for dropping cheap misses. MiniMax already ships substitution (0.43.0); GLM miss substitution is an untried lever (SPEED-RESEARCH 2026-10-03), and GLM is the read-bound model (91 % of a token waiting on the drive, §18.86), so a `tau` curve for GLM is the first thing the data would give. Quality needs its own gate (output-changing, Hamed's call).
+- A precision-gated prefetch replay (needs predicted sets and weights): for DeepSeek the replay found no gate beats prediction off on exact outputs (§18.81, DS-PRED-GATE). GLM's predictions are 72 % precise (GLM-PRED-USB) against DeepSeek's 35-40 %, so there is less waste to gate away; at 1 GB/s GLM's K = 5 prefetch roughly broke even (off -4.4 %, inside drift). `pred_gate_price.py` is DeepSeek-shaped (its store, its constants), so using it for GLM means adapting it first. Expected value: low; the prefetch is already near break-even.
+- MiniMax: its prefetch is ~90 % precise (MM-SPEC-PREC) and its substitution ships, so neither data set has a lever waiting.
+
+**Recommendation.** Build for GLM only: weights and predicted sets together, one recording of about 25-35 minutes (the §18.100 replay, which has the 21,063-token snapshot), then run `tau` curves for GLM offline. Do not build the MiniMax side unless a MiniMax lever needs it; if it does, the exact-picks recording needs only `CACHALOT_MINIMAX_MISS_DROP_ARMED=1` plus the few lines in `_check`. The ranking by expected gain (a `tau` lever for the read-bound model; low for the gate) is why the GLM side is justified at all; if Hamed would rather not open a GLM-quality question, the honest alternative is to stop here.
+
+**Limits.** Priced from the source and an isolated micro-benchmark; no server, no live token measured. The MiniMax +353 us is an upper bound; the GLM +43 us is the isolated figure for an op that the model also needs on the GPU. The value assessment is reasoning from earlier measurements (DS-PRED-GATE, GLM-PRED-USB), not a replay on GLM data, which does not exist. n = 1 micro-benchmark run.
+
+**Kind.** Pricing (engineering). No default, output or numerics changed; one instrument added.
+
+**Open.** Whether to build the GLM side (Hamed's call, and a quality gate for any `tau` lever). **Needs Hamed:** that decision; nothing else.
 
 ### 18.100 A longer GLM trace — 2026-10-08 (0.62.8)
 
