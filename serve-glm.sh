@@ -50,6 +50,12 @@ fi
 # CACHALOT_GLM_PREDICT_TOPK=5 restores the old K = 5 prefetch.
 export CACHALOT_GLM_PREDICT_TOPK=${CACHALOT_GLM_PREDICT_TOPK:-0}
 
+# Decode miss budget 2 (Hamed, 2026-10-09, HANDOFF 18.107-18.108): per decode layer at most 2 non-resident experts are read,
+# the lightest further misses are dropped and the kept outputs rescaled. CHANGES OUTPUTS: a token -32 % (1.103 against
+# 1.625 s), teacher-forced KL 0.024 pooled on three texts, no visible loss on tool calls and stories in a blind replay of
+# 24 replies. CACHALOT_GLM_DECODE_MISS_BUDGET=off restores the exact path; 4 is the conservative setting (-7 %).
+export CACHALOT_GLM_DECODE_MISS_BUDGET=${CACHALOT_GLM_DECODE_MISS_BUDGET:-2}
+
 exec ~/venvs/deepseek-v41/bin/python -m cachalot.cli serve \
     --model "$CACHALOT_MODEL_PATH" \
     --expert-budget-gib 52 \

@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-09, 0.62.20): `serve-glm.sh` runs GLM with decode miss budget 2
+>
+> Hamed: "make budget 2 the serve-glm.sh default". **Outputs now differ from exact by default** (a token -32 %, KL 0.024 on prose/code/JSON, §18.107-18.108). `CACHALOT_GLM_DECODE_MISS_BUDGET=off ./serve-glm.sh` is the exact path; benchmark arms that need exact outputs must set it. Prefetch stays off. Not changed: `chat-glm.sh`, the library default.
+>
 > ## Start here (2026-10-09, 0.62.19): GLM miss budget, arm 2 (free-running replay)
 >
 > Section 18.108. 24 replies on dumped Hermes turns, exact against budgets 4 and 2, graded blind: decode **1.625 / 1.506 / 1.103 s a token (exact / b4 / b2: -7 %, -32 %)**; no flawed tool call or story in any arm; C# flawed 2/2, 0/2, 1/2 (GLM's usual garbling, no signal). Small n. **Your call: make a budget the `serve-glm.sh` default** (4 conservative, 2 fast). No default changed.

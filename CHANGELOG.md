@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.62.20 (2026-10-09)
+
+HANDOFF "Start here (2026-10-09, 0.62.20)".
+
+### Changed
+- **`serve-glm.sh` defaults `CACHALOT_GLM_DECODE_MISS_BUDGET=2`** (Hamed's call, output-changing). GLM decode reads at most two non-resident experts per layer and drops the lightest further misses, rescaling the kept outputs. Measured (§18.107, §18.108): a token 1.103 s against 1.625 exact (-32 %); teacher-forced KL 0.024 pooled on three texts; no visible loss on tool calls and stories in 24 blind-graded replies (GLM's C# garbles in every arm). `CACHALOT_GLM_DECODE_MISS_BUDGET=off ./serve-glm.sh` restores the exact path, `=4` the conservative setting (-7 %). The module default in `experts.py` and the chat launcher are unchanged (off).
+
 ## 0.62.19 (2026-10-09)
 
 HANDOFF "Start here (2026-10-09, 0.62.19)" and section 18.108. Measurement only; nothing in `src/` besides the version string changed.

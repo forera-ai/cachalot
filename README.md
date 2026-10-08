@@ -297,6 +297,8 @@ reproducible to ±0.3 %.
 
 **0.60.7 (2026-10-06): review fixes.** The run manifest no longer records credentials such as `CACHALOT_API_KEY` by value, and its Hermes Desktop check needs one process line. HANDOFF section 18.73.
 
+**0.62.20 (2026-10-09): `serve-glm.sh` defaults to decode miss budget 2** (Hamed's call; changes outputs, a GLM token -32 %). `CACHALOT_GLM_DECODE_MISS_BUDGET=off` restores exact decode.
+
 **0.62.19 (2026-10-09): GLM miss budget, free-running.** On dumped Hermes turns GLM with a decode miss budget of 4 decoded 7 % faster and with 2 32 % faster than exact, with no visible loss on tool calls and stories (24 replies graded blind; too few to see a small difference). No default changed; it is your call. HANDOFF section 18.108.
 
 **0.62.18 (2026-10-08): the Cachalot Lab link points to forera-ai/cachalot-lab.**
