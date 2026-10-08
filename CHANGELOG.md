@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.62.16 (2026-10-08)
+
+Repository move; documentation and metadata only, nothing in `src/` besides the version string changed.
+
+### Changed
+- The repository is now owned and maintained by the GitHub organisation **forera-ai**: `https://github.com/forera-ai/cachalot`. README (CI badge, clone URL, a maintainer line under the title, the License section), `pyproject.toml` (Homepage, Repository, Issues), `CONTRIBUTING.md` and the OpenRouter referer in `benchmarks/run_reference.py` point to the new address. The `LICENSE` copyright line and the `authors` field are unchanged. The Cachalot Lab repository (`prooshani/cachalot-lab`) is a separate project and is unchanged.
+
 ## 0.62.15 (2026-10-08)
 
 HANDOFF "Start here (2026-10-08, 0.62.15)" and section 18.107. Measurement only; nothing in `src/` besides the version string changed.

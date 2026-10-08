@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-08, 0.62.16): the repository moved to forera-ai
+>
+> Hamed transferred the repository to `https://github.com/forera-ai/cachalot` (profile `https://github.com/forera-ai`). The local `origin` now points there; README, `pyproject.toml` and `CONTRIBUTING.md` name forera-ai as owner and maintainer. Unchanged on purpose: the `LICENSE` copyright holder, the `authors` field, and the Cachalot Lab repository (`prooshani/cachalot-lab`). Nothing else in 0.62.16; the open work is 0.62.15's arm 2 and the budget default.
+>
 > ## Start here (2026-10-08, 0.62.15): GLM miss budget, arm 1 (teacher-forced quality)
 >
 > Section 18.107. Hamed: "go, run arm 1". Three texts (prose, Python, JSON), 99 forced tokens each, exact against budgets 4 / 2 / 1 / 0 (budgets of 8 or more cannot drop anything on top-8 routing). Pooled: **b4** dNLL -0.004, KL 0.010 (GLM's own prefill-against-decode spread is 0.007-0.016), top-1 0.97, token -8..-12 %; **b2** dNLL -0.005, KL 0.024, top-1 0.96, token -33 %; b1 KL 0.061, -60 %; **b0** dNLL +0.122, clearly worse. Prose tolerates drops worst. No default changed. Next: a free-running blind-graded replay at exact / b4 / b2 (about 2.5 hours, needs Hamed's go); adopting a budget is his call.

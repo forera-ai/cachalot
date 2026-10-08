@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cachalot"
-version = "0.62.15"
+version = "0.62.16"
 description = "SSD-backed Mixture-of-Experts runtime for DeepSeek V4.1 Flash on Apple Silicon (MLX + Metal), with an OpenAI-compatible server."
 readme = "README.md"
 license = "MIT"
@@ -43,9 +43,9 @@ dev = ["pytest>=8.0", "ruff>=0.6", "httpx>=0.27"]
 vision = ["pillow>=11.0"]
 
 [project.urls]
-Homepage = "https://github.com/prooshani/cachalot"
-Repository = "https://github.com/prooshani/cachalot"
-Issues = "https://github.com/prooshani/cachalot/issues"
+Homepage = "https://github.com/forera-ai/cachalot"
+Repository = "https://github.com/forera-ai/cachalot"
+Issues = "https://github.com/forera-ai/cachalot/issues"
 
 [project.scripts]
 cachalot = "cachalot.cli:main"

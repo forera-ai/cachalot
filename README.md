@@ -8,7 +8,9 @@
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](pyproject.toml)
 [![MLX](https://img.shields.io/badge/MLX-0.32%2B-black.svg)](https://github.com/ml-explore/mlx)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Apple%20Silicon-lightgrey.svg)](#hardware)
-[![CI](https://github.com/prooshani/cachalot/actions/workflows/ci.yml/badge.svg)](https://github.com/prooshani/cachalot/actions/workflows/ci.yml)
+[![CI](https://github.com/forera-ai/cachalot/actions/workflows/ci.yml/badge.svg)](https://github.com/forera-ai/cachalot/actions/workflows/ci.yml)
+
+Maintained by [forera-ai](https://github.com/forera-ai).
 
 *A cachalot is a sperm whale: it dives deeper than anything else its size and comes back up with what it went for. This runtime does the same with a 475 GB checkpoint on a 96 GB machine.*
 
@@ -161,7 +163,7 @@ disk, so more threads do not help; faster storage does.
 ## Install
 
 ```bash
-git clone https://github.com/prooshani/cachalot.git
+git clone https://github.com/forera-ai/cachalot.git
 cd cachalot
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[server]"
@@ -294,6 +296,8 @@ token (5.90 tok/s)** at an 83.5 % hit rate, reading 627 MiB per token, drive bus
 reproducible to ±0.3 %.
 
 **0.60.7 (2026-10-06): review fixes.** The run manifest no longer records credentials such as `CACHALOT_API_KEY` by value, and its Hermes Desktop check needs one process line. HANDOFF section 18.73.
+
+**0.62.16 (2026-10-08): the repository moved to [forera-ai/cachalot](https://github.com/forera-ai/cachalot).** Owner and maintainer are now the forera-ai organisation; no code changed.
 
 **0.62.15 (2026-10-08): GLM miss budget, teacher-forced quality.** On three texts a GLM decode miss budget of 4 stays inside GLM's own prefill-against-decode spread (KL 0.010, token -8 to -12 %) and a budget of 2 costs KL 0.024 for -33 % of the token; budget 0 is clearly worse (dNLL +0.12). Free-running quality is not measured and no default changed. HANDOFF section 18.107.
 
@@ -922,7 +926,7 @@ claim comes with its benchmark JSON, and nothing may change model output without
 
 ## License
 
-Cachalot is released under the [MIT License](LICENSE). The DeepSeek-V4.1-Flash weights are licensed separately by
+Cachalot is owned and maintained by [forera-ai](https://github.com/forera-ai) (repository: [forera-ai/cachalot](https://github.com/forera-ai/cachalot)) and is released under the [MIT License](LICENSE). The DeepSeek-V4.1-Flash weights are licensed separately by
 DeepSeek under their [MIT model license](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash/blob/main/LICENSE).
 
 ## Acknowledgements

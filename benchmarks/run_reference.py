@@ -68,7 +68,7 @@ def call(url: str, key: str, body: dict, timeout: int, attempts: int) -> tuple[d
             headers={
                 "Authorization": f"Bearer {key}",
                 "Content-Type": "application/json",
-                "HTTP-Referer": "https://github.com/prooshani/cachalot",
+                "HTTP-Referer": "https://github.com/forera-ai/cachalot",
                 "X-Title": "cachalot-coding-corpus",
             },
             method="POST",

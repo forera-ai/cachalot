@@ -21,7 +21,7 @@ contributions follow a measure-first discipline.
 ## Development setup
 
 ```bash
-git clone https://github.com/prooshani/cachalot.git
+git clone https://github.com/forera-ai/cachalot.git
 cd cachalot
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev,server]"
