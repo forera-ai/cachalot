@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-08, 0.62.2): the first GLM routing trace
+>
+> Section 18.94. Hamed: "go, record the GLM trace". Eight short prompts, 347 decode tokens, 46 GiB, 20 minutes. Skew in the busiest 10 % of experts: GLM 35.2 %, MiniMax 35.1 %, DeepSeek 50-53 %; corrected against a uniform null (13-16 %), excess 19 / 21 / 37-40 points: DeepSeek routes about twice as concentrated as the other two. `cache_sim.py` is within 5 % of live GLM. Files local only: `benchmarks/results/routing-trace-glm/`.
+>
 > ## Start here (2026-10-08, 0.62.1): the first MiniMax routing trace
 >
 > Section 18.93. Hamed stopped his server and said "replay a dump". Eight requests of the first dumped Hermes conversation, 768 decode tokens, router's own picks: the busiest 10 % of experts carry 35 % of a layer's decode routes (DeepSeek's Hermes traces 50-53 %): MiniMax routes flatter. Live hit 84 %, 35.7 misses a token. `cache_sim.py` had assumed 40 layers (fixed) and is still ~20 % optimistic for MiniMax. The trace files are under `benchmarks/results/routing-trace-minimax/` (gitignored, local only).
@@ -8858,6 +8862,26 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.94 The first GLM routing trace — 2026-10-08 (0.62.2)
+
+**Goal.** Hamed: "go, record the GLM trace" (§18.93's open item). Estimate before the run: about 20 minutes; actual 15 minutes of replay plus 1 of startup (server up 10:21, replay done 10:36).
+
+**Prediction (before).** The trace has decode rows for every GLM MoE layer and a decode row count equal to the decode forwards; GLM's skew is below DeepSeek's. Falsifier: no decode rows, or a GLM top-10 % share above DeepSeek's after the length correction.
+
+**Method.** `benchmarks/results/routing-trace-glm/` (gitignored): `replay_short.py` (eight prompts: prose, Python, JSON, a fact, arithmetic, translation, definition, a list; 50 tokens, temperature 0.7, one request each, no shared context), `replay.log`, `server.log`, `trace.npz`. `CACHALOT_ROUTING_TRACE=.../trace.npz ./serve-glm.sh --expert-budget-gib 46` (the bank on the X10Pro, as in §18.86 and §18.90; 46 GiB because the machine's memory is tight: VMware Fusion running, swap 3.8-3.9 GB used, steady). Stopped with SIGINT. Not a speed baseline.
+
+**Result (measured).**
+- Rows: 9,282 prefill rows and 14,574 decode rows = 347 decode tokens x 42 layers (layers 3-44), every layer 347. The log's completion tokens sum to 6 x 50 + 32 + 17 = 349; the two requests that stopped on their end token each have one decode forward fewer, 349 - 2 = 347, exact. Same convention as 18.93. Same convention as 18.93.
+- Live: 0.52-0.84 tok/s (1.2-1.9 s a token), hit 64-78 %, weighted 92.3 misses a token and 72.5 % over the 347 tokens; prefill of 23-37 token prompts 33-73 s (cold experts, nothing resident for these prompts).
+- **Skew, with a length correction.** A short trace inflates the "busiest 10 % share" (few draws per expert), so each trace is compared with a uniform-routing null of the same length (20 repetitions of distinct top-k draws per layer): GLM 35.2 % observed against 16.0 % null (excess 19.2 points, 2.2x); MiniMax 35.1 % against 13.7 % (21.4 points, 2.6x); DeepSeek 53.4 % against 13.1 % (40.3 points, 4.1x) and 49.6 % against 12.8 % (36.8 points, 3.9x). **DeepSeek's routing is about twice as concentrated as MiniMax's and GLM's; those two are alike.** This is LEDGER MM-ROUTING-SKEW extended.
+- `cache_sim.py` (`--expert-bytes 14160000`, 3,488 slots at 46 GiB): 73.9 % hit, 87.7 misses a token against the live 72.5 % and 92.3: 5 % apart. MiniMax's was ~20 % optimistic; GLM's store is the one closer to the simulator's. Its ms columns are DeepSeek's constants, so ignore them.
+
+**Caveats.** Workload: eight unrelated cold prompts of ~25 tokens, not an agent conversation; DeepSeek's traces are Hermes sessions at 22k context. Skew depends on workload, so the cross-model gap mixes architecture and workload (the MiniMax trace is a Hermes conversation, the GLM one is not). n = 1 trace each, 347 decode tokens for GLM. The finding that survives both is DeepSeek against the other two, because the MiniMax Hermes trace and the GLM toy trace agree with each other and differ from DeepSeek's Hermes traces.
+
+**Kind.** Measurement. No default, output or numerics changed. Bottleneck: unchanged.
+
+**Open.** A GLM trace on an agent conversation (the 21k block costs 40 minutes cold; with the saved snapshot the replay would reuse it: the earlier live session left `prefix-snapshots-glm`); a DeepSeek trace on short cold prompts to separate workload from architecture; weights and predicted sets for MiniMax and GLM. **Needs Hamed:** a yes for either run.
 
 ### 18.93 The first MiniMax routing trace — 2026-10-08 (0.62.1)
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.62.2 (2026-10-08)
+
+HANDOFF "Start here (2026-10-08, 0.62.2)" and section 18.94. Measurement only; nothing in `src/` besides the version string changed.
+
+### Measured
+- The first GLM-5.3-Flash routing trace (0.62.0's tracer): eight short varied prompts through `serve-glm.sh` at 46 GiB (bank on the X10Pro), 347 decode tokens over 42 MoE layers, 20 minutes. Routing skew, corrected for trace length against a uniform-routing null: the busiest 10 % of experts carry 35.2 % of a layer's decode routes (uniform at this length: 16 %, excess 19 points); MiniMax 35.1 % (null 13.7 %, excess 21 points); DeepSeek 49.6-53.4 % (null 13 %, excess 37-40 points). The uncorrected 0.62.1 comparison (35 % against 50-53 %) holds, and the correction shows it is not an artefact of MiniMax's shorter trace: DeepSeek routes about twice as concentrated as the other two, MiniMax and GLM are alike.
+- `cache_sim.py` on the GLM trace at 46 GiB: 73.9 % hit and 87.7 misses a token against the live 72.5 % and 92.3 (5 % apart; MiniMax's was a fifth optimistic).
+- Live GLM decode over the eight prompts: 0.52-0.84 tok/s (1.2-1.9 s a token), 36-73 s of prefill for 23-37 tokens.
 ## 0.62.1 (2026-10-08)
 
 HANDOFF "Start here (2026-10-08, 0.62.1)" and section 18.93. Measurement plus an instrument fix; nothing in `src/` besides the version string changed.
