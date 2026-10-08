@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.62.11 (2026-10-08)
+
+HANDOFF "Start here (2026-10-08, 0.62.11)" and section 18.103. Measurement only; nothing in `src/` besides the version string changed.
+
+### Measured
+- The first GLM trace with router weights and predicted sets (0.62.10's tracer, the Hermes replay at cap 400, 46 GiB with the bank, 793 decode tokens over 42 layers, 38.5 minutes). The new multi-token prefill branch and the real MoE block ran without error; row weights sum to 2.5 (GLM's routed scaling factor), 41 predictions a token (layers 3-43).
+- **The predictor's set (top 5) overlaps the next layer's routed set 80.1 % of the time**; by rank 95.7 / 89.3 / 81.0 / 72.0 / 62.5 %. A gate on the predictor's own weight (raw, the top-5 of a sum-2.5 router): >= 0.4 keeps 66 % of predicted loads at 86.7 % precision, >= 0.5 keeps 41 % at 93.5 %, >= 0.6 keeps 24 % at 96.9 %. DeepSeek's equivalent was 72 % overlap and 66 % kept at 82 % precision at its 0.20: GLM's predictions are better.
+- **A drop-threshold what-if, offline (`cache_sim.py --taus`, 46 GiB, 3,488 slots): misses a token 106.6 at tau 0 (live 105.6, hit 68.3 % both), 98.8 at tau 0.05 (dropped routing mass 0.8 % a layer), 42.6 at 0.10 (12.8 %), 14.7 at 0.15 (25.3 %), 7.6 at 0.20 (33.7 %).** Output-changing and with no quality measurement: this is how many reads such a rule would remove, not a result. The simulator's millisecond columns are DeepSeek's constants and are not GLM's.
+- Tracing cost on the live server: decode 0.57-0.58 tok/s on the short replies against 0.58 untraced (same), 0.735 and 0.484 on the two long ones against 0.765 and 0.509 untraced (-4 %, -5 %); the 2,738-token tool result's prefill took 421 s against 354 and 369 s untraced (+14 to +19 %). One run each; run-to-run drift on this machine is of that size, so these bound the overhead rather than measure it.
 ## 0.62.10 (2026-10-08)
 
 HANDOFF "Start here (2026-10-08, 0.62.10)" and section 18.102. Instrument only; off unless `CACHALOT_ROUTING_TRACE` is set; no output, speed default or numerics changed.

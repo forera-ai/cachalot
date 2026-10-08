@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-08, 0.62.11): the GLM trace with weights and predicted sets
+>
+> Section 18.103. Hamed: "go, record the GLM trace with weights and predicted sets". 793 decode tokens, 38.5 minutes; the new code ran clean through the multi-token prefill and the real MoE block. Predictor overlap 80.1 %; a weight gate >= 0.5 keeps 41 % of predicted loads at 93.5 %. `cache_sim --taus`: misses a token 106.6 -> 42.6 at tau 0.10 (13 % of the routing mass dropped). Output-changing, quality unknown: **your call whether a quality gate is worth running.** Files local only: `benchmarks/results/routing-trace-glm-weights/`.
+>
 > ## Start here (2026-10-08, 0.62.10): the GLM side of weights and predicted sets, built
 >
 > Section 18.102. Hamed: "go, build the GLM side of weights and predicted sets". A tapped gate hands each layer's router weights to `StreamingSwitchGLU`, which evaluates them in the sync that reads the indices; the predictor's set is recorded from the host arrays it already has; `predicted_used_mask` no longer assumes layer 0. Off unless `CACHALOT_ROUTING_TRACE`; 575 tests; **not run on a model** (a 25-35 minute recording needs your yes).
@@ -8894,6 +8898,28 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.103 The GLM trace with weights and predicted sets — 2026-10-08 (0.62.11)
+
+**Goal.** Hamed: "go, record the GLM trace with weights and predicted sets" (§18.102's open item; estimate given there: about 35 minutes, actual 38.5). Two aims: the first run of the 0.62.10 code on a model (the integration test it lacked), and the data for a precision gate and a `tau` curve.
+
+**Prediction (before).** The traced server runs without error; decode is within a few percent of untraced; the predictor's overlap is higher than DeepSeek's 72 % because GLM's K = 5 prediction was already 72 % *used* (GLM-PRED-USB). Falsifier: any exception, decode more than 10 % slower, or overlap below 72 %.
+
+**Method.** `benchmarks/results/routing-trace-glm-weights/` (gitignored): `source-requests.jsonl` and `replay_agent.py` (copies of the §18.100 inputs: rows 0, 1, 4, 6, 8, 10 of the 0.61.12 GLM Hermes dump, cap 400, temperature 0.7), `replay.log`, `server.log`, `trace.npz` (7.2 MB). `CACHALOT_ROUTING_TRACE=... ./serve-glm.sh --expert-budget-gib 46`, bank on the X10Pro, sysctl 88064, swap 3.4 GB, display on, the saved 21,063-token snapshot reused. Stopped by SIGINT. Wall 13:58 to 14:36.
+
+**Result (measured).**
+- **It ran.** No exception in the server log; the multi-token prefill branch (a 5-token, a 24-token and the 2,738-token chunks) and the real `Glm5NextMoE` block with the tapped gate worked. Rows: 172,200 total, 33,306 decode = 793 tokens x 42 layers (completions 11 + 11 + 42 + 49 + 285 + 400 = 798, minus one for each of the five requests that stopped on their end token). Weights finite, in [7e-5, 2.50], each row summing to 2.5 (the routed scaling factor). 32,513 prediction records = 41 a token (source layers 3-43, target 4-44), K = 5.
+- **Predictor overlap.** The top-5 set the layer predicts for the next layer contains, on average, 80.1 % of members that the next layer then routes to (`predicted_used_mask`); by rank in the set: 95.7 / 89.3 / 81.0 / 72.0 / 62.5 %. Against DeepSeek's top-6 overlap of 72 % (DS-PRED-WEIGHT) GLM's predictor is better, as predicted. Note this is a *routing-overlap* measure; the earlier counter figure of 72 % of predicted loads used (GLM-PRED-USB) is about loads that were misses, a stricter condition, and the two are not the same quantity.
+- **Weight gate.** The predictor's raw weight (the router's top-5 values of a sum-2.5 row; quantiles 5/25/50/75/95 %: 0.24 / 0.36 / 0.46 / 0.59 / 0.90): >= 0.3 keeps 87 % of predicted loads at 82.6 % precision; >= 0.4 keeps 66 % at 86.7 %; >= 0.5 keeps 41 % at 93.5 %; >= 0.6 keeps 24 % at 96.9 %. The dropped loads are still 63-75 % precise, so a gate removes useful loads along with the wasted ones. Residency is not recorded, so, as in 18.80, this is a screen and not a price; a gate replay for GLM needs a GLM store model first (`pred_gate_price.py` is DeepSeek-shaped).
+- **`tau` curve (offline, `cache_sim.py --taus 0,0.05,0.10,0.15,0.20 --budgets-gib 46 --expert-bytes 14160000`, 3,488 slots).** Misses a token / decode hit / dropped routing mass a layer: tau 0: 106.6 / 68.3 % / 0; 0.05: 98.8 / 68.0 % / 0.8 %; 0.10: 42.6 / 64.5 % / 12.8 %; 0.15: 14.7 / 58.5 % / 25.3 %; 0.20: 7.6 / 52.8 % / 33.7 %. At tau 0 the simulator says 106.6 against the live 105.6 misses and 68.3 % both (within 1 %). **This is a count of reads a drop rule would remove, not a result:** the dropped mass at 0.10 is 13 % of a layer's routing weight, nobody has measured what that does to GLM's answers (its C# is already garbled, GLM-CODE), and the simulator does not renormalize or substitute. A rough translation with the measured GLM figure of ~12.5 ms a miss (GLM-BANK-AB: 1,531 ms at 122.7 misses) would put tau 0.05 at -7 % of the misses and tau 0.10 at -60 %, i.e. a token from ~1.3 s to ~0.5 s; derived, unvalidated, and an upper bound on the gain (the floor does not shrink).
+- **Tracing cost (live, one run each; not a speed baseline).** Decode on the short replies 0.57-0.58 tok/s against 0.58 untraced; on the long ones 0.735 and 0.484 tok/s against 0.765 and 0.509 (-4 %, -5 %); the 2,738-token tool result prefilled in 421 s against 354 s (§18.100) and 369 s (§18.97): +14 to +19 %. These are at the size of this machine's run-to-run drift (DS-DRIFT-AGE up to 16 %), so they bound the overhead rather than measure it; the prediction (decode within a few percent) held for decode, and the prefill figure is the unexplained one. Not investigated: the weights add one output to each prefill layer's sync.
+- Live over the replay: 105.6 misses a token, hit 68.3 % (per request 106.4 / 16.9 / 104.6 / 101.4 / 84.1 / 123.7 misses), decode 0.48-0.74 tok/s.
+
+**What it settles and what it does not.** Settles: the 0.62.10 build works on the real model; GLM's predictor is accurate and its weight is informative; GLM has plenty of cheap misses to drop on paper. Does not settle: whether dropping them hurts quality, which is the whole question for a `tau` lever, nor the real speed gain, nor whether a weight gate on prefetch helps at 1 GB/s (needs a GLM store model).
+
+**Kind.** Measurement. No default, output or numerics changed.
+
+**Open.** Whether to test a GLM drop rule for quality (a miss-budget-style decode knob, a blind quality run on the C# and Hermes bodies; the DeepSeek precedent is §18.58-18.68 and took several sessions) or to stop here. The prefill overhead (one run). **Needs Hamed:** that decision. Output-changing defaults are his call in any case.
 
 ### 18.102 The GLM side of weights and predicted sets, built — 2026-10-08 (0.62.10)
 
