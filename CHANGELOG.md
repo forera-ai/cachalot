@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.62.7 (2026-10-08)
+
+HANDOFF "Start here (2026-10-08, 0.62.7)" and section 18.99. Measurement only; nothing in `src/` besides the version string changed.
+
+### Measured
+- A longer DeepSeek trace on the same Hermes conversation the MiniMax traces used (the eight dumped requests of `hermes-live-0.61.1`, decode cap 600, `serve.sh` exact path, 44 GiB): **2,028 decode tokens** over 40 layers, 7 minutes (the saved system-block snapshot was reused: request 1 in 2.9 s). The busiest 10 % of experts (38 of 384) carry 49.1 % of a layer's decode routes against 13.0 % for uniform routing: excess 36.1 points, a layer bootstrap 33.9-38.3. DeepSeek's other three traces give 40.3, 36.8 and 34.7: the new value sits inside their spread, so DeepSeek's value is 34.7-40.3 across four traces. **On the same conversation MiniMax's excess is 21.0 (1,904 tokens): a 15-point gap with the workload held fixed**, the cleanest comparison of the series (DeepSeek wrote its own replies, so the later tokens are not identical text).
+- Live DeepSeek over the replay: 28.0 misses a token, hit 88.2 %, 7.1-8.4 tok/s; `cache_sim.py` at 44 GiB says 27.9 and 88.4 %: within 1 %. On the cold-prompt trace the simulator was 18 % pessimistic, so for DeepSeek too its error shrinks with length.
 ## 0.62.6 (2026-10-08)
 
 HANDOFF "Start here (2026-10-08, 0.62.6)" and section 18.98. Measurement only; nothing in `src/` besides the version string changed.

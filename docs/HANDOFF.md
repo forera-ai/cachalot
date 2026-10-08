@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-08, 0.62.7): a longer DeepSeek trace
+>
+> Section 18.99. Hamed: "go, record a longer DeepSeek trace". The same Hermes conversation as the MiniMax replays, cap 600, 2,028 decode tokens, 7 minutes. DeepSeek excess 36.1 points (four traces: 34.7-40.3) against MiniMax 21.0 on the same conversation. `cache_sim.py` within 1 % of live. Files local only: `benchmarks/results/routing-trace-deepseek-long/`.
+>
 > ## Start here (2026-10-08, 0.62.6): a longer MiniMax trace
 >
 > Section 18.98. Hamed: "go, record a longer MiniMax trace". Same eight Hermes requests, cap 600, 1,904 decode tokens, 12 minutes. Excess over uniform 21.0 points against the first trace's 21.1: reproducible to about a point (layer bootstrap +-1). `cache_sim.py` within 3 % of live on this trace. Files local only: `benchmarks/results/routing-trace-minimax-long/`.
@@ -8878,6 +8882,25 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.99 A longer DeepSeek trace on the MiniMax conversation — 2026-10-08 (0.62.7)
+
+**Goal.** Hamed: "go, record a longer DeepSeek trace". Two uses: a longer DeepSeek sample, and DeepSeek on the exact conversation MiniMax was traced on, so the model comparison holds the workload fixed. Estimate given: about 12 minutes (worst case with a cold 22k prefill); actual 7.
+
+**Prediction (before).** DeepSeek's excess lands inside its earlier 34.7-40.3 spread; on this conversation it is more than 10 points above MiniMax's 21.0. Falsifier: a value outside 32-42, or a gap under 10 points.
+
+**Method.** `benchmarks/results/routing-trace-deepseek-long/` (gitignored): `source-requests.jsonl` (the `hermes-live-0.61.1` dump, a copy of the file the MiniMax replays used), `replay_trace.py` (cap 600, temperature 0.7, non-streaming), `replay.log`, `server.log`, `trace.npz` (weighted, with predicted sets). `CACHALOT_ROUTING_TRACE=... CACHALOT_DECODE_MISS_BUDGET=off ./serve.sh --expert-budget-gib 44`, exact path, sysctl 88064, swap 3.0 GB (steady), display on, four system-block snapshots preloaded (22,407 tokens reused by request 1). Weights cost a device read per layer, so not a speed baseline. Stopped by SIGINT.
+
+**Result (measured).**
+- Rows: 2,028 decode tokens x 40 layers = the completion tokens (9 + 93 + 245 + 226 + 600 + 110 + 145 + 600), the DeepSeek runtime tracer's convention (§18.95).
+- **Skew.** Busiest 10 % (38 of 384): 49.1 % of a layer's decode routes; null at 2,028 tokens 13.0 %; excess 36.1 points, layer-bootstrap 33.9-38.3. The other DeepSeek traces, recomputed with this script and seed: Hermes v8 (1,958 tokens) 40.3, pred-trace (2,407) 36.8, cold prompts (594) 34.7. All four DeepSeek values lie in 34.7-40.3, a spread of about 5.6 points between traces, larger than the +-2 of each layer bootstrap: **a trace-to-trace difference of ~5 points is real for DeepSeek, so MiniMax's reproduction to 0.1 point (§18.98) was the tighter case.** MiniMax on the same conversation: 21.0 (1,904 tokens). Gap 15 points with the prompts fixed, against 9-18 points for the earlier cross-workload comparisons. The replies differ (DeepSeek wrote its own), so the contexts diverge after request 1; the opening 22k tokens of system block and first turns are shared.
+- Live: 28.0 misses a token and 88.2 % hit (per request 70.0 (9 tokens, experts still cold) / 28.8 / 29.1 / 19.1 / 25.3 / 40.4 / 26.5 / 31.0 misses), decode 7.1-8.4 tok/s at 22-28k context. `cache_sim.py` at 4,748 slots: 27.9 and 88.4 %: within 1 %. Simulator error for DeepSeek: +18 % pessimistic on the 594-token cold trace, -0.4 % on this 2,028-token one.
+
+**What it settles.** DeepSeek is the most concentrated of the three on a shared conversation (36.1 against MiniMax 21.0), not only across different workloads. The cause stays a hypothesis.
+
+**Kind.** Measurement. No default, output or numerics changed.
+
+**Open.** A second Hermes conversation per model; longer GLM trace; a simulator with decode prefetch is no longer urgent for DeepSeek (1 %) but still is for cold-start traces; weights and predicted sets for MiniMax and GLM. **Needs Hamed:** a yes for any further recording.
 
 ### 18.98 A longer MiniMax trace — 2026-10-08 (0.62.6)
 
