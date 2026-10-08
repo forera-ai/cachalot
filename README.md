@@ -295,6 +295,8 @@ reproducible to ±0.3 %.
 
 **0.60.7 (2026-10-06): review fixes.** The run manifest no longer records credentials such as `CACHALOT_API_KEY` by value, and its Hermes Desktop check needs one process line. HANDOFF section 18.73.
 
+**0.62.3 (2026-10-08): DeepSeek on the same cold prompts.** On the eight short cold prompts that GLM got, DeepSeek's busiest 10 % of experts carry 50.6 % of a layer's decode routes, GLM's 35.2 %; against uniform routing at each length (16 %), the excess is 34.6 against 19.2 points. So the gap in routing concentration is not an effect of Hermes conversations against toy prompts. HANDOFF section 18.95.
+
 **0.62.2 (2026-10-08): the first GLM routing trace.** Eight short prompts through `serve-glm.sh` (347 decode tokens): the busiest 10 % of GLM's experts carry 35 % of a layer's decode routes, the same as MiniMax and well under DeepSeek's 50-53 %; against the value uniform routing would give at each trace's length (13-16 %), DeepSeek is about twice as concentrated as the other two. `cache_sim.py` is within 5 % of the live GLM run at 46 GiB. HANDOFF section 18.94.
 
 **0.62.1 (2026-10-08): the first MiniMax routing trace.** Replaying a dumped Hermes conversation through `serve-minimax.sh` with the tracer on (768 decode tokens, router's own picks): the busiest 10 % of MiniMax's experts carry 35 % of a layer's decode routes, against 50-53 % on DeepSeek's Hermes traces, so MiniMax's routing is flatter; live decode hit 84 % at 35.7 misses a token. `cache_sim.py` no longer assumes 40 layers (it skipped MiniMax's layers 40-59); its MiniMax numbers are still ~20 % optimistic. HANDOFF section 18.93.

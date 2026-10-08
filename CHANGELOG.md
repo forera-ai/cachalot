@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.62.3 (2026-10-08)
+
+HANDOFF "Start here (2026-10-08, 0.62.3)" and section 18.95. Measurement only; nothing in `src/` besides the version string changed.
+
+### Measured
+- DeepSeek V4.1 Flash on the same eight short cold prompts as 0.62.2's GLM trace (`serve.sh`, exact path, 44 GiB, 594 decode tokens over 40 layers, 100 s of replay): the busiest 10 % of experts (38 of 384) carry 50.6 % of a layer's decode routes against 16.0 % for uniform routing at that length (excess 34.6 points, 3.2x). GLM on the same prompts: 35.2 % against 16.0 % (19.2 points, 2.2x). **The workload is not what made DeepSeek more concentrated in 0.62.1-0.62.2: on identical cold prompts it still is, by about 1.8x the excess.** The cause (expert count, top-k, training) remains a hypothesis.
+- Live DeepSeek over the eight prompts: 29.6 misses a token, hit 87.6 %, 6.2-8.1 tok/s, prefill of 14-28 token prompts 1.6-2.9 s. `cache_sim.py` at 44 GiB says 35.0 and 85.4 %: pessimistic by 18 % (the simulator has no decode prefetch).
 ## 0.62.2 (2026-10-08)
 
 HANDOFF "Start here (2026-10-08, 0.62.2)" and section 18.94. Measurement only; nothing in `src/` besides the version string changed.

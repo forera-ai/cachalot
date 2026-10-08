@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-08, 0.62.3): DeepSeek on the same cold prompts
+>
+> Section 18.95. Hamed: "go, record the DeepSeek trace on short cold prompts". Same eight prompts as the GLM trace, 594 decode tokens, 44 GiB, exact path, under 2 minutes of replay. Busiest-10 % share 50.6 % (null 16.0 %, excess 34.6) against GLM's 35.2 % (excess 19.2): the workload difference is ruled out as the whole explanation. Files local only: `benchmarks/results/routing-trace-deepseek-short/`.
+>
 > ## Start here (2026-10-08, 0.62.2): the first GLM routing trace
 >
 > Section 18.94. Hamed: "go, record the GLM trace". Eight short prompts, 347 decode tokens, 46 GiB, 20 minutes. Skew in the busiest 10 % of experts: GLM 35.2 %, MiniMax 35.1 %, DeepSeek 50-53 %; corrected against a uniform null (13-16 %), excess 19 / 21 / 37-40 points: DeepSeek routes about twice as concentrated as the other two. `cache_sim.py` is within 5 % of live GLM. Files local only: `benchmarks/results/routing-trace-glm/`.
@@ -8862,6 +8866,25 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.95 DeepSeek on the same short cold prompts — 2026-10-08 (0.62.3)
+
+**Goal.** Hamed: "go, record the DeepSeek trace on short cold prompts" (§18.94's open item): separate workload from architecture in the routing-skew comparison. Estimate given: about 8 minutes; actual 2.5 minutes of replay plus 17 s of startup.
+
+**Prediction (before).** If the skew gap in §18.94 is mostly workload, DeepSeek on cold toy prompts lands near GLM's excess (about 19 points). If it is mostly the model, it stays near its Hermes value (37-40 points). Falsifier: either, whichever the number is closer to.
+
+**Method.** `benchmarks/results/routing-trace-deepseek-short/` (gitignored): `replay_short.py` (the eight prompts of §18.94 unchanged, `max_tokens` 100 instead of 50, temperature 0.7), `replay.log`, `server.log`, `trace.npz` (weighted, with predicted sets: DeepSeek's tracer records both). `CACHALOT_ROUTING_TRACE=... CACHALOT_DECODE_MISS_BUDGET=off ./serve.sh --expert-budget-gib 44`: the exact path (serve.sh defaults miss budget 0, which drops experts) and 44 GiB (the guardian refuses 48 on this machine), sysctl 88064, swap 3.8 GB used and steady, VMware Fusion running. Stopped by SIGINT. Tracing weights costs a device read per layer, so not a speed baseline.
+
+**Result (measured).**
+- Rows: 5,880 prefill rows, 23,760 decode rows = 594 decode tokens x 40 layers, which equals the replay's completion tokens (58 + 100 + 34 + 100 + 100 + 16 + 86 + 100 = 594). GLM's and MiniMax's tracer sites count one fewer for a request that stops on its end token (§18.93, §18.94); the DeepSeek runtime tracer is a different site and counts the completion tokens. Not investigated further.
+- **Skew.** Busiest 10 % of experts (38 of 384): 50.6 % of a layer's decode routes; uniform routing at 594 tokens gives 16.0 % (20 repetitions); excess 34.6 points, 3.2x. GLM on the same prompts, 29 of 288, 347 tokens: 35.2 % against 16.0 %, excess 19.2, 2.2x. DeepSeek on Hermes conversations: excess 37-40 (LEDGER MM-ROUTING-SKEW). So on identical cold prompts DeepSeek is still 1.8x GLM in excess concentration, and its own value moved only from 37-40 to 34.6 points between a 22k-context agent conversation and cold toy prompts. **The prediction's "mostly the model" branch holds: workload is not the main reason.**
+- Live: 29.6 misses a token and 87.6 % hit over the 594 tokens (per request 34.5 / 32.0 / 41.2 / 26.3 / 23.9 / 26.1 / 35.1 / 25.4), decode 6.2-8.1 tok/s, prefill 1.6-2.9 s for 14-28 token prompts. `cache_sim.py` at 44 GiB (4,748 slots, the default DeepSeek constants): 35.0 misses and 85.4 %: 18 % pessimistic, the opposite sign from MiniMax's 20 % optimistic, consistent with the simulator having no decode prefetch (DeepSeek's live store predicts and loads the next layer).
+
+**Caveats.** n = 1 trace per model and workload; GLM and DeepSeek differ in tokens (347 and 594), handled by the null; the null assumes uniform routing within a token's distinct picks. What is shown is a difference in how concentrated the routing is, not why: expert count (384 against 288 and 128), top-k (6, 8, 4), training and the quantisation all differ together. L6 finding 2 stays a hypothesis about cause, now with a controlled workload.
+
+**Kind.** Measurement. No default, output or numerics changed.
+
+**Open.** The cause (nothing in the repo can separate expert count from training); a longer MiniMax trace on cold prompts for the third corner of the table; a simulator store that models decode prefetch and MiniMax's real store. **Needs Hamed:** a yes for any further recording.
 
 ### 18.94 The first GLM routing trace — 2026-10-08 (0.62.2)
 
