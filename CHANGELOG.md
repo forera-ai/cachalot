@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.62.15 (2026-10-08)
+
+HANDOFF "Start here (2026-10-08, 0.62.15)" and section 18.107. Measurement only; nothing in `src/` besides the version string changed.
+
+### Added
+- `benchmarks/glm_miss_budget_quality.py`: teacher-forced paired NLL and KL of the GLM decode miss budget against exact decode, with a determinism control and a prefill-mode reference for GLM's own spread. Picks the expert budget from host availability so it can run beside Hamed's applications.
+
+### Measured
+- Three texts (prose, Python, JSON), 99 forced tokens each, 46 GiB, X10Pro bank: budget 4 pools to dNLL -0.004 and KL 0.010 (token -8 to -12 %), budget 2 to dNLL -0.005 and KL 0.024 (token -33 %), budget 1 to KL 0.061 (-60 %), budget 0 to dNLL +0.122 and KL 0.218. GLM's own prefill-against-decode spread pools to KL 0.007. Budgets of 8 or more cannot drop an expert on top-8 routing. Prose tolerates drops worst. No default changed; free-running quality is unmeasured.
+
 ## 0.62.14 (2026-10-08)
 
 HANDOFF "Start here (2026-10-08, 0.62.14)" and section 18.106.

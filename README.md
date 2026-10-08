@@ -295,6 +295,8 @@ reproducible to ±0.3 %.
 
 **0.60.7 (2026-10-06): review fixes.** The run manifest no longer records credentials such as `CACHALOT_API_KEY` by value, and its Hermes Desktop check needs one process line. HANDOFF section 18.73.
 
+**0.62.15 (2026-10-08): GLM miss budget, teacher-forced quality.** On three texts a GLM decode miss budget of 4 stays inside GLM's own prefill-against-decode spread (KL 0.010, token -8 to -12 %) and a budget of 2 costs KL 0.024 for -33 % of the token; budget 0 is clearly worse (dNLL +0.12). Free-running quality is not measured and no default changed. HANDOFF section 18.107.
+
 **0.62.14 (2026-10-08): GLM prefetch off by default; a GLM miss budget knob.** `serve-glm.sh` now starts with `CACHALOT_GLM_PREDICT_TOPK=0` (Hamed's call; outputs unchanged, two live pairs both favoured off). New and off by default: `CACHALOT_GLM_DECODE_MISS_BUDGET=N` reads at most N non-resident experts per decode layer and drops the lightest (changes outputs; unmeasured, quality arms are next). HANDOFF section 18.106.
 
 **0.62.13 (2026-10-08): GLM prefetch off against K = 5, live.** On the same Hermes replay GLM decoded 1.615 s a token with prediction off and 1.727 with the shipped K = 5 (-6.5 %), same misses a token; with 0.61.1's pair, both favour off by 3-9 %, each inside machine drift, so no default changes. The 0.62.12 simulator's predicted loads match the live counters (59 against 61 a token, 68 % used). HANDOFF section 18.105.

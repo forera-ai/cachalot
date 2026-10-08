@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-08, 0.62.15): GLM miss budget, arm 1 (teacher-forced quality)
+>
+> Section 18.107. Hamed: "go, run arm 1". Three texts (prose, Python, JSON), 99 forced tokens each, exact against budgets 4 / 2 / 1 / 0 (budgets of 8 or more cannot drop anything on top-8 routing). Pooled: **b4** dNLL -0.004, KL 0.010 (GLM's own prefill-against-decode spread is 0.007-0.016), top-1 0.97, token -8..-12 %; **b2** dNLL -0.005, KL 0.024, top-1 0.96, token -33 %; b1 KL 0.061, -60 %; **b0** dNLL +0.122, clearly worse. Prose tolerates drops worst. No default changed. Next: a free-running blind-graded replay at exact / b4 / b2 (about 2.5 hours, needs Hamed's go); adopting a budget is his call.
+>
 > ## Start here (2026-10-08, 0.62.14): GLM prefetch off by default, and a GLM miss budget knob
 >
 > Section 18.106. Hamed: "ship `CACHALOT_GLM_PREDICT_TOPK=0` for now" and "adjust the miss budget to make outputs acceptable". **`serve-glm.sh` now defaults decode prefetch off** (outputs unchanged; `CACHALOT_GLM_PREDICT_TOPK=5` restores it). **A GLM decode miss budget exists, off by default** (`CACHALOT_GLM_DECODE_MISS_BUDGET=N`; drops the lightest misses, rescales the kept ones): unit-tested only, no speed or quality number yet. Next: teacher-forced NLL/KL arms at budgets 16 / 8 / 4 / 2, then a blind-graded replay, each after an estimate and Hamed's go; arms must adapt to the memory his open applications use.
@@ -8910,6 +8914,57 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.107 GLM decode miss budget: teacher-forced quality, arm 1 — 2026-10-08 (0.62.15)
+
+**Goal.** Hamed: "go, run arm 1" (the quality scan of §18.106). Does a GLM decode miss budget cost measurable quality, and where is the knee?
+
+**Prediction (before).** Written before the run: a budget of 4 is inside GLM's own prefill-against-decode spread (KL ~0.015, §18.43) because the 4th-or-later miss of a layer carries little router weight; 2 is a few times it; 0 (drop every miss) is clearly worse, as DeepSeek's budget 0 was (§18.58). The token falls with misses: about -8 % at 4, -30 % at 2, -60 % at 1.
+
+**Mistake caught on the way.** The first plan listed budgets 16 / 8 / 4 / 2. GLM routes top-8 experts a layer, so 16 and 8 can never drop anything; the b16 arm confirmed it (0 drops, results identical to exact). The run was stopped and restarted with 4 / 2 / 1 / 0. The partial first run is in `benchmarks/results/glm-miss-budget-quality-v0/` (gitignored).
+
+**Method.** `benchmarks/glm_miss_budget_quality.py` (new). Per text: 1,024 tokens of context prefilled once (exact) and snapshotted; each arm restores the snapshot, sets the budget and feeds the same 99 forced tokens one at a time through the decode path, saving every position's log-probs. Texts: `README.md` prose, `src/cachalot/glm/experts.py` Python, `benchmarks/pareto_tasks.json` JSON (classes W1, W4, W6). Arms: exact, budgets 4 / 2 / 1 / 0, exact repeat (determinism control), and the same tokens in one prefill chunk (GLM's own prefill-against-decode spread, the noise scale). Budget rotation by text so cache state does not always favour one arm. 46 GiB expert budget (chosen by the script from host availability; Hamed's applications stayed open, VMware Fusion running, swap ~6 GiB), bank on the X10Pro, prefetch off. 51 minutes; manifest and scorecard in `benchmarks/results/glm-miss-budget-quality/`.
+
+**Result (measured; 99 scored tokens a text, n = 3 texts).**
+
+| text (class) | arm | dNLL vs exact [95 % CI] | KL mean | top-1 | drops/token | ms/token |
+|---|---|---:|---:|---:|---:|---:|
+| prose (W1) | exact | (NLL 2.166) | | | 0 | 1,615 |
+| | b4 | -0.002 [-0.037, +0.034] | 0.021 | 0.94 | 7.8 | 1,480 |
+| | b2 | -0.012 [-0.072, +0.043] | 0.051 | 0.94 | 40.6 | 1,100 |
+| | b1 | +0.029 [-0.071, +0.125] | 0.139 | 0.83 | 68 | 642 |
+| | b0 | +0.185 [+0.032, +0.366] | 0.348 | 0.77 | 92 | 68 |
+| | prefill-mode reference | +0.036 [+0.003, +0.070] | 0.016 | 0.97 | | |
+| python (W4) | exact | (NLL 0.902) | | | 0 | 1,753 |
+| | b4 | -0.017 [-0.041, +0.006] | 0.006 | 0.98 | 8.3 | 1,547 |
+| | b2 | +0.003 [-0.021, +0.028] | 0.016 | 0.96 | 45.6 | 1,133 |
+| | b1 | -0.019 [-0.087, +0.048] | 0.038 | 0.96 | 81 | 693 |
+| | b0 | +0.070 [-0.037, +0.185] | 0.143 | 0.89 | 106 | 67 |
+| | prefill-mode reference | -0.005 [-0.023, +0.012] | 0.005 | 0.98 | | |
+| json (W6) | exact | (NLL 0.320) | | | 0 | 1,756 |
+| | b4 | +0.008 [-0.011, +0.029] | 0.002 | 0.99 | 10 | 1,616 |
+| | b2 | -0.008 [-0.027, +0.012] | 0.005 | 0.99 | 54 | 1,165 |
+| | b1 | +0.031 [-0.016, +0.093] | 0.007 | 0.99 | 92 | 698 |
+| | b0 | +0.113 [-0.055, +0.324] | 0.164 | 0.94 | 120 | 65 |
+| | prefill-mode reference | +0.008 [-0.007, +0.027] | 0.001 | 0.98 | | |
+
+Pooled over the three texts (equal weight per token): exact NLL 1.129; **b4** dNLL -0.004, KL 0.010, top-1 0.970, 8.7 drops a token; **b2** dNLL -0.005, KL 0.024, top-1 0.963, 46.7 drops; **b1** dNLL +0.014, KL 0.061, top-1 0.926, 80.5 drops; **b0** dNLL +0.122, KL 0.218, top-1 0.865, 106 drops. The prefill-mode reference pools to KL 0.007, dNLL +0.013.
+
+Controls: the repeat of exact was identical to exact on all three texts (an exact decode does not depend on cache state or on the order of arms).
+
+**Against the prediction.** Held on the ordering and on b4 and b0. Better than predicted for b2 and b1 on the two code-like texts (KL 0.016 and 0.038 on Python, 0.005 and 0.007 on JSON); worse on prose, where b1 is KL 0.139 and top-1 0.83.
+
+**Explanation (hypothesis).** In a 4-bit model with 8 routed experts a layer, the lightest misses carry little of the layer's router mass, and scaling the kept outputs by total over kept weight restores the layer's magnitude. Predictable text (JSON, code) tolerates more drops than prose, where the router weights are flatter. The costs of b0 (no routed expert that is not already resident) are large everywhere because a token then runs on the residents alone.
+
+**Speed.** The token falls with the misses read: b4 -8 to -12 %, b2 -32 to -35 %, b1 -60 %, b0 ~-96 % (68 ms, no disk reads) in this regime (46 GiB, the X10Pro, 100-token runs after a warm context). These are teacher-forced timings of one run each, not a server A/B.
+
+**Limits.** Teacher-forced next-token quality over 99 tokens a text, three texts, one context length (1,024): it says nothing about free-running generation (derails, loops, tool-call validity), long contexts or GLM's known C# garbling. Per-text intervals are wide (|dNLL| below 0.1 is not separable from zero in any arm but b0 on prose). Pooling is by text, not a significance test. No default was changed.
+
+**Bottleneck after.** Unchanged for the default (the 1 GB/s drive). If a budget is adopted, the bound moves toward the floor: b2 would leave ~1.1 s a token, still read-bound; only b0 is compute-bound.
+
+**Kind.** Research (predicted, measured, explained as hypothesis).
+
+**Suggested next, Hamed's call.** Candidates: **b4** (inside the noise scale on every text, -8 to -12 %) and **b2** (dNLL inside the noise on every text, KL 3x GLM's own spread on prose, -33 %). Arm 2 would replay the dumped Hermes bodies free-running, N samples per arm, graded blind, at exact / b4 / b2: about 2.5 hours at this speed. Adopting any budget as the `serve-glm.sh` default is output-changing and his call.
 
 ### 18.106 GLM prefetch default off, and a GLM decode miss budget — 2026-10-08 (0.62.14)
 
