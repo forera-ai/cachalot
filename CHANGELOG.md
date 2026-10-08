@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.62.4 (2026-10-08)
+
+HANDOFF "Start here (2026-10-08, 0.62.4)" and section 18.96. Measurement only; nothing in `src/` besides the version string changed.
+
+### Measured
+- MiniMax-M3 on the same eight short cold prompts as the GLM and DeepSeek traces (`serve-minimax.sh`, router's own picks, 3,053 slots, 560 decode tokens over 57 layers, 2.5 minutes of replay): the busiest 10 % of experts (13 of 128) carry 40.1 % of a layer's decode routes against 14.5 % for uniform routing at that length (excess 25.6 points, 2.8x). On identical prompts the excess is DeepSeek 34.6, MiniMax 25.6, GLM 19.2 points: **three distinct levels, not two.** 0.62.2's "MiniMax and GLM are alike" compared a Hermes conversation with toy prompts and is corrected: the same MiniMax model reads 21.4 points on Hermes and 25.6 on cold prompts, and GLM sits 6 points below it on the same prompts. The ordering DeepSeek > MiniMax > GLM holds on both workloads where measured.
+- Live MiniMax over the eight prompts: 22.3 misses a token, 90.0 % hit, 5.8-11.6 tok/s; `cache_sim.py` at the same slot count says 24.5 and 89.2 %: 10 % pessimistic on this trace, against 20 % optimistic on the Hermes trace.
 ## 0.62.3 (2026-10-08)
 
 HANDOFF "Start here (2026-10-08, 0.62.3)" and section 18.95. Measurement only; nothing in `src/` besides the version string changed.
