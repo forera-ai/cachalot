@@ -51,7 +51,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from cachalot.metrics.routing_trace import PHASE_PREFILL, load_trace  # noqa: E402
-from simulate_policies import GIB, N_LAYERS, Store  # noqa: E402
+from simulate_policies import GIB, Store  # noqa: E402
 
 # The 2-bit affine g128 bank record (docs/SPEED-RESEARCH-2026-10-03.md section 1.1).
 Q2_EXPERT_BYTES = 9_950_000
@@ -71,8 +71,13 @@ def context_floor(floor_ms: float, context_tokens: int) -> float:
     return floor_ms + step + CTX_SLOPE_MS_PER_1K * max(context_tokens - CTX_STEP_TOKENS, 0) / 1000
 
 
+def trace_layers(arrays) -> int:
+    """MoE layers the trace routes through (DeepSeek 40, MiniMax 57, GLM 39): the prefill quota and the token count follow it."""
+    return int(np.unique(arrays["layer"]).size)
+
+
 def _prefill_segment(st: Store, layer: np.ndarray, experts: np.ndarray) -> None:
-    for la in range(N_LAYERS):
+    for la in np.unique(layer).tolist():
         rows = experts[layer == la]
         if rows.size == 0:
             continue
@@ -92,7 +97,7 @@ def simulate(arrays, segments, slots: int, policy: str, tau: float) -> dict:
     if tau > 0 and weights is None:
         raise ValueError("tau > 0 needs a trace recorded with router weights")
 
-    st = Store(slots, policy)
+    st = Store(slots, policy, n_layers=trace_layers(arrays))
     if not segments:
         # a server trace carries no marks (nobody calls tracer.mark): split at every prefill/decode change
         change = np.nonzero(np.diff(phase.astype(np.int8)) != 0)[0] + 1
@@ -171,7 +176,7 @@ def main() -> None:
         taus = [t for t in taus if t == 0] or [0.0]
         print("note: trace has no router weights; only tau = 0 is simulated\n")
 
-    decode_tokens = int((arrays["phase"] == 1).sum() // N_LAYERS)
+    decode_tokens = int((arrays["phase"] == 1).sum() // trace_layers(arrays))
     print(f"trace {args.trace}: {decode_tokens} decode tokens, policy {args.policy}, "
           f"expert {args.expert_bytes / 1e6:.2f} MB, floor {floor_ms:.1f} ms"
           + (f" (short {args.floor_ms:g} + context {args.context_tokens:,} tokens)" if args.context_tokens else ""))

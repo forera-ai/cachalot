@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.62.1 (2026-10-08)
+
+HANDOFF "Start here (2026-10-08, 0.62.1)" and section 18.93. Measurement plus an instrument fix; nothing in `src/` besides the version string changed.
+
+### Measured
+- The first MiniMax routing trace (0.62.0's tracer on a live server): eight requests of the first dumped Hermes conversation replayed through `serve-minimax.sh` with `CACHALOT_MINIMAX_MISS_DROP=0 CACHALOT_MINIMAX_PREFILL_MISS_DROP=0` (the router's own picks), 768 decode tokens and 2.55 M prefill rows over 57 MoE layers. Routing skew: the busiest 10 % of experts (13 of 128) carry 35 % of a layer's decode routes on average; the same measure on DeepSeek's Hermes traces (38 of 384) is 50-53 %. Live decode over the replay: 35.7 misses a token, hit 84 %.
+- `benchmarks/cache_sim.py` on that trace is optimistic by about a fifth (68 GiB: 27.7 misses a token and 88 % against 35.7 and 84 % live), because the simulated store is DeepSeek's.
+
+### Fixed
+- `benchmarks/cache_sim.py` and `simulate_policies.Store` assumed 40 layers: a MiniMax or GLM trace skipped its layers 40 and above in the prefill replay, divided the prefill quota by 40 and printed a wrong decode-token count. The layer count now comes from the trace (DeepSeek's results are unchanged, checked on `trace_routing_v8_hermes`). One test added.
 ## 0.62.0 (2026-10-08)
 
 HANDOFF "Start here (2026-10-08, 0.62.0)" and section 18.92. Instrument only; off by default; no output, speed default or numerics changed.

@@ -43,7 +43,9 @@ GIB = 1024**3
 
 
 class Store:
-    def __init__(self, slots: int, decode_policy: str):
+    def __init__(self, slots: int, decode_policy: str, n_layers: int = N_LAYERS):
+        # the per-layer prefill quota divides the slots over this many layers (DeepSeek: 40; a trace of another model passes its own)
+        self.n_layers = n_layers
         self.slots = slots
         self.policy = decode_policy
         self.items: OrderedDict[tuple[int, int], None] = OrderedDict()  # recency order (LRU at front)
@@ -124,7 +126,7 @@ class Store:
 
     # ---- runtime paths ---------------------------------------------------
     def prefill_layer(self, layer: int, ordered_keys: list[tuple[int, int]]):
-        quota = self.slots // N_LAYERS + (1 if layer < self.slots % N_LAYERS else 0)
+        quota = self.slots // self.n_layers + (1 if layer < self.slots % self.n_layers else 0)
         needed = set(ordered_keys)
         # retain residents needed by this layer (up to quota)
         retained = [k for k in ordered_keys if self._resident(k)][:quota]

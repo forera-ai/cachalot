@@ -80,6 +80,8 @@ Architecture: 60 MoE layers x 128 experts = 7,680, top-4, 21.1 MiB slot images, 
 | MM-PREFILL-ATTN | prefill attention at long context | 2,048 queries over 45k keys: 177.6 ms a layer (17 TFLOPS); prefill at the GPU's matmul peak | measured | 0.38.0-0.38.1 | | micro-benchmark | §18.19, §18.20 | current | |
 | MM-64K | decode at 64k context | 2.65 tok/s | measured | 0.21.0 | | | §18.2 | stale (many levers since) | |
 | MM-GPUSEL | host round trip saved per all-hit layer by GPU-side selection | 0.63 ms; all-hit floor ~72 to 34 ms | measured | 0.31.0 | | `TF_ALTERNATE` | §18.12, SPEED-RESEARCH §2 | current | |
+| MM-ROUTING-SKEW | share of a layer's decode routes carried by its busiest 10 % of experts | MiniMax 35.1 % (13 of 128, 768 tokens, 57 layers); DeepSeek 49.6 % (2,407 tokens) and 53.4 % (1,958 tokens), 38 of 384 | measured | 0.62.1, 2026-10-08 | int+X10, 68 GiB, exact picks (substitution off), Hermes conversation replayed, 8 requests | `RoutingTracer` traces, an inline script | §18.93 | current, one trace each; MiniMax's is the shorter, which biases its share up | none |
+| MM-LIVE-REPLAY-0.62.1 | live decode over the replayed Hermes conversation | 35.7 misses a token, 84 % hit, 4.4-7.6 tok/s at 21.5-26.4k context; the simulator (`cache_sim.py`, DeepSeek-shaped store) says 27.7 and 88 % at 68 GiB | measured, derived | 0.62.1 | as above, tracing on, swap 3.9 GB | `[request]` lines, `cache_sim.py` | §18.93 | current; not a speed baseline | MM-TOKEN-SPLIT (23 misses, 89.9 %, 0.38.0, different workload) |
 | MM-SPEC-PREC | speculative loads used | 12.6 of 14 a token (90 %) | measured | 0.38.0 | int+X10, 68 GiB | timeline | §18.19 | current | |
 
 ## 3. GLM-5.3-Flash (priority 3)

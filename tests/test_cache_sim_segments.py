@@ -43,3 +43,19 @@ def test_context_floor_follows_ledger_ds_floor_ctx():
     assert context_floor(79.0, 1800) == pytest.approx(83.0)
     # DS-FLOOR-CTX measured 84.8 ms at 25.0k tokens over a 79.1 ms short probe
     assert context_floor(79.1, 25_000) == pytest.approx(84.8, abs=0.5)
+
+
+def test_layers_beyond_forty_are_replayed():
+    """A MiniMax trace routes layers 3-59: the prefill replay must reach layers >= 40 and the quota follow the layer count."""
+    from cache_sim import trace_layers
+
+    layers = list(range(3, 60))
+    arrays = {
+        "phase": np.array([0] * 57 + [1] * 57, dtype=np.int8),
+        "layer": np.array(layers + layers, dtype=np.int16),
+        "position": np.array([0] * 57 + [1] * 57, dtype=np.int32),
+        "experts": np.array([[1, 2, 3, 4]] * 114, dtype=np.int16),
+    }
+    assert trace_layers(arrays) == 57
+    out = simulate(arrays, [], slots=57 * 4, policy="lru", tau=0.0)
+    assert out["tokens"] == 1 and out["hit"] == 1.0  # layers 40-59 would miss if prefill had skipped them

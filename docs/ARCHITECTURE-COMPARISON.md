@@ -57,7 +57,7 @@ Each is tagged. None is a new measurement.
 |---|---|---|
 | GLM all-resident floor | no row; every GLM token is read-bound | `serve-glm.sh` with a budget that holds a replayed prompt, repeated; estimate and confirm with Hamed first (machine) |
 | MiniMax constants since substitution became the default | MM rows pre-date 0.43.0 (LEDGER open question 3) | the M0 harness of 0.55.0 (`serve-minimax.sh`, machine) |
-| routing skew for MiniMax and GLM | no trace for either (finding 2) | a tracer for both exists since 0.62.0 (`CACHALOT_ROUTING_TRACE`, unweighted); the trace itself still has to be recorded on the machine |
+| routing skew for GLM (MiniMax measured in 0.62.1: LEDGER MM-ROUTING-SKEW, 35 % against DeepSeek's 50-53 % in the busiest 10 % of experts) | no GLM trace (finding 2) | a tracer for both exists since 0.62.0 (`CACHALOT_ROUTING_TRACE`, unweighted); the trace itself still has to be recorded on the machine |
 | bytes a token, useful against wasted, per model on one scale | counters exist per model but only DeepSeek and GLM report predicted loads used [DS-PRED-PREC, GLM-PRED-USB]; MiniMax's spec precision is from 0.38.0 | `/v1/stats` store counters (GLM and MiniMax carry them since 0.61.1) |
 | energy | none | L5, Hamed runs `sudo powermetrics` per arm |
 

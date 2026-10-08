@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-08, 0.62.1): the first MiniMax routing trace
+>
+> Section 18.93. Hamed stopped his server and said "replay a dump". Eight requests of the first dumped Hermes conversation, 768 decode tokens, router's own picks: the busiest 10 % of experts carry 35 % of a layer's decode routes (DeepSeek's Hermes traces 50-53 %): MiniMax routes flatter. Live hit 84 %, 35.7 misses a token. `cache_sim.py` had assumed 40 layers (fixed) and is still ~20 % optimistic for MiniMax. The trace files are under `benchmarks/results/routing-trace-minimax/` (gitignored, local only).
+>
 > ## Start here (2026-10-08, 0.62.0): routing trace for GLM and MiniMax
 >
 > Section 18.92. `CACHALOT_ROUTING_TRACE=<file>` now works on `serve-glm.sh` and `serve-minimax.sh` (unweighted, host arrays only, off by default). Built and unit-tested without the machine; **no trace recorded yet.** Record one with the machine free and your estimate-and-confirm (command in 18.92).
@@ -8854,6 +8858,30 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.93 The first MiniMax routing trace — 2026-10-08 (0.62.1)
+
+**Goal.** Hamed: "go, record the MiniMax trace", then (server stopped) "replay a dump". Validate 0.62.0's tracer on a live server and read what it shows (L6 finding 2, routing skew). Estimate given before the run: 8-12 minutes of replay; actual about 7.5 minutes (server up 09:25, replay 09:25-09:31).
+
+**Prediction (written before).** Decode rows per layer equal the decode forwards of the replay (completion tokens minus one for each request's first token, which the prefill's last logits give); MiniMax's top-10 % share is lower than DeepSeek's because it has 128 experts with top-4 against 384 with top-6, hypothesis only. Falsifier: a row count off by more than a few, or no decode rows.
+
+**Method.** `benchmarks/results/routing-trace-minimax/` (gitignored): `source-requests.jsonl` (the dumped Hermes bodies of `hermes-live-0.61.1`, sent in order, rows 1, 3, ... 15, no streaming, `max_tokens` 120, temperature 0.7), `replay.log`, `server.log`, `trace.npz`. `CACHALOT_ROUTING_TRACE=.../trace.npz CACHALOT_MINIMAX_MISS_DROP=0 CACHALOT_MINIMAX_PREFILL_MISS_DROP=0 ./serve-minimax.sh`, 68 GiB (memory fit took 3300 to 3186 slots), sysctl 88064, swap 3.9 GB used at start (high, steady), display on. Server stopped by SIGINT after the replay, which saved the trace. The system block was in the disk snapshot (21,467 tokens reused in 7 of 8 requests; the first request prefilled it cold in 100 s). The replay was not a speed baseline (tracing on, memory state noisy).
+
+**Result (measured).**
+- Rows: 2,546,304 prefill rows, 43,776 decode rows = 768 decode tokens x 57 layers (layers 3-59), every layer 768. Per request the decode positions are 9 (stopped at 10 tokens), 39 (stopped at 40) and 120 for each of the six that ended at the 120-token cap: 9 + 39 + 6 x 120 = 768, exact. A request that stops on its end token has one decode forward fewer than its completion tokens; one that hits the cap runs one more forward than a simple count gives (the last sampled token is still fed through). Inferred from the counts, not read from the code.
+- Live: the eight `[request]` lines give 79 / 80 / 86 / 90 / 81 / 82 / 90 / 79 % hit and 42.6 / 43.9 / 31.4 / 23.9 / 43.9 / 41.0 / 22.2 / 48.5 misses a token; weighted by decode tokens 35.7 misses and 84 % hit. Decode 4.4-7.6 tok/s at 21.5-26.4k context, prefill of the 2.8-5k token deltas 19-33 s. (Context: LEDGER MM-TOKEN-SPLIT had 23 misses and 89.9 % at 68 GiB in 0.38.0; this is a different workload and the machine's memory was tight.)
+- Skew: the 13 busiest experts of 128 (10 %) carry on average 35.1 % of a layer's decode routes (uniform would be 10 %). The same measure on DeepSeek, 38 of 384: 49.6 % (2,407 tokens, `pred-trace-0.61.3`), 53.4 % (1,958 tokens, v8 Hermes trace). MiniMax's trace is shorter (768 tokens x 4 picks against 14k picks a layer), and a short trace biases the measure up, so the true gap is, if anything, larger. One conversation, one trace each: tagged measured, n = 1.
+- `cache_sim.py` on the trace (the simulator's store is DeepSeek's): at 68 GiB (3,299 slots) 87.9 % hit and 27.7 misses a token against the live 84 % and 35.7: the simulation is optimistic by about a fifth of the misses. Not usable for MiniMax absolutes until the store model follows MiniMax's real store (its prefill quotas, parking, decode speculation).
+
+**Found and fixed on the way.** `cache_sim.py` and `Store` hard-coded 40 layers: the prefill replay looped over layers 0-39 only (skipping MiniMax's 40-59), the prefill quota divided slots by 40, and the header printed 1,094 decode tokens for 768. The layer count now comes from the trace (`trace_layers`); DeepSeek's output is identical before and after on `trace_routing_v8_hermes` (checked); a new test fails on the old code's behaviour. MiniMax at 68 GiB moved from 87.4 to 87.9 % hit with the fix.
+
+**Housekeeping.** A file `earlier-session-prefill-only.npz` sat at the target path when the replay started (written 09:23 by a server of Hamed's that had the tracer on: 1.78 M prefill rows over 57 layers, no decode rows, so it recorded a prefill-only session). I renamed it and left it; it is not used here. Hamed's server was stopped by him; the one this session started was stopped with SIGINT. Nothing is running.
+
+**Kind.** Measurement plus an instrument fix. No default changed.
+
+**Bottleneck / next.** The finding that matters for the lab: MiniMax's routing is flatter than DeepSeek's, so for equal resident share its hit rate is lower, which fits L6 finding 2's hypothesis but does not prove the cause (the expert count, top-k and the workload differ together). Open: a GLM trace (1.5 s a token: about 1,000 tokens is 25 minutes; Hamed's yes and a short workload first); a longer MiniMax trace for a stable skew number; a simulator store that matches MiniMax's real one; weights and predicted sets for these two models.
+
+**Needs Hamed:** a yes before a GLM recording.
 
 ### 18.92 A routing tracer for GLM and MiniMax — 2026-10-08 (0.62.0)
 

@@ -295,6 +295,8 @@ reproducible to ±0.3 %.
 
 **0.60.7 (2026-10-06): review fixes.** The run manifest no longer records credentials such as `CACHALOT_API_KEY` by value, and its Hermes Desktop check needs one process line. HANDOFF section 18.73.
 
+**0.62.1 (2026-10-08): the first MiniMax routing trace.** Replaying a dumped Hermes conversation through `serve-minimax.sh` with the tracer on (768 decode tokens, router's own picks): the busiest 10 % of MiniMax's experts carry 35 % of a layer's decode routes, against 50-53 % on DeepSeek's Hermes traces, so MiniMax's routing is flatter; live decode hit 84 % at 35.7 misses a token. `cache_sim.py` no longer assumes 40 layers (it skipped MiniMax's layers 40-59); its MiniMax numbers are still ~20 % optimistic. HANDOFF section 18.93.
+
 **0.62.0 (2026-10-08): routing trace for GLM and MiniMax.** `CACHALOT_ROUTING_TRACE=<file>` now records the routed experts of a GLM or MiniMax server (unweighted, no device read, off by default), so `cache_sim.py` can replay them and routing skew can be compared across the three models. Not yet run on a live model. HANDOFF section 18.92.
 
 **0.61.14 (2026-10-08): instrument fix.** `CACHALOT_READ_THROTTLE_GBPS` (the emulated slower expert drive, off by default) now also applies to MiniMax's coded-bank reads, which it skipped; nothing else changed. HANDOFF section 18.91.
