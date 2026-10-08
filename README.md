@@ -295,6 +295,8 @@ reproducible to ±0.3 %.
 
 **0.60.7 (2026-10-06): review fixes.** The run manifest no longer records credentials such as `CACHALOT_API_KEY` by value, and its Hermes Desktop check needs one process line. HANDOFF section 18.73.
 
+**0.62.12 (2026-10-08): `cache_sim.py` models decode prefetch.** `--prefetch-gates` replays a trace that carries predicted sets and reports loads, use, waste and reads per token for any model. On GLM the shipped prefetch reads 126 experts a token against 107 with it off (68 % of its loads used); a router-weight gate of 0.5 keeps 88 % precision at 109 reads, and by the bytes-over-rate bound no gate beats prediction off at 1 GB/s (exact outputs), as for DeepSeek. Also fixes a position-grouping bug that merged two requests sharing a decode segment (one recorded DeepSeek trace; no other published number moved). HANDOFF section 18.104.
+
 **0.62.11 (2026-10-08): the first GLM trace with weights and predicted sets.** GLM's next-layer predictor (top 5) overlaps the layer's real routing 80 % of the time, and a gate on its weight can keep 41 % of the predicted loads at 93.5 % precision. An offline drop-threshold what-if on the same trace says a tau of 0.10 would cut misses a token from 107 to 43 (and drop 13 % of a layer's routing mass); nothing about quality is known and it would change outputs. HANDOFF section 18.103.
 
 **0.62.10 (2026-10-08): GLM traces carry router weights and predicted sets.** Built as priced in 0.62.9 (a tapped gate hands the weights to the sync that already reads the indices; the predictor's set is already a host array). Off unless `CACHALOT_ROUTING_TRACE` is set; unit-tested including the real `__call__` path; not yet run on a model. HANDOFF section 18.102.

@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.62.12 (2026-10-08)
+
+HANDOFF "Start here (2026-10-08, 0.62.12)" and section 18.104. Instrument and a fix to an offline instrument; nothing in `src/` besides the version string changed.
+
+### Added
+- `benchmarks/cache_sim.py` models the store's decode prefetch: `simulate(..., prefetch_gate=)` and `--prefetch-gates off,0,0.5 [--gbps N]`. A predicted expert that is not resident is read into a transient slot and never evicts a resident; it becomes resident only if its layer routes it. The table reports, per decode token, misses, demand reads, predicted loads, how many were used, wasted loads, total reads and a bytes-over-rate lower bound on a token. It works for any model's trace that carries predicted sets (DeepSeek since 0.61.3, GLM since 0.62.10): token boundaries come from the layer order, as in `predicted_used_mask`. It generalizes the DeepSeek-only `pred_gate_price.py` replay; that script stays.
+- Three tests (`tests/test_cache_sim_segments.py`): requests that share a decode segment, the prefetch counters on a layers-3-4 trace, and the refusal of a trace without predicted sets.
+
+### Fixed
+- `cache_sim.py` grouped decode rows by position within a segment. Two requests with no prefill rows between them (the second request's prompt fully reused) share a segment and repeat positions, so their tokens were merged and their rows reordered. The only recorded trace affected is `pred-trace-0.61.3/smoke.trace.npz` (1,577 tokens counted of 2,407; 37.4 misses a token against the correct 23.2, which now agrees with `pred_gate_price.py` and the measured 23.5). Every other trace in `benchmarks/results` gives the same numbers before and after; no published number besides that one trace's changes.
+
+### Measured (offline)
+- DeepSeek (0.61.3 trace, 48 GiB): shipped prefetch 33.3 predicted loads a token at 38 % used, 43.7 reads against the measured 45.6; gate >= 0.2: 16.8 loads at 50 %, 31.6 reads.
+- GLM (0.62.11 trace, 46 GiB, 14.16 MB experts): shipped prefetch 61.5 loads a token at 68 % used, 126.1 reads against 106.6 with prediction off (-15.5 % bytes; the live pair measured -11 % on other prompts); a weight gate >= 0.5 keeps 19.4 loads at 88 %, 108.9 reads; >= 0.6: 10.6 loads at 94 %, 107.2 reads. At 1 GB/s the bytes-over-rate bound is 1,509 ms off, 1,543 gate >= 0.5, 1,786 shipped: no gate beats off on exact outputs, the same answer as DeepSeek. Combined with a drop threshold tau 0.10, the shipped prefetch awaits its predicted loads (57.9 misses) and a >= 0.5 gate reaches 43.2 against 42.6 with prefetch off.
+
 ## 0.62.11 (2026-10-08)
 
 HANDOFF "Start here (2026-10-08, 0.62.11)" and section 18.103. Measurement only; nothing in `src/` besides the version string changed.

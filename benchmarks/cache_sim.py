@@ -50,7 +50,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from cachalot.metrics.routing_trace import PHASE_PREFILL, load_trace  # noqa: E402
+from cachalot.metrics.routing_trace import PHASE_DECODE, PHASE_PREFILL, _token_ordinals, load_trace  # noqa: E402
 from simulate_policies import GIB, Store  # noqa: E402
 
 # The 2-bit affine g128 bank record (docs/SPEED-RESEARCH-2026-10-03.md section 1.1).
@@ -90,12 +90,38 @@ def _prefill_segment(st: Store, layer: np.ndarray, experts: np.ndarray) -> None:
         st.prefill_layer(la, [(la, e) for e in order])
 
 
-def simulate(arrays, segments, slots: int, policy: str, tau: float) -> dict:
-    """Replay the trace; return decode counters. tau > 0 drops cheap misses."""
+def predicted_lookup(arrays) -> dict[tuple[int, int], tuple[list[int], np.ndarray]]:
+    """(decode token ordinal, target layer) -> the predictor's best-first set and its raw router weights."""
+    if "pred_experts" not in arrays:
+        raise ValueError("prefetch needs a trace recorded with predicted sets (0.61.3 DeepSeek, 0.62.10 GLM)")
+    tok = _token_ordinals(arrays["pred_source"])
+    return {
+        (int(t), int(target)): (experts.tolist(), w)
+        for t, target, experts, w in zip(tok, arrays["pred_target"], arrays["pred_experts"], arrays["pred_weights"])
+    }
+
+
+def simulate(arrays, segments, slots: int, policy: str, tau: float, prefetch_gate: float | None = None) -> dict:
+    """
+    Replay the trace; return decode counters. tau > 0 drops cheap misses.
+
+    `prefetch_gate` models the store's decode prefetch (ResidentExpertStore.prefetch_decode, the rule
+    docs/SEAMS.md names and pred_gate_price.py first priced for DeepSeek): None is no prediction, 0.0 loads every
+    predicted expert, a positive value loads only those whose predictor weight reaches it. A predicted expert that is
+    not resident is read into a transient slot and never evicts a resident; it becomes resident only if the target
+    layer then routes it (counted as a miss whose read started early, as the live counter counts it). An unused load
+    is drive time and leaves no residency. Token boundaries come from the layer order (a token ends where the layer
+    stops ascending), so GLM and MiniMax traces, whose first MoE layer is 3, join as DeepSeek's do.
+    """
     phase, layer, position, experts = (arrays[k] for k in ("phase", "layer", "position", "experts"))
     weights = arrays.get("weights")
     if tau > 0 and weights is None:
         raise ValueError("tau > 0 needs a trace recorded with router weights")
+    preds = predicted_lookup(arrays) if prefetch_gate is not None else None
+    token_of_row = np.full(len(layer), -1, dtype=np.int64)
+    decode_rows = np.nonzero(phase == PHASE_DECODE)[0]
+    token_of_row[decode_rows] = _token_ordinals(layer[decode_rows])
+    pred_loads = pred_used = demand = 0
 
     st = Store(slots, policy, n_layers=trace_layers(arrays))
     if not segments:
@@ -115,31 +141,43 @@ def simulate(arrays, segments, slots: int, policy: str, tau: float) -> dict:
             _prefill_segment(st, layer[a:b], experts[a:b])
             continue
 
-        seg_pos = position[a:b]
-        for pos in np.unique(seg_pos):
-            m = seg_pos == pos
-            for row_i in np.nonzero(m)[0] + a:
-                la = int(layer[row_i])
-                row = experts[row_i].tolist()
-                share = None
-                if weights is not None:
-                    w = weights[row_i].astype(np.float64)
-                    share = w / max(float(w.sum()), 1e-12)
-                row_drop_mass = 0.0
-                for k, e in enumerate(row):
-                    key = (la, int(e))
-                    requests += 1
-                    if st._resident(key):
-                        st.decode_request(key)
-                    elif tau > 0 and share[k] < tau:
-                        drops += 1
-                        row_drop_mass += float(share[k])
-                    else:
-                        misses += 1
-                        st.decode_request(key)
-                dropped_mass += row_drop_mass
-                rows_seen += 1
-            tokens += 1
+        # rows in trace order: grouping by position would interleave two requests that share a decode segment
+        # (a request whose prompt was fully reused has no prefill rows between it and the one before)
+        tokens += int(np.unique(token_of_row[a:b]).size)
+        for row_i in range(a, b):
+            la = int(layer[row_i])
+            row = experts[row_i].tolist()
+            share = None
+            if weights is not None:
+                w = weights[row_i].astype(np.float64)
+                share = w / max(float(w.sum()), 1e-12)
+            row_drop_mass = 0.0
+            inflight: set[int] = set()
+            if preds is not None:
+                rec = preds.get((int(token_of_row[row_i]), la))
+                if rec is not None:
+                    for pe, pw in zip(*rec):
+                        if pw >= prefetch_gate and not st._resident((la, int(pe))):
+                            inflight.add(int(pe))
+                            pred_loads += 1
+            for k, e in enumerate(row):
+                key = (la, int(e))
+                requests += 1
+                if st._resident(key):
+                    st.decode_request(key)
+                elif int(e) in inflight:
+                    misses += 1
+                    pred_used += 1
+                    st.decode_request(key)
+                elif tau > 0 and share[k] < tau:
+                    drops += 1
+                    row_drop_mass += float(share[k])
+                else:
+                    misses += 1
+                    demand += 1
+                    st.decode_request(key)
+            dropped_mass += row_drop_mass
+            rows_seen += 1
 
     if tokens == 0:
         raise ValueError("the trace holds no decode tokens")
@@ -150,6 +188,10 @@ def simulate(arrays, segments, slots: int, policy: str, tau: float) -> dict:
         "drops": drops,
         "hit": 1 - (misses + drops) / max(requests, 1),
         "misses_per_token": misses / max(tokens, 1),
+        "demand_per_token": demand / max(tokens, 1),
+        "pred_loads_per_token": pred_loads / max(tokens, 1),
+        "pred_used_per_token": pred_used / max(tokens, 1),
+        "reads_per_token": (demand + pred_loads) / max(tokens, 1),
         "mean_dropped_mass_per_layer": dropped_mass / max(rows_seen, 1),
     }
 
@@ -166,6 +208,11 @@ def main() -> None:
                     help="decode context length; adds LEDGER DS-FLOOR-CTX's context term to --floor-ms (0: short prompt)")
     ap.add_argument("--miss-ms", default="internal=2.0,usb=10.2",
                     help="name=ms per miss, comma list (LEDGER DS-MISS-48; usb is an estimate, ST-X10)")
+    ap.add_argument("--prefetch-gates", default="",
+                    help="comma list of decode-prefetch predictor-weight gates ('off', 0 = every predicted load); needs predicted sets. "
+                         "Adds a table of reads, predicted loads and their use per token (counts, not milliseconds)")
+    ap.add_argument("--gbps", type=float, default=0.0,
+                    help="drive rate for the prefetch table's bytes/rate lower bound on a token (reads x expert bytes / rate)")
     args = ap.parse_args()
 
     arrays, segments = load_trace(args.trace)
@@ -201,6 +248,26 @@ def main() -> None:
                 ms = floor_ms + r["misses_per_token"] * c
                 line += f" {ms:.0f} | {1000 / ms:.1f} |"
             print(line, flush=True)
+
+    if args.prefetch_gates:
+        gates = [None if g.strip() == "off" else float(g) for g in args.prefetch_gates.split(",")]
+        print("\n## decode prefetch (counts per decode token; misses count a used predicted load, as the live counter does)")
+        head = "| budget GiB | tau | gate | misses | demand reads | predicted loads | used | wasted | reads | "
+        head += "bytes/rate bound ms |" if args.gbps else ""
+        print(head.rstrip())
+        print("|---:|---:|---|---:|---:|---:|---:|---:|---:|" + ("---:|" if args.gbps else ""))
+        for b in (float(x) for x in args.budgets_gib.split(",")):
+            slots = int(b * GIB) // args.expert_bytes
+            for tau in taus:
+                for g in gates:
+                    r = simulate(arrays, segments, slots, args.policy, tau, g)
+                    used = f"{r['pred_used_per_token'] / r['pred_loads_per_token']:.0%}" if r["pred_loads_per_token"] else "-"
+                    line = (f"| {b:g} | {tau:g} | {'off' if g is None else format(g, 'g')} | {r['misses_per_token']:.1f} "
+                            f"| {r['demand_per_token']:.1f} | {r['pred_loads_per_token']:.1f} | {used} "
+                            f"| {r['pred_loads_per_token'] - r['pred_used_per_token']:.1f} | {r['reads_per_token']:.1f} |")
+                    if args.gbps:
+                        line += f" {r['reads_per_token'] * args.expert_bytes / 1e6 / args.gbps:.0f} |"
+                    print(line, flush=True)
 
 
 if __name__ == "__main__":

@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-08, 0.62.12): a simulator store with decode prefetch
+>
+> Section 18.104. Hamed: "go, build the simulator store with decode prefetch". `cache_sim.py --prefetch-gates` now replays predicted sets through the store's prefetch rule for any model (loads, use, waste, reads a token, a bytes-over-rate bound). It reproduces the DeepSeek prefetch pricing (23.2 misses, 43.7 reads against the measured 23.5 and 45.6) and shows GLM's shipped prefetch reading 126 experts a token against 107 with it off; no router-weight gate beats off on exact outputs. A bug that merged requests sharing a decode segment is fixed (one old DeepSeek trace changed, 37.4 -> 23.2 misses a token). Nothing needs you; a GLM drop rule is still your call.
+>
 > ## Start here (2026-10-08, 0.62.11): the GLM trace with weights and predicted sets
 >
 > Section 18.103. Hamed: "go, record the GLM trace with weights and predicted sets". 793 decode tokens, 38.5 minutes; the new code ran clean through the multi-token prefill and the real MoE block. Predictor overlap 80.1 %; a weight gate >= 0.5 keeps 41 % of predicted loads at 93.5 %. `cache_sim --taus`: misses a token 106.6 -> 42.6 at tau 0.10 (13 % of the routing mass dropped). Output-changing, quality unknown: **your call whether a quality gate is worth running.** Files local only: `benchmarks/results/routing-trace-glm-weights/`.
@@ -8898,6 +8902,42 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.104 A simulator store with decode prefetch — 2026-10-08 (0.62.12)
+
+**Goal.** Hamed: "go, build the simulator store with decode prefetch" (the open item 3 of the v147 first job). Make the offline simulator price the store's decode prefetch for any model's trace, so a gate on prefetch can be compared without the machine. Offline only: no model loaded, no runtime touched.
+
+**Prediction (before).** Written before the build: the replay of the 0.61.3 DeepSeek trace through the new code reproduces `pred_gate_price.py` (23.2 misses a token, 43.7 reads at the shipped setting) and so stays within a few percent of the measured 23.5 and 45.6; GLM's shipped prefetch reads about 15 % more experts a token than prediction off (the live pair measured 11 % fewer bytes without it). Falsifier: DeepSeek off by more than 5 % on reads, or GLM's sign wrong.
+
+**What was built.** `simulate(..., prefetch_gate=)` in `benchmarks/cache_sim.py` and `--prefetch-gates off,0,0.5 --gbps N`. Rule (the `prefetch_decode` residency rule of `resident_store.py`, as `pred_gate_price.py` first modelled it): for each decode row, a predicted expert of that layer that is not resident and whose predictor weight is at least the gate is in flight; a routed expert that is resident is a hit, one that is in flight is a miss whose read started early (the live counter counts it as a miss too), anything else a demand miss (or a drop under tau, unless it is in flight, which is awaited); an unused load leaves no residency. Token boundaries are the layer order (a token ends where the layer stops ascending), the same join as `predicted_used_mask`, so GLM's first layer 3 needs no special case. Not modelled: transient-slot limits (112 in flight is not binding at 41 loads a token), `CACHALOT_DECODE_PREFETCH_LIMIT`, the read queue (the bytes-over-rate bound ignores overlap with compute and with demand reads).
+
+**A bug found on the way (fixed).** The decode loop grouped rows by `position` inside a segment. Two requests with no prefill between them (the second one's prompt fully reused) share one segment and repeat positions, so `np.unique(position)` merged their tokens and reordered their rows. On `pred-trace-0.61.3/smoke.trace.npz` it counted 1,577 tokens of 2,407 and said 37.4 misses a token; the right figure is 23.2, which agrees with `pred_gate_price.py` and the measured 23.5. The loop now walks rows in trace order and counts tokens by ordinal. I ran the old and the new function on every trace in `benchmarks/results`: only that one changed (tokens, misses and hit rate identical on the other nine), so no published LEDGER or HANDOFF number besides this trace's moves.
+
+**Result (derived; counts from a replay of one recorded trace each).**
+- DeepSeek, 0.61.3 trace, 48 GiB, shipped prefetch (gate 0): 23.2 misses, 33.3 predicted loads at 38 % used, 43.7 reads a token. Measured live (DS-PRED-USB): 23.5 misses, 45.6 reads. Within 4 %. Gate >= 0.2: 16.8 loads at 50 %, 31.6 reads (identical to `pred_gate_price.py`).
+- GLM, 0.62.11 trace, 46 GiB (3,488 slots of 14.16 MB), per decode token:
+
+| gate | demand reads | predicted loads | used | wasted | reads | bytes/rate bound at 1 GB/s |
+|---|---:|---:|---:|---:|---:|---:|
+| off | 106.6 | 0 | - | 0 | 106.6 | 1,509 ms |
+| 0 (shipped) | 64.6 | 61.5 | 68 % | 19.5 | 126.1 | 1,786 ms |
+| 0.3 | 70.5 | 50.8 | 71 % | 14.7 | 121.3 | 1,718 ms |
+| 0.4 | 79.1 | 35.9 | 77 % | 8.4 | 115.0 | 1,629 ms |
+| 0.5 | 89.6 | 19.4 | 88 % | 2.4 | 108.9 | 1,543 ms |
+| 0.6 | 96.6 | 10.6 | 94 % | 0.6 | 107.2 | 1,518 ms |
+
+Misses a token are 106.6 in every row (prefetch changes who waits, not what is absent). Against the live pair of GLM-PRED-USB (other prompts, 52 GiB, other run): 48.4 loads a token at 72 % used, 13.4 unused; the replay says 61.5 at 68 %, 19.5 unused at 46 GiB, and 55.3 loads at 52 GiB. Same ballpark, 15-25 % more loads than live; I do not know why (candidates: live loads skipped when a read was already in flight or a slot was short; a different workload). This is not a calibration of the GLM column. The bytes cut by turning prediction off is 15.5 % in the replay against the live 11 %.
+- GLM with a drop threshold (tau 0.10, 46 GiB): prefetch off 42.6 misses (603 ms bound); shipped prefetch awaits its predicted loads, so 57.9 misses and 77.1 reads (1,091 ms); a >= 0.5 gate 43.2 misses, 45.2 reads (640 ms). Under a drop rule a gate is worth having if prefetch is kept at all, but off is still the lowest.
+
+**Against the prediction.** DeepSeek within 4 % (held); GLM's sign right (held). The magnitude on GLM is unvalidated.
+
+**What it settles and what it does not.** Settles: on exact outputs no router-weight gate beats prediction off on a 1 GB/s drive by the bytes-over-rate bound, for GLM as for DeepSeek (DS-PRED-GATE); GLM's shipped K = 5 prefetch costs bytes on a drive that is already the bottleneck, and the measured break-even (off -4.4 %, inside drift) is consistent with the bound being a floor, not a price. Does not settle: milliseconds (the bound ignores overlap with compute and queueing; the DeepSeek replay was 14 % low on prediction off in 0.61.4), the GLM loads figure, or MiniMax (its trace carries no predicted sets and its prefetch is ~90 % precise).
+
+**Bottleneck after.** Unchanged: GLM is the drive at 1 GB/s. The instrument now lets a GLM prefetch change be priced offline before a live arm.
+
+**Kind.** Engineering (instrument), one bug fixed. No default, output or numerics changed.
+
+**Open.** Whether to run a live GLM arm with `CACHALOT_GLM_PREDICT_TOPK=0` to price off against the shipped K = 5 on the replay conversation (about 80 minutes for two arms at this speed; needs your yes and the estimate first). The GLM drop rule (your call, output-changing). Calibration of the loads figure against a run with `/v1/stats` saved. **Needs Hamed:** nothing for this item.
 
 ### 18.103 The GLM trace with weights and predicted sets — 2026-10-08 (0.62.11)
 
