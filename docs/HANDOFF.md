@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-09, 0.62.19): GLM miss budget, arm 2 (free-running replay)
+>
+> Section 18.108. 24 replies on dumped Hermes turns, exact against budgets 4 and 2, graded blind: decode **1.625 / 1.506 / 1.103 s a token (exact / b4 / b2: -7 %, -32 %)**; no flawed tool call or story in any arm; C# flawed 2/2, 0/2, 1/2 (GLM's usual garbling, no signal). Small n. **Your call: make a budget the `serve-glm.sh` default** (4 conservative, 2 fast). No default changed.
+>
 > ## Start here (2026-10-08, 0.62.18): Lab link
 >
 > README's Cachalot Lab link now points to `https://github.com/forera-ai/cachalot-lab` (the Lab repository was transferred as well). No other change.
@@ -8926,6 +8930,36 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.108 GLM decode miss budget: free-running replay, arm 2 — 2026-10-09 (0.62.19)
+
+**Goal.** Hamed: "go, run arm 2" (§18.106/18.107): does a GLM decode miss budget of 4 or 2 change what GLM writes on real agent turns, and what does it save?
+
+**Prediction (before).** From arm 1: budget 4 shows no difference from exact; budget 2 at most a small one; a token -8..-12 % at 4 and about -33 % at 2. GLM's C# garbles in about half of replies whatever the arm (§18.44-18.49), so a C# difference below that rate would not be visible.
+
+**Method.** `benchmarks/results/glm-miss-budget-arm2/` (gitignored): `run.sh` starts `serve-glm.sh` once per arm (exact, `CACHALOT_GLM_DECODE_MISS_BUDGET=4`, then 2) at 46 GiB (chosen from host availability, 84 GiB available at the start; Hamed's applications stayed open), bank on the X10Pro, prefetch off; `client.py` sends four of the dumped Hermes bodies of the 0.61.12 GLM session (a tool call, a summary turn after a 2.7k-token tool result, a 200-word story, a C# task) at the bodies' own temperature 0.7, 400 tokens at most, two passes per arm (24 replies; the second pass reuses the prompts, so only decode is timed). Replies were shuffled into an arm-free sheet (`sheet.md`), graded before the key (`key.json`) was opened: tool calls by schema (a valid `search_files` call on the Desktop), stories by reading, C# by reading for garbled or invalid syntax (the replies stop at 400 tokens, so they cannot be compiled). One grader (this session), not a panel.
+
+**Result (measured).**
+
+| arm | decode s/token | tok/s | tool calls flawed | stories flawed | C# flawed |
+|---|---:|---:|---:|---:|---:|
+| exact | 1.625 | 0.615 | 0/4 | 0/2 | 2/2 |
+| budget 4 | 1.506 (-7 %) | 0.664 | 0/4 | 0/2 | 0/2 |
+| budget 2 | 1.103 (-32 %) | 0.906 | 0/4 | 0/2 | 1/2 |
+
+Flaws found: stray garbled tokens in the C# ("`i < ...` replaced by `they < values.Length`", "`they said i < fields.Length`", a duplicated field declaration, a statement left outside a method). They appear at both budgets and exact. All 12 tool calls were valid calls with correct arguments; all 6 stories were fluent and complete.
+
+**Against the prediction.** Held on speed (-7 % and -32 %). On quality: no visible difference on tool calls and stories at n = 4 and 2 per arm; the C# counts (exact 2/2, budget 4 0/2, budget 2 1/2) are consistent with GLM's own base rate of garbling and carry no signal about the budget.
+
+**Explanation.** Hypothesis, as in §18.107: the lightest misses carry little router weight and the rescale restores the layer's magnitude. Arm 2 does not test it more strongly than arm 1; it shows that nothing visible breaks on agent-shaped turns.
+
+**Limits.** 24 replies, 2 per task per arm, one grader, three code-free tasks of four, 400-token caps, one conversation. This cannot detect a rate difference below about 30 percentage points on anything. No default changed. Long contexts beyond 24k and image turns were not tried.
+
+**Bottleneck after.** With budget 2 the token is 1.1 s, still read-bound (about 0.6 s of it waiting on the 1 GB/s drive at 66 misses a token); budget 1 or 0 would move toward the floor but were clearly worse in arm 1.
+
+**Kind.** Research (predicted, measured).
+
+**Open, Hamed's call.** Make a budget the `serve-glm.sh` default (output-changing). The evidence for it: arm 1 (teacher-forced, three texts) and arm 2 (free-running, nothing visible). Budget 4 is the conservative choice (-7 %, inside GLM's own noise); budget 2 is the fast one (-32 %, KL 3x the noise on prose). A bigger blind panel on C# would be the next check, but GLM's own C# garbling limits what it can show.
 
 ### 18.107 GLM decode miss budget: teacher-forced quality, arm 1 — 2026-10-08 (0.62.15)
 

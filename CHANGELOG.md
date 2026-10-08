@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.62.19 (2026-10-09)
+
+HANDOFF "Start here (2026-10-09, 0.62.19)" and section 18.108. Measurement only; nothing in `src/` besides the version string changed.
+
+### Measured
+- GLM decode miss budget, free-running: 24 replies on dumped Hermes turns at 46 GiB beside Hamed's applications, graded blind. Decode 1.625 s a token exact, 1.506 with budget 4 (-7 %), 1.103 with budget 2 (-32 %). No flawed tool call or story in any arm; C# flawed 2/2, 0/2, 1/2 (GLM's own garbling). Two replies per task per arm and one grader: it cannot see a small difference. No default changed.
+
 ## 0.62.18 (2026-10-08)
 
 Metadata only; nothing in `src/` besides the version string changed.
