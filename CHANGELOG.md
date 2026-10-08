@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.61.13 (2026-10-08)
+
+HANDOFF "Start here (2026-10-08, 0.61.13)" and section 18.90. Measurement only; nothing in `src/` besides the version string changed.
+
+### Measured
+- The first live Hermes session on GLM-5.3-Flash with the contiguous bank on the X10Pro (46 GiB, eight requests, 3.7 hours): the cold 21,092-token Hermes block prefilled in 2,379 s (39.7 min, 8.9 tok/s); every later request reused 98-99.9 % of it. Decode 0.53-0.77 tok/s (1.30-1.89 s a token, mean 1.61 s over 1,109 tokens), tracking the hit rate (63-76 %). A 2,696-token tool result cost 356 s, a 389-token image turn 178 s, 18-34 token follow-ups 25-49 s.
+- Answer quality, graded against the sources: the Desktop listing and the story are good; the C# snippet is unusable (leaked story text, placeholders, an apology, no code); the image transcription is right except two characters (`129A` read as `29A`, `Tredger` as `Fredger`).
+- A client cancel after 15 minutes discarded half a cold prefill (nothing is cached until a request completes).
+
 ## 0.61.12 (2026-10-07)
 
 HANDOFF "Start here (2026-10-07, 0.61.12)" and section 18.89. Measurement only; nothing in `src/` besides the version string changed.

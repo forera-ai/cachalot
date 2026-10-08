@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-08, 0.61.13): the first live GLM Hermes session
+>
+> Section 18.90. Eight requests, 3.7 hours, GLM with the bank on the X10Pro at 46 GiB. Cold 21k block 39.7 min once, then reused; decode 1.61 s a token (0.62 tok/s); short follow-ups 25-49 s, a 2.7k tool result 6 min, an image turn 3 min. Quality: prose and tool calls good, **C# garbled (no usable code)**, image read with two character errors. A cancelled request loses all its prefill work: tell Hermes to wait (or raise its request timeout).
+>
 > ## Start here (2026-10-07, 0.61.12): the short-prefill cost split
 >
 > Section 18.89. `benchmarks/short_prefill_trace.py` ran (44 GiB, sysctl 88064; the guardian refused 48 by 1.8 GiB): with experts resident a 19-token chunk costs 0.55 s and a 34-token chunk 0.78 s at 512 and at 22k context (about 0.26 s plus 15 ms a token); the live 1.8-2.1 s is mostly expert reads (240-1,023 a chunk). Context adds at most ~0.2 s (chunk 69 only). Hamed's reboot reset `iogpu.wired_limit_mb` to 0; he re-applied 88064.
@@ -8842,6 +8846,47 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.90 The first live Hermes session on GLM-5.3-Flash with the contiguous bank — 2026-10-08 (0.61.13)
+
+**Goal.** v131 first job item 1 (Hamed confirmed it): a live Hermes session on `./serve-glm.sh` with the bank and `CACHALOT_SERVER_DUMP`, to see the 0.61.9 bank through a server in real use, and to read the answers. Run: `serve-glm.sh --expert-budget-gib 46` (52 is past the guardian's limit on this machine today), sysctl 88064, swap 0 at start. Files: `benchmarks/results/hermes-live-glm-0.61.12/` (`requests.jsonl`, `server.log`, `hermes-session-export.json`). Hermes sent temperature 0.7, 25 tools, a 27,695-character system block.
+
+**Prediction record.** Written during the run, not before: cold block ~30-35 min (then revised to ~50 min at a checkpoint), from 11 chunks of 2,048 tokens each touching about 163 GB at 0.94 GB/s. Measured: 39.7 min. The first estimate was 12 % low, the revised one 26 % high; the shortfall of the first was that a chunk does not read every expert (drive averaged 0.62 GB/s at the checkpoint, below the 0.94 peak).
+
+**Requests (measured, `[request]` lines).**
+
+| # | what | prompt | reused | prefilled, time | decode | token | hit |
+|---|---|---|---|---|---|---|---|
+| 1 | "Hi", cancelled by Hamed after 15 min | 21,068 | 0 | logged 0.00 s (incomplete) | 0 | n/a | n/a |
+| 2 | "Hi", retried (cold block) | 21,092 | 0 | 21,092, **2,379 s** (8.9 tok/s) | 11 tokens | 1.52 s | 63 % |
+| 3 | Desktop listing, tool call | 21,121 | 21,102 | 19, 24.8 s | 43 tokens | 1.77 s | 67 % |
+| 4 | answer after the tool result | 23,859 | 21,163 | 2,696, **356 s** (7.6 tok/s) | 200 tokens | 1.52 s | 72 % |
+| 5 | story | 24,076 | 24,058 | 18, 25.4 s | 271 tokens | 1.30 s | 76 % |
+| 6 | C# snippet | 24,380 | 24,346 | 34, 48.6 s | 359 tokens | 1.89 s | 66 % |
+| 7 | image, tool call | 25,127 | 24,738 | 389, **178 s** (2.2 tok/s) | 60 tokens | 1.86 s | 65 % |
+| 8 | answer after the image | 25,250 | 25,186 | 64, **161 s** | 165 tokens | 1.50 s | 73 % |
+
+Decode over requests 2-8: 1,109 tokens in 1,783 s = 1.61 s a token (0.62 tok/s), against 1,531 ms in §18.86's A/B (+5 %, inside the live spread of 1.30-1.89 s). Misses a token 80-116 (A/B 122.7 at 46 GiB), read 37-44 ms. The token time follows the hit rate. Mean read 37-44 ms is queueing on one pipe (GLM-TOKEN-USB-M).
+
+**What it shows.**
+1. The cold Hermes block costs 40 minutes once and the snapshot reuse works: every later request reused 98-99.9 % of its prompt. A restart reuses the saved block (snapshots were written: `prefix-21063`, `prefix-21161`, about 380 MB each).
+2. A cancel loses all prefill work of that request: the first attempt had run ~15 minutes and left nothing (the second request started cold). Hermes cancelled and rewrote the history ("Your request was not processed...") which is visible in the dump.
+3. The cost of new context is minutes: 2.7k tokens of tool result 6 min (7.6 tok/s, DeepSeek 98), an image turn 3 min. A 64-token prefill after the image took 161 s against 25-49 s for 18-34 tokens before it; **not explained** (reuse covered 25,186 of 25,250 tokens, and a resent image reuses its prefix per §18.41).
+4. Decode with the bank is as measured in the A/B, no regression through a real server.
+
+**Answer quality (read against the sources; one sample each, so not rates).**
+
+| turn | verdict |
+|---|---|
+| "Hi" | fine |
+| Desktop listing | the tool call is valid (`search_files`, path and glob correct). The answer says it shows top-level items and says "202 items total (including subfolder contents)": the tool output's `total_count` is a lower bound (`total_count_is_lower_bound: true`) and was truncated at 100, so "202" is not an exact count. "~40 screenshots": 42 of the 100 listed. Folder descriptions (`TopCV`, `immi` with Austria / Canada / Mondial, `ImporterApp` as .NET) match the paths, and it distinguishes folders from files, which DeepSeek's answer in §18.79 did not. Good |
+| story (200 words) | 213 words, coherent, no loop; good |
+| C# json and csv importer | **unusable**: four code blocks, the first stops at `; // placeholder`, a later one contains story text ("first line of a placeholder story"), another "using System responses", another "new compiling...", then "I'm experiencing repeated output corruption. Please resend". No compilable snippet. Consistent with GLM-CODE (12 of 21 replays garbled; MiniMax 1 of 19); the bank is bit-identical so it is not the cause. One live sample |
+| image transcription | label "Your home address *", typed `1227`, the highlighted row (1227 McLeod Avenue, Spruce Grove), the disabled Continue button: right. **Two character errors in five addresses**: `12273 129A Street Northwest` read as `12273 29A`, `1227 Tredger Court Northwest` read as `1227 Fredger Court Northwest`. DeepSeek's transcription of the same image in §18.79 was exact. It called `vision_analyze` first (Hermes answered that the image was already in context), which is why requests 7 and 8 exist |
+
+**Kind.** Measurement (tagged measured; quality reading one sample each). **No default changed.** Bottleneck: GLM on the X10Pro is read-bound at every prefill chunk and every miss (§18.78, §18.86); this session adds the live cost of a cold block and of an image. What it recommends is a conversation with Hamed, not a lever: keep GLM for vision, prose and short tool turns; use DeepSeek or MiniMax for code (already the project's rule, GLM-CODE).
+
+**Open.** The 161 s for 64 tokens after an image (item 3); a GLM all-resident floor; whether a second GLM tool result of 2.7k tokens costs the same 6 minutes after warming (n = 1); v131 item 4 (mcpo respawn, VMware, the 163 GB bank).
 
 ### 18.89 What a short prefill costs, split by a per-chunk trace — 2026-10-07 (0.61.12)
 
