@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.62.18 (2026-10-08)
+
+Metadata only; nothing in `src/` besides the version string changed.
+
+### Changed
+- README links the Cachalot Lab app at its new address, `https://github.com/forera-ai/cachalot-lab` (it was transferred to forera-ai too; verified with `git ls-remote`).
+
 ## 0.62.17 (2026-10-08)
 
 Metadata only; nothing in `src/` besides the version string changed.

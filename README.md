@@ -297,6 +297,8 @@ reproducible to ±0.3 %.
 
 **0.60.7 (2026-10-06): review fixes.** The run manifest no longer records credentials such as `CACHALOT_API_KEY` by value, and its Hermes Desktop check needs one process line. HANDOFF section 18.73.
 
+**0.62.18 (2026-10-08): the Cachalot Lab link points to forera-ai/cachalot-lab.**
+
 **0.62.17 (2026-10-08): the `LICENSE` copyright holder is forera.ai** (MIT text unchanged).
 
 **0.62.16 (2026-10-08): the repository moved to [forera-ai/cachalot](https://github.com/forera-ai/cachalot).** Owner and maintainer are now the forera-ai organisation; no code changed.
@@ -902,7 +904,7 @@ See `docs/SPEED-RESEARCH-2026-10-03.md`.
 
 ## Cachalot Lab
 
-A desktop app for this runtime, [Cachalot Lab](https://github.com/prooshani/cachalot-lab), is built from
+A desktop app for this runtime, [Cachalot Lab](https://github.com/forera-ai/cachalot-lab), is built from
 the brief in [`docs/lab/CODEX-LAB-PROMPT.md`](docs/lab/CODEX-LAB-PROMPT.md); each runtime release that
 changes a knob, a default, a stats field, a log line or an endpoint adds a brief under
 [`docs/lab/briefs/`](docs/lab/briefs/).
