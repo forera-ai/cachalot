@@ -215,3 +215,46 @@ def test_switch_call_traces_decode_and_prefill_through_the_real_call_path():
     sink.scores = mx.array([[0.6, 0.4]])
     mod(mx.zeros((1, dim)), mx.array([[3, 4]]))
     assert tracer.arrays()["phase"].tolist() == [1, 0] and tracer.predicted_records == 1
+
+
+def test_decode_miss_budget_drops_the_lightest_misses_and_rescales_the_kept_outputs():
+    """HANDOFF 18.106: with a budget, the store is asked for at most that many misses ranked by router weight, a dropped
+    expert contributes zero and the kept ones are scaled by total / kept router weight. No budget: untouched."""
+    import mlx.core as mx
+    import numpy as np
+    from types import SimpleNamespace
+
+    from cachalot.glm.experts import ScoreSink, StreamingSwitchGLU
+
+    dim = 4
+    index = {(3, e): SimpleNamespace(layer=3, expert=e) for e in range(16)}
+    seen = {}
+
+    class Store:
+        def get_many(self, entries, *, max_misses=None, priorities=None, **kw):
+            seen.update(max_misses=max_misses, priorities=priorities)
+            out = [SimpleNamespace(slot=e.expert) for e in entries]
+            resident = {1}  # expert 1 is a hit; the rest are misses
+            misses = [i for i, e in enumerate(entries) if e.expert not in resident]
+            if max_misses is not None and len(misses) > max_misses:
+                keep = set(sorted(misses, key=lambda i: -priorities[i])[:max_misses])
+                for i in misses:
+                    if i not in keep:
+                        out[i] = None
+            return out
+
+    mod = StreamingSwitchGLU(3, Store(), index, None, None)
+    mod._expert_out = lambda x, slot: mx.full((1, dim), float(slot))
+    sink = ScoreSink()
+    mod.score_sink = sink
+    sink.scores = mx.array([[0.4, 0.3, 0.2, 0.1]])
+    inds = mx.array([[1, 2, 3, 4]])
+
+    exact = np.array(mod(mx.zeros((1, dim)), inds))
+    assert seen["max_misses"] is None and exact[0, :, 0].tolist() == [1, 2, 3, 4]
+
+    mod.miss_budget = 1  # of three misses (2, 3, 4) keep the heaviest: expert 2 (0.3)
+    y = np.array(mod(mx.zeros((1, dim)), inds))
+    assert seen["max_misses"] == 1 and np.allclose(seen["priorities"], [0.4, 0.3, 0.2, 0.1])
+    factor = 1.0 / (0.4 + 0.3)  # kept router mass is experts 1 and 2
+    assert np.allclose(y[0, :, 0], [1 * factor, 2 * factor, 0, 0])

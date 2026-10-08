@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.62.14 (2026-10-08)
+
+HANDOFF "Start here (2026-10-08, 0.62.14)" and section 18.106.
+
+### Changed
+- **`serve-glm.sh` defaults `CACHALOT_GLM_PREDICT_TOPK=0`** (Hamed's call, 2026-10-08): GLM decode no longer prefetches the next layer's experts. Outputs are unchanged (the prefetch only changed which reads start early). Basis: two live pairs on the X10Pro, both on the off side (-6.5 % in 0.62.13, -3 to -4 % in 0.61.1), each inside drift. `CACHALOT_GLM_PREDICT_TOPK=5 ./serve-glm.sh` restores the old behaviour. The `experts.py` module default (5) is unchanged, so direct users of the library still get K = 5.
+
+### Added
+- **A GLM decode miss budget, off by default** (`CACHALOT_GLM_DECODE_MISS_BUDGET=N`, `GlmModel.set_decode_miss_budget`, `StreamingSwitchGLU.miss_budget`). Per decode layer at most N non-resident experts are read, highest router weight first; the rest are dropped and the kept experts' outputs are scaled by total / kept router weight (the DeepSeek rule of 0.57.0). Changes outputs; prefill is untouched. It taps the router gate (as the tracer does) so the weights ride the sync that already reads the indices. The startup line names the budget. `/v1/stats` of the GLM server gains `skipped_experts`.
+- Tests: the budget through `StreamingSwitchGLU.__call__` with a stub store (order of drops, zeros for dropped experts, the rescale, exact path unchanged) and the new stats field. 579 pass.
+
+### Not measured
+- The budget's speed and quality are unmeasured: it is a knob, not a result. No default uses it.
+
 ## 0.62.13 (2026-10-08)
 
 HANDOFF "Start here (2026-10-08, 0.62.13)" and section 18.105. Measurement only; nothing in `src/` besides the version string changed.

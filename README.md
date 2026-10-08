@@ -295,6 +295,8 @@ reproducible to ±0.3 %.
 
 **0.60.7 (2026-10-06): review fixes.** The run manifest no longer records credentials such as `CACHALOT_API_KEY` by value, and its Hermes Desktop check needs one process line. HANDOFF section 18.73.
 
+**0.62.14 (2026-10-08): GLM prefetch off by default; a GLM miss budget knob.** `serve-glm.sh` now starts with `CACHALOT_GLM_PREDICT_TOPK=0` (Hamed's call; outputs unchanged, two live pairs both favoured off). New and off by default: `CACHALOT_GLM_DECODE_MISS_BUDGET=N` reads at most N non-resident experts per decode layer and drops the lightest (changes outputs; unmeasured, quality arms are next). HANDOFF section 18.106.
+
 **0.62.13 (2026-10-08): GLM prefetch off against K = 5, live.** On the same Hermes replay GLM decoded 1.615 s a token with prediction off and 1.727 with the shipped K = 5 (-6.5 %), same misses a token; with 0.61.1's pair, both favour off by 3-9 %, each inside machine drift, so no default changes. The 0.62.12 simulator's predicted loads match the live counters (59 against 61 a token, 68 % used). HANDOFF section 18.105.
 
 **0.62.12 (2026-10-08): `cache_sim.py` models decode prefetch.** `--prefetch-gates` replays a trace that carries predicted sets and reports loads, use, waste and reads per token for any model. On GLM the shipped prefetch reads 126 experts a token against 107 with it off (68 % of its loads used); a router-weight gate of 0.5 keeps 88 % precision at 109 reads, and by the bytes-over-rate bound no gate beats prediction off at 1 GB/s (exact outputs), as for DeepSeek. Also fixes a position-grouping bug that merged two requests sharing a decode segment (one recorded DeepSeek trace; no other published number moved). HANDOFF section 18.104.

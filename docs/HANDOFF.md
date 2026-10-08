@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-08, 0.62.14): GLM prefetch off by default, and a GLM miss budget knob
+>
+> Section 18.106. Hamed: "ship `CACHALOT_GLM_PREDICT_TOPK=0` for now" and "adjust the miss budget to make outputs acceptable". **`serve-glm.sh` now defaults decode prefetch off** (outputs unchanged; `CACHALOT_GLM_PREDICT_TOPK=5` restores it). **A GLM decode miss budget exists, off by default** (`CACHALOT_GLM_DECODE_MISS_BUDGET=N`; drops the lightest misses, rescales the kept ones): unit-tested only, no speed or quality number yet. Next: teacher-forced NLL/KL arms at budgets 16 / 8 / 4 / 2, then a blind-graded replay, each after an estimate and Hamed's go; arms must adapt to the memory his open applications use.
+>
 > ## Start here (2026-10-08, 0.62.13): GLM prefetch off against K = 5, live
 >
 > Section 18.105. Hamed: "go, run the live GLM prefetch-off arm", then "write up the comparison". One back-to-back pair on the Hermes replay: **off 1.615 s a token, K = 5 1.727 (off -6.5 %)**, misses a token equal; with 0.61.1's pair both favour off by 3-9 %. Each is inside drift and the order was off first, so `serve-glm.sh` keeps K = 5: **your call whether to default `CACHALOT_GLM_PREDICT_TOPK=0` (outputs unchanged) or to run an ABBA pair first (about 2.3 hours).** The simulator's loads match the live counters.
@@ -8906,6 +8910,27 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.106 GLM prefetch default off, and a GLM decode miss budget — 2026-10-08 (0.62.14)
+
+**Goal.** Hamed answered v149's four open items: (1) "ship `CACHALOT_GLM_PREDICT_TOPK=0` for now"; (2) "adjust the miss budget to make outputs become acceptable"; (3) and (4) yes to the machine work and the housekeeping; and a standing condition: "your tests should work when I am working normally with the machine ... if there is memory consumption for an open application, you should adjust your tests accordingly".
+
+**What was done.**
+1. `serve-glm.sh` exports `CACHALOT_GLM_PREDICT_TOPK=${...:-0}`. Bit-identical outputs; basis §18.105 and §18.78. Library default in `experts.py` stays 5 (tests assert it).
+2. A GLM decode miss budget was built behind `CACHALOT_GLM_DECODE_MISS_BUDGET` (off by default). Mechanism: `StreamingSwitchGLU.miss_budget`; with a budget the layer's tapped gate hands its router weights to the sync that already reads the indices, the weights rank the misses (`ResidentExpertStore.get_many(max_misses=, priorities=)`, which DeepSeek already used), a dropped expert's output is zero, and the kept outputs are multiplied by total / kept weight. Decode only (one token); prefill, MiniMax and DeepSeek untouched. The gate tap is installed by `GlmModel._retap_gates` whenever a tracer or a budget needs it (the tracer path was refactored onto it, behaviour the same). `/v1/stats` carries `skipped_experts`.
+3. Verified by unit test through the real `__call__` with a stub store (579 tests pass, `git diff --check` clean). **Not run on the model**: no speed or quality number exists for it.
+
+**What "acceptable outputs" needs, and why nothing was run.** Budget N is a trade: the cost per token falls with misses (GLM is 91-93 % read wait, ~12.5 ms an average miss on the X10Pro, 105 misses a token), quality falls with drops. §18.103 priced the read side offline (`cache_sim --taus`: 106.6 misses a token to 42.6 at tau 0.10, 13 % of routing mass dropped). The quality side is the unknown and GLM already garbles C# (§18.44-18.49), so the first quality question is whether a budget makes a model that is already noisy measurably worse on what Hamed uses GLM for (prose, tool calls, image reads). Proposed arms, each after Hamed's confirmation of its time: (a) teacher-forced paired NLL and KL against exact on W1/W4/W6 text at budgets 16 / 8 / 4 / 2 (cheap: one pass per arm, no generation); (b) blind-graded replies on the Hermes replay at the budget that clears (a); (c) the speed pair for the budget chosen. The acceptance bar is Hamed's to set; a suggested one is the DeepSeek harness's: dNLL inside the noise arm's interval and no new graded failures.
+
+**Machine conditions for any arm (Hamed's rule).** Arms run beside his normal work, so they adapt: read free memory and swap first; pick the budget (46 or 44 GiB, not 52) from what the machine offers; do not close his applications; compare arms only inside one session and ABBA-ordered so his load hits both sides; record the machine state in the manifest. VMware Fusion (an Ubuntu VM) was running at the start of this session, 91 % memory level, swap 7.0 of 8.2 GB used.
+
+**Housekeeping answers.** Hamed said yes to item 4: keep the 163 GB bank. The `com.desktopcommander.mcpo` respawn and VMware Fusion's memory were not touched; Hamed's earlier instruction stands that those are asked about, not stopped.
+
+**Bottleneck after.** Unchanged (the 1 GB/s drive). Prefetch off removes about 6 % of the GLM token's reads; the budget could remove far more but is unpriced for quality.
+
+**Kind.** Engineering (a default shipped on measured pairs; a knob built, unmeasured).
+
+**Open.** Arms (a)-(c) above; they need an estimate and Hamed's go.
 
 ### 18.105 GLM decode prefetch off against K = 5, live — 2026-10-08 (0.62.13)
 

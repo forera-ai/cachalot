@@ -45,6 +45,11 @@ if [ -z "${CACHALOT_GLM_BANK+x}" ] && [ -f "$GLM_BANK_DEFAULT/bank.json" ]; then
     export CACHALOT_GLM_BANK=$GLM_BANK_DEFAULT
 fi
 
+# Decode prefetch off (Hamed, 2026-10-08, HANDOFF 18.105): on the X10Pro's ~1 GB/s a token was 6.5 % shorter with it
+# off in one live pair (1.615 against 1.727 s), same sign as 0.61.1's pair, each inside drift. Bit-identical outputs.
+# CACHALOT_GLM_PREDICT_TOPK=5 restores the old K = 5 prefetch.
+export CACHALOT_GLM_PREDICT_TOPK=${CACHALOT_GLM_PREDICT_TOPK:-0}
+
 exec ~/venvs/deepseek-v41/bin/python -m cachalot.cli serve \
     --model "$CACHALOT_MODEL_PATH" \
     --expert-budget-gib 52 \

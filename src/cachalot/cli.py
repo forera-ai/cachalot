@@ -227,6 +227,14 @@ def cmd_serve(args) -> None:
         if args.default_top_p is None:
             args.default_top_p = model.generation_defaults().get("top_p", 1.0)
         engine = GlmEngine(model, model_id=args.model_id if args.model_id != "deepseek-v4.1-flash" else default_id)
+        glm_budget = _decode_miss_budget_from_env(os.environ, "CACHALOT_GLM_DECODE_MISS_BUDGET")
+        if glm_budget is not None and family == "glm":
+            # HANDOFF 18.106: opt-in approximation, off by default; a dropped expert is not computed and the kept
+            # ones are scaled to the layer's whole router mass
+            layers = model.set_decode_miss_budget(glm_budget)
+            print(f"GLM decode miss budget {glm_budget}: at most {glm_budget} non-resident experts are read per layer "
+                  f"in decode ({layers} MoE layers), the rest dropped (changes outputs; CACHALOT_GLM_DECODE_MISS_BUDGET)",
+                  file=sys.stderr, flush=True)
         trace_path = os.environ.get("CACHALOT_ROUTING_TRACE")
         if trace_path:
             # HANDOFF 18.92, 18.102: a routing trace saved when the server stops (MiniMax: experts only; GLM: also router weights and predicted sets)
@@ -300,15 +308,15 @@ def cmd_serve(args) -> None:
         model.close()
 
 
-def _decode_miss_budget_from_env(env) -> int | None:
-    """CACHALOT_DECODE_MISS_BUDGET: unset, empty, off, exact or negative is off; a non-negative integer is the per-layer cap."""
-    raw = str(env.get("CACHALOT_DECODE_MISS_BUDGET", "")).strip()
+def _decode_miss_budget_from_env(env, name: str = "CACHALOT_DECODE_MISS_BUDGET") -> int | None:
+    """CACHALOT_DECODE_MISS_BUDGET (GLM: CACHALOT_GLM_DECODE_MISS_BUDGET): unset, empty, off, exact or negative is off; a non-negative integer is the per-layer cap."""
+    raw = str(env.get(name, "")).strip()
     if not raw or raw.lower() in ("off", "exact"):
         return None  # serve.sh defaults to 0 (Hamed, 2026-10-05); "off" restores the exact path
     try:
         value = int(raw)
     except ValueError:
-        raise SystemExit(f"CACHALOT_DECODE_MISS_BUDGET must be an integer, got {raw!r}") from None
+        raise SystemExit(f"{name} must be an integer, got {raw!r}") from None
     return value if value >= 0 else None
 
 

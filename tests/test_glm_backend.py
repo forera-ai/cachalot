@@ -122,6 +122,7 @@ def test_stats_carry_the_store_counters():
     class Store:
         predicted_loads = 5
         predicted_used = 3
+        skipped_experts = 4
 
         def stats(self):
             return counters
@@ -135,3 +136,4 @@ def test_stats_carry_the_store_counters():
     assert (s["predicted_loads"], s["predicted_used"], s["resident_experts"]) == (5, 3, 42)
     assert (s["expert_reads"], s["expert_fast_reads"], s["ssd_bytes_read"]) == (12, 2, 4096)
     assert (s["decode_wait_seconds"], s["decode_waited_misses"], s["expert_read_busy_seconds"]) == (0.2, 7, 0.3)
+    assert s["skipped_experts"] == 4

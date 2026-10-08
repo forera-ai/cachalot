@@ -615,23 +615,28 @@ class GlmModel:
     def restore(snap: Snapshot) -> list:
         return _clone(snap.cache)
 
-    def set_tracer(self, tracer) -> int:
-        """Install (or remove, with None) a routing tracer on every streaming MoE layer; the layers installed.
-        MiniMax's GPU-select decode keeps its own routing loop and takes the tracer there too."""
-        self._tracer = tracer
+    def _retap_gates(self) -> None:
+        """Tap the router gate of every GLM MoE layer while a tracer or a decode miss budget needs its weights
+        (HANDOFF 18.102, 18.106); untap otherwise. MiniMax's layers are not Glm5NextMoE and stay as they are."""
         from cachalot.glm.experts import ScoreSink, tap_gate, untap_gate
 
-        # the router weights of each GLM MoE layer reach the switch module through a tapped gate (HANDOFF 18.102);
-        # MiniMax's layers are not Glm5NextMoE and stay as they are
+        want = getattr(self, "_tracer", None) is not None or getattr(self, "_decode_miss_budget", None) is not None
         for layer in getattr(self.model, "layers", ()):
             moe = getattr(layer, "mlp", None)
             if isinstance(moe, Glm5NextMoE) and isinstance(moe.switch_mlp, StreamingSwitchGLU):
                 untap_gate(moe.gate)
                 moe.switch_mlp.score_sink = None
-                if tracer is not None:
+                if want:
                     sink = ScoreSink()
                     tap_gate(moe.gate, sink)
                     moe.switch_mlp.score_sink = sink
+
+    def set_tracer(self, tracer) -> int:
+        """Install (or remove, with None) a routing tracer on every streaming MoE layer; the layers installed.
+        MiniMax's GPU-select decode keeps its own routing loop and takes the tracer there too."""
+        self._tracer = tracer
+        # the router weights of each GLM MoE layer reach the switch module through a tapped gate (HANDOFF 18.102)
+        self._retap_gates()
         n = 0
         for module in self.model.modules():
             if isinstance(module, StreamingSwitchGLU):
@@ -640,6 +645,20 @@ class GlmModel:
         decoder = getattr(self, "gpu_decoder", None)
         if decoder is not None:
             decoder.tracer = tracer
+        return n
+
+    def set_decode_miss_budget(self, max_misses: int | None) -> int:
+        """Opt-in approximation (HANDOFF 18.106), GLM decode only: per layer read at most `max_misses` non-resident
+        experts (highest router weight first), drop the rest and scale the kept outputs by total / kept router
+        weight. None restores exact inference. Changes outputs. Returns the layers it applies to."""
+        self._decode_miss_budget = None if max_misses is None else max(0, int(max_misses))
+        self._retap_gates()
+        n = 0
+        for layer in getattr(self.model, "layers", ()):
+            moe = getattr(layer, "mlp", None)
+            if isinstance(moe, Glm5NextMoE) and isinstance(moe.switch_mlp, StreamingSwitchGLU):
+                moe.switch_mlp.miss_budget = self._decode_miss_budget
+                n += 1
         return n
 
     def _forward(self, tokens: list[int], cache) -> mx.array:

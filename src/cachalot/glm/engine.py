@@ -429,4 +429,6 @@ class GlmEngine:
             "expert_read_busy_seconds": s.read_busy_seconds,
             "decode_wait_seconds": s.decode_wait_seconds,
             "decode_waited_misses": s.decode_waited_misses,
+            # experts a GLM decode miss budget dropped (0.62.14; always 0 with the budget off)
+            "skipped_experts": store.skipped_experts,
         }

@@ -213,6 +213,11 @@ class StreamingSwitchGLU(nn.Module):
     tracer = None
     # a ScoreSink fed by the layer's tapped gate while a tracer is installed (GlmModel.set_tracer), else None
     score_sink = None
+    # decode miss budget (HANDOFF 18.106, opt-in approximation, changes outputs): per layer, read at most this many
+    # non-resident experts (highest router weight first), drop the rest and scale the kept experts' outputs by
+    # total / kept router weight, the DeepSeek rule (18.59). None is exact. Set by GlmModel.set_decode_miss_budget,
+    # which also taps the gate so the weights reach the sync that reads the indices.
+    miss_budget = None
 
     def _trace(self, routes, n_tokens: int, k: int, weights=None, predicted=None) -> None:
         """Record this layer's routes, their router weights when the tap supplied them, and (decode) the predictor's
@@ -277,7 +282,8 @@ class StreamingSwitchGLU(nn.Module):
         p_idx = p_w = None
         # the router weights of this layer, only while a tracer is installed: evaluated in the sync that reads the
         # indices anyway (a separate eval would be a second GPU round trip)
-        scores = self.score_sink.scores if self.tracer is not None and self.score_sink is not None else None
+        budgeted = self.miss_budget is not None and flat_x.shape[0] == 1 and self.score_sink is not None
+        scores = self.score_sink.scores if (self.tracer is not None or budgeted) and self.score_sink is not None else None
         extra = [] if scores is None else [scores]
         if PREDICT_TOPK > 0 and self.predict is not None and flat_x.shape[0] == 1 and prefetch is None:
             pred = self.predict(flat_x, PREDICT_TOPK)
@@ -319,8 +325,16 @@ class StreamingSwitchGLU(nn.Module):
                         mx.async_eval(*early.values())
 
             after = None if PREDICT_AFTER_DEMAND < 0 else bool(PREDICT_AFTER_DEMAND)
+            budget_kwargs = {}
+            if budgeted and scores is not None:
+                route_w = np.array(scores).astype(np.float32).reshape(-1)
+                if route_w.size == routes.size:
+                    # priorities by entry, in `experts` order: a repeated route id cannot happen in decode (top-k is distinct)
+                    by_id = dict(zip(routes.tolist(), route_w.tolist()))
+                    budget_kwargs = {"max_misses": self.miss_budget, "priorities": [by_id[int(e)] for e in experts]}
             residents = self._store.get_many(
                 entries,
+                **budget_kwargs,
                 prefetch=pred_entries if pred_entries is not None else prefetch,
                 prefetch_limit=(PREDICT_LIMIT or None) if pred_entries is not None else None,
                 prefetch_after=after if pred_entries is not None else None,
@@ -331,9 +345,19 @@ class StreamingSwitchGLU(nn.Module):
             # row gathers (the same matmuls on the same row, bit-identical)
             by_expert = dict(zip(experts.tolist(), residents))
             outputs = []
+            dropped = [e for e in routes.tolist() if by_expert[e] is None]
+            if dropped:
+                # budget mode: a dropped expert contributes zero, the kept ones carry the layer's whole router mass
+                w_of = dict(zip(routes.tolist(), np.array(scores).astype(np.float32).reshape(-1).tolist()))
+                kept_sum = sum(w for e, w in w_of.items() if by_expert[e] is not None) or 1.0
+                factor = sum(w_of.values()) / kept_sum
             for e in routes.tolist():
+                if by_expert[e] is None:
+                    outputs.append(mx.zeros((1, dim), dtype=flat_x.dtype))
+                    continue
                 out = early.get(e)
-                outputs.append(out if out is not None else self._expert_out(flat_x, by_expert[e].slot))
+                out = out if out is not None else self._expert_out(flat_x, by_expert[e].slot)
+                outputs.append(out * factor if dropped else out)
             y = mx.concatenate(outputs, axis=0).reshape(*shape[:-1], k, dim)
             if self.decode_eval:
                 mx.eval(y)
