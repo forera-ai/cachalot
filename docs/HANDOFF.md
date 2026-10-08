@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-08, 0.62.8): a longer GLM trace
+>
+> Section 18.100. Hamed: "go, record a longer GLM trace" (confirmed after the estimate). Six dumped Hermes requests, cap 400, 748 decode tokens, 34.5 minutes. GLM excess 17.3 points (three traces: 17.3-20.0). Shared conversation, long traces: DeepSeek 36.1 > MiniMax 21.0 > GLM 17.3. `cache_sim.py` within 1 % of live. Files local only: `benchmarks/results/routing-trace-glm-long/`.
+>
 > ## Start here (2026-10-08, 0.62.7): a longer DeepSeek trace
 >
 > Section 18.99. Hamed: "go, record a longer DeepSeek trace". The same Hermes conversation as the MiniMax replays, cap 600, 2,028 decode tokens, 7 minutes. DeepSeek excess 36.1 points (four traces: 34.7-40.3) against MiniMax 21.0 on the same conversation. `cache_sim.py` within 1 % of live. Files local only: `benchmarks/results/routing-trace-deepseek-long/`.
@@ -8882,6 +8886,27 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.100 A longer GLM trace — 2026-10-08 (0.62.8)
+
+**Goal.** Hamed: "go, record a longer GLM trace", then "confirm" after the estimate (about 40 minutes, up to 50), and a question about the expected outcome. Tighten GLM's skew number, the noisiest of the series (229 tokens).
+
+**Prediction (before, stated to Hamed).** About 900 decode tokens and an excess of 19-20 points within +-2; a value outside 17-23 would mean the 229-token trace could not be trusted. **Result against it:** 748 tokens (fewer: four replies stopped at 11-49 tokens), excess 17.3, at the lower edge of the band; the earlier value (20.0) was about 2.7 points high, which the 229-token trace's own bootstrap (+-1.5) did not cover.
+
+**Method.** `benchmarks/results/routing-trace-glm-long/` (gitignored): `source-requests.jsonl` (the 0.61.12 GLM Hermes dump), `replay_agent.py` (rows 0, 1, 4, 6, 8, 10; cap 400; the dump's temperature 0.7), `replay.log`, `server.log`, `trace.npz`. `CACHALOT_ROUTING_TRACE=... ./serve-glm.sh --expert-budget-gib 46`, bank on the X10Pro, sysctl 88064, swap 2.8 GB, display on; the saved 21,063-token snapshot reused (request 1 in 32.6 s). Stopped by SIGINT. Not a speed baseline.
+
+**Result (measured).**
+- Wall: 11:53 to 12:27, 34.5 minutes. Prefill 13 s, 27 s, 22 s, 354 s (the 2,738-token tool result), 174 s (217 tokens), 208 s (304 tokens); decode 19 s, 4 s, 73 s, 84 s, 314 s (240 tokens), 787 s (400 tokens, the cap).
+- Rows: 748 decode tokens x 42 layers = (11 - 1) + (11 - 1) + (42 - 1) + (49 - 1) + (240 - 1) + 400, the usual convention.
+- **Skew.** Busiest 10 % (29 of 288): 31.4 % of a layer's decode routes; null at 748 tokens 14.0 %; excess 17.3 points, layer bootstrap 15.8-18.9. The other GLM traces with the same script and seed: agent conversation (229 tokens) 20.0 [18.4, 21.5], cold prompts (347) 19.2 [17.4, 20.9]. Spread over three traces: 17.3-20.0, 2.7 points, of the order of the +-1.5 bootstrap. The longest trace has the lowest value, as expected if short traces overstate concentration beyond what the null corrects (few draws per expert make the busiest 10 % of the observed counts, not of the true rates, and the uniform null is only an approximate correction because real routing is not uniform).
+- **Table, excess over uniform, points.** Cold prompts / Hermes conversation (longest trace per cell): DeepSeek 34.7 / 36.1, MiniMax 25.5 / 21.0, GLM 19.2 / 17.3. DeepSeek is 9-15 points above MiniMax and 16-19 above GLM; MiniMax is 4-6 above GLM; the ordering DeepSeek > MiniMax > GLM holds on both workloads.
+- Live: 102.2 misses a token, 69.3 % hit over the 748 tokens (per request 105.7 / 16.8 / 104.5 / 101.4 / 80.2 / 117.2), decode 0.51-0.76 tok/s (1.3-2.0 s a token), the slowest on the last 400-token reply (0.51 tok/s, 1.97 s a token, at a 65 % hit rate; unexplained beyond that, one request). `cache_sim.py` at 3,488 slots: 103.1 misses and 69.3 %: within 1 %. Simulator error for GLM across traces: -3 % to +1 % (within 5 % on all three).
+
+**What it settles.** GLM's number is 17-20, not exactly 19-20; the ordering of the three models is robust to trace length and workload on all measured cells. The cause of the ordering is not addressed.
+
+**Kind.** Measurement. No default, output or numerics changed.
+
+**Open.** A second, different Hermes conversation per model (needs a live session with `CACHALOT_SERVER_DUMP`); weights and predicted sets for MiniMax and GLM (device read per layer, price first); a real null for the share (the uniform null is a floor on what real routing would give). **Needs Hamed:** a yes for any further recording.
 
 ### 18.99 A longer DeepSeek trace on the MiniMax conversation — 2026-10-08 (0.62.7)
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.62.8 (2026-10-08)
+
+HANDOFF "Start here (2026-10-08, 0.62.8)" and section 18.100. Measurement only; nothing in `src/` besides the version string changed.
+
+### Measured
+- A longer GLM-5.3-Flash trace on the same Hermes conversation (six dumped requests of the 0.61.12 session, decode cap raised from 60 to 400, `serve-glm.sh` at 46 GiB with the bank): **748 decode tokens** over 42 layers, 3.3 times the last GLM trace, in 34.5 minutes (estimate 40, up to 50). The busiest 10 % of experts (29 of 288) carry 31.4 % of a layer's decode routes against 14.0 % for uniform routing: excess 17.3 points (layer bootstrap 15.8-18.9). The two earlier GLM traces gave 20.0 (229 tokens) and 19.2 (347): GLM spans 17.3-20.0 across three traces, the new one at the low end. The model ordering on the shared conversation is unchanged and now rests on a long trace for each: DeepSeek 36.1 > MiniMax 21.0 > GLM 17.3 points.
+- Live GLM over the six requests: 102.2 misses a token, hit 69.3 %, 0.51-0.76 tok/s; `cache_sim.py` at 46 GiB says 103.1 and 69.3 %: within 1 %.
 ## 0.62.7 (2026-10-08)
 
 HANDOFF "Start here (2026-10-08, 0.62.7)" and section 18.99. Measurement only; nothing in `src/` besides the version string changed.
