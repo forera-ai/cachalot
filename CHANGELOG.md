@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.62.5 (2026-10-08)
+
+HANDOFF "Start here (2026-10-08, 0.62.5)" and section 18.97. Measurement only; nothing in `src/` besides the version string changed.
+
+### Measured
+- GLM-5.3-Flash on an agent conversation: six dumped Hermes bodies of the 0.61.12 session (the "Hi", a tool call, the listing, the 2.7k-token tool result and two follow-ups; 21-24k tokens of context, 25 tools) replayed through `serve-glm.sh` at 46 GiB with the bank, 60 tokens a request, 229 decode tokens over 42 layers, 28 minutes. The saved 21,063-token system-block snapshot was reused (request 1: 32 s instead of the 39.7 cold minutes). The busiest 10 % of experts (29 of 288) carry 37.4 % of a layer's decode routes against 17.6 % for uniform routing at that length (excess 19.8 points, 2.1x). On cold prompts the same model read 19.2 points: **for GLM the workload does not change the concentration** (MiniMax moved +4 points between the same two workloads). The model-by-workload table has no empty cell left except DeepSeek and MiniMax on more conversations.
+- Live GLM over the six requests: 97.8 misses a token, hit 70.3 %, 0.58-0.64 tok/s on the long ones; `cache_sim.py` at 46 GiB says 100.3 and 70.1 %: within 3 %.
 ## 0.62.4 (2026-10-08)
 
 HANDOFF "Start here (2026-10-08, 0.62.4)" and section 18.96. Measurement only; nothing in `src/` besides the version string changed.

@@ -295,6 +295,8 @@ reproducible to ±0.3 %.
 
 **0.60.7 (2026-10-06): review fixes.** The run manifest no longer records credentials such as `CACHALOT_API_KEY` by value, and its Hermes Desktop check needs one process line. HANDOFF section 18.73.
 
+**0.62.5 (2026-10-08): GLM on an agent conversation.** Replaying six dumped Hermes requests (21-24k context) through `serve-glm.sh`: GLM's routing concentration is the same as on cold prompts (excess over uniform routing 19.8 against 19.2 points), so the ordering DeepSeek > MiniMax > GLM does not depend on the workload for GLM; `cache_sim.py` is within 3 % of the live run. HANDOFF section 18.97.
+
 **0.62.4 (2026-10-08): MiniMax on the same cold prompts.** On the eight cold prompts all three models got, the excess of the busiest 10 % of experts' routing share over uniform routing is DeepSeek 34.6 points, MiniMax 25.6, GLM 19.2: three levels, in that order. (0.62.2 had called MiniMax and GLM alike; that compared different workloads.) HANDOFF section 18.96.
 
 **0.62.3 (2026-10-08): DeepSeek on the same cold prompts.** On the eight short cold prompts that GLM got, DeepSeek's busiest 10 % of experts carry 50.6 % of a layer's decode routes, GLM's 35.2 %; against uniform routing at each length (16 %), the excess is 34.6 against 19.2 points. So the gap in routing concentration is not an effect of Hermes conversations against toy prompts. HANDOFF section 18.95.

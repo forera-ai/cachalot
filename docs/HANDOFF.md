@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-08, 0.62.5): GLM on an agent conversation
+>
+> Section 18.97. Hamed: "go, record the GLM trace on an agent conversation". Six dumped Hermes bodies, 229 decode tokens, 46 GiB, 28 minutes (the saved 21,063-token snapshot saved 40). GLM excess over uniform 19.8 points on the agent conversation, 19.2 on cold prompts: GLM is workload-insensitive here. `cache_sim.py` within 3 % of live. Files local only: `benchmarks/results/routing-trace-glm-agent/`.
+>
 > ## Start here (2026-10-08, 0.62.4): MiniMax on the same cold prompts
 >
 > Section 18.96. Hamed: "go, record the MiniMax trace on the same cold prompts". 560 decode tokens, router's own picks, 2.5 minutes. Excess over a uniform null on identical prompts: DeepSeek 34.6, MiniMax 25.6, GLM 19.2 points. **Correction:** 0.62.2's "MiniMax and GLM are alike" mixed workloads; on the same prompts they differ by 6 points. Files local only: `benchmarks/results/routing-trace-minimax-cold/`.
@@ -8870,6 +8874,36 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.97 GLM on an agent conversation — 2026-10-08 (0.62.5)
+
+**Goal.** Hamed: "go, record the GLM trace on an agent conversation" (§18.96's open item, the last empty cell). Estimate given: about 17-20 minutes plus a stated risk (a snapshot miss would turn request 1 into the 40-minute cold prefill). Actual 28 minutes: the 2.7k-token tool result prefilled in 369 s and the two follow-ups at 24k context took 181-185 s of prefill each, more than my estimate of 40 s each.
+
+**Prediction (before).** GLM's concentration on a Hermes conversation is within a few points of its cold-prompt value (19.2); a workload effect like MiniMax's +4 would put it near 23. Falsifier: an excess outside 15-24.
+
+**Method.** `benchmarks/results/routing-trace-glm-agent/` (gitignored): `source-requests.jsonl` (the 0.61.12 GLM Hermes dump), `replay_agent.py` (rows 0, 1, 4, 6, 8, 10 of the dump, non-streaming, `max_tokens` 60, the dump's temperature 0.7 and 25 tools), `replay.log`, `server.log`, `trace.npz`. `CACHALOT_ROUTING_TRACE=... ./serve-glm.sh --expert-budget-gib 46`, bank on the X10Pro, sysctl 88064, swap 2.3 GB, display on. Server stopped by SIGINT. Not a speed baseline.
+
+**Result (measured).**
+- Request 1 reused 21,063 of 21,068 tokens from the saved disk snapshot (prefill 13.5 s, 32 s total). Prefill of the later requests: 26 s (24 new tokens), 22 s (19), 369 s (2,738, the tool result), 181 s (217), 185 s (304). The two last ones are slower per token than §18.90's live 25 s for 18 tokens and 48 s for 34 tokens, because those two have 217 and 304 new tokens.
+- Rows: 138,894 prefill and 9,618 decode = 229 decode tokens x 42 layers (layers 3-44). The completion tokens are 11 + 11 + 42 + 49 + 60 + 60 = 233 and the four requests that stopped on their end token have one decode forward fewer: 229, exact.
+- **Skew.** Busiest 10 % (29 of 288): 37.4 % of a layer's decode routes; uniform null at 229 tokens 17.6 %; excess 19.8 points, 2.1x. GLM on cold prompts: 35.2 % against 16.0 %, excess 19.2. Same model, a 20k-context agent conversation against toy prompts: no change. MiniMax moved +4 points and DeepSeek -3 to -5 points over the same pair of workloads, so the workload effect is small in all three and not the same sign. With 229 tokens the null itself is noisy to about +-1 point; the comparison is good to ~2 points.
+- Live: 97.8 misses a token, 70.3 % hit (per request 104.8 / 16.8 / 104.4 / 101.4 / 99.7 / 100.9 misses; the 11-token tool-call reply with 16.8 misses re-used the experts of the one before), decode 0.58-0.64 tok/s on the long ones (1.6-1.7 s a token). `cache_sim.py` at 3,488 slots: 100.3 misses and 70.1 %: within 3 %.
+
+**Table, excess over the uniform null, in points.**
+
+| model | cold prompts | agent conversation |
+|---|---|---|
+| DeepSeek | 34.6 | 37-40 |
+| MiniMax | 25.6 | 21.4 |
+| GLM | 19.2 | 19.8 |
+
+DeepSeek > MiniMax > GLM on both workloads; each cell is one trace.
+
+**Caveats.** 229 decode tokens is the shortest of the traces; the six requests are one conversation's opening (a "Hi", a tool call, a listing, follow-ups). The workload shifts of a few points are inside what one trace can resolve for DeepSeek and MiniMax; the ordering is outside it (6-15 points between models). The cause stays a hypothesis (§18.96).
+
+**Kind.** Measurement. No default, output or numerics changed.
+
+**Open.** Longer traces per model; a simulator store with decode prefetch and MiniMax's real store; DeepSeek on more than one conversation. **Needs Hamed:** a yes for any further recording.
 
 ### 18.96 MiniMax on the same short cold prompts — 2026-10-08 (0.62.4)
 
