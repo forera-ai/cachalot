@@ -297,6 +297,8 @@ reproducible to ±0.3 %.
 
 **0.60.7 (2026-10-06): review fixes.** The run manifest no longer records credentials such as `CACHALOT_API_KEY` by value, and its Hermes Desktop check needs one process line. HANDOFF section 18.73.
 
+**0.62.17 (2026-10-08): the `LICENSE` copyright holder is forera.ai** (MIT text unchanged).
+
 **0.62.16 (2026-10-08): the repository moved to [forera-ai/cachalot](https://github.com/forera-ai/cachalot).** Owner and maintainer are now the forera-ai organisation; no code changed.
 
 **0.62.15 (2026-10-08): GLM miss budget, teacher-forced quality.** On three texts a GLM decode miss budget of 4 stays inside GLM's own prefill-against-decode spread (KL 0.010, token -8 to -12 %) and a budget of 2 costs KL 0.024 for -33 % of the token; budget 0 is clearly worse (dNLL +0.12). Free-running quality is not measured and no default changed. HANDOFF section 18.107.

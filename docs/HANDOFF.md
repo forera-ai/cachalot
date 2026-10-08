@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-08, 0.62.17): the copyright holder is forera.ai
+>
+> Hamed: "change the copyright to forera.ai and contributers". `LICENSE` now reads "Copyright (c) 2026 forera.ai and Cachalot contributors" (MIT text unchanged). `pyproject.toml` `authors` is still Hamed Prooshani. Open work is unchanged: 0.62.15's arm 2 and the budget default.
+>
 > ## Start here (2026-10-08, 0.62.16): the repository moved to forera-ai
 >
 > Hamed transferred the repository to `https://github.com/forera-ai/cachalot` (profile `https://github.com/forera-ai`). The local `origin` now points there; README, `pyproject.toml` and `CONTRIBUTING.md` name forera-ai as owner and maintainer. Unchanged on purpose: the `LICENSE` copyright holder, the `authors` field, and the Cachalot Lab repository (`prooshani/cachalot-lab`). Nothing else in 0.62.16; the open work is 0.62.15's arm 2 and the budget default.

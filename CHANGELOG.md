@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.62.17 (2026-10-08)
+
+Metadata only; nothing in `src/` besides the version string changed.
+
+### Changed
+- The `LICENSE` copyright line reads "Copyright (c) 2026 forera.ai and Cachalot contributors" (was Hamed Prooshani). The licence text (MIT) is unchanged. The `authors` field in `pyproject.toml` is unchanged.
+
 ## 0.62.16 (2026-10-08)
 
 Repository move; documentation and metadata only, nothing in `src/` besides the version string changed.
