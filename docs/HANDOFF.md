@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-08, 0.62.13): GLM prefetch off against K = 5, live
+>
+> Section 18.105. Hamed: "go, run the live GLM prefetch-off arm", then "write up the comparison". One back-to-back pair on the Hermes replay: **off 1.615 s a token, K = 5 1.727 (off -6.5 %)**, misses a token equal; with 0.61.1's pair both favour off by 3-9 %. Each is inside drift and the order was off first, so `serve-glm.sh` keeps K = 5: **your call whether to default `CACHALOT_GLM_PREDICT_TOPK=0` (outputs unchanged) or to run an ABBA pair first (about 2.3 hours).** The simulator's loads match the live counters.
+>
 > ## Start here (2026-10-08, 0.62.12): a simulator store with decode prefetch
 >
 > Section 18.104. Hamed: "go, build the simulator store with decode prefetch". `cache_sim.py --prefetch-gates` now replays predicted sets through the store's prefetch rule for any model (loads, use, waste, reads a token, a bytes-over-rate bound). It reproduces the DeepSeek prefetch pricing (23.2 misses, 43.7 reads against the measured 23.5 and 45.6) and shows GLM's shipped prefetch reading 126 experts a token against 107 with it off; no router-weight gate beats off on exact outputs. A bug that merged requests sharing a decode segment is fixed (one old DeepSeek trace changed, 37.4 -> 23.2 misses a token). Nothing needs you; a GLM drop rule is still your call.
@@ -8902,6 +8906,45 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.105 GLM decode prefetch off against K = 5, live — 2026-10-08 (0.62.13)
+
+**Goal.** Hamed: "go, run the live GLM prefetch-off arm", then "write up the comparison when arm 2 finishes" (the open item of §18.104). Price GLM's shipped K = 5 next-layer prefetch against prefetch off on one workload in one session, and check the 0.62.12 simulator's loads figure against live counters.
+
+**Prediction (before).** From §18.104 and GLM-PRED-USB: off is faster by 0-10 % at 1 GB/s (the simulator's bytes-over-rate bound said 18 % and overstates; the 0.61.1 pair said -3 to -4 %), misses a token equal, and the live predicted loads a decode token within 15-25 % of the simulator's 61.5 at 68 % used. Falsifier: K = 5 faster than off by more than drift, or loads more than 25 % from the simulator.
+
+**Method.** `benchmarks/results/glm-prefetch-ab/` (gitignored): `replay_agent.py` and `source-requests.jsonl` (the §18.100 inputs: rows 0, 1, 4, 6, 8, 10 of the 0.61.12 Hermes dump, cap 400, temperature 0.7), `server-off.log`, `server-on.log`, `replay-off.log`, `replay-on.log`. Arm A: `CACHALOT_GLM_PREDICT_TOPK=0 ./serve-glm.sh --expert-budget-gib 46`, started 16:52; arm B: the same without the variable, started 17:30. Untraced, bank on the X10Pro, sysctl 88064, display on, the saved 21,063-token snapshot reused. Arm A confirmed off by `/v1/stats` (`predicted_loads` 0). Sequential, one server at a time, each stopped by SIGINT. Swap grew 4.8 GiB (before arm A) to 9.3 GiB (after arm A) and read 9.0 GiB after arm B, a state worse than §18.103's 3.4 GiB. Arm A's saved snapshots made arm B's prefills different (not compared). Completions are sampled (0.7), so token counts differ in two requests (254 against 290 tokens, 285 in §18.103).
+
+**Result (measured; n = 1 pair, off run first).**
+
+| request (completion tokens) | off s/token | K = 5 s/token | off vs K = 5 | miss/tok off / K = 5 |
+|---|---:|---:|---:|---:|
+| 11 (first, warm set) | 1.400 | 1.383 | +1 % | 103.6 / 83.3 |
+| 11 (short follow-up) | 0.385 | 0.475 | -19 % | 21.5 / 21.8 |
+| 42 | 1.653 | 1.728 | -4.3 % | 105.9 / 103.2 |
+| 49 | 1.573 | 1.734 | -9.3 % | 101.4 / 101.4 |
+| 254 / 290 | 1.269 | 1.314 | -3.4 % | 79.6 / 80.6 |
+| 400 | 1.876 | 2.069 | -9.3 % | 121.0 / 122.7 |
+| **all 6 requests** | **1.615** (1,238.6 s, 767 tokens) | **1.727** (1,386.6 s, 803) | **-6.5 %** | 104.7 / 104.7 (requests of 40+ tokens) |
+
+- Store wait per token (all counters, prefill included): off 1.482 s, K = 5 1.585 s (-6.5 %). Bytes read over each run: 1,665 GB against 1,934 GB (+16 % with K = 5, prefill included).
+- K = 5 counters: 47,691 predicted loads over 803 decode tokens = **59.4 a token, 67.6 % used, 19.3 unused**. The simulator said 61.5, 68 %, 19.5: within 3.5 %. §18.104's 15-25 % gap was a different workload (GLM-PRED-USB's mixed prompts), not a simulator error.
+- Four of four requests of 40+ tokens are faster with prefetch off (3.4 to 9.3 %); the two shortest follow-ups are noise-sized (0.4 s tokens).
+- Compared with the simulator: its bound said prefetch costs +18 % on the token (1,786 against 1,509 ms); live it cost +6.9 % (1.727 against 1.615 s). Prefetch hides part of its extra reads; the bound is a ceiling on the loss, as 18.104 said.
+
+**Against the prediction.** Held: off faster by 6.5 %, misses equal, loads within 3.5 %.
+
+**Explanation.** Only the drive matters for GLM at 1 GB/s (91 % of a token is read wait, §18.86): K = 5 adds 19 unused loads a token (about 270 MB) to a pipe that is already the bottleneck, and the used 40 loads a token it starts early save less wait than the unused ones cost. DeepSeek on the same drive shows the same sign with a lower precision (35-40 %, -11 to -18 %).
+
+**Limits.** One pair, off first, so thermal and swap drift can favour either; the machine's drift is up to 16 % (DS-DRIFT-AGE) and this effect is below it. Different completions at 0.7 temperature. The 0.61.1 pair (-4.4 %, -3.3 %) agrees in sign and size, which is the evidence beyond drift; neither pair alone is. Not ABBA.
+
+**What it settles and what it does not.** Settles: the simulator's loads figure on GLM; that K = 5 does not help at 1 GB/s on this workload (two pairs, both on the off side). Does not settle: that off is faster by 6.5 % (3 to 9 % is the honest range), or what happens on a faster drive (the internal copy is gone).
+
+**Bottleneck after.** Unchanged: the 1 GB/s drive. Turning prefetch off would move about 6 % of a GLM token, which is below any other open lever.
+
+**Kind.** Research (predicted, measured, explained); a default is not changed.
+
+**Open.** Whether to default `CACHALOT_GLM_PREDICT_TOPK=0` in `serve-glm.sh` (outputs unchanged; speed default) or to run an ABBA pair first (two more arms, about 2.3 hours at this speed). **Needs Hamed:** that call. The GLM drop rule is still his.
 
 ### 18.104 A simulator store with decode prefetch — 2026-10-08 (0.62.12)
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.62.13 (2026-10-08)
+
+HANDOFF "Start here (2026-10-08, 0.62.13)" and section 18.105. Measurement only; nothing in `src/` besides the version string changed.
+
+### Measured
+- **GLM decode prefetch off against the shipped K = 5, one live pair on the same Hermes replay** (`serve-glm.sh --expert-budget-gib 46`, bank on the X10Pro, untraced, six dumped requests at cap 400, run back to back, off first): decode **1.615 s a token with prefetch off against 1.727 with K = 5 (-6.5 %)**; per request, the four requests of 42 tokens or more are faster with it off by 4.3 / 9.3 / 3.4 / 9.3 %; misses a token are the same (104.7 on both arms' long requests). Together with 0.61.1's pair (-4.4 % mixed, -3.3 % repeats) both pairs favour off by 3-9 %; each is inside the machine's drift (up to 16 %) on its own, and this pair ran off first, so order is not balanced. Not a default change.
+- The store counters of the K = 5 arm agree with the 0.62.12 simulator: 59.4 predicted loads a decode token at 67.6 % used, 19.3 unused (replay: 61.5, 68 %, 19.5). Bytes read over a whole run (prefill included) were 16 % higher with K = 5. The simulator's bytes-over-rate bound said +18 % on the token; the live token was +6.9 %: prefetch hides part of its extra reads.
+
 ## 0.62.12 (2026-10-08)
 
 HANDOFF "Start here (2026-10-08, 0.62.12)" and section 18.104. Instrument and a fix to an offline instrument; nothing in `src/` besides the version string changed.
