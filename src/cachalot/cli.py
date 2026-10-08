@@ -229,12 +229,14 @@ def cmd_serve(args) -> None:
         engine = GlmEngine(model, model_id=args.model_id if args.model_id != "deepseek-v4.1-flash" else default_id)
         trace_path = os.environ.get("CACHALOT_ROUTING_TRACE")
         if trace_path:
-            # HANDOFF 18.92: an unweighted routing trace (experts only, no device read), saved when the server stops
+            # HANDOFF 18.92, 18.102: a routing trace saved when the server stops (MiniMax: experts only; GLM: also router weights and predicted sets)
             from cachalot.metrics.routing_trace import RoutingTracer
 
             tracer = RoutingTracer()
             layers = model.set_tracer(tracer)
-            print(f"routing trace on: {trace_path} ({layers} streaming MoE layers; saved at exit; no router weights)",
+            extras = ("router weights and the predictor's next-layer sets; weights add one output to each layer's sync"
+                      if family == "glm" else "no router weights")
+            print(f"routing trace on: {trace_path} ({layers} streaming MoE layers; saved at exit; {extras})",
                   file=sys.stderr, flush=True)
             if family == "minimax":
                 from cachalot.minimax import gpu_select

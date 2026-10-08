@@ -158,6 +158,40 @@ PREDICT_AFTER_DEMAND = int(os.environ.get("CACHALOT_GLM_PREDICT_AFTER_DEMAND", "
 DECODE_ASYNC_OUT = int(os.environ.get("CACHALOT_DECODE_ASYNC_OUT", "0"))
 
 
+class ScoreSink:
+    """Holds the router weights of the gate that was last called (a plain object, so it stays out of the module tree)."""
+
+    __slots__ = ("scores",)
+
+    def __init__(self) -> None:
+        self.scores = None
+
+
+def tap_gate(gate, sink: ScoreSink) -> None:
+    """Make `gate` leave its second output (the router weights) in `sink` each time it is called; the weights are
+    the same lazy array the MoE block uses, so tapping them adds no op and no result changes. Swaps the instance's
+    class for a subclass that only overrides __call__, so the parameter tree is untouched (HANDOFF 18.102)."""
+    base = type(gate)
+
+    class Tapped(base):
+        def __call__(self, *args, **kwargs):
+            out = super().__call__(*args, **kwargs)
+            self._sink.scores = out[1]
+            return out
+
+    Tapped.__name__ = Tapped.__qualname__ = base.__name__
+    Tapped._tap_base = base
+    gate._sink = sink
+    gate.__class__ = Tapped
+
+
+def untap_gate(gate) -> None:
+    base = getattr(type(gate), "_tap_base", None)
+    if base is not None:
+        gate.__class__ = base
+        del gate._sink
+
+
 class StreamingSwitchGLU(nn.Module):
     """Routed experts of one GLM MoE layer, read on demand into the shared expert store."""
 
@@ -177,10 +211,22 @@ class StreamingSwitchGLU(nn.Module):
     # a RoutingTracer (cachalot.metrics.routing_trace) or None; set by GlmModel.set_tracer. The routes it records
     # are the host array this call already read, so tracing adds no device read and no GPU round trip.
     tracer = None
+    # a ScoreSink fed by the layer's tapped gate while a tracer is installed (GlmModel.set_tracer), else None
+    score_sink = None
 
-    def _trace(self, routes, n_tokens: int, k: int) -> None:
+    def _trace(self, routes, n_tokens: int, k: int, weights=None, predicted=None) -> None:
+        """Record this layer's routes, their router weights when the tap supplied them, and (decode) the predictor's
+        next-layer set, best first."""
         phase = self.tracer.forced_phase or ("decode" if n_tokens == 1 else "prefill")
-        self.tracer.record_next(phase, self._layer, routes.reshape(n_tokens, k))
+        if weights is not None and weights.size != routes.size:
+            weights = None  # never let a shape surprise break a request
+        self.tracer.record_next(phase, self._layer, routes.reshape(n_tokens, k),
+                                None if weights is None else weights.reshape(n_tokens, k))
+        if predicted is not None and phase == "decode":
+            p_idx, p_w = predicted
+            order = np.argsort(-p_w, kind="stable")
+            self.tracer.record_predicted(self._layer, self._layer + 1, p_idx[order], p_w[order],
+                                         position=self.tracer.last_position("decode", self._layer))
 
     def _qmm(self, x, slot, proj):
         w, s, b, *lut = _typed(slot, self._fmt, proj)
@@ -228,15 +274,24 @@ class StreamingSwitchGLU(nn.Module):
         # syncs on the router; the cast is done on the host, because a cast in MLX is a new op and costs a
         # second GPU round trip when the routing was already evaluated (HANDOFF 18.1: 17 ms per MiniMax token)
         pred_entries = None
+        p_idx = p_w = None
+        # the router weights of this layer, only while a tracer is installed: evaluated in the sync that reads the
+        # indices anyway (a separate eval would be a second GPU round trip)
+        scores = self.score_sink.scores if self.tracer is not None and self.score_sink is not None else None
+        extra = [] if scores is None else [scores]
         if PREDICT_TOPK > 0 and self.predict is not None and flat_x.shape[0] == 1 and prefetch is None:
             pred = self.predict(flat_x, PREDICT_TOPK)
             if pred is not None:
-                mx.eval(indices, *pred)  # one sync for this layer's routing and the next layer's prediction
+                mx.eval(indices, *pred, *extra)  # one sync for this layer's routing and the next layer's prediction
+                extra = []
                 p_idx, p_w = np.array(pred[0]).reshape(-1), np.array(pred[1]).astype(np.float32).reshape(-1)
                 pred_entries = [self._index[(self._layer + 1, int(e))] for e in p_idx[np.argsort(-p_w, kind="stable")]]
+        if extra:
+            mx.eval(indices, *extra)
         routes = np.array(indices).reshape(-1).astype(np.int32)
         if self.tracer is not None:
-            self._trace(routes, flat_x.shape[0], k)
+            weights = None if scores is None else np.array(scores).astype(np.float32)
+            self._trace(routes, flat_x.shape[0], k, weights, None if p_idx is None else (p_idx, p_w))
         order = np.argsort(routes, kind="stable")
         experts, starts = np.unique(routes[order], return_index=True)
         ends = np.append(starts[1:], len(order))

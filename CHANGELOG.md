@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.62.10 (2026-10-08)
+
+HANDOFF "Start here (2026-10-08, 0.62.10)" and section 18.102. Instrument only; off unless `CACHALOT_ROUTING_TRACE` is set; no output, speed default or numerics changed.
+
+### Added
+- A GLM routing trace (`CACHALOT_ROUTING_TRACE=<file> ./serve-glm.sh`) now also records each layer's **router weights** and, in decode, the predictor's **next-layer set with its weights** (the same files `pred_gate_table.py` and `cache_sim.py --taus` read). The weights reach `StreamingSwitchGLU` through a tapped gate (`tap_gate`, a subclass swap that only stores the gate's own output; bit-identical outputs checked on a real `MoEGate`; parameter tree unchanged) and ride in the sync that already reads the indices (priced in 0.62.9: ~43 us a layer in isolation, 0.1 % of a token). The predicted set is already a host array there, so it costs nothing. MiniMax's trace is unchanged (experts only).
+- `predicted_used_mask` finds decode-token boundaries from the layer stopping to ascend instead of from layer 0, so it works for GLM and MiniMax (first MoE layer 3); DeepSeek traces give the same result (tests).
+- `RoutingTracer.record_next(..., weights)` and `last_position`. Four tests, including one through the real `StreamingSwitchGLU.__call__` path with a stub store.
+
+### Not done
+- Not run on a model: it needs the machine and Hamed's yes (a recording of 25-35 minutes). No `tau` lever is built or proposed; one would be output-changing.
 ## 0.62.9 (2026-10-08)
 
 HANDOFF "Start here (2026-10-08, 0.62.9)" and section 18.101. Pricing only: one instrument added, nothing in `src/` besides the version string changed.

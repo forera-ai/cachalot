@@ -619,6 +619,19 @@ class GlmModel:
         """Install (or remove, with None) a routing tracer on every streaming MoE layer; the layers installed.
         MiniMax's GPU-select decode keeps its own routing loop and takes the tracer there too."""
         self._tracer = tracer
+        from cachalot.glm.experts import ScoreSink, tap_gate, untap_gate
+
+        # the router weights of each GLM MoE layer reach the switch module through a tapped gate (HANDOFF 18.102);
+        # MiniMax's layers are not Glm5NextMoE and stay as they are
+        for layer in getattr(self.model, "layers", ()):
+            moe = getattr(layer, "mlp", None)
+            if isinstance(moe, Glm5NextMoE) and isinstance(moe.switch_mlp, StreamingSwitchGLU):
+                untap_gate(moe.gate)
+                moe.switch_mlp.score_sink = None
+                if tracer is not None:
+                    sink = ScoreSink()
+                    tap_gate(moe.gate, sink)
+                    moe.switch_mlp.score_sink = sink
         n = 0
         for module in self.model.modules():
             if isinstance(module, StreamingSwitchGLU):

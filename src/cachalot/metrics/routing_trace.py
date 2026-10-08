@@ -89,7 +89,11 @@ class RoutingTracer:
         self._experts.append(arr)
         self._count += n_tokens
 
-    def record_next(self, phase: str, layer: int, indices) -> None:
+    def last_position(self, phase: str, layer: int) -> int:
+        """Position of the token `record_next` last recorded for (phase, layer); -1 before the first."""
+        return self._next_pos.get((phase, layer), 0) - 1
+
+    def record_next(self, phase: str, layer: int, indices, weights=None) -> None:
         """
         `record` for a model path that does not know the sequence position (GLM and MiniMax, which route
         inside the expert module). Positions are a per-(phase, layer) counter: every layer that routes a token
@@ -101,7 +105,7 @@ class RoutingTracer:
         key = (phase, layer)
         start = self._next_pos.get(key, 0)
         self._next_pos[key] = start + arr.shape[0]
-        self.record(phase, layer, start, arr)
+        self.record(phase, layer, start, arr, None if weights is None else np.asarray(weights).reshape(arr.shape))
 
     def record_predicted(
         self,
@@ -210,6 +214,14 @@ def load_trace(path: str | Path) -> tuple[dict[str, np.ndarray], list[dict]]:
     return arrays, segments
 
 
+def _token_ordinals(layers: np.ndarray) -> np.ndarray:
+    """0, 1, 2 ... per decode token for records in generation order: a token ends when the layer stops ascending."""
+    if layers.size == 0:
+        return np.zeros(0, np.int64)
+    new = np.concatenate([[True], layers[1:] <= layers[:-1]])
+    return np.cumsum(new) - 1
+
+
 def predicted_used_mask(arrays: dict[str, np.ndarray]) -> np.ndarray:
     """
     For each predicted record, a bool [n, topk] mask: was that predicted expert
@@ -217,18 +229,20 @@ def predicted_used_mask(arrays: dict[str, np.ndarray]) -> np.ndarray:
 
     Decode positions restart with every request, so (position, layer) is not a
     unique key across a multi-request trace. Records are written in generation
-    order, so a decode token starts at each layer-0 route and each source-layer-0
-    prediction; the token ordinal is the join key.
+    order and the layers of one token ascend, so a new decode token starts wherever
+    a record's layer is not above the previous one's (DeepSeek's start at layer 0,
+    GLM's and MiniMax's at their first MoE layer, 3); the token ordinal is the
+    join key, for routes and for predictions alike.
     """
     decode = np.where(arrays["phase"] == PHASE_DECODE)[0]
     layers = arrays["layer"][decode]
-    route_token = np.cumsum(layers == 0) - 1
+    route_token = _token_ordinals(layers)
     routed = {
         (int(t), int(l)): set(e.tolist())
         for t, l, e in zip(route_token, layers, arrays["experts"][decode])
     }
 
-    pred_token = np.cumsum(arrays["pred_source"] == 0) - 1
+    pred_token = _token_ordinals(arrays["pred_source"])
     mask = np.zeros(arrays["pred_experts"].shape, dtype=bool)
 
     for i, (t, target, experts) in enumerate(

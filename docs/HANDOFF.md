@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-08, 0.62.10): the GLM side of weights and predicted sets, built
+>
+> Section 18.102. Hamed: "go, build the GLM side of weights and predicted sets". A tapped gate hands each layer's router weights to `StreamingSwitchGLU`, which evaluates them in the sync that reads the indices; the predictor's set is recorded from the host arrays it already has; `predicted_used_mask` no longer assumes layer 0. Off unless `CACHALOT_ROUTING_TRACE`; 575 tests; **not run on a model** (a 25-35 minute recording needs your yes).
+>
 > ## Start here (2026-10-08, 0.62.9): weights and predicted sets priced for GLM and MiniMax
 >
 > Section 18.101. Hamed: "go, price weights and predicted sets for MiniMax and GLM". Read from the code and one 10-second micro-benchmark, no server. Predicted sets: free on both. Weights: GLM +43 us a layer in isolation (0.1 % of a token), MiniMax free under the shipped default. Nothing built. Recommendation: build for GLM only, one recording (25-35 minutes) would then feed `tau` runs and a precision-gate replay for it.
@@ -8890,6 +8894,33 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.102 The GLM side of weights and predicted sets, built — 2026-10-08 (0.62.10)
+
+**Goal.** Hamed: "go, build the GLM side of weights and predicted sets" (the recommendation of §18.101). Build only; the recording is separate. Prediction (before): the build changes no output when the tracer is off, and with it on the weights are the same values the MoE block uses; falsifier: a tapped gate whose output differs from the untapped one, or a parameter-tree change.
+
+**What was built.**
+1. `tap_gate(gate, sink)` / `untap_gate` in `src/cachalot/glm/experts.py`: the gate instance's class is swapped for a subclass that only overrides `__call__` to leave the second output (the weights, the same lazy array the block multiplies by) in a `ScoreSink`. No new op, no changed result. The sink is a plain object (slots), so it is not part of the module tree. A first design that wrapped the gate in a proxy module was dropped: it would have changed the parameter tree and every `gate.weight` access.
+2. `StreamingSwitchGLU.__call__`: while a tracer is installed and a sink is set, the layer's weights go into the sync that reads the indices (`mx.eval(indices, *pred, scores)` on the predicted path, `mx.eval(indices, scores)` otherwise), so there is no second GPU round trip; they are read with `np.array`. `_trace` records routes with their weights and, for a decode token, the predictor's next-layer set best first with its weights and the token's position.
+3. `GlmModel.set_tracer` taps every `Glm5NextMoE` gate and gives its switch module the sink (and undoes both with `None`); MiniMax's layers are not `Glm5NextMoE`, so its trace stays experts-only.
+4. `RoutingTracer.record_next(weights=)`, `last_position`; `predicted_used_mask` now takes a new decode token wherever the layer stops ascending (`_token_ordinals`), for routes and predictions; DeepSeek's traces join exactly as before (the existing test passes unchanged), and a test builds a layers-3-4-5 trace and checks the join.
+5. The server's startup line for GLM says "router weights and the predictor's next-layer sets".
+
+**Checks (measured).** On a real `MoEGate` (288 experts, 4,096 wide, top 8, three tokens): indices and weights are identical with and without the tap (`array_equal`), the sink holds the call's own output, the parameter tree is unchanged (`weight`, `e_score_correction_bias`), and `untap_gate` restores the class. A test drives `StreamingSwitchGLU.__call__` with a stub store: a decode token records routes, weights and the best-first predicted set with its position; a one-token chunk under `forced_phase` records as prefill and no prediction. Full suite 575 passed (572 + 3 new + the extended ones), `git diff --check` clean.
+
+**Not tested, stated.** No GLM model was loaded: the multi-token prefill path (the matmul branch of `__call__`) is not covered by the stub test, and the real `Glm5NextMoE` block was not run with the tap. Both are guarded by `self.tracer is not None` and `self.score_sink is not None`, so a server without `CACHALOT_ROUTING_TRACE` runs the old code; the first traced GLM run is the integration test.
+
+**What the data gives once recorded.** `cache_sim.py --taus 0,0.05,...` for GLM (drop-threshold what-ifs; output-changing, so any lever needs Hamed's quality gate), `pred_gate_table.py` (precision against weight; it reads `pred_*` arrays and joins by `predicted_used_mask`; its store model is DeepSeek-shaped, so a gate replay needs adapting).
+
+**To record (needs Hamed's yes and an estimate first: about 35 minutes with the saved snapshot):**
+```bash
+cd /Users/hamedprooshani/Projects/deepseek-v41-mac && mkdir -p benchmarks/results/routing-trace-glm-weights && cp benchmarks/results/routing-trace-glm-long/replay_agent.py benchmarks/results/routing-trace-glm-long/source-requests.jsonl benchmarks/results/routing-trace-glm-weights/ && CACHALOT_ROUTING_TRACE=benchmarks/results/routing-trace-glm-weights/trace.npz ./serve-glm.sh --expert-budget-gib 46
+```
+then, in another terminal, `cd /Users/hamedprooshani/Projects/deepseek-v41-mac/benchmarks/results/routing-trace-glm-weights && ~/venvs/deepseek-v41/bin/python replay_agent.py source-requests.jsonl`, and Ctrl-C the server when it finishes.
+
+**Kind.** Engineering (instrument). No default, output or numerics changed; off unless a trace is requested.
+
+**Open.** The recording; a GLM `tau` curve and a gate replay after it; whether any of it leads to a lever (Hamed's call). **Needs Hamed:** a yes for the recording.
 
 ### 18.101 Pricing router weights and predicted sets for GLM and MiniMax — 2026-10-08 (0.62.9)
 
