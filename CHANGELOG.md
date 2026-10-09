@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.62.25 (2026-10-09)
+
+HANDOFF "Start here (2026-10-09, 0.62.25)" and section 18.112. Measurement and one instrument; nothing in `src/` besides the version string changed.
+
+### Added
+- `benchmarks/glm_site_probe.py`: teacher-forces a chosen position of a compile-panel reply and compares GLM's next-token distribution in prefill mode, in decode with no miss budget and in decode with budget 2 (`--site newline|else`, `--replies`, `--window`, `--forced`).
+
+### Measured
+- Why 15 of 24 compile-panel replies broke at the same place (`else`, newline, indentation, then a stray `delimiter`): GLM's own top candidate there is ` delimiter` (38-65 %), against 7-13 % for the style-consistent ` {`, in prefill mode and in exact decode; budget 2 moves the top candidate to ` un` in 4 of 6 contexts but the stray word keeps 4-60 %. Prefill mode gives the stray word more probability than decode (0.36 against 0.26), so it is neither the decode path nor the miss budget: it is the checkpoint, as §18.43-18.49 found. Right after `else` the next token is a newline with probability 0.9996 or more in every arm. No default changed; `serve-glm.sh` stays at budget 2.
+
 ## 0.62.24 (2026-10-09)
 
 HANDOFF "Start here (2026-10-09, 0.62.24)" and section 18.111. Measurement only; nothing in `src/` besides the version string changed.

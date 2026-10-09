@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-09, 0.62.25): the stray-word break is GLM's own prediction, in every mode
+>
+> Section 18.112. Measurement only, plus one instrument (`benchmarks/glm_site_probe.py`). Teacher-forcing the compile panel's replies up to the site where 15 of 24 broke (`else` newline, then a stray `delimiter` where `{` or `if` belongs): **after `else`, indentation, GLM's top candidate is ` delimiter` itself, at 38-65 % in prefill mode and 38 % in exact decode, against 7-13 % for the style-consistent ` {`; budget 2 moves the top candidate to ` un` in 4 of 6 contexts but the stray word keeps 4-60 %.** Prefill mode is no better than decode (it gives the stray word more mass), so the break is not the decode path and not the miss budget; it is the checkpoint's conditional distribution at that state, as §18.43-18.49 found for GLM's code. `serve-glm.sh` stays at budget 2; for code use MiniMax or DeepSeek.
+>
 > ## Start here (2026-10-09, 0.62.24): GLM miss budget, the compile-level C# panel
 >
 > Section 18.111. Measurement only; nothing in `src/` changed. A short C# task (a quote-aware CSV line splitter, 8 unit asserts), 12 replies per arm, each built with `dotnet build`: **0 of 12 compile with exact decode, 0 of 12 with budget 2** (decode 1.793 against 1.163 s a token, -35 %). Every reply breaks, and 15 of 24 break at the same place (an `if (c == delimiter)` that comes out as `else` followed by a stray `delimiter` line), so the panel cannot tell the budget from exact: both sit at the floor. New open observation: that same-site break in 15 of 24 independent samples looks deterministic, not sampling noise; it is the cheapest lead yet on GLM's code corruption. `serve-glm.sh` stays at budget 2.
@@ -8946,6 +8950,40 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.112 GLM's same-site break: a teacher-forced probe, prefill against decode against budget 2 — 2026-10-09 (0.62.25)
+
+**Goal.** Hamed: "go, run the teacher-forced probe" (§18.111's optional job). 15 of the 24 compile-panel replies broke at one place. Is that place a decode-path fault, a miss-budget effect, or the model's own prediction?
+
+**Prediction (before).** Written in §18.111: the model drops the tokens ` if (c ==` after `else`; if the cause were the decode path, prefill mode would put the right token far above decode mode (§18.43: the two modes differ, KL mean 0.015, max 1.96). I expected prefill mode to look better than decode and budget 2 to look worse than exact.
+
+**Method.** New `benchmarks/glm_site_probe.py` (gitignored results in `benchmarks/results/glm-site-probe/` and `glm-site-probe-else/`). The compile panel's chat prompt (rendered with thinking off, 162 tokens, the count the server reported) plus the reply text up to a site, teacher-forced; all tokens before the last 40 are prefilled once and snapshotted; from the snapshot three arms see the same tokens: `prefill` (the 40 plus the scored tokens in one chunk), `exact` (one token at a time through the decode path, no budget) and `b2` (decode with `CACHALOT_GLM_DECODE_MISS_BUDGET`-style budget 2). At each scored position the log-probability, rank and top three of the token the reply actually wrote are saved. Pass 1: the scored tokens start after `else` newline (the stray word's position), six replies (exact k = 0, 1, 2; budget-2 arm k = 0, 1, 4). Pass 2: they start right after `else`, four replies (two per arm). 46 GiB, bank on the X10Pro, prefetch off, Hamed's applications open. Pass 1 took 31 minutes, pass 2 about 20.
+
+**Result (measured).**
+
+At the stray word's position (the token that follows `else`, newline and indentation), the probability of the reply's own next token (` delimiter` or ` del`):
+
+| arm | mean P(actual) | actual is top-1 | top candidate in the six contexts |
+|---|---:|---:|---|
+| prefill | 0.362 | 4/6 | ` delimiter` in 6/6 (0.39-0.67) |
+| exact decode | 0.260 | 4/6 | ` delimiter` in 6/6 (0.377 each; the same final context gives the same number) |
+| budget 2 decode | 0.203 | 1/6 | ` un` in 4/6 (0.24-0.80), ` delimiter` in 2/6 |
+
+Over all 23 scored positions of pass 1 the mean log-probability of the reply's own next token is -2.846 (prefill), -2.958 (exact), -2.977 (budget 2) and the actual token is top-1 at 61 %, 61 % and 48 %. After `else` newline the second most likely tokens include ` {` + newline (7-13 %) and ` ","`; the style-consistent continuation for this file (Allman braces) is `{`, which never beats the stray word in prefill or exact decode.
+
+Pass 2, right after `else`: the next token is a newline with probability 0.9996-0.9998 in all three arms and all four replies (` if` 0.0002-0.0004). That is the file's own brace style (`else` alone on its line), not a decision point.
+
+**Against the prediction.** Falsified in both directions. Prefill mode does not look better than decode: it puts more mass on the stray word (0.36 against 0.26). Budget 2 does not make the stray word more likely; it spreads the mass (` un` rises, the stray word falls) while the sampled replies, taken from both arms, still reach it. Hypothesis dropped: it is not that the model skips ` if (c ==`; at this state the model itself ranks `delimiter` first.
+
+**Explanation.** The break is GLM's conditional distribution at that state. Prefill and decode agree on the top candidate (` delimiter`), so the decode path is not the cause (consistent with §18.43, §18.51), and budget 2 is not the cause (consistent with §18.111: 0/12 against 0/12). A weights or numerics fault in the checkpoint is the remaining candidate, as §18.44-18.49 found (an 8-bit hybrid garbled 12/12; MiniMax writes the same C# nearly clean). Not tested: the same probe on a higher-precision GLM checkpoint, which does not exist locally.
+
+**Limits.** Contexts are the model's own sampled prefixes, chosen because they contain the site, so this says what GLM predicts after a prefix it wrote, not how often it reaches the prefix. Six and four replies; the same context gives the same probabilities, so the spread across replies is spread across different prefixes, not noise. Top three tokens only, so the probability of ` if` itself at the stray position is not recorded. One prompt and one site.
+
+**Bottleneck after.** Unchanged for speed. For code quality: GLM's checkpoint, not the runtime.
+
+**Kind.** Research (predicted, measured, prediction falsified, explained).
+
+**Open, Hamed's call.** Nothing blocked. `serve-glm.sh` stays at budget 2; use MiniMax or DeepSeek for code. If a higher-precision GLM-5.3-Flash checkpoint becomes available, this probe (about 30 minutes) is the test.
 
 ### 18.111 GLM decode miss budget: the compile-level C# panel — 2026-10-09 (0.62.24)
 

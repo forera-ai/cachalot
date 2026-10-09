@@ -297,6 +297,8 @@ reproducible to ±0.3 %.
 
 **0.60.7 (2026-10-06): review fixes.** The run manifest no longer records credentials such as `CACHALOT_API_KEY` by value, and its Hermes Desktop check needs one process line. HANDOFF section 18.73.
 
+**0.62.25 (2026-10-09): GLM's stray-word break traced.** A teacher-forced probe shows the place where most compile-panel replies broke is GLM's own prediction: its top candidate there is the stray word (38-65 %) in prefill mode and in exact decode, and budget 2 does not cause it; the decode path is not at fault either. The cause is the checkpoint, so use MiniMax or DeepSeek for code. New `benchmarks/glm_site_probe.py`.
+
 **0.62.24 (2026-10-09): GLM miss budget, compile-level panel.** A small C# task built with `dotnet build` compiled 0 of 12 times with exact decode and 0 of 12 with budget 2 (a token 35 % faster), so it cannot separate them; 15 of 24 replies break at the same place, which points at GLM's own code corruption. Use MiniMax or DeepSeek for code. Measurement only.
 
 **0.62.23 (2026-10-09): GLM miss budget, C# panel.** A blind panel of 12 C# replies per arm found GLM writes flawed C# in 9 of 12 replies with exact decode and in 9 of 12 with budget 2, so the budget shows no extra damage at this size; the token is 34 % faster (1.794 to 1.184 s). GLM garbles most C# either way: use MiniMax or DeepSeek for code. Measurement only.
