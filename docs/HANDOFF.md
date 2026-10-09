@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-09, 0.62.21): GLM miss budget, arm 3 (replicate of arm 2)
+>
+> Section 18.109. Measurement only; nothing in `src/` changed. A second run of arm 2's replay (same four dumped Hermes turns, two passes per arm, 24 replies, 46 GiB, 3.0 hours, exact then budget 4 then budget 2): decode **1.585 / 1.467 / 1.090 s a token (exact / b4 / b2: -7.4 %, -31.2 %)**, the same as arm 2 (1.625 / 1.506 / 1.103). Blind-graded: tool calls 0/4 flawed in every arm; the quality signal is flat across arms (stories with a slip 1/2, 1/2, 1/2; C# flawed 1/2, 1/2, 1/2). `serve-glm.sh` stays at budget 2. No prediction was on file before this run started, so it counts as a replicate (engineering), not a research result.
+>
 > ## Start here (2026-10-09, 0.62.20): `serve-glm.sh` runs GLM with decode miss budget 2
 >
 > Hamed: "make budget 2 the serve-glm.sh default". **Outputs now differ from exact by default** (a token -32 %, KL 0.024 on prose/code/JSON, §18.107-18.108). `CACHALOT_GLM_DECODE_MISS_BUDGET=off ./serve-glm.sh` is the exact path; benchmark arms that need exact outputs must set it. Prefetch stays off. Not changed: `chat-glm.sh`, the library default.
@@ -8934,6 +8938,38 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.109 GLM decode miss budget: free-running replay, arm 3 (replicate) — 2026-10-09 (0.62.21)
+
+**Goal.** Replicate arm 2 (§18.108): does the speed of GLM's decode miss budget hold on a second run of the same replay, and does anything visible change in what GLM writes? This is the first run of the budget under `serve-glm.sh`'s shipped path since budget 2 became its default (0.62.20); the arms set `CACHALOT_GLM_DECODE_MISS_BUDGET` explicitly, so the default did not enter.
+
+**Prediction.** None was written before the run: the run (`benchmarks/results/glm-miss-budget-arm3/`, gitignored) was started on 2026-10-09 at 00:42 before this session read the state, and HANDOFF has no entry for it. The expectation, reconstructed from arm 2 and written here after the speeds were read, is 1.625 / 1.506 / 1.103 s a token. Treat it as a replicate, not as a prediction tested.
+
+**Method.** Same as arm 2: `run.sh` starts `serve-glm.sh` once per arm (exact = `off`, then 4, then 2) at 46 GiB (chosen from 86 GiB available at the start; Hamed's applications stayed open, swap 8.4-8.7 GiB of 10 throughout), bank on the X10Pro, prefetch off. `client.py` sends the dumped Hermes bodies of rows 4 (tool call), 6 (summary turn after a 2.7k-token tool result), 8 (200-word story) and 10 (C# task) at the bodies' own temperature 0.7, 400 tokens at most, two passes (24 replies). Started 00:42, finished 03:43. Replies were shuffled into an arm-free sheet (`sheet.md`) with the key held aside (`key.json`): tool calls graded by schema and sense, stories and C# by reading (C# stops at 400 tokens and cannot be compiled). One grader (this session). The grader had seen the first lines of some replies with their arm labels while checking the output files, so blindness is partial, and the grades were written down before the key was opened.
+
+**Result (measured; decode seconds divided by completion tokens, per reply, then averaged).**
+
+| arm | decode s/token | tok/s | tool calls flawed | stories with a slip | C# flawed |
+|---|---:|---:|---:|---:|---:|
+| exact | 1.585 | 0.631 | 0/4 | 1/2 | 1/2 |
+| budget 4 | 1.467 (-7.4 %) | 0.682 | 0/4 | 1/2 | 1/2 |
+| budget 2 | 1.090 (-31.2 %) | 0.917 | 0/4 | 1/2 | 1/2 |
+
+Per task the order is the same in every row and pass (each of the four rows: exact slower than budget 4 slower than budget 2; for example the C# row 1,795 / 1,817 ms exact, 1,691 / 1,675 at 4, 1,187 / 1,185 at 2). Pooled with arm 2 (n = 16 replies an arm): exact 1.605, budget 4 1.487 (-7.4 %), budget 2 1.097 (-31.7 %).
+
+What the graders found. Tool calls: all valid. Exact and budget 4 and budget 2 differ in argument choices (one budget-4 call used `pattern` instead of `file_glob`, one budget-2 call ran `ls -la ~/Desktop` through `execute_code` instead of `search_files`, and one budget-2 summary turn answered in text with a correct listing instead of asking for page two); none is wrong. Stories: slips in three of six, one in each arm (a craps table where a wheel and a ball turn up with "thirty-five to one" for black; roulette "black fourteen" (14 is red); "a outlet mall"). C#: flawed 1/2 in each arm, with the usual stray tokens and placeholder lines ("System.Runtime.CompilerServices; // (placeholder)", "said" inside a type argument, a dangling `.ValueKind`).
+
+**Against expectation.** Speed matches arm 2 within 4 %. The quality grades are the same count in every arm, so nothing visible follows the budget; arm 3's graders were stricter on stories than arm 2's (which found none), which shows how much the sheet depends on the reader and how little 2 replies per cell can say.
+
+**Not explained.** In arm 3 the exact arm's second pass reused each full prompt (prefill 0.00 s on three of four rows), while budget 4's and budget 2's second passes reused only the saved system block and re-prefilled (100-330 s). Decode is timed separately, so the speeds are not affected, but the prefix cache behaves differently by arm and I did not find why. Arm 2's write-up says its second pass "reuses the prompts"; for budget 4 and budget 2 in arm 3 that did not hold.
+
+**Limits.** 24 replies, two per task per arm, one grader with partial blindness, three code-free tasks of four, 400-token caps, one conversation, one fixed arm order (exact, 4, 2; arm 2 had the same order, so the two runs are not independent of time-order drift, which is about +-10 % over hours). The -31 % is far outside that; the -7.4 % is inside it, as before. No quality difference smaller than about 30 percentage points can be seen. Not tried: contexts above 24k, image turns.
+
+**Bottleneck after.** Unchanged from §18.108: budget 2's token is 1.1 s, still read-bound (decode `miss/tok` 80-113 on the exact arm's server log, 42-54 ms mean read).
+
+**Kind.** Engineering (a replicate with no prediction on file).
+
+**Open, Hamed's call.** Nothing new. `serve-glm.sh` stays at budget 2; `CACHALOT_GLM_DECODE_MISS_BUDGET=4` is the conservative setting (-7 %), `off` the exact path. A larger blind panel on C# is still the next check, limited by GLM's own garbling.
 
 ### 18.108 GLM decode miss budget: free-running replay, arm 2 — 2026-10-09 (0.62.19)
 

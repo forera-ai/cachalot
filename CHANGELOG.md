@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.62.21 (2026-10-09)
+
+HANDOFF "Start here (2026-10-09, 0.62.21)" and section 18.109. Measurement only; nothing in `src/` besides the version string changed.
+
+### Measured
+- GLM decode miss budget, a second free-running run of arm 2's replay (24 replies on dumped Hermes turns, 46 GiB beside Hamed's applications, 3.0 hours, exact then budget 4 then budget 2): decode 1.585 s a token exact, 1.467 with budget 4 (-7.4 %), 1.090 with budget 2 (-31.2 %), matching arm 2 (1.625 / 1.506 / 1.103); pooled with arm 2, -7.4 % and -31.7 %. Graded blind by one grader (partly blind): every tool call valid, and stories with a slip and flawed C# at the same count in every arm (1/2 each), so nothing visible follows the budget. No prediction was on file before the run, so it is a replicate. No default changed; `serve-glm.sh` stays at budget 2.
+
 ## 0.62.20 (2026-10-09)
 
 HANDOFF "Start here (2026-10-09, 0.62.20)".
