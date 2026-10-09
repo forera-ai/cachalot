@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-10, 0.62.31): E0 done, DRAM energy is readable while a sampler runs; next = E1 DRAM and E2 SSD, then the Lab brief
+>
+> Section 18.118. Measurement and instruments, nothing in `src/`. **Verdict of E0 (measured):** `powermetrics` has no DRAM/SSD power lines; IOReport has DRAM/DCS/AMCC energy counters that move only while a root `powermetrics` runs, readable then by a user process; the SMC gives whole-system power (`PSTR`) without root; no SSD sensor. **Route 1 for Lab is possible** (the runtime reads as a user) but needs Hamed's sampler running during any energy reading; otherwise route 2 (Lab ingests recordings). **Next, each needing Hamed's go and an estimate:** E1 DRAM calibration (stream a buffer at fixed rates; slope of DRAM watts against GB/s, with `PSTR` as the cross-check), E2 SSD differential (system total minus SoC and DRAM at 0/25/50/100 % of each drive), E3 joules a token with all components and a coverage figure, E4 the index, then the Lab brief. Open: whether DCS and AMCC lie inside or beside `DRAM0_x` (kept separate, never summed); what `PSTR` includes (an inline meter would tell).
+>
 > ## Start here (2026-10-10, 0.62.30): next session = complete power accounting (SSD + DRAM) and the Lab energy brief
 >
 > Section 18.117. A planning release (docs only, nothing run, nothing in `src/`). Hamed: the energy numbers so far are package power (CPU+GPU+ANE) and leave out the two things Cachalot is built on, **SSD reads and DRAM transport**, so they are lower bounds; the energy per token must also be monitored in Cachalot Lab, with a proper brief he implements. **The next session's jobs, in order (`docs/POWER-ACCOUNTING-PLAN.md`, `docs/NEXT-SESSION-PROMPT.md` v166 "First jobs"):** (E0) inventory what this Mac exposes: two short `sudo powermetrics` runs by Hamed, a read-only IOReport/SMC probe; (E1) DRAM calibration; (E2) SSD differential on the internal drive and the X10Pro; (E3) re-run the 0.62.29 arms with SoC + DRAM + SSD and a coverage figure; (E4) index it (`benchmarks/power_sources.py`, scorecard fields, LEDGER "Energy" section); then expose it from the runtime (route 1 in the plan) or have Lab ingest recordings (route 2), and write the Lab brief `docs/lab/briefs/...-energy.md`. Everything in the plan not marked verified is to verify.
@@ -8970,6 +8974,32 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.118 Power accounting, step E0: what this Mac exposes (0.62.31)
+
+**Goal.** `docs/POWER-ACCOUNTING-PLAN.md` step E0: find out which sources report DRAM and SSD power on this Mac. Hamed ran the `sudo` commands; nothing here ran as root by me.
+
+**Baseline.** The 0.62.29 energy numbers (DeepSeek 1.73 J all-resident, 2.52 J read-bound) are CPU+GPU+ANE package power (`powermetrics`).
+
+**Prediction.** None was written before the run (the plan lists every claim as "to verify"), so this is not a research record by the charter's definition.
+
+**Method.** (1) `sudo powermetrics --show-all -i 1000 -n 5` and `--samplers cpu_power,gpu_power,ane_power --show-extra-power-info -i 1000 -n 5`, read for power lines. (2) `benchmarks/power_sources.py`, a ctypes probe of IOReport (`/usr/lib/libIOReport.dylib`, resolved from the dyld cache) and the SMC (IOKit, struct method 2), run without root, as root, with a root `powermetrics` running beside it (`ioreport_concurrent_test.sh`), and as a plain user with only `powermetrics` under sudo (`ioreport_concurrent_user.sh`).
+
+**Result (measured).**
+- `powermetrics`: only `CPU Power`, `GPU Power`, `ANE Power`, `Combined Power` (sample 3 of show-all: 3045, 890, 0, 3936 mW). The disk section carries byte and operation rates, not watts. No line mentions DRAM, DDR, SSD or NVMe.
+- IOReport: 13,792 channels in 254 groups. "Energy Model" holds 565 simple-integer channels: `DIE_n_CPU Energy` (mJ), `GPU Energy` (nJ), `ANE0_n`, `DRAM0_n`, `DCS0_n`, `AMCC0_n`, display and media blocks, `PCIe Port n Energy` (all 0). Without a sampler only the GPU counter advanced (0.61 W); CPU, ANE, DRAM, DCS, AMCC were identical across runs minutes apart. Root alone changed nothing (GPU 0.610 W, the rest 0.000 W). With a root `powermetrics` running, the root probe read cpu 1.771, dram 1.170, dcs 1.591, amcc 1.961, display_media 0.375, gpu 0.595 W; the **non-root** probe beside the same sampler read cpu 2.124, dram 1.249, dcs 1.697, amcc 2.270, display_media 0.377, gpu 0.532 W (5 s means, different moments, so the two sets are not a repeat).
+- SMC: 133 keys beginning `P`; `PSTR`, `PDTR` and `PD0R` carry the same value, 22-40 W on this idle-ish machine against 2-4 W package power; it moved 41.8 to 23.6 W between two reads 5 s apart.
+- No IOReport or SMC channel is named for the SSD (NAND temperature remains readable with `benchmarks/nand_temp.c`).
+
+**Explanation.** Not established. The counters are live only while a privileged sampler is armed, which suggests the driver updates them on demand for a registered sampler; this was not tested further (a lighter sampler than `cpu_power,gpu_power,ane_power`, other sampler sets).
+
+**Limits.** The idle-ish watts were not compared with `powermetrics`' own CPU and GPU lines in the same window. Whether DCS and AMCC are inside or beside DRAM is unknown, so they are separate components. `PSTR`'s content (PSU losses, fans, drives) and accuracy are unchecked. One machine, one OS build, one afternoon.
+
+**Bottleneck after.** None changed. The limit on the energy lane is calibration: bytes to joules for DRAM (E1) and for the SSD (E2).
+
+**Kind.** Measurement plus instruments. Not research: no prediction was written first.
+
+**Open, Hamed's call.** Route 1 (runtime reads the counters while his sampler runs; needs the sampler up during every energy reading) or route 2 (Lab ingests recordings); an inline USB-C meter for the X10Pro; go and estimate for E1.
 
 ### 18.117 Power accounting for SSD reads and DRAM transport: the plan, and the next session's jobs — 2026-10-10 (0.62.30)
 

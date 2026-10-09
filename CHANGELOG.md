@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.62.31 (2026-10-10)
+
+HANDOFF "Start here (2026-10-10, 0.62.31)" and section 18.118. Measurement and instruments (charter L5b, step E0); nothing in `src/` besides the version string changed.
+
+### Added
+- `benchmarks/power_sources.py`: a read-only probe and uniform reader for the two power sources this Mac exposes without root, IOReport (the "Energy Model" group, loaded from the dyld cache) and the SMC (`AppleSMC`, keys beginning `P`). `read_energy()` returns cumulative joules by component (cpu, gpu, ane, dram, dcs, amcc, display_media, pcie) with source and tag, `None` when unreadable, never zero; `advancing()` says which counters actually move; `read_system_watts()` reads the SMC `PSTR` rail. `tests/test_power_sources.py` (4 tests).
+- `benchmarks/ioreport_concurrent_test.sh` and `benchmarks/ioreport_concurrent_user.sh`: the two root and non-root runs that settled E0.
+
+### Measured (E0 verdict)
+- `powermetrics --show-all` and `--show-extra-power-info` print CPU, GPU and ANE power only: no DRAM, fabric or SSD power line (5 samples each).
+- IOReport carries DRAM, DCS (DRAM controller) and AMCC (memory cache controller) energy counters in mJ, but they stay **frozen** unless a root `powermetrics` is sampling at the same time; with one running, a plain user process reads them live (5 s mean, idle-ish: dram 1.25 W, dcs 1.70 W, amcc 2.27 W, cpu 2.12 W, gpu 0.53 W). Root alone does not unfreeze them.
+- SMC `PSTR` (whole-system power) reads 22-40 W without root while CPU+GPU+ANE package power is 2-4 W; it swings by up to 18 W between reads seconds apart.
+- No SSD or NVMe energy channel exists in IOReport on this Mac.
+
 ## 0.62.30 (2026-10-10)
 
 HANDOFF "Start here (2026-10-10, 0.62.30)" and section 18.117. Documentation only; nothing in `src/` besides the version string changed, nothing run.

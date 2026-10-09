@@ -446,3 +446,7 @@ Hamed's order of lanes stands (Hermes, vision, speed; DeepSeek, MiniMax, GLM). T
 ### 13.6 Update 2026-10-10: L5b, power accounting for SSD and DRAM comes first
 
 Hamed ruled that the energy numbers must include the two things Cachalot is built on (SSD reads and DRAM transport) and must be visible in Cachalot Lab. This moves **L5b** (complete power accounting) ahead of the other energy arms and ahead of the L2 in-situ price in the order of work: the plan, sources, experiments E0-E4, indexing and the Lab route are in `docs/POWER-ACCOUNTING-PLAN.md`. The L5 numbers of 0.62.28-0.62.29 stand as lower bounds (package power only). L2's in-situ price and build remain next after L5b unless Hamed says otherwise.
+
+### 13.7 Update 2026-10-10 (0.62.31): L5b step E0 done
+
+The inventory found that DRAM energy is available as a measured IOReport counter while a root `powermetrics` samples beside it, and that nothing measures the SSD. E1 (DRAM calibration), E2 (SSD differential) and E3 follow; see `docs/POWER-ACCOUNTING-PLAN.md` section 8 and HANDOFF 18.118.

@@ -69,3 +69,7 @@ Either route triggers a Lab brief (`RELEASE.md` item 7: new `/v1/stats` fields, 
 ## 7. Limits of this plan
 
 Written from the recon facts marked verified and from how other tools are known to behave; no IOReport channel, SMC key or `--show-all` output has been looked at. If E0 finds that this Mac exposes no DRAM or SSD power at all, the honest result is a labelled model (energy per byte and per read, calibrated by the differential method) and a coverage figure that says how much of the system total it explains. The answer to "how much does a token cost in joules" never becomes a single number without its tag.
+
+## 8. Status after E0 (2026-10-10, 0.62.31; HANDOFF 18.118)
+
+E0 is done and its results replace the "to verify" tags in section 2 for these rows. `powermetrics --show-all` and `--show-extra-power-info`: **measured**, CPU, GPU and ANE power only, no DRAM, fabric or SSD line. IOReport: **measured**, "Energy Model" holds `DRAM0_n`, `DCS0_n`, `AMCC0_n` in mJ; they are frozen unless a root `powermetrics` is sampling at the same time, and a non-root process reads them live then (root alone does not unfreeze them). SMC: **measured**, `PSTR` is whole-system power without root (22-40 W idle-ish), noisy. SSD: no sensor found. Consequences: route 1 (section 5) is possible if Hamed's sampler is up during a reading; DRAM has a measured source whose link to bytes moved is still E1's job; the SSD stays *derived* (E2) unless an inline meter is added. Whether DCS and AMCC lie inside or beside DRAM is open. The instrument is `benchmarks/power_sources.py`.
