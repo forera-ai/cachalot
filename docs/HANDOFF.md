@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-09, 0.62.23): GLM miss budget, the larger blind C# panel
+>
+> Section 18.110. Measurement only; nothing in `src/` changed. The C# task alone, 12 replies per arm (exact and budget 2), 4.3 hours, graded blind reply by reply: **flawed 9/12 exact, 9/12 budget 2 (Fisher p = 1.0); severe garbling (self-corrections, stray words, "HAMED STOP") 3/12 in each arm.** Decode 1.794 against 1.184 s a token (-34 %). No difference in C# quality between exact and budget 2, but GLM garbles three of four C# replies either way and n = 12 cannot exclude a gap below about 35 points. `serve-glm.sh` stays at budget 2. Use MiniMax or DeepSeek for code.
+>
 > ## Start here (2026-10-09, 0.62.21): GLM miss budget, arm 3 (replicate of arm 2)
 >
 > Section 18.109. Measurement only; nothing in `src/` changed. A second run of arm 2's replay (same four dumped Hermes turns, two passes per arm, 24 replies, 46 GiB, 3.0 hours, exact then budget 4 then budget 2): decode **1.585 / 1.467 / 1.090 s a token (exact / b4 / b2: -7.4 %, -31.2 %)**, the same as arm 2 (1.625 / 1.506 / 1.103). Blind-graded: tool calls 0/4 flawed in every arm; the quality signal is flat across arms (stories with a slip 1/2, 1/2, 1/2; C# flawed 1/2, 1/2, 1/2). `serve-glm.sh` stays at budget 2. No prediction was on file before this run started, so it counts as a replicate (engineering), not a research result.
@@ -8938,6 +8942,35 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.110 GLM decode miss budget: the larger blind C# panel — 2026-10-09 (0.62.23)
+
+**Goal.** Hamed: "go, run the larger blind C# panel" (the check §18.108 and §18.109 left open): does GLM's decode miss budget 2, now the `serve-glm.sh` default, write worse C# than exact decode?
+
+**Prediction (before).** Written in §18.108's last paragraph before the run: GLM's own C# garbling limits what the panel can show. Expected from arms 2 and 3 (flawed 1/2 and 2/2 on exact, 0/2 to 1/2 on budgets): a high flaw rate in both arms and no detectable difference; a token about -31 % at budget 2.
+
+**Method.** `benchmarks/results/glm-csharp-panel/` (gitignored). One task, the dumped Hermes body of row 10 (a C# file importer), sent 12 times per arm at the body's own temperature 0.7, 400 tokens at most, to one server per arm (exact = `CACHALOT_GLM_DECODE_MISS_BUDGET=off`, then 2), at 46 GiB (87 GiB available at the start; Hamed's applications stayed open, swap 6-9 GiB), bank on the X10Pro, prefetch off. The first reply of each arm prefilled the 24k prompt cold (8 minutes); the other eleven reused it whole (0.00 s prefill), so only decode was timed. Start 12:10, end 16:25. The 24 replies were shuffled into an arm-free sheet (`sheet.md`); the grader (this session, one grader) saw only per-arm decode means before shuffling, never a reply with its label, and wrote the grades before opening the key (`key.json`, `grades.json`). Rubric: a reply is flawed if its visible text (replies stop at 400 tokens, so none can be compiled) contains anything that is not valid C# in that place (stray words or lines, placeholders, "..." left in code, text correcting itself, a missing parenthesis or an undeclared variable); severe if it contains whole stray sentences or garbage tokens. Stricter than arms 2 and 3, where the first 24 replies were graded for garbling alone.
+
+**Result (measured).**
+
+| arm | decode s/token | tok/s | flawed | severe |
+|---|---:|---:|---:|---:|
+| exact | 1.794 (range 1.685-1.875) | 0.557 | 9/12 | 3/12 |
+| budget 2 | 1.184 (range 1.145-1.215) (-34 %) | 0.845 | 9/12 | 3/12 |
+
+Fisher exact on flawed: p = 1.0. The six replies without a visible flaw were three of each arm. The flaws are GLM's usual kind: a stray word on its own line after a statement (`nullable`, `BoxingDay`, `GLM`, `API`, `System.Text.Json`), a half-written line followed by a note (`reopening the file for every row is wasteful`), "My previous response was corrupted" and a restart, and in one reply a run of `IM HAMED` and `HAMED STOP`. A few replies also have logic slips (CSV headers never used, an undeclared `headers`).
+
+**Against the prediction.** Held: a high flaw rate in both arms (75 %), no detectable difference, a token -34 % (arms 2 and 3: -31 %).
+
+**Explanation.** None needed for the equality; the flaw rate is a property of GLM's checkpoint (§18.43-18.49), and the budget did not move it at this sample size. The earlier small-sample counts (1/2 to 2/2) were the same rate seen through fewer replies and a laxer rubric.
+
+**Limits.** One task, one grader, a visible-text rubric, 400-token truncation, 12 replies an arm. A 75 % base rate leaves a 95 % interval of about +-35 points on the difference, so a budget-2 penalty smaller than that is not excluded. Whether a budget changes C# that compiles is untested because no reply can be compiled at 400 tokens (a compile test needs about 1,500 tokens, about 40 minutes a reply).
+
+**Bottleneck after.** Unchanged from §18.108: the budget-2 token is still read-bound.
+
+**Kind.** Research (predicted in §18.108, measured, explained).
+
+**Open, Hamed's call.** Nothing is blocked. `serve-glm.sh` stays at budget 2; for code use MiniMax or DeepSeek (§18.44). A compile-level panel on a smaller task is possible if wanted.
 
 ### 18.109 GLM decode miss budget: free-running replay, arm 3 (replicate) — 2026-10-09 (0.62.21)
 

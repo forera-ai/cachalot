@@ -297,6 +297,8 @@ reproducible to ±0.3 %.
 
 **0.60.7 (2026-10-06): review fixes.** The run manifest no longer records credentials such as `CACHALOT_API_KEY` by value, and its Hermes Desktop check needs one process line. HANDOFF section 18.73.
 
+**0.62.23 (2026-10-09): GLM miss budget, C# panel.** A blind panel of 12 C# replies per arm found GLM writes flawed C# in 9 of 12 replies with exact decode and in 9 of 12 with budget 2, so the budget shows no extra damage at this size; the token is 34 % faster (1.794 to 1.184 s). GLM garbles most C# either way: use MiniMax or DeepSeek for code. Measurement only.
+
 **0.62.22 (2026-10-09): documentation only.** The second-pass re-prefill seen in the budget arms of the last run comes from GLM's in-memory prefix list evicting a prompt-end snapshot when a sampled reply re-renders identically (chance, not the budget; decode timings unaffected).
 
 **0.62.21 (2026-10-09): GLM miss budget, second run.** A repeat of the free-running replay (24 replies, 3 hours) reproduced the speeds: a GLM token 1.585 s exact, 1.467 with budget 4 (-7 %), 1.090 with budget 2 (-31 %), with no visible change in tool calls, stories or C# at this sample size. Measurement only; `serve-glm.sh` stays at budget 2.

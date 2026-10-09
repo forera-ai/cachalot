@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.62.23 (2026-10-09)
+
+HANDOFF "Start here (2026-10-09, 0.62.23)" and section 18.110. Measurement only; nothing in `src/` besides the version string changed.
+
+### Measured
+- GLM decode miss budget, the larger blind C# panel: 12 replies an arm of one C# task (exact and budget 2, 46 GiB, 4.3 hours), graded blind reply by reply by one grader. Flawed 9/12 in both arms (Fisher p = 1.0) and severe garbling 3/12 in both; decode 1.794 against 1.184 s a token (-34 %). No difference in C# quality at this size (a gap below about 35 points is not excluded); GLM garbles three of four C# replies either way. No default changed; `serve-glm.sh` stays at budget 2.
+
 ## 0.62.22 (2026-10-09)
 
 HANDOFF section 18.109 (addendum). Documentation only; nothing in `src/` besides the version string changed.
