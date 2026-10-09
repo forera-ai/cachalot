@@ -297,6 +297,8 @@ reproducible to ±0.3 %.
 
 **0.60.7 (2026-10-06): review fixes.** The run manifest no longer records credentials such as `CACHALOT_API_KEY` by value, and its Hermes Desktop check needs one process line. HANDOFF section 18.73.
 
+**0.62.28 (2026-10-09): the first energy reading.** On the working machine at rest the CPU+GPU+ANE package draws 3.7 W on average (1.4 W in quiet moments); `benchmarks/powermetrics_parse.py` turns a `powermetrics` recording into watts and joules a token for the decode arms that follow. Package power only, no DRAM or drive. No runtime change.
+
 **0.62.27 (2026-10-09): the per-token trace priced.** A tracer with ~340 events a token costs 0.17 ms on a simulated DeepSeek token (0.2 % of the 80 ms floor; stop rule 1 ms), so building the critical-path trace (charter L2) is cleared; the real-server price is next. `benchmarks/trace_overhead.py`; no runtime change.
 
 **0.62.26 (2026-10-09): a validated what-if calculator and the research status.** `benchmarks/whatif.py` predicts decode token time for hypotheticals (faster storage, fewer misses, a miss budget) from three small models; GLM's token fits `92 + 14.7 ms x reads` and predicts four held-out budget arms within 2.5 %, DeepSeek's storage curve misses its one held-out real drive by 20 %. `docs/EXPERIMENTS.md` indexes the experiment records and `docs/RESEARCH-DIRECTION.md` section 13 scores every track and orders what is left (the per-token critical-path trace is next). No runtime change.

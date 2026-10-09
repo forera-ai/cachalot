@@ -399,7 +399,7 @@ Added at Hamed's request ("check the research direction and plan next steps"). S
 | L2 per-token critical-path trace | **priced, not built** (gap G1 is still open) | `benchmarks/trace_overhead.py` (0.62.27, HANDOFF 18.114): +0.17 ms a token for ~331 events (stop rule 1.0 ms); the in-situ price and the DeepSeek build need an idle machine |
 | L3 sweeps | partial | storage bandwidth (ST-BW-CURVE), context (DS-FLOOR-CTX), queue depth (ST-X10-QD, ST-INT-QD), budget (DS-BUDGET-CURVE, GLM 44-50), batching offline (`batch_union.py`, not built); missing: prefetch depth against bandwidth, quantization, worker count beyond queue depth |
 | L4 predictive model | **built for the storage and miss axes** | `benchmarks/whatif.py` (0.62.26): GLM line validated on four held-out arms (-0.2 to -2.5 %); DeepSeek curve fits its four points and misses the one held-out real drive by +20 %; MiniMax not validated; (b) the overlap term needs L2, (f) the floor roofline is a range, not a number |
-| L5 energy | not started | needs Hamed to run `sudo powermetrics` (his choice, 2026-10-05) |
+| L5 energy | **started** (0.62.28): parser and the first idle reading (3.73 W mean, 1.38 W quiet); decode arms next | `benchmarks/powermetrics_parse.py`, `results/energy/idle-60s.txt`, HANDOFF 18.115; Hamed runs `sudo powermetrics` (his choice, 2026-10-05) |
 | L6 architecture comparison | done | `docs/ARCHITECTURE-COMPARISON.md`; the routing-concentration ordering DeepSeek > MiniMax > GLM is reproduced on identical prompts (LEDGER MM-ROUTING-SKEW-COLD) |
 | L7 seam map | done | `docs/SEAMS.md` |
 

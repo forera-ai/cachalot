@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.62.28 (2026-10-09)
+
+HANDOFF "Start here (2026-10-09, 0.62.28)" and section 18.115. Measurement and one instrument; nothing in `src/` besides the version string changed.
+
+### Added
+- `benchmarks/powermetrics_parse.py` (+ `tests/test_powermetrics_parse.py`): parses `powermetrics` output into watts by component, joules for a window and joules a token.
+
+### Measured
+- First energy reading (charter L5), run by Hamed: CPU+GPU+ANE package power on the working machine at rest, 3.73 W mean, 1.62 W median, 1.38 W in the quiet samples, with a 5-10 W burst about every 10 seconds from an unidentified background load. Package power only; powermetrics does not report DRAM or SSD power.
+
 ## 0.62.27 (2026-10-09)
 
 HANDOFF "Start here (2026-10-09, 0.62.27)" and section 18.114. Measurement and one instrument; nothing in `src/` besides the version string changed.

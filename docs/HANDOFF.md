@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-09, 0.62.28): the first energy reading (L5) and its parser
+>
+> Section 18.115. You ran `sudo powermetrics --samplers cpu_power,gpu_power,ane_power -i 1000 -n 60 -o benchmarks/results/energy/idle-60s.txt`; the file is readable. New `benchmarks/powermetrics_parse.py` (+ 3 tests) turns such a file into watts by component and joules a token for a window. **The "idle" minute was not quiet: CPU+GPU+ANE package power 3.73 W mean, 1.62 W median, 1.38 W in the 35 quiet samples, with a 5-10 W burst every ~10 s (about a quarter of the samples) and one 40 W spike that was my own test run.** A baseline for energy arms must be taken in the same conditions, minutes before and after each arm, and compared on medians or quiet samples; powermetrics reports package power only (no DRAM or SSD, not wall power). Nothing in `src/` changed. Next (needs your go, about 25 minutes): decode arms with your sampler recording.
+>
 > ## Start here (2026-10-09, 0.62.27): the L2 trace overhead priced; the stop rule is cleared
 >
 > Section 18.114. A CPU micro-benchmark (`benchmarks/trace_overhead.py`, no model, nothing in `src/` changed). A simulated DeepSeek token (40 layers, ~331 events with the tracer on, an 8-worker read pool) with tracer-off and tracer-on tokens alternated 300 times: **the column-store design adds 0.17 ms a token (95 % interval -0.02 to +0.38; 0.2 % of an 80 ms floor), a tuple-list design 0.07 ms (-0.08 to +0.22)**, against a control (off against off) of +0.06 (-0.08 to +0.19). The stop rule was 1.0 ms; the upper bound is 0.38. One event costs 151 ns in a single thread (column store) or 56 ns (tuple append), 0.5 us inside a contended token. **Corrects the 'about 100 timestamps' written in 18.113, the charter's section 13.4 and the v162 prompt: the event count is ~340-400 a token; the price still clears.** The in-situ check (the tracer inside a real DeepSeek server token) is the next step and needs an idle machine and your go. Your `sudo powermetrics` was running with default arguments and no output file, so nothing could be read from it; the exact command for energy arms is in 18.114.
@@ -8958,6 +8962,35 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.115 Energy (charter L5): the parser and the first idle reading — 2026-10-09 (0.62.28)
+
+**Goal.** Hamed ran `sudo powermetrics` himself (his choice of 2026-10-05) with the command from 18.114. Make the file usable and read the baseline.
+
+**Baseline / prediction.** None for the reading itself (a first measurement of an unknown quantity; no number was written before). Expectation stated afterwards, not as a prediction: the machine is Hamed's working machine with Claude, ChatGPT and several MCP processes open, so "idle" will not be the SoC's floor.
+
+**Method.** `benchmarks/powermetrics_parse.py`: splits the output at each `*** Sampled system activity (...) (N ms elapsed) ***` block, reads `CPU/GPU/ANE Power: N mW` and the combined line, drops the first sample (startup), weights power by each sample's own elapsed time, optionally cuts a window by local clock time and divides by a token count for joules a token. `tests/test_powermetrics_parse.py` pins the arithmetic on a three-sample text. Run on `benchmarks/results/energy/idle-60s.txt` (60 samples, 22:19:59-22:21:00, -i 1000, display on).
+
+**Result (measured).**
+
+| quantity | CPU | GPU | ANE | combined (CPU+GPU+ANE) |
+|---|---:|---:|---:|---:|
+| mean W (59 samples, 61.1 s) | 3.33 | 0.40 | 0.00 | **3.73** |
+| median W | 1.26 | 0.39 | 0.00 | 1.62 |
+| p95 W | 9.59 | 0.59 | 0.00 | 9.97 |
+| joules in the window | 203.5 | 24.1 | 0 | 227.6 |
+
+Structure of the minute: 35 quiet samples (combined below 2.5 W) average 1.38 W. A burst of 5-10 W (combined) recurs about every 10 seconds at 22:20:01-03, 11-13, 22-24, 32-34, 42-44, 53-55 and 57-58 (about a quarter of the samples), from a background load I did not identify (at the time WindowServer showed 57 % of a core, and the Claude, ChatGPT/Codex and MCP processes were running; the sampler was not asked for `tasks`). One 40.0 W sample at 22:20:59 coincides with my own test run and is mine. The E-cores ran at 80 % residency in the first sample and the GPU at 31 % active at 796 MHz (display compositing).
+
+**Explanation.** Hypothesis, untested: the ten-second cadence is a polling or refresh job of an open application; `--samplers tasks` in the next recording would name it.
+
+**Limits.** One minute, one recording, package power only: powermetrics does not report DRAM or SSD power on this platform, so the totals are not wall power and a figure for memory or the drive is an estimate to be labelled as one. The mean is dominated by the bursts, so a joules-a-token figure over a decode arm needs a baseline taken in the same conditions (before and after each arm, same length), compared on medians or quiet samples as well as means.
+
+**Bottleneck after.** The L5 limit is a quiet reference, not the parser: arms will be compared as arm minus baseline over equal windows, and the burst cadence will leak into any short arm.
+
+**Kind.** Measurement (first reading) plus an instrument.
+
+**Open, Hamed's call.** Whether to run the decode arms now: you start `sudo powermetrics --samplers cpu_power,gpu_power,ane_power,tasks -i 1000 -n 900 -o benchmarks/results/energy/arms-15min.txt`, tell me, and I run a DeepSeek server through one all-resident phase (a repeated prompt, ~80 ms a token) and one read-bound phase (fresh prompts, 23 misses, ~120 ms a token), logging the clock time of each phase (about 25 minutes, one runtime, Hermes closed); then `powermetrics_parse.py --from --to --tokens` gives joules a token for each. Memory and drive power stay estimates.
 
 ### 18.114 L2 per-token trace: the overhead priced on a simulated token — 2026-10-09 (0.62.27)
 
