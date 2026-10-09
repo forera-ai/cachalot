@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.62.27 (2026-10-09)
+
+HANDOFF "Start here (2026-10-09, 0.62.27)" and section 18.114. Measurement and one instrument; nothing in `src/` besides the version string changed.
+
+### Added
+- `benchmarks/trace_overhead.py` (+ `tests/test_trace_overhead.py`): prices a per-token critical-path tracer on a simulated DeepSeek token (40 layers, 8 read workers, ~331 events), tracer-off against tracer-on tokens alternated, with an off/off control.
+
+### Measured
+- Charter L2 price: a column-store tracer adds **0.17 ms a token** (95 % interval -0.02 to +0.38; 0.2 % of an 80 ms floor) and a tuple-list tracer 0.07 ms (-0.08 to +0.22), against the 1.0 ms stop rule; one event costs 151 ns (column) or 56 ns (tuple) alone, 0.5 us inside a contended token. The paper figure of ~100 events was too low (~340-400 are needed); the price clears either way. The in-situ price (the tracer in a real server token) is the next step.
+
 ## 0.62.26 (2026-10-09)
 
 HANDOFF "Start here (2026-10-09, 0.62.26)" and section 18.113. Documentation and offline instruments; nothing in `src/` besides the version string changed.

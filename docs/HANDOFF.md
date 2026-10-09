@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-09, 0.62.27): the L2 trace overhead priced; the stop rule is cleared
+>
+> Section 18.114. A CPU micro-benchmark (`benchmarks/trace_overhead.py`, no model, nothing in `src/` changed). A simulated DeepSeek token (40 layers, ~331 events with the tracer on, an 8-worker read pool) with tracer-off and tracer-on tokens alternated 300 times: **the column-store design adds 0.17 ms a token (95 % interval -0.02 to +0.38; 0.2 % of an 80 ms floor), a tuple-list design 0.07 ms (-0.08 to +0.22)**, against a control (off against off) of +0.06 (-0.08 to +0.19). The stop rule was 1.0 ms; the upper bound is 0.38. One event costs 151 ns in a single thread (column store) or 56 ns (tuple append), 0.5 us inside a contended token. **Corrects the 'about 100 timestamps' written in 18.113, the charter's section 13.4 and the v162 prompt: the event count is ~340-400 a token; the price still clears.** The in-situ check (the tracer inside a real DeepSeek server token) is the next step and needs an idle machine and your go. Your `sudo powermetrics` was running with default arguments and no output file, so nothing could be read from it; the exact command for energy arms is in 18.114.
+>
 > ## Start here (2026-10-09, 0.62.26): the offline charter work, housekeeping, and the plan from here
 >
 > Section 18.113. No machine used; nothing in `src/` changed. (1) **`benchmarks/whatif.py`** (charter L4): a validated what-if calculator. GLM's token is `92 + 14.70 x reads` ms (fitted on the exact arms, the four budget arms held out: -0.2 to -2.5 %); 14.70 ms is 13.5 MiB over the X10Pro's 0.963 GB/s, so the miss cost is bytes over the drive. DeepSeek's bandwidth curve fits its four points and **misses the one held-out real drive by +20 %**; MiniMax is not validated. `whatif.py --validate` prints all of it; 6 tests. (2) Housekeeping: `docs/LEDGER.md` gets the 0.62.x constants and a what-if validation section; `docs/EXPERIMENTS.md` (+ `benchmarks/experiment_index.py`) indexes the 39 records from 18.75 (with this one): **6 are research by the charter's definition, 33 are not**; memory index 15 to 11 KB. (3) `docs/RESEARCH-DIRECTION.md` section 13: status of every track and an ordered plan. **Next: L2 (per-token critical-path trace) is the keystone and not started; L5 energy needs you.**
@@ -8955,6 +8959,42 @@ line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderb
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
+### 18.114 L2 per-token trace: the overhead priced on a simulated token — 2026-10-09 (0.62.27)
+
+**Goal.** Hamed: "go, price the L2 trace overhead" (the first step of the charter's section 13.4 plan; the charter says to price an instrument before it touches `src/`).
+
+**Baseline.** DeepSeek's server token is 79-80 ms all-resident and 118.6-126 ms at 23.5 misses (DS-FLOOR-SRV, DS-TOKEN-48); the A/B method resolves about 3 % and process drift is +-10 % (MC-DRIFT). The only tracer already in the runtime is the routing tracer, 2.3 us a layer-token on GLM/MiniMax (18.92), about 0.1 ms a token.
+
+**Prediction (written before the run, `benchmarks/results/l2-price/prediction.md`, 21:40).** Events a token for the charter's section 4.3 spec on DeepSeek: 40 layers x 3 (router sync start, end, dispatch) + 45.6 reads x 3 (submitted, started, completed) + ~80 blocked-interval marks = ~340, planning number 400. A per-thread preallocated column store costs 0.4-1.5 us an event under GIL contention, so 0.16-0.6 ms a token (0.2-0.75 % of 80 ms). **Falsifier / stop rule:** an overhead above 1.0 ms a token (1.25 %), or an interval that cannot exclude 1.0 ms, means the tracer is sampled (every Nth token), not continuous.
+
+**Method.** `benchmarks/trace_overhead.py`. Layer 1: the cost of one event in a single thread (a million events). Layer 2: a simulated token, 40 layers; each layer a router sync, a dispatch, ~1.14 demand reads served by an 8-worker pool that sleeps like a pread (so workers emit events concurrently with the main thread), and a blocked wait; main-thread work is a fixed number of Python iterations (calibrated to 1.8 ms a layer) so event costs add to the wall time instead of hiding in a deadline. 300 pairs per condition, order inside a pair random; conditions: control (off against off, the noise floor), column store on against off, tuple list on against off. The "off" path is the same code with one `is not None` test an event. Paired differences with a bootstrap 95 % interval. Python 3.14, display on, `sudo powermetrics` running in Hamed's terminal (default samplers, 5 s interval, unreadable by me), no model loaded.
+
+**Result (measured).**
+
+| quantity | value |
+|---|---|
+| `perf_counter_ns()` alone | 32 ns |
+| one event, column store (four `array('q')` stores) | 151 ns |
+| one event, tuple appended to a list | 56 ns (dict per event 218 ns) |
+| the tracer-off test | 7 ns |
+| control, off against off | +0.058 ms (95 % -0.080 to +0.192; sd 1.23) |
+| column store on against off, 331 events | **+0.173 ms (95 % -0.022 to +0.380)**, median +0.156; 0.52 us an event in the contended token; 0.22 % of 80 ms |
+| tuple list on against off | **+0.074 ms (95 % -0.079 to +0.224)**, median 0.0 |
+
+The simulated token is 97.6 ms (the pool's waits and queue handoffs put it above the 72 ms of calibrated work), within 20 % of a real server token.
+
+**Against the prediction.** Held for the token: 0.17 ms sits at the low end of 0.16-0.6, far under the 1.0 ms stop rule (upper bound 0.38). Missed on the unit cost: a single event costs 0.15 us, not 0.4-1.5, so the prediction was conservative by 3-10x. The tuple list is cheaper to write than the column store in CPython, which reverses my design choice; the column store's advantage is memory (13 KB against ~33 KB a token) and no garbage, not time. Both clear the stop rule; either can be built.
+
+**Explanation.** Events are a few hundred nanoseconds and 331 of them are 0.1 % of a token; the worker threads' events run while the workers wait for the drive, and the main thread's cost is a few stores. Python's GIL contention shows up as 0.5 us an event inside the token against 0.15 us alone, a factor of 3.
+
+**Limits.** Simulated, not the real server: no MLX, no real `mx.eval` waits, real reads release the GIL in `os.pread` where the stand-in sleeps. The simulation cannot show whether stamping a time near an `mx.eval` perturbs the GPU overlap (it should not: `perf_counter` forces nothing); that is the in-situ check. The interval for the column store does include zero and is as wide as the control's, so the true overhead lies between 0 and 0.4 ms. `sudo powermetrics` was running (one extra process, about 1 % of one core, sampling every 5 s).
+
+**Bottleneck after.** Unchanged: not a speed change. The next limit on L2 is the in-situ price and then the build (about 40 lines in the read chokepoint `ResidentExpertStore._read_into` and the router syncs of `moe_layer_metal.py`, `glm/model.py`, `minimax/gpu_select.py`, per `docs/SEAMS.md` section 3).
+
+**Kind.** Research (predicted, measured, explained; the unit-cost prediction was missed by 3-10x in the safe direction).
+
+**Open, Hamed's call.** An idle-machine session for the in-situ price and then the DeepSeek build: build behind `CACHALOT_TOKEN_TRACE` (off by default), A/B it on the server with `TF_ALTERNATE`-style alternation, stop if above 1 ms. For energy (L5), my reading of the terminal was empty: your `sudo powermetrics` wrote to its own window with default arguments. To get a file I can read, run `sudo powermetrics --samplers cpu_power,gpu_power,ane_power -i 1000 -n 60 -o /Users/hamedprooshani/Projects/deepseek-v41-mac/benchmarks/results/energy/idle-60s.txt` for the 60-second idle baseline (the directory exists); the arms for a read-bound and an all-resident token follow once the L5 parser exists.
+
 ### 18.113 Offline charter work: a validated what-if calculator, the ledger, an experiment index, and the plan — 2026-10-09 (0.62.26)
 
 **Goal.** Hamed: "go, the offline charter work. Then, housekeeping. Then, check the research direction and plan next steps and update next session prompt and handoff docs accordingly." No machine time.
@@ -8979,7 +9019,7 @@ Two things the table says. First, GLM's per-read cost fitted from latency (14.70
 
 **Housekeeping.** `docs/LEDGER.md`: rows GLM-MISS-COST, GLM-BUDGET-DECODE, GLM-CSHARP-FLAW, GLM-SITE-LOGPROB and a section 7b with WI-GLM, WI-DS, WI-MM, WI-FLOOR-BW. `docs/EXPERIMENTS.md` + `benchmarks/experiment_index.py`: 39 sections from 18.75 indexed (research 6, engineering 9, measurement 10, pricing 1, unlabelled 13). Memory: the `MEMORY.md` index shrank from 15.3 to 11.5 KB by moving release-by-release detail into its topic files (nothing lost: the MiniMax-M3 file lacked the 0.37.2 entry and received it); the backup of the old index is outside the repository.
 
-**Research direction.** `docs/RESEARCH-DIRECTION.md` section 13: status of every track against section 3's gaps, the section 10 success criteria scored, four findings since 2026-10-05 that change the plan, and an ordered plan. Short form: L0, L1, L6, L7 done; L4 built for the storage and miss axes; **L2 not started, and it unlocks L4(b)/(f) and the exposed-against-hidden numbers**; L5 needs Hamed; L3 has prefetch-against-bandwidth (offline) and quantization left. The paper price of L2 is under 0.1 % of a token.
+**Research direction.** `docs/RESEARCH-DIRECTION.md` section 13: status of every track against section 3's gaps, the section 10 success criteria scored, four findings since 2026-10-05 that change the plan, and an ordered plan. Short form: L0, L1, L6, L7 done; L4 built for the storage and miss axes; **L2 not started, and it unlocks L4(b)/(f) and the exposed-against-hidden numbers**; L5 needs Hamed; L3 has prefetch-against-bandwidth (offline) and quantization left. The paper price of L2 (about 100 events, under 0.1 ms) was too low on the event count (~340-400) and is superseded by 18.114 (measured 0.17 ms a token).
 
 **Limits.** The GLM line has an intercept (92 ms) that no GLM all-resident run has measured, and one rate point; the DeepSeek model has one held-out failure; the MiniMax model is unvalidated. The experiment index counts the record's own Kind line and does not judge it.
 

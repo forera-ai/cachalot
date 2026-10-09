@@ -1,8 +1,8 @@
 # Experiment index (charter section 7.2 and section 10)
 
-Written 2026-10-09 against runtime 0.62.26; regenerate with `benchmarks/experiment_index.py`. The charter asks for "a file of experiment records whose predictions were written before the build". The records themselves live in `docs/HANDOFF.md` section 18 (each with Baseline, Prediction, Method, Result, Explanation, Limits, Kind); this file is the index: where each record is, whether it carries a written prediction, and what kind of result it is, as its own **Kind** line says. It does not restate results. Sections before 18.75 predate the record format and are not listed; sections without a **Kind** line are listed as unlabelled and have no claim made for them here.
+Written 2026-10-09 against runtime 0.62.27; regenerate with `benchmarks/experiment_index.py`. The charter asks for "a file of experiment records whose predictions were written before the build". The records themselves live in `docs/HANDOFF.md` section 18 (each with Baseline, Prediction, Method, Result, Explanation, Limits, Kind); this file is the index: where each record is, whether it carries a written prediction, and what kind of result it is, as its own **Kind** line says. It does not restate results. Sections before 18.75 predate the record format and are not listed; sections without a **Kind** line are listed as unlabelled and have no claim made for them here.
 
-Counts of the 39 sections listed (18.75-18.113): 13 unlabelled, 10 measurement, 9 engineering, 6 research, 1 pricing.
+Counts of the 40 sections listed (18.75-18.114): 13 unlabelled, 10 measurement, 9 engineering, 7 research, 1 pricing.
 
 Research means predicted, measured and explained (charter section 8.1 rule 6); a falsified prediction is still research and is marked so in its Kind line. Engineering means it works without a written prediction, or an instrument was built.
 
@@ -10,6 +10,7 @@ Research means predicted, measured and explained (charter section 8.1 rule 6); a
 
 | section | title | prediction written | kind (as recorded) |
 |---|---|:---:|---|
+| §18.114 | L2 per-token trace: the overhead priced on a simulated token (0.62.27) | yes | Research (predicted, measured, explained; the unit-cost prediction was missed by 3-10x in the safe direction). |
 | §18.113 | Offline charter work: a validated what-if calculator, the ledger, an experiment index, and the plan (0.62.26) | yes | Engineering (instrument and model; validation done in a scratch check before the module existed, so no prediction on file). |
 | §18.112 | GLM's same-site break: a teacher-forced probe, prefill against decode against budget 2 (0.62.25) | yes | Research (predicted, measured, prediction falsified, explained). |
 | §18.111 | GLM decode miss budget: the compile-level C# panel (0.62.24) | yes | Research (predicted, measured), with a null result on the budget question and a new lead on the corruption. |
