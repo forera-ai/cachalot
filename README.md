@@ -297,6 +297,8 @@ reproducible to ±0.3 %.
 
 **0.60.7 (2026-10-06): review fixes.** The run manifest no longer records credentials such as `CACHALOT_API_KEY` by value, and its Hermes Desktop check needs one process line. HANDOFF section 18.73.
 
+**0.62.30 (2026-10-10): the energy lane gets a plan.** The joules a token measured so far are CPU+GPU+ANE package power and leave out SSD reads and DRAM transport; `docs/POWER-ACCOUNTING-PLAN.md` sets out how to measure or model those two, index them, and show energy per token in Cachalot Lab. Planning only; nothing run.
+
 **0.62.29 (2026-10-09): joules a token.** A DeepSeek token costs 1.73 J of CPU+GPU+ANE package energy when every expert is resident and 2.52 J when it waits for the drive (1.4-1.5 times: power falls 13 %, the token takes 1.7 times as long). Package power only, no DRAM or drive. `benchmarks/energy_arms.sh`. No runtime change.
 
 **0.62.28 (2026-10-09): the first energy reading.** On the working machine at rest the CPU+GPU+ANE package draws 3.7 W on average (1.4 W in quiet moments); `benchmarks/powermetrics_parse.py` turns a `powermetrics` recording into watts and joules a token for the decode arms that follow. Package power only, no DRAM or drive. No runtime change.

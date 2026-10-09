@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.62.30 (2026-10-10)
+
+HANDOFF "Start here (2026-10-10, 0.62.30)" and section 18.117. Documentation only; nothing in `src/` besides the version string changed, nothing run.
+
+### Added
+- `docs/POWER-ACCOUNTING-PLAN.md` (charter L5b): how to retrieve and index the power of SSD reads and DRAM transport (the sources to try, steps E0-E4 with stop rules and acceptance, the indexing scheme, two routes to show it in Cachalot Lab and the fixed contents of the Lab brief). The package-power joules of 0.62.28-0.62.29 are recorded as lower bounds.
+- `docs/RESEARCH-DIRECTION.md` section 13.6, `docs/LEDGER.md` open question 10, and the next-session prompt's First jobs rewritten around the plan (v166).
+
 ## 0.62.29 (2026-10-09)
 
 HANDOFF "Start here (2026-10-09, 0.62.29)" and section 18.116. Measurement and instruments; nothing in `src/` besides the version string changed.

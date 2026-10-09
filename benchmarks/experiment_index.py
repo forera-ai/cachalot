@@ -21,7 +21,7 @@ FIRST = 75
 
 def kind_of(text: str) -> str:
     t = text.lower()
-    for k in ("research", "engineering", "measurement", "pricing"):
+    for k in ("research", "engineering", "measurement", "pricing", "planning"):
         if t.startswith(k):
             return k
     return "unlabelled"

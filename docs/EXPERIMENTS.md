@@ -1,8 +1,8 @@
 # Experiment index (charter section 7.2 and section 10)
 
-Written 2026-10-09 against runtime 0.62.29; regenerate with `benchmarks/experiment_index.py`. The charter asks for "a file of experiment records whose predictions were written before the build". The records themselves live in `docs/HANDOFF.md` section 18 (each with Baseline, Prediction, Method, Result, Explanation, Limits, Kind); this file is the index: where each record is, whether it carries a written prediction, and what kind of result it is, as its own **Kind** line says. It does not restate results. Sections before 18.75 predate the record format and are not listed; sections without a **Kind** line are listed as unlabelled and have no claim made for them here.
+Written 2026-10-09 against runtime 0.62.30; regenerate with `benchmarks/experiment_index.py`. The charter asks for "a file of experiment records whose predictions were written before the build". The records themselves live in `docs/HANDOFF.md` section 18 (each with Baseline, Prediction, Method, Result, Explanation, Limits, Kind); this file is the index: where each record is, whether it carries a written prediction, and what kind of result it is, as its own **Kind** line says. It does not restate results. Sections before 18.75 predate the record format and are not listed; sections without a **Kind** line are listed as unlabelled and have no claim made for them here.
 
-Counts of the 42 sections listed (18.75-18.116): 13 unlabelled, 12 measurement, 9 engineering, 7 research, 1 pricing.
+Counts of the 43 sections listed (18.75-18.117): 13 unlabelled, 12 measurement, 9 engineering, 7 research, 1 planning, 1 pricing.
 
 Research means predicted, measured and explained (charter section 8.1 rule 6); a falsified prediction is still research and is marked so in its Kind line. Engineering means it works without a written prediction, or an instrument was built.
 
@@ -10,6 +10,7 @@ Research means predicted, measured and explained (charter section 8.1 rule 6); a
 
 | section | title | prediction written | kind (as recorded) |
 |---|---|:---:|---|
+| §18.117 | Power accounting for SSD reads and DRAM transport: the plan, and the next session's jobs (0.62.30) | no | Planning (no run). |
 | §18.116 | Energy (charter L5): joules a token, all-resident against read-bound (0.62.29) | no | Measurement (first energy numbers) plus instruments. Not research by the charter's definition: no prediction was written first. |
 | §18.115 | Energy (charter L5): the parser and the first idle reading (0.62.28) | no | Measurement (first reading) plus an instrument. |
 | §18.114 | L2 per-token trace: the overhead priced on a simulated token (0.62.27) | yes | Research (predicted, measured, explained; the unit-cost prediction was missed by 3-10x in the safe direction). |

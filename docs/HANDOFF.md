@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-10, 0.62.30): next session = complete power accounting (SSD + DRAM) and the Lab energy brief
+>
+> Section 18.117. A planning release (docs only, nothing run, nothing in `src/`). Hamed: the energy numbers so far are package power (CPU+GPU+ANE) and leave out the two things Cachalot is built on, **SSD reads and DRAM transport**, so they are lower bounds; the energy per token must also be monitored in Cachalot Lab, with a proper brief he implements. **The next session's jobs, in order (`docs/POWER-ACCOUNTING-PLAN.md`, `docs/NEXT-SESSION-PROMPT.md` v166 "First jobs"):** (E0) inventory what this Mac exposes: two short `sudo powermetrics` runs by Hamed, a read-only IOReport/SMC probe; (E1) DRAM calibration; (E2) SSD differential on the internal drive and the X10Pro; (E3) re-run the 0.62.29 arms with SoC + DRAM + SSD and a coverage figure; (E4) index it (`benchmarks/power_sources.py`, scorecard fields, LEDGER "Energy" section); then expose it from the runtime (route 1 in the plan) or have Lab ingest recordings (route 2), and write the Lab brief `docs/lab/briefs/...-energy.md`. Everything in the plan not marked verified is to verify.
+>
 > ## Start here (2026-10-09, 0.62.29): joules a token, measured (L5): waiting for the drive costs energy
 >
 > Section 18.116. With your sampler recording (`arms2-15min.txt`) I ran one exact-decode DeepSeek server (48 GiB, internal bank) through four timed phases: **an all-resident token costs 1.73 J (1.39-1.46 J above the idle baseline); a read-bound token costs 2.52 J (1.96-2.21 above baseline), 1.4-1.5 times as much**, because package power falls only 13 % (20.9 W to 18.3 W; GPU 16.3 W to 10.9 W, CPU 4.7 W to 7.4 W) while the token takes 1.7 times as long (12.1 against 7.3 tokens a second over the phase). CPU+GPU+ANE package power only: DRAM and SSD power are not measured. Your first recording with the `tasks` sampler aborted powermetrics (`proc_pidpath failed`, "Second underflow"); do not use `tasks`. Nothing in `src/` changed.
@@ -8966,6 +8970,24 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.117 Power accounting for SSD reads and DRAM transport: the plan, and the next session's jobs — 2026-10-10 (0.62.30)
+
+**Goal.** Hamed: "while our main asset is SSD read and RAM transportations, without a proper power consumption record of these two all our numbers will be a rough and inaccurate number! find a way to retrieve and index the power usage of those too. Also, this power consumption per token should be monitored in Cachalot Lab too. ... introduce a proper brief for Cachalot Lab ... These all should be next session's tasks. So, prepare docs for handoff and next session's prompts."
+
+**What this session did.** Planning only; no benchmark, no runtime process, nothing in `src/`. Read-only recon on this machine (verified): `powermetrics -h` (says its power values are estimates and lists CPU, GPU and ANE; has `--show-extra-power-info` ("unsupported power info"), `--show-all`, `--samplers disk`-style options), `libIOReport.dylib` present at `/usr/lib`, the internal drive is an `APPLE SSD AP1024Z` (1 TB), Mac15,14, no third-party monitors (macmon, mactop, asitop) installed. Wrote `docs/POWER-ACCOUNTING-PLAN.md`.
+
+**The plan in one paragraph.** The recorded 1.73 J (all-resident) and 2.52 J (read-bound) per DeepSeek token are lower bounds: they omit the SSD (453 MB read a read-bound token) and DRAM (~7.5 GB streamed a token), the two terms that differ between the regimes. Sources to try, in order: `powermetrics --show-all` and `--show-extra-power-info` (Hamed, sudo, once), IOReport's "Energy Model" channels (cumulative energy counters, DRAM among them in other tools; probably no root; enumerate with a probe), SMC total-system-power keys as the closing check, a differential method for the internal SSD (system total minus SoC minus DRAM at controlled read rates), an inline USB-C meter (Hamed's call) for the X10Pro, and a labelled energy-per-byte model for DRAM if no channel exists. Steps E0 to E4 with stop rules and acceptance (component coverage within 10 % of the system total) are in the plan. Indexing: `benchmarks/power_sources.py`, scorecard fields with tags, a LEDGER "Energy" section, a joules column in `whatif.py`.
+
+**Lab.** Two routes (the plan, section 5): the runtime exposes `energy` in `/v1/stats`, the `[request]` line and `usage.cachalot` behind a knob (route 1, if the counters are readable without root), or Lab ingests recordings (route 2). Either triggers a Lab brief; its contents are fixed in the plan (contract first, the views Hamed asked for, rules: unavailable not zero, estimates not styled as measurements, coverage indicator, tags on every figure). The next session writes it after the fields exist and tells Hamed.
+
+**Limits.** Nothing of the plan beyond the recon facts is verified; every IOReport/SMC claim is from how other tools behave and is marked to verify. If this Mac exposes no DRAM or SSD power, the result is a labelled model and a coverage figure, not a single unqualified number.
+
+**Bottleneck after.** None changed. The limit on the energy lane is the missing components, not the parser.
+
+**Kind.** Planning (no run).
+
+**Open, Hamed's call.** The two sudo runs of E0; an inline USB-C power meter for the X10Pro; whether the runtime may read the SMC/IOReport counters itself (route 1) or Lab ingests recordings (route 2); review of the Lab brief before implementing it.
 
 ### 18.116 Energy (charter L5): joules a token, all-resident against read-bound — 2026-10-09 (0.62.29)
 
