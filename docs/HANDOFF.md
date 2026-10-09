@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-09, 0.62.29): joules a token, measured (L5): waiting for the drive costs energy
+>
+> Section 18.116. With your sampler recording (`arms2-15min.txt`) I ran one exact-decode DeepSeek server (48 GiB, internal bank) through four timed phases: **an all-resident token costs 1.73 J (1.39-1.46 J above the idle baseline); a read-bound token costs 2.52 J (1.96-2.21 above baseline), 1.4-1.5 times as much**, because package power falls only 13 % (20.9 W to 18.3 W; GPU 16.3 W to 10.9 W, CPU 4.7 W to 7.4 W) while the token takes 1.7 times as long (12.1 against 7.3 tokens a second over the phase). CPU+GPU+ANE package power only: DRAM and SSD power are not measured. Your first recording with the `tasks` sampler aborted powermetrics (`proc_pidpath failed`, "Second underflow"); do not use `tasks`. Nothing in `src/` changed.
+>
 > ## Start here (2026-10-09, 0.62.28): the first energy reading (L5) and its parser
 >
 > Section 18.115. You ran `sudo powermetrics --samplers cpu_power,gpu_power,ane_power -i 1000 -n 60 -o benchmarks/results/energy/idle-60s.txt`; the file is readable. New `benchmarks/powermetrics_parse.py` (+ 3 tests) turns such a file into watts by component and joules a token for a window. **The "idle" minute was not quiet: CPU+GPU+ANE package power 3.73 W mean, 1.62 W median, 1.38 W in the 35 quiet samples, with a 5-10 W burst every ~10 s (about a quarter of the samples) and one 40 W spike that was my own test run.** A baseline for energy arms must be taken in the same conditions, minutes before and after each arm, and compared on medians or quiet samples; powermetrics reports package power only (no DRAM or SSD, not wall power). Nothing in `src/` changed. Next (needs your go, about 25 minutes): decode arms with your sampler recording.
@@ -8962,6 +8966,37 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.116 Energy (charter L5): joules a token, all-resident against read-bound — 2026-10-09 (0.62.29)
+
+**Goal.** Hamed ran the sampler for the decode arms (18.115's open item): what does a DeepSeek token cost in energy, and what does waiting for the drive add?
+
+**Baseline / prediction.** The idle reading of 18.115 (3.73 W mean, 1.38 W quiet, 10-second bursts) is the baseline. No energy prediction was written before the run. Expectation recorded afterwards only: the read-bound phase draws less power (the GPU waits) but takes longer per token, so the joules per token could go either way.
+
+**Method.** `benchmarks/energy_arms.sh` + `benchmarks/energy_arms_driver.py`. One `./serve.sh` with `CACHALOT_DECODE_MISS_BUDGET=off` (exact decode, prediction on, 48 GiB, internal bank), started first and waited for, then the driver (serve.sh's one-runtime guard refuses to start while a `benchmarks/...` python process exists, which cost one restart). After a warm-up (the floor prompt twice, so its experts are resident), four phases with local clock times logged: A idle server 90 s; B all-resident decode (one prompt repeated, greedy, 120 tokens a request, 2 minutes); C read-bound decode (ten distinct prompts, greedy, 120 tokens each, 150 s budget); D idle server 90 s. Sampler: `sudo powermetrics --samplers cpu_power,gpu_power,ane_power -i 1000 -n 900 -o arms2-15min.txt`, started by Hamed at 22:25 (548 samples to 22:34:48). Each phase is cut with one second of margin at each end (`powermetrics_parse.py` semantics: power weighted by each sample's own elapsed time); the baseline is the mean (or median) of A and D. Raw, excess-over-mean-baseline and excess-over-median-baseline joules a token are all reported because the baseline wobbles. Display on; Claude, ChatGPT and MCP processes open; first recording (`arms-15min.txt`) is not used: powermetrics aborted with the `tasks` sampler 42 samples in.
+
+**Result (measured; CPU+GPU+ANE package power).**
+
+| phase | window | samples | mean W | median W | CPU W | GPU W | tokens | raw J/token | excess J/token (mean / median baseline) |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---|
+| A idle server | 22:26:36-22:28:06 | 86 | 3.18 | 2.08 | 2.63 | 0.55 | 0 | | baseline |
+| B all-resident | 22:28:06-22:30:16 | 125 | 20.94 | 20.27 | 4.66 | 16.28 | 1,560 | **1.726** | **1.389 / 1.463** |
+| C read-bound | 22:30:16-22:33:02 | 161 | 18.29 | 18.56 | 7.35 | 10.94 | 1,200 | **2.524** | **1.959 / 2.214** |
+| D idle server | 22:33:02-22:34:32 | 86 | 5.01 | 2.97 | 4.06 | 0.95 | 0 | | baseline |
+
+Baseline: 4.09 W mean, 2.52 W median (A and D differ by 1.8 W: the 10-second bursts landed unevenly). Tokens a second over each phase (request overheads included): B 12.1, C 7.25. Ratios: C over B raw 1.46, excess 1.41-1.51; power 0.87; time a token 1.67.
+
+**Against the expectation.** Power fell and joules rose: the read-bound token costs 1.4-1.5 times the energy of the all-resident one. Waiting is not free: the GPU draws 10.9 W while waiting for reads (against 16.3 W busy), the CPU draws more (7.4 against 4.7 W: reader threads, page-cache and syscall work), and the token lasts 1.67 times as long.
+
+**Explanation (hypothesis).** The two phases differ in time per token (80 against ~120-138 ms in the ledger's constants) more than in power; the reads themselves (SSD, DRAM, controller) are not in package power, so the true cost of a read-bound token is higher than reported. The uneven baseline puts a +-0.1 J a token wobble on both phases.
+
+**Limits.** One run per phase, two minutes of B and 2.8 minutes of C; package power only (no DRAM, SSD, display or fans), not wall power; baseline wobble 1.8 W between the two idle phases; B's 1,560 tokens come from one prompt repeated (greedy), C's from ten different prompts; the phase tokens-a-second include request overheads. The burst source stayed unnamed (no `tasks` sampler). Exact decode, not the shipped miss budget 0.
+
+**Bottleneck after.** For energy, the read-bound regime costs joules through time, not watts; every lever that removes misses (budget, prefetch precision, more memory) also saves energy, in rough proportion to the token time it removes. That ties L5 to `benchmarks/whatif.py`: the joules a token of a what-if is power times predicted token time, with power taken from the phase table.
+
+**Kind.** Measurement (first energy numbers) plus instruments. Not research by the charter's definition: no prediction was written first.
+
+**Open, Hamed's call.** More arms with the same instruments are cheap (25 minutes each): GLM on the X10Pro (91 % of the token is waiting), MiniMax, the shipped miss budget 0 against exact (fewer reads, fewer joules?), and a longer baseline. Whether to add a joules column to `whatif.py` from these power figures.
 
 ### 18.115 Energy (charter L5): the parser and the first idle reading — 2026-10-09 (0.62.28)
 

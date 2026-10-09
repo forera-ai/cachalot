@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.62.29 (2026-10-09)
+
+HANDOFF "Start here (2026-10-09, 0.62.29)" and section 18.116. Measurement and instruments; nothing in `src/` besides the version string changed.
+
+### Added
+- `benchmarks/energy_arms.sh` and `benchmarks/energy_arms_driver.py`: start an exact-decode DeepSeek server, wait for it, then run four timed phases (idle, all-resident decode, read-bound decode, idle) whose clock times cut a `powermetrics` recording.
+
+### Measured
+- Joules a token (charter L5), CPU+GPU+ANE package power: an all-resident DeepSeek token costs 1.73 J (1.39-1.46 J above the idle baseline) and a read-bound token 2.52 J (1.96-2.21 above), 1.4-1.5 times as much: package power falls 13 % (20.9 W to 18.3 W) while the token takes 1.7 times as long. DRAM and SSD power are not measured. The `tasks` sampler aborts powermetrics on this machine; do not use it.
+
 ## 0.62.28 (2026-10-09)
 
 HANDOFF "Start here (2026-10-09, 0.62.28)" and section 18.115. Measurement and one instrument; nothing in `src/` besides the version string changed.
