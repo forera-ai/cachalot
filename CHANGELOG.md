@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.62.24 (2026-10-09)
+
+HANDOFF "Start here (2026-10-09, 0.62.24)" and section 18.111. Measurement only; nothing in `src/` besides the version string changed.
+
+### Measured
+- GLM decode miss budget, the compile-level C# panel: a short C# task (a quote-aware CSV line splitter with 8 unit asserts), 12 replies an arm built with `dotnet build`. Nothing compiled in either arm (0/12 exact, 0/12 budget 2), so the panel cannot show whether the budget costs anything; decode 1.793 against 1.163 s a token (-35 %). 15 of 24 replies break at the same construct (`else if (c == delimiter)` written as `else` plus a stray `delimiter` line), in both arms, which points at GLM's own code corruption, not the budget. No default changed; `serve-glm.sh` stays at budget 2.
+
 ## 0.62.23 (2026-10-09)
 
 HANDOFF "Start here (2026-10-09, 0.62.23)" and section 18.110. Measurement only; nothing in `src/` besides the version string changed.

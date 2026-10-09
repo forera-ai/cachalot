@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-09, 0.62.24): GLM miss budget, the compile-level C# panel
+>
+> Section 18.111. Measurement only; nothing in `src/` changed. A short C# task (a quote-aware CSV line splitter, 8 unit asserts), 12 replies per arm, each built with `dotnet build`: **0 of 12 compile with exact decode, 0 of 12 with budget 2** (decode 1.793 against 1.163 s a token, -35 %). Every reply breaks, and 15 of 24 break at the same place (an `if (c == delimiter)` that comes out as `else` followed by a stray `delimiter` line), so the panel cannot tell the budget from exact: both sit at the floor. New open observation: that same-site break in 15 of 24 independent samples looks deterministic, not sampling noise; it is the cheapest lead yet on GLM's code corruption. `serve-glm.sh` stays at budget 2.
+>
 > ## Start here (2026-10-09, 0.62.23): GLM miss budget, the larger blind C# panel
 >
 > Section 18.110. Measurement only; nothing in `src/` changed. The C# task alone, 12 replies per arm (exact and budget 2), 4.3 hours, graded blind reply by reply: **flawed 9/12 exact, 9/12 budget 2 (Fisher p = 1.0); severe garbling (self-corrections, stray words, "HAMED STOP") 3/12 in each arm.** Decode 1.794 against 1.184 s a token (-34 %). No difference in C# quality between exact and budget 2, but GLM garbles three of four C# replies either way and n = 12 cannot exclude a gap below about 35 points. `serve-glm.sh` stays at budget 2. Use MiniMax or DeepSeek for code.
@@ -8942,6 +8946,35 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.111 GLM decode miss budget: the compile-level C# panel — 2026-10-09 (0.62.24)
+
+**Goal.** Hamed: "go, run the compile-level C# panel" (§18.110's open item): does budget 2 change whether GLM's C# compiles and passes tests, which the visible-text grading of §18.110 could not say?
+
+**Prediction (before).** Written before the first reply: GLM garbles most of its C# (§18.43-18.49, §18.110: flawed 9/12 in both arms), so few replies of either arm compile; a difference between arms is unlikely to be visible. I did not expect a floor of zero.
+
+**Method.** `benchmarks/results/glm-compile-panel/` (gitignored). The prompt (`prompt.txt`, no system prompt, no agent context): a complete C# class `CsvLine` with `public static string[] Split(string line, char delimiter = ',')` (quoted fields, doubled quotes, whitespace kept, empty line gives one empty field). `Test.cs` holds 8 asserts. Temperature 0.7, 700 tokens at most, a stop sequence on the closing code fence, 12 replies per arm to one server per arm (exact = `CACHALOT_GLM_DECODE_MISS_BUDGET=off`, then 2) at 46 GiB (87 GiB available, Hamed's applications open), bank on the X10Pro, prefetch off. After both arms, `grade.py` extracted the first code block of each reply, built it with `Test.cs` (`net9.0`, implicit usings) and ran it. The harness was checked first on a correct solution (builds, 0 failures), a broken one (8 failures) and a misnamed method (does not build). Run 17:23 to 20:11. A first start at 16:35 was stopped after one reply because, without a stop sequence, GLM wrote a first complete block and then began a second one, taking every reply to the 700-token cap (that reply is `aborted-first-run-replies.jsonl`, not a panel result).
+
+**Result (measured).**
+
+| arm | decode s/token | compile | tests run | first error: median line | tokens (mean) |
+|---|---:|---:|---:|---:|---:|
+| exact | 1.793 (1.775-1.817) | 0/12 | 0 | 39 | 263 |
+| budget 2 | 1.163 (1.139-1.235) (-35 %) | 0/12 | 0 | 39 | 275 |
+
+Fifteen of the 24 replies break at the same construct (line 38-39): the branch `else if (c == delimiter)` is written as `else` followed by a line starting `delimiter`, followed by `...`, `;` or the rest of the condition. The others break at line 16 (six replies, a missing `using` for `StringBuilder`), line 54 or 61 (stray tokens), or line 10 (one 63-token reply). The first-run reply without the stop sequence broke at the same site in a different way (`',' handling` written where `if (c == delimiter)` belongs).
+
+**Against the prediction.** The direction held (high failure rate, no visible difference between arms); the floor was lower than I expected: nothing compiles in either arm, so the panel cannot show whether budget 2 costs anything. A rate difference of up to about 24 points either way is not excluded (95 % interval of 0/12 against 0/12).
+
+**Explanation.** None yet for the shared break. It is the same construct in both arms and in the 25th (unstopped) reply, so it is not the budget. Hypothesis, not tested: the model drops the tokens ` if (c ==` after `else` at this site; with 15 of 24 samples at temperature 0.7 hitting one position, sampling noise is an unlikely cause. A cheap probe would settle where it comes from: teacher-force the correct continuation at that position and read the log-probabilities of ` if` against `delimiter` in decode mode and in prefill mode (§18.43 found them differing, KL mean 0.015, max 1.96).
+
+**Limits.** One task, one grader (the compiler), 12 replies an arm, a 700-token cap with a stop on the first code block (a block that never closes before the cap would count as an extracted, probably broken reply). The test asserts never ran because nothing built.
+
+**Bottleneck after.** Unchanged from §18.108 for speed. For quality the limit is GLM's own code corruption, not the budget.
+
+**Kind.** Research (predicted, measured), with a null result on the budget question and a new lead on the corruption.
+
+**Open, Hamed's call.** Nothing blocked. `serve-glm.sh` stays at budget 2; for code use MiniMax or DeepSeek (§18.44). Optional next job (autonomous, about 30 minutes, GLM loaded): the teacher-forced probe above, exact against budget 2 and decode against prefill mode, on this prompt.
 
 ### 18.110 GLM decode miss budget: the larger blind C# panel — 2026-10-09 (0.62.23)
 
