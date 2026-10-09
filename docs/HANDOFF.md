@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-10, 0.62.32): DRAM costs 49.9 pJ per byte; next = E2 SSD, then E3, E4 and the Lab brief
+>
+> Section 18.119, record `docs/E1-DRAM-CALIBRATION-RECORD.md` (prediction committed first). **Measured:** IOReport DRAM energy is linear in bytes moved, 49.9 pJ per byte (R^2 0.999, 0-735 GB/s); DCS 12.0 and AMCC 32.6 pJ/B also scale (94.5 all three, possibly double counted); a 735 GB/s stream costs 38.8 W of DRAM. Predictions held except the rate (735 GB/s, not 350-400). **Open:** PSTR minus the components falls from 18 W at idle to 3 W at full stream (cause unknown); DCS/AMCC inside or beside DRAM. **Next, each needing Hamed's go and an estimate:** E2 SSD differential (PSTR minus SoC minus memory at 0/25/50/100 % of each drive; the open residual limits it, so first explain or bound it), E3 joules a token with all components, E4 index, Lab brief (route 1 possible while his sampler runs).
+>
 > ## Start here (2026-10-10, 0.62.31): E0 done, DRAM energy is readable while a sampler runs; next = E1 DRAM and E2 SSD, then the Lab brief
 >
 > Section 18.118. Measurement and instruments, nothing in `src/`. **Verdict of E0 (measured):** `powermetrics` has no DRAM/SSD power lines; IOReport has DRAM/DCS/AMCC energy counters that move only while a root `powermetrics` runs, readable then by a user process; the SMC gives whole-system power (`PSTR`) without root; no SSD sensor. **Route 1 for Lab is possible** (the runtime reads as a user) but needs Hamed's sampler running during any energy reading; otherwise route 2 (Lab ingests recordings). **Next, each needing Hamed's go and an estimate:** E1 DRAM calibration (stream a buffer at fixed rates; slope of DRAM watts against GB/s, with `PSTR` as the cross-check), E2 SSD differential (system total minus SoC and DRAM at 0/25/50/100 % of each drive), E3 joules a token with all components and a coverage figure, E4 the index, then the Lab brief. Open: whether DCS and AMCC lie inside or beside `DRAM0_x` (kept separate, never summed); what `PSTR` includes (an inline meter would tell).
@@ -8974,6 +8978,28 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.119 Power accounting, step E1: what a byte of DRAM traffic costs (0.62.32)
+
+**Goal.** Tie IOReport's DRAM, DCS and AMCC energy counters to bytes moved (plan step E1).
+
+**Baseline.** Idle-ish: dram 1.2-1.8 W, dcs 1.8-2.8, amcc 2.2-3.8 W; PSTR 26-33 W (`docs/E1-DRAM-CALIBRATION-RECORD.md` section 1).
+
+**Prediction (written and committed before the run, `85d022c`).** DRAM slope 30-50 pJ/B; AMCC and DCS scale (each above 5 pJ/B), the three together 50-100 pJ/B; R^2 at least 0.95; PSTR cross-check within 30 %; falsifier: slope below 10 or above 100, R^2 below 0.9, flat AMCC/DCS, cross-check off by more than 50 %.
+
+**Method.** `benchmarks/dram_calibration.py`: GPU `mx.sum` over four distinct 1 GiB bf16 buffers, duty-cycled per second at 0, 10, 25, 50, 75, 100 %, two passes in opposite order, 30 s a step (first 5 s excluded), a user-level reader logging IOReport and PSTR each second; Hamed's `sudo powermetrics --samplers cpu_power,gpu_power,ane_power -i 1000 -n 700` ran beside (the counters are frozen without it). 01:44-01:50, nothing else on the GPU.
+
+**Result (measured).** Rates 0, 70, 176, 361, 543, 735 GB/s. Fits: dram 49.9 pJ/B (R^2 0.999, intercept 1.55 W), dcs 11.95 (0.993), amcc 32.6 (0.997), the three 94.5 (0.998), cpu+gpu+ane 65.8 (the streaming GPU), PSTR 138.9. Paired steps agree within 1 %. Full table in the record.
+
+**Explanation.** Linear memory energy, 6.2 pJ per bit for DRAM, the top of the assumed LPDDR5X range. The controllers scale too. Predictions held except the sustained rate (735, not 350-400) and so the watts (37.5 W above idle, not 11-20). Not explained: PSTR minus the component sum is 18-19 W at idle and 2.5-3.5 W at the full stream.
+
+**Limits.** One machine, one OS build; a sequential 4 GiB stream only (random and small reads untested); DCS and AMCC may lie inside DRAM, so 94.5 may double count; PSTR noise (sd 4-12 W within a step); the idle step after load (B1) is warmer than the first (A1), so the intercepts carry about 0.5 W (dram), 1 W (dcs), 1.5 W (amcc) of drift.
+
+**Bottleneck after.** Speed: unchanged. Energy: the SSD (E2) and the residual.
+
+**Kind.** Research (predicted, measured, explained in part; the rate prediction missed by 2x).
+
+**Open, Hamed's call.** Go and estimate for E2 (the residual needs bounding first); an inline USB-C meter would settle PSTR and the X10Pro; route 1 or 2 for Lab.
 
 ### 18.118 Power accounting, step E0: what this Mac exposes (0.62.31)
 

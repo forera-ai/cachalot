@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.62.32 (2026-10-10)
+
+HANDOFF "Start here (2026-10-10, 0.62.32)" and section 18.119; the record is `docs/E1-DRAM-CALIBRATION-RECORD.md`, its prediction committed before the run (`85d022c`). Measurement and one instrument; nothing in `src/` besides the version string changed.
+
+### Added
+- `benchmarks/dram_calibration.py` (power-accounting step E1): a duty-cycled GPU stream (0 to 735 GB/s) with a user-level reader logging IOReport energy by component and SMC `PSTR` each second; refuses to start unless the DRAM counter moves (a root `powermetrics` must be sampling).
+
+### Measured
+- DRAM energy is linear in bytes moved: **49.9 pJ per byte** (R^2 0.999) over 0-735 GB/s; DCS 12.0 and AMCC 32.6 pJ/B also scale; the three together 94.5 pJ/B. A stream at 735 GB/s costs 38.8 W of DRAM above a 1.3-1.8 W idle.
+- Predictions held (slope 30-50, controllers scale, sum 50-100, R^2 0.95, PSTR cross-check within 30 %) except the sustained rate (350-400 predicted, 735 measured), so the predicted watts missed by 2x.
+- The system power the components do not explain falls from 18-19 W at idle to 2.5-3.5 W at the full stream; unexplained.
+
 ## 0.62.31 (2026-10-10)
 
 HANDOFF "Start here (2026-10-10, 0.62.31)" and section 18.118. Measurement and instruments (charter L5b, step E0); nothing in `src/` besides the version string changed.
