@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-09, 0.62.26): the offline charter work, housekeeping, and the plan from here
+>
+> Section 18.113. No machine used; nothing in `src/` changed. (1) **`benchmarks/whatif.py`** (charter L4): a validated what-if calculator. GLM's token is `92 + 14.70 x reads` ms (fitted on the exact arms, the four budget arms held out: -0.2 to -2.5 %); 14.70 ms is 13.5 MiB over the X10Pro's 0.963 GB/s, so the miss cost is bytes over the drive. DeepSeek's bandwidth curve fits its four points and **misses the one held-out real drive by +20 %**; MiniMax is not validated. `whatif.py --validate` prints all of it; 6 tests. (2) Housekeeping: `docs/LEDGER.md` gets the 0.62.x constants and a what-if validation section; `docs/EXPERIMENTS.md` (+ `benchmarks/experiment_index.py`) indexes the 39 records from 18.75 (with this one): **6 are research by the charter's definition, 33 are not**; memory index 15 to 11 KB. (3) `docs/RESEARCH-DIRECTION.md` section 13: status of every track and an ordered plan. **Next: L2 (per-token critical-path trace) is the keystone and not started; L5 energy needs you.**
+>
 > ## Start here (2026-10-09, 0.62.25): the stray-word break is GLM's own prediction, in every mode
 >
 > Section 18.112. Measurement only, plus one instrument (`benchmarks/glm_site_probe.py`). Teacher-forcing the compile panel's replies up to the site where 15 of 24 broke (`else` newline, then a stray `delimiter` where `{` or `if` belongs): **after `else`, indentation, GLM's top candidate is ` delimiter` itself, at 38-65 % in prefill mode and 38 % in exact decode, against 7-13 % for the style-consistent ` {`; budget 2 moves the top candidate to ` un` in 4 of 6 contexts but the stray word keeps 4-60 %.** Prefill mode is no better than decode (it gives the stray word more mass), so the break is not the decode path and not the miss budget; it is the checkpoint's conditional distribution at that state, as §18.43-18.49 found for GLM's code. `serve-glm.sh` stays at budget 2; for code use MiniMax or DeepSeek.
@@ -8950,6 +8954,40 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.113 Offline charter work: a validated what-if calculator, the ledger, an experiment index, and the plan — 2026-10-09 (0.62.26)
+
+**Goal.** Hamed: "go, the offline charter work. Then, housekeeping. Then, check the research direction and plan next steps and update next session prompt and handoff docs accordingly." No machine time.
+
+**Baseline.** Charter track L4 had one term (misses times cost in `cache_sim.py`) and the DeepSeek bandwidth curve (ST-BW-CURVE) written as a ledger row; there was no packaged what-if, no GLM model, and the held-out check the charter asks for ("validated against measurements") had not been done.
+
+**Prediction.** None written before: I looked at a plain least-squares fit of the GLM exact arms and its error on the budget arms in a scratch check (-0.5 % and -2.0 %) before writing `whatif.py`. The held-out result is therefore a validation, not a prediction, and this section is labelled engineering.
+
+**Method.** `benchmarks/whatif.py` holds three small models, every constant citing a ledger row or a HANDOFF section: GLM `t = 92 + 14.70 x reads` (fit: 16 per-request points of the two exact arms, r 0.998; held out: the budget 4 and budget 2 arm means of arms 2 and 3); DeepSeek `t = max(78 + m x (1.73 + 9.95 MB x (1/B - 1/6.8)), 453 MB x (m/23.5) / B)` (ST-BW-CURVE; four emulated rates; held out: the real X10Pro token 390.1 ms read at the 0.967 GB/s plateau); MiniMax `t = 46.5 + 3.6 x misses` (one unfitted point, MM-TOKEN-SPLIT). Each prints a table of hypotheticals (storage x2, x5, x20, infinite; miss budgets; hit rate; every expert resident; perfect prefetch; a range for doubled GPU memory bandwidth) with a band equal to the model's largest held-out error and a note stating what it extrapolates beyond. `tests/test_whatif.py` pins the validation.
+
+**Result (derived; validated where stated).**
+
+| point | predicted ms | measured ms | error | fitted |
+|---|---:|---:|---:|---|
+| GLM budget 4 (arms 2, 3) | 1,455 / 1,464 | 1,467 / 1,467 | -0.8 / -0.2 % | no |
+| GLM budget 2 (arms 2, 3) | 1,064 / 1,073 | 1,091 / 1,090 | -2.5 / -1.6 % | no |
+| DeepSeek 4 / 2 / 1 GB/s emulated | 142.7 / 226.5 / 453.0 | 139.3 / 227.4 / 445.7 | +2.5 / -0.4 / +1.6 % | yes |
+| DeepSeek real X10Pro | 468.5 | 390.1 | **+20.1 %** | no |
+| MiniMax 68 GiB (0.38.0) | 129.3 | 115.6 | +11.9 % | no |
+
+Two things the table says. First, GLM's per-read cost fitted from latency (14.70 ms a read) equals 13.5 MiB over 0.963 GB/s, and ST-X10-QD measured the drive plateau at 0.967 independently: the line is a measurement of the drive. Second, the DeepSeek model over-predicts the real drive by a fifth because the live run read about 1.15 GB/s (ST-X10-EFF) against the 0.967 plateau the model is given; the band quoted for DeepSeek is therefore +-20 %. What it says about hypotheticals (not measurements): GLM at the X10Pro's rate x2 would take about 840 ms, x5 about 390 ms, the floor 92 ms; every one beyond ~2x extrapolates past the single rate GLM was measured at; DeepSeek on the X10Pro at x5 about 133 ms. Doubling GPU memory bandwidth moves the DeepSeek floor between 51 and 78 ms: an unmeasured split, to be settled by L4(f).
+
+**Housekeeping.** `docs/LEDGER.md`: rows GLM-MISS-COST, GLM-BUDGET-DECODE, GLM-CSHARP-FLAW, GLM-SITE-LOGPROB and a section 7b with WI-GLM, WI-DS, WI-MM, WI-FLOOR-BW. `docs/EXPERIMENTS.md` + `benchmarks/experiment_index.py`: 39 sections from 18.75 indexed (research 6, engineering 9, measurement 10, pricing 1, unlabelled 13). Memory: the `MEMORY.md` index shrank from 15.3 to 11.5 KB by moving release-by-release detail into its topic files (nothing lost: the MiniMax-M3 file lacked the 0.37.2 entry and received it); the backup of the old index is outside the repository.
+
+**Research direction.** `docs/RESEARCH-DIRECTION.md` section 13: status of every track against section 3's gaps, the section 10 success criteria scored, four findings since 2026-10-05 that change the plan, and an ordered plan. Short form: L0, L1, L6, L7 done; L4 built for the storage and miss axes; **L2 not started, and it unlocks L4(b)/(f) and the exposed-against-hidden numbers**; L5 needs Hamed; L3 has prefetch-against-bandwidth (offline) and quantization left. The paper price of L2 is under 0.1 % of a token.
+
+**Limits.** The GLM line has an intercept (92 ms) that no GLM all-resident run has measured, and one rate point; the DeepSeek model has one held-out failure; the MiniMax model is unvalidated. The experiment index counts the record's own Kind line and does not judge it.
+
+**Bottleneck after.** Not a speed change. The limit on the research programme is L2: without per-token exposed against hidden read time, the overlap term of the model cannot be fitted and the floor cannot be split.
+
+**Kind.** Engineering (instrument and model; validation done in a scratch check before the module existed, so no prediction on file).
+
+**Open, Hamed's call.** Whether to run L5 (`sudo powermetrics` arms); whether to spend an idle-machine session on L2; everything else in section 13.5 of the charter.
 
 ### 18.112 GLM's same-site break: a teacher-forced probe, prefill against decode against budget 2 — 2026-10-09 (0.62.25)
 

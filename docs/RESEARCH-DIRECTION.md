@@ -385,3 +385,60 @@ Items 1 to 3, 8, 9 and the paper half of 10 are the proposed next work for any s
 - The inventory in section 3 was read from the repository and from HANDOFF headlines, `NEXT-SESSION-PROMPT.md`, `SPEED-RESEARCH-2026-10-03.md` and the source files named in the table. HANDOFF is about 1 MB; sections were read selectively, so the gap analysis may understate instruments that live in a section not read. Before any L-track starts, its first step is to grep the repository for an existing implementation of the thing it is about to build.
 - The worked what-if in L4 is deliberately labelled a hypothesis and lists the assumptions most likely to break it. It must not be quoted as a Cachalot result.
 - The prompt's example metrics (for example "tokens per joule") are goals. Where the platform cannot measure a quantity, the lab reports it as unavailable.
+
+## 13. Status on 2026-10-09 (runtime 0.62.26) and the plan from here
+
+Added at Hamed's request ("check the research direction and plan next steps"). Section 3's inventory and gaps were written on 2026-10-05; this section says what has changed since, against each track, and orders what is left. Nothing in sections 1 to 12 is withdrawn.
+
+### 13.1 Tracks
+
+| track | state | evidence |
+|---|---|---|
+| L0 manifest and scorecard | done | `benchmarks/run_manifest.py` (0.60.6, redaction fix 0.60.7); JSONL scorecards; used by `glm_miss_budget_quality.py` and `glm_site_probe.py` |
+| L1 constants ledger | done and kept current | `docs/LEDGER.md`, 0.62.x rows added 2026-10-09 (GLM-MISS-COST, GLM-BUDGET-DECODE, GLM-CSHARP-FLAW, GLM-SITE-LOGPROB, section 7b) |
+| L2 per-token critical-path trace | **not started** (gap G1 is still open) | priced on paper below; needs an idle machine |
+| L3 sweeps | partial | storage bandwidth (ST-BW-CURVE), context (DS-FLOOR-CTX), queue depth (ST-X10-QD, ST-INT-QD), budget (DS-BUDGET-CURVE, GLM 44-50), batching offline (`batch_union.py`, not built); missing: prefetch depth against bandwidth, quantization, worker count beyond queue depth |
+| L4 predictive model | **built for the storage and miss axes** | `benchmarks/whatif.py` (0.62.26): GLM line validated on four held-out arms (-0.2 to -2.5 %); DeepSeek curve fits its four points and misses the one held-out real drive by +20 %; MiniMax not validated; (b) the overlap term needs L2, (f) the floor roofline is a range, not a number |
+| L5 energy | not started | needs Hamed to run `sudo powermetrics` (his choice, 2026-10-05) |
+| L6 architecture comparison | done | `docs/ARCHITECTURE-COMPARISON.md`; the routing-concentration ordering DeepSeek > MiniMax > GLM is reproduced on identical prompts (LEDGER MM-ROUTING-SKEW-COLD) |
+| L7 seam map | done | `docs/SEAMS.md` |
+
+### 13.2 Success criteria (section 10), scored
+
+| criterion | met? |
+|---|---|
+| per-token anatomy with the instrument's overhead | no (L2) |
+| token latency against each major resource, knees marked | partly: storage (knee ~2.6 GB/s), memory (cliff at 52 GiB), context; not compute, not batch |
+| a predictive model whose past predictions sit beside what was measured | partly: `whatif.py --validate` is that file for GLM and DeepSeek; the before-the-run predictions are in each HANDOFF section and `docs/EXPERIMENTS.md` indexes them |
+| joules a token | no (L5) |
+| the next bottleneck after each win | yes in the sections' "Bottleneck after" lines, scattered; `docs/LEDGER.md` section 6 holds the migration tables |
+| a three-architecture comparison in architectural terms | yes |
+| value of a unit of each resource in milliseconds a token | partly: storage 219 / 44 / 7 ms per GB/s in three bands (ST-BW-CURVE), GLM 14.7 ms a read, memory ~1.7 % a GiB (GLM) ; not compute, not memory bandwidth |
+| a file of experiment records with predictions written first | `docs/EXPERIMENTS.md`: of 39 sections from 18.75, 6 are research by this charter's definition, 9 engineering, 10 measurement, 1 pricing, 13 unlabelled (older format) |
+
+The honest reading: the instruments and the model of the *storage* axis are in place and validated; what is missing is the model of the *floor* (L2, L4(f)), energy (L5), and the habit of writing a prediction before every run (33 of 39 sections are not research by the definition).
+
+### 13.3 Findings since 2026-10-05 that change the plan
+
+1. **GLM's token is a line in reads** (92 ms + 14.70 ms a read, held-out arms within 2.5 %), and 14.70 ms is 13.5 MiB over the X10Pro plateau: the miss cost is bytes over the drive, which makes every GLM what-if a storage what-if. The same is true of DeepSeek below the 2.6 GB/s knee.
+2. **The decode miss budget is the largest lever left on the 1 GB/s drive** (-7 % at 4, -31 % at 2, output-changing, shipped for GLM at 2) and the only approximate one; its quality cost is not visible at the sample sizes run (blind panels, a compile panel at the floor, a teacher-forced probe).
+3. **GLM's code corruption is the checkpoint's** (prefill and decode agree, budget 2 is not the cause): no runtime work remains there; a different quantisation is the only open test.
+4. **The routing tracer works on all three models**, so L2 and any new cache question can use traces instead of live runs.
+
+### 13.4 Plan, in order
+
+Hamed's order of lanes stands (Hermes, vision, speed; DeepSeek, MiniMax, GLM). The lab method applies to each; items are tagged with what they need.
+
+1. **L2 price, then build for DeepSeek** (needs an idle machine, about 2 hours for the price and one profiled run). Paper price done: a token has ~44 host syncs and ~24 demand reads, so about 100 timestamps (`perf_counter`, about 0.1 microsecond each, appended to a preallocated array); the arithmetic says well under 0.1 ms of an 80 ms token (0.1 %), under the A/B method's resolution. The micro-benchmark that confirms it is the first step; stop if it measures above 1 ms. Output: exposed against hidden read time per token, queueing, the overlap term for L4(b).
+2. **L4(b), (c), (d), (f)** follow L2: fit the overlap, add the cliff as a region, prefetch precision as a parameter, and split the floor's GPU kernels by bound so "compute 2x" and "memory bandwidth 2x" get a number instead of the 51-78 ms range in `whatif.py`.
+3. **L5 energy prep** (autonomous): a parser for `powermetrics` output plus the exact command for Hamed; the arms themselves need him. First deliverable per the charter: idle, one read-bound token, one all-resident token.
+4. **L3 remainder** (offline first): prefetch depth against bandwidth through `cache_sim.py --prefetch-gates` on the three traces; the quantization sweep needs the 2/3/4-bit banks and the machine.
+5. **Predictions first.** Every new research item opens with a record whose Baseline, Prediction and Falsifier are written before the run (section 7.2). `docs/EXPERIMENTS.md` is regenerated at each release with `benchmarks/experiment_index.py`.
+6. **Hermes and vision lanes**: nothing blocked; the next live Hermes session with a dump is the highest-value input (a dump read costs no machine time).
+
+### 13.5 What only Hamed can decide (open)
+
+- Question 2 follow-up: whether to run `sudo powermetrics` arms (L5) and when.
+- Question 6 stands: batched decode stays unbuilt (the offline price in `batch_union.py` is 1.27-1.42x aggregate at B = 4 with more misses a token).
+- Whether `serve-glm.sh` keeps budget 2 (his decision of 2026-10-09; nothing since contradicts it).
+- Whether a higher-precision GLM checkpoint is worth obtaining for the one open GLM quality test.

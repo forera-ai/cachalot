@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.62.26 (2026-10-09)
+
+HANDOFF "Start here (2026-10-09, 0.62.26)" and section 18.113. Documentation and offline instruments; nothing in `src/` besides the version string changed.
+
+### Added
+- `benchmarks/whatif.py` (charter L4): a what-if calculator for decode token time with three small models (GLM, DeepSeek, MiniMax), a band equal to each model's largest held-out error and a note on what each hypothetical extrapolates beyond; `--validate` prints the recorded points. `tests/test_whatif.py` (6 tests).
+- `benchmarks/experiment_index.py` and `docs/EXPERIMENTS.md`: an index of the section-18 experiment records from 18.75 (39 sections: 6 research, 9 engineering, 10 measurement, 1 pricing, 13 unlabelled).
+- `docs/RESEARCH-DIRECTION.md` section 13: the status of every track on 2026-10-09, the success criteria scored, and an ordered plan.
+- `docs/LEDGER.md`: GLM-MISS-COST, GLM-BUDGET-DECODE, GLM-CSHARP-FLAW, GLM-SITE-LOGPROB and a section 7b of what-if validation rows.
+
+### Measured (derived from recorded arms)
+- GLM's decode token is `92 + 14.70 x reads` ms, fitted on the two exact arms and checked on the four budget arms it was not fitted to (-0.2 to -2.5 %); 14.70 ms is 13.5 MiB over the X10Pro's 0.963 GB/s, which ST-X10-QD measured independently (0.967). DeepSeek's bandwidth curve fits its four emulated points and over-predicts the real X10Pro by 20 % (it reads the 0.967 GB/s plateau, the live run read ~1.15). MiniMax's model is not validated (+11.9 % on one older point).
+
 ## 0.62.25 (2026-10-09)
 
 HANDOFF "Start here (2026-10-09, 0.62.25)" and section 18.112. Measurement and one instrument; nothing in `src/` besides the version string changed.
