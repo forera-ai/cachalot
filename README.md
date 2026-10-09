@@ -297,6 +297,8 @@ reproducible to ±0.3 %.
 
 **0.60.7 (2026-10-06): review fixes.** The run manifest no longer records credentials such as `CACHALOT_API_KEY` by value, and its Hermes Desktop check needs one process line. HANDOFF section 18.73.
 
+**0.62.22 (2026-10-09): documentation only.** The second-pass re-prefill seen in the budget arms of the last run comes from GLM's in-memory prefix list evicting a prompt-end snapshot when a sampled reply re-renders identically (chance, not the budget; decode timings unaffected).
+
 **0.62.21 (2026-10-09): GLM miss budget, second run.** A repeat of the free-running replay (24 replies, 3 hours) reproduced the speeds: a GLM token 1.585 s exact, 1.467 with budget 4 (-7 %), 1.090 with budget 2 (-31 %), with no visible change in tool calls, stories or C# at this sample size. Measurement only; `serve-glm.sh` stays at budget 2.
 
 **0.62.20 (2026-10-09): `serve-glm.sh` defaults to decode miss budget 2** (Hamed's call; changes outputs, a GLM token -32 %). `CACHALOT_GLM_DECODE_MISS_BUDGET=off` restores exact decode.

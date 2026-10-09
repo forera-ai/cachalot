@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.62.22 (2026-10-09)
+
+HANDOFF section 18.109 (addendum). Documentation only; nothing in `src/` besides the version string changed.
+
+### Explained, not measured
+- Why arm 3's budget-4 and budget-2 second passes re-prefilled while the exact arm's did not: GLM's in-memory prefix list (3 GiB, oldest used first) refreshes only the longest matching snapshot, so when a sampled reply re-renders identically the prompt-end twin ages out and a repeat then misses, and its extra prefill evicts more. Chance at temperature 0.7, not an effect of the budget; decode timings are unaffected. Snapshot sizes and the list per step are not yet measured. Benchmark replays with a second pass should check `prefill=` or raise `CACHALOT_GLM_PREFIX_GIB`.
+
 ## 0.62.21 (2026-10-09)
 
 HANDOFF "Start here (2026-10-09, 0.62.21)" and section 18.109. Measurement only; nothing in `src/` besides the version string changed.
