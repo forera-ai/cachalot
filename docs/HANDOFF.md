@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-10, 0.62.39): with the drive silent and the prediction off, decode still draws 10.9 W above the component fit; about 11 W is not storage
+>
+> Section 18.126, record `docs/E3D-NO-PREFETCH-RECORD.md` (hypothesis, prediction and falsifier written before the run). **Measured:** `CACHALOT_PREDICT_TOPK=0`, the E3b energy arms. Phase B (all-resident) read **0.00 GB/s** from the drive and the fit error was **+10.9 W** (E3b +12.6; predicted 9.8, interval 7.0-12.5: held), 83 ms a token (predicted 76: missed), 5.90 J a token (held). Phase C (read-bound, 2.09 GB/s, 33.5 misses a token) +14.0 W (predicted 9.0: missed). So about **11 W of decode power is unexplained in both phases, independent of the drive, of the prefetch loads and of the read rate**; H-prediction-work (error below 6 W) is not supported. Remaining candidates: the model's quantized kernels, the server's CPU work, the 67 GB of resident memory. Next (hypothesis written first, Hamed's go and sampler): (ii) the kernels in-process without the server, (iii) a smaller resident budget. Nothing in `src/` changed; `energy_arms.sh` gained `E_TAG`.
+>
 > ## Start here (2026-10-10, 0.62.38): the internal SSD costs about 1.1 W per GB/s; about 10 W of decode power remains unexplained, the same resident and read-bound
 >
 > Section 18.125, record `docs/E2I-INTERNAL-SSD-RECORD.md` (hypothesis and prediction committed first). **Derived:** the internal SSD adds +1.7 W (1.0 GB/s), +3.1 (1.85), +4.6 (3.4), +7.6 W (6.4 GB/s), about 1.1 nJ a byte; at E3's rates it explains about 2.8 W (all-resident, prefetch) and 4.7 W (read-bound) of the 12.6 and 13.9 W by which decode exceeds the component fit. **About 9.8 W and 9.2 W remain unexplained, nearly equal although the read rate doubled**: not read pattern (18.124), not fans, not the drive. The H-internal-SSD hypothesis (at least half) is not supported (mean +3.09 W, larger repeat +5.08, against 6.5 W needed; not falsified by the letter, +3.09 against 3). Pass-to-pass drift up to 4 W at low duty, unexplained. **Derived split of the all-resident phase, 74.5 W:** baseline 18.4, cpu terms 6.0, gpu terms 18.4, dram 3.5, controllers 15.5, internal SSD ~2.8, unexplained ~10. **Next, each needing Hamed's go and an estimate:** decode with the drive reads switched off (the drive part should vanish, the rest stay) and the model's kernels in-process without the server; E4 (index); the Lab brief; GLM and MiniMax arms.
@@ -9002,6 +9006,28 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.126 Power accounting, step E3d: does the unexplained decode power stay when the drive reads are switched off? (0.62.39)
+
+**Goal.** Test whether the ~10 W of real decode power left after the component fit and the internal drive (18.125) belongs to the model's kernels and the server, by removing the drive's part (and the prediction) and seeing whether it stays.
+
+**Baseline.** E3b: fit error +12.6 W (all-resident, 87.5 ms, drive 1.82 GB/s of prefetch loads) and +13.9 W (read-bound); E2i: the drive explains about 2.8 and 4.7 W.
+
+**Prediction (written first in the record, `docs/E3D-NO-PREFETCH-RECORD.md`).** H-kernels-server 50 %: B drive rate below 0.1 GB/s, fit error +9.8 W (7.0-12.5), 76 ms (72-82), 5.5 J (4.7-6.5); C error 9.0 W (6-12). H-prediction-work 30 % (B error below 6 W falsifies H-kernels-server); H-other 20 % (above 12.5 W).
+
+**Method.** `E_TAG=e3d E_FULL=1 CACHALOT_PREDICT_TOPK=0 ./benchmarks/energy_arms.sh` (new `E_TAG` prefixes the output files), Hamed's root `powermetrics -n 800` beside it, Lab closed, 22:38:13-22:46:56; analysis `benchmarks/energy_e3.py`.
+
+**Result (measured).** Idle A/D errors -0.4/-0.1 W (run valid). B all-resident: drive 0.00 GB/s, 83 ms a token, PSTR 71.3 W, fit error **+10.9 W**, 5.90 J a token. C read-bound: drive 2.09 GB/s, 33.5 misses a token (E3b 33.7), 147 ms, PSTR 73.2 W, fit error **+14.0 W**, 10.78 J a token. Fans 1,004-1,092 RPM, idle 28.2 W (a cool session). Predictions: drive rate, B error, energy a token, misses and C drive rate held; seconds a token (83 against 72-82) and the C error (14.0 against 6-12) missed; no falsifier fired.
+
+**Explanation.** The all-resident excess fell only from 12.6 to 10.9 W when the drive went silent and the prediction was off; in C, after the drive's ~2.3 W (E2i line at 2.09 GB/s), about 11.7 W remain. About 11 W is therefore independent of storage activity and of the read rate. H-prediction-work is not supported. What is left: the real quantized kernels, the server's CPU work, the resident memory.
+
+**Limits.** One run, one session; the fit's own error is 1.3-3 W; the 1.7 W change from E3b to here mixes the removed drive and prediction with the sessions' different thermal states; prediction off changes the GPU work as well as the reads (a confound that does not matter for the 11 W conclusion but does for a drive-only claim).
+
+**Bottleneck after.** Speed unchanged. Energy: ~11 W of decode that no storage, access-pattern or prediction effect explains.
+
+**Kind.** Research (predicted, measured, explained in part).
+
+**Open, Hamed's call.** (ii) the kernels in-process without the server, (iii) a smaller resident budget; each needs a go, the sampler and a written hypothesis first.
 
 ### 18.125 Power accounting, step E2i: what the internal SSD costs when it reads (0.62.38)
 

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.62.39 (2026-10-10)
+
+HANDOFF "Start here (2026-10-10, 0.62.39)" and section 18.126; the record is `docs/E3D-NO-PREFETCH-RECORD.md`, its hypotheses, predictions and falsifier written before the run. Measurement only; nothing in `src/` besides the version string changed.
+
+### Added
+- `benchmarks/energy_arms.sh` takes `E_TAG=name`, which prefixes every output file so a tagged run cannot overwrite an earlier one; extra environment such as `CACHALOT_PREDICT_TOPK=0` passes through to `serve.sh`.
+
+### Measured
+- With the next-layer prediction and its speculative loads switched off (`CACHALOT_PREDICT_TOPK=0`), the all-resident decode read **0.00 GB/s** from the drive and still drew **+10.9 W** above the component fit (E3b, with prefetch: +12.6 W); the read-bound phase (2.09 GB/s, 33.5 misses a token) +14.0 W (E3b +13.9). About **11 W of decode power is unexplained in both phases, independent of the drive, the prefetch loads and the read rate**; the hypothesis that the prediction's own work explains it (error below 6 W) is not supported.
+- Predictions held for the drive rate, the all-resident error (+9.8 W predicted, 7.0-12.5), energy a token (5.90 J, 4.7-6.5) and misses a token; missed for seconds a token (83 ms against 72-82) and the read-bound error (14.0 against 6-12). All-resident 83 ms a token without prediction against 87.5 in E3b; system energy 5.90 J and 10.78 J a token in a cool session (fans about 1,020 RPM, idle 28.2 W).
+
 ## 0.62.38 (2026-10-10)
 
 HANDOFF "Start here (2026-10-10, 0.62.38)" and section 18.125; the record is `docs/E2I-INTERNAL-SSD-RECORD.md`, its hypothesis and prediction committed before the run (`e2ff497`). Measurement only; nothing in `src/` besides the version string changed.

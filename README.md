@@ -297,6 +297,8 @@ reproducible to ±0.3 %.
 
 **0.60.7 (2026-10-06): review fixes.** The run manifest no longer records credentials such as `CACHALOT_API_KEY` by value, and its Hermes Desktop check needs one process line. HANDOFF section 18.73.
 
+**0.62.39 (2026-10-10): the unexplained decode power is not storage.** With the prediction and its speculative loads switched off, an all-resident DeepSeek decode reads nothing from the drive and still draws 10.9 W above the component fit (12.6 W with the prefetch on); the read-bound phase 14.0 W. About 11 W is left that no drive, read pattern or prediction effect explains: the model's kernels, the server's CPU work or the resident memory are the candidates. HANDOFF section 18.126, `docs/E3D-NO-PREFETCH-RECORD.md`.
+
 **0.62.38 (2026-10-10): what the internal SSD costs.** Reading the internal bank, the drive adds about 1.1 W per GB/s to the system (1.7 W at 1 GB/s, 7.6 W at 6.4 GB/s), so in a real decode it accounts for about 3 W (all-resident, prefetch reads) to 5 W (read-bound) of the 13-14 W excess over the component fit, not for it all: about 10 W remain unexplained in both phases. HANDOFF section 18.125, `docs/E2I-INTERNAL-SSD-RECORD.md`.
 
 **0.62.37 (2026-10-10): the decode power excess is not a read pattern.** A synthetic GPU read of scattered or synchronized blocks adds at most 5 W over a sequential stream, against the 13 W a real DeepSeek decode draws beyond the component fit; the earlier attribution to the supply rails is withdrawn as not established. The next suspect is the internal SSD, which reads 1.8 GB/s even when every expert is resident. HANDOFF section 18.124, `docs/E3C-GATHER-RECORD.md`.
