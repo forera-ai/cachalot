@@ -45,10 +45,14 @@ def joules_by_component(rep: "ps.IOReport") -> dict[str, float]:
 class Logger(threading.Thread):
     """Once a second: cumulative joules by component, PSTR watts, the stream's cumulative bytes and the current step label."""
 
-    def __init__(self, state: dict):
+    def __init__(self, state: dict, full_header_path: "Path | None" = None):
         super().__init__(daemon=True)
         self.state, self.rows, self.stop = state, [], threading.Event()
         self.rep, self.smc = ps.IOReport("Energy Model"), ps.SMC()
+        self.full = None
+        if full_header_path is not None:
+            self.full = ps.FullSampler()
+            Path(full_header_path).write_text(json.dumps(self.full.header()))
 
     def run(self):
         while not self.stop.is_set():
@@ -57,8 +61,10 @@ class Logger(threading.Thread):
                 pstr = self.smc.read("PSTR")[2]
             except Exception:
                 pstr = None
-            self.rows.append({"t": t, "step": self.state["step"], "bytes": self.state["bytes"], "pstr": pstr,
-                              "joules": joules_by_component(self.rep)})
+            row = {"t": t, "step": self.state["step"], "bytes": self.state["bytes"], "pstr": pstr, "joules": joules_by_component(self.rep)}
+            if self.full is not None:
+                row.update(self.full.row())
+            self.rows.append(row)
             self.stop.wait(max(0.0, 1.0 - (time.time() - t)))
 
 

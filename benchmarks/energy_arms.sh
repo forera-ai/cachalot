@@ -16,7 +16,9 @@ until curl -sf http://127.0.0.1:8011/v1/models >/dev/null 2>&1; do
 done
 echo "server up $(date +%H:%M:%S)"
 # E3 (0.62.35): a user-level logger of IOReport energy, PSTR and /v1/stats beside the arms (needs the root powermetrics sampler up)
-"$HOME/venvs/deepseek-v41/bin/python" benchmarks/energy_logger.py --out $D/e3-log.jsonl > $D/e3-logger.log 2>&1 &
+LOGOUT=$D/e3-log.jsonl; LOGFLAGS=""
+if [ -n "${E_FULL:-}" ]; then LOGOUT=$D/e3b-arms.jsonl; LOGFLAGS="--full"; fi   # E3b: every channel + SMC keys
+"$HOME/venvs/deepseek-v41/bin/python" benchmarks/energy_logger.py --out $LOGOUT $LOGFLAGS > $D/e3-logger.log 2>&1 &
 LP=$!
 /usr/bin/env python3 benchmarks/energy_arms_driver.py > $D/arms-driver.jsonl 2>&1
 kill -INT $LP 2>/dev/null; wait $LP 2>/dev/null

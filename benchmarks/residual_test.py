@@ -139,6 +139,7 @@ def main() -> int:
     ap.add_argument("--step-seconds", type=float, default=30.0)
     ap.add_argument("--skip", type=float, default=5.0)
     ap.add_argument("--no-check", action="store_true", help="smoke test only")
+    ap.add_argument("--full", metavar="TAG", help="log every Energy Model channel and the SMC keys; outputs e1b-TAG.jsonl and e1b-TAG.header.json")
     ap.add_argument("--analyze", metavar="JSONL")
     a = ap.parse_args()
     if a.analyze:
@@ -157,7 +158,7 @@ def main() -> int:
         print("STOP: the DRAM counter did not move in 2 s. Start the root powermetrics sampler first (command in this file's docstring).")
         return 2
     state = {"step": "warmup", "bytes": 0, "base": 0}
-    lg = dc.Logger(state)
+    lg = dc.Logger(state, RES / f"e1b-{a.full}.header.json" if a.full else None)
     lg.start()
     mx.eval([mx.sum(b) for b in bufs])
     seq = [("A", STEPS), ("B", list(reversed(STEPS)))]
@@ -170,7 +171,7 @@ def main() -> int:
             run_step(kind, param, a.step_seconds, state, mx, bufs, mm)
     lg.stop.set()
     lg.join()
-    out = RES / ("e1b-residual-smoke.jsonl" if a.no_check else "e1b-residual.jsonl")
+    out = RES / (f"e1b-{a.full}.jsonl" if a.full else "e1b-residual-smoke.jsonl" if a.no_check else "e1b-residual.jsonl")
     with open(out, "w") as f:
         for r in lg.rows:
             f.write(json.dumps(r) + "\n")

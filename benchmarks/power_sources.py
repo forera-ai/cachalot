@@ -309,6 +309,39 @@ def advancing(seconds: float = 1.0) -> dict[str, bool] | None:
     return moved or None
 
 
+class FullSampler:
+    """Every Energy Model channel by position (the order is stable between samples) plus, every `smc_every` rows, the SMC power (P), voltage (V),
+    current (I), fan-speed (F?Ac) and temperature (T) keys that decode to a number. `header()` is written once; `row()` once a second."""
+
+    def __init__(self, smc_every: int = 5):
+        self.rep = IOReport("Energy Model")
+        first = self.rep.sample()
+        self._hdr = [[c["group"], c["name"], c["unit"], c["format"]] for c in first]
+        self.smc = SMC()
+        n = self.smc.key_count()
+        self.keys = [k for k in (self.smc.key_at(i) for i in range(n)) if k[0] in "PVIT" or (k[0] == "F" and k.endswith("Ac"))]
+        self.every, self.n = smc_every, 0
+
+    def header(self) -> dict:
+        return {"channels": self._hdr, "smc_keys": self.keys}
+
+    def row(self) -> dict:
+        snap = self.rep.sample()
+        out = {"raw": [c["value"] for c in snap]}
+        if self.n % self.every == 0:
+            d = {}
+            for k in self.keys:
+                try:
+                    v = self.smc.read(k)[2]
+                except Exception:
+                    continue
+                if isinstance(v, (int, float)):
+                    d[k] = v
+            out["smc"] = d
+        self.n += 1
+        return out
+
+
 # --------------------------------------------------------------------------- probe CLI
 def probe() -> dict:
     res: dict = {"ioreport": None, "smc": None, "root": False, "errors": []}

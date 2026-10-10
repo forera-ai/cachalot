@@ -35,12 +35,17 @@ def joules(rep) -> dict[str, float]:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", required=True)
+    ap.add_argument("--full", action="store_true", help="also log every Energy Model channel and the SMC keys; header to OUT.header.json")
     ap.add_argument("--stats-url", default="http://127.0.0.1:8011/v1/stats")
     a = ap.parse_args()
     stop = {"flag": False}
     for sg in (signal.SIGINT, signal.SIGTERM):
         signal.signal(sg, lambda *_: stop.__setitem__("flag", True))
     rep, smc = ps.IOReport("Energy Model"), ps.SMC()
+    full = None
+    if a.full:
+        full = ps.FullSampler()
+        Path(a.out + ".header.json").write_text(json.dumps(full.header()))
     n = 0
     with open(a.out, "w") as f:
         while not stop["flag"]:
@@ -50,6 +55,8 @@ def main() -> int:
             except Exception:
                 pstr = None
             row = {"t": t, "pstr": pstr, "joules": joules(rep)}
+            if full is not None:
+                row.update(full.row())
             if n % 2 == 0:
                 try:
                     d = json.loads(urllib.request.urlopen(a.stats_url, timeout=3).read())
