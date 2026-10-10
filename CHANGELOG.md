@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.62.36 (2026-10-10)
+
+HANDOFF "Start here (2026-10-10, 0.62.36)" and section 18.123; the record is `docs/E3B-REFIT-RECORD.md`, committed with its hypotheses and falsifiers before the run (`74b6123`). Measurement and instruments; nothing in `src/` besides the version string changed.
+
+### Added
+- Full-channel logging: `power_sources.FullSampler` (all 565 Energy Model channels and the SMC power, voltage, current, fan and temperature keys), `--full` on `energy_logger.py` and `residual_test.py`, `E_FULL=1` on `energy_arms.sh`, `benchmarks/refit_run.sh` (both stages in one session) and `benchmarks/refit_analyze.py`.
+
+### Measured
+- The component fit's error under real decode **replicates**: system power 12.6 W (all-resident) and 13.9 W (read-bound) above the fit, no ramp inside the phase (E3: 12.8 and 14.3).
+- It is **not a missing Energy Model channel** (a second GPU view tracks the one used; adding it leaves +11.9 and +14.4 W) and **not fans** (fan speed 992-2,504 RPM in the synthetic steps with errors -6.5 to +4.2 W). It appears on the SMC rails `PVCC` (+11.1, +11.4 W), `PSVR` (+8.1, +8.9) and `PMVR` (+4.9, +4.8): power outside the channels the streaming and compute loads calibrated. Cause is a hypothesis (irregular access costing more per byte in DRAM, fabric and cache than a stream).
+- System energy a token in this session after eight minutes of synthetic load: about 6.8 J all-resident, 11.9 J read-bound (E3: 6.42 and 10.73 J). Thermal and fan state moved the idle phases by 4-8 W; a token's system energy varies 6-11 % between sessions.
+- Predictions: the unmapped-channel metric was flawed (it double counts); the old fit's error on the synthetic steps reached 6.5 W (predicted within 3 W; seven of 16 steps beyond it); the no-ramp prediction held.
+
 ## 0.62.35 (2026-10-10)
 
 HANDOFF "Start here (2026-10-10, 0.62.35)" and section 18.122; the record is `docs/E3-JOULES-TOKEN-RECORD.md`, committed with its predictions and falsifiers before the run (`0510af2`). Measurement and instruments; nothing in `src/` besides the version string changed.

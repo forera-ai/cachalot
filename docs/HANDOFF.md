@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-10, 0.62.36): the 13 W decode excess replicates and sits on the SoC and memory supply rails; thermal state moves a token 6-11 %; next = GPU gather test, E2 internal, E4, Lab brief
+>
+> Section 18.123, record `docs/E3B-REFIT-RECORD.md` (hypotheses committed first). **Measured:** the component fit under-predicts real decode by +12.6 W (all-resident) and +13.9 W (read-bound) again, no ramp; not a missing Energy Model channel, not fans; on the SMC rails PVCC +11 W, PSVR +8 W, PMVR +5 W. **Energy a token in this session:** about 6.8 J resident, 11.9 J read-bound (E3: 6.42, 10.73); thermal state adds 4-8 W at idle. **Hypothesis, untested:** irregular access costs more per byte in DRAM, fabric and cache than the streaming calibration. **Test:** a synthetic GPU gather of 9.5 MiB blocks at random offsets should reproduce the rail excess without a model (about 10 min). **Then, each needing Hamed's go and an estimate:** E2 for the internal drive (read the 142 GB internal bank), E4 (index), the Lab brief, GLM and MiniMax arms.
+>
 > ## Start here (2026-10-10, 0.62.35): a DeepSeek token costs 6.4 J (resident) or 10.7 J (read-bound) at the system rail; the component fit does not transfer to decode
 >
 > Section 18.122, record `docs/E3-JOULES-TOKEN-RECORD.md` (predictions committed first). **Measured:** system energy a token = `PSTR` x seconds a token: all-resident **6.42 J** (74.5 W, 86 ms), read-bound **10.73 J** (76.2 W, 141 ms), ratio 1.67; idle server 25-30 W; package-only (cpu+gpu+ane) was 1.68 and 2.84 J (0.62.29: 1.73 and 2.52). **The E1b fit under-predicts real decode by 12.8 W (resident) and 14.3 W (read-bound)**, a falsifier (8 W) fired; cause unknown. The internal drive reads 1.8 GB/s even in the all-resident phase (prefetch loads). Predicted system energy was 43-53 % low; the ratio held. **Next, each needing Hamed's go and an estimate:** refit with every Energy Model channel logged and the decode phases included (the logger kept only aggregates); E2 for the internal drive (read from the 142 GB internal bank, no temporary file needed); E4 index; the Lab brief (route 1 works while his sampler runs).
@@ -8990,6 +8994,28 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.123 Power accounting, step E3b: where the decode excess sits (0.62.36)
+
+**Goal.** Explain the 13-14 W by which the E1b fit under-predicts real decode (18.122).
+
+**Baseline.** E3: +12.8 W and +14.3 W; the logger kept only aggregates. A post-hoc look at the E3 log, before the prediction: no ramp inside a phase.
+
+**Prediction (committed first, `74b6123`).** H-channels 45 %, H-mixed 35 %, H-other-rails 20 %; P1 unmapped channels rise at least 6 W; P3 synthetic errors within +-3 W; P4 first and last 30 s within 3 W; falsifiers in the record, section 3.
+
+**Method.** `benchmarks/refit_run.sh`: stage 1 the E1b synthetic steps (two passes) and stage 2 the DeepSeek energy arms, both with every Energy Model channel and the SMC power, voltage, current, fan and temperature keys logged; Hamed's root `powermetrics -n 1300` beside; Lab closed; 11:24:38-11:41:39. `benchmarks/refit_analyze.py` and two ad hoc fits (a second GPU view as a regressor; each SMC rail fitted on the synthetic steps and its residual read in decode).
+
+**Result (measured).** The error replicates: +12.6 and +13.9 W; no ramp (+12.2 then +11.1 W within the all-resident phase). Not a missing channel: `GPU#_#` tracks `GPU Energy` and adding it leaves +11.9 and +14.4 W. Not fans: 992-2,504 RPM in the synthetic steps with errors -6.5 to +4.2 W. By rail, residuals in decode: PVCC +11.1/+11.4 W, PSVR +8.1/+8.9, PMVR +4.9/+4.8. Energy a token in this session about 6.8 J and 11.9 J (87.5 and 145 ms), idle phases 4-8 W higher than E3's (thermal/fan state). Synthetic steps' errors with the old fit reached 6.5 W (rms 3.0 W).
+
+**Explanation (hypothesis).** The excess is power on the SoC supply rails and the memory rail that the IOReport channels, calibrated by sequential and cache-resident loads, do not report; irregular access (small reads of 2-bit expert weights, many small kernels and synchronizations) plausibly costs more per byte in DRAM, fabric and the system-level cache than a stream. Untested.
+
+**Limits.** P1 as defined double counted and was uninformative; one session; the rail meanings are SMC key names, not documentation; the rail fits use 16 synthetic points and 5 coefficients; the decode phases of this session ran after eight minutes of heavy synthetic load, so their absolute watts are warmer than E3's.
+
+**Bottleneck after.** Speed unchanged. Energy: the access-pattern dependence of memory and SoC power, and thermal state.
+
+**Kind.** Research (predicted, measured, partly explained; P3 missed, the P1 metric was flawed, H-channels not supported).
+
+**Open, Hamed's call.** Go and estimate for the GPU gather test (about 10 minutes, a root sampler beside); E2 for the internal drive; Lab brief route.
 
 ### 18.122 Power accounting, step E3: joules a token with every component (0.62.35)
 
