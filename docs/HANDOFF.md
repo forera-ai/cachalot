@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-10, 0.62.33): PSTR is a linear fit of the counters, not their sum; next = E2 SSD (detectability limited), E3, E4, Lab brief
+>
+> Section 18.120, record `docs/E1B-RESIDUAL-RECORD.md` (hypotheses committed first). **Measured:** over 16 load steps `PSTR = 18.4 W + 1.27 cpu + 1.24 gpu + 0.34 dram + 1.04 (dcs+amcc)`, R^2 0.999, rms 1.3-1.4 W. E1's shrinking residual is the low DRAM coefficient. All three pre-registered hypotheses missed. **Consequences:** a total joule figure is a fit to PSTR (or a meter), not a sum of counters; E2's SSD signal (about 3-6 W busy, nominal) sits near the fit's noise, so an inline meter on the X10Pro is worth more now; the 49.9 pJ/B stands as an IOReport-side figure, with a PSTR-side figure of 0.34 x 49.9 (about 17) pJ/B plus the controllers. **Open:** why the DRAM coefficient is low. **Next, each needing Hamed's go and an estimate:** E2 (or the meter), E3, E4, the Lab brief.
+>
 > ## Start here (2026-10-10, 0.62.32): DRAM costs 49.9 pJ per byte; next = E2 SSD, then E3, E4 and the Lab brief
 >
 > Section 18.119, record `docs/E1-DRAM-CALIBRATION-RECORD.md` (prediction committed first). **Measured:** IOReport DRAM energy is linear in bytes moved, 49.9 pJ per byte (R^2 0.999, 0-735 GB/s); DCS 12.0 and AMCC 32.6 pJ/B also scale (94.5 all three, possibly double counted); a 735 GB/s stream costs 38.8 W of DRAM. Predictions held except the rate (735 GB/s, not 350-400). **Open:** PSTR minus the components falls from 18 W at idle to 3 W at full stream (cause unknown); DCS/AMCC inside or beside DRAM. **Next, each needing Hamed's go and an estimate:** E2 SSD differential (PSTR minus SoC minus memory at 0/25/50/100 % of each drive; the open residual limits it, so first explain or bound it), E3 joules a token with all components, E4 index, Lab brief (route 1 possible while his sampler runs).
@@ -8978,6 +8982,28 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.120 Power accounting, step E1b: what the system-power residual is (0.62.33)
+
+**Goal.** Explain why `PSTR` minus the IOReport component sum fell from 18 W at idle to 3 W at E1's full stream (18.119).
+
+**Baseline.** E1: one load source only, so the components were collinear.
+
+**Prediction (committed first, `374669c`).** H-uniform at about 55 % (every coefficient 0.75-1.0, spread under 0.3); alternatives H-overlap-memory and H-gpu; falsifiers in the record, section 3.
+
+**Method.** `benchmarks/residual_test.py`: idle, CPU compute (cache-resident `np.sin`, 4 and 16 threads), CPU memory copy (8 threads, 445 GB/s), GPU compute only (cache-resident bf16 matmul), GPU stream at 50 and 100 %, GPU stream with 16 CPU threads; 30 s each, twice in opposite order; Hamed's root `powermetrics` beside (02:04-02:12).
+
+**Result (measured).** Table in the record. Joint fit, R^2 0.999, rms 1.3-1.4 W: `PSTR = 18.4 + 1.27 cpu + 1.24 gpu + 0.34 dram + 1.04 (dcs+amcc)`. CPU load raises the residual (+4 W at 4 threads, +12 at 16); the DRAM-heavy steps lower it.
+
+**Explanation (hypothesis).** CPU and GPU coefficients above 1 look like voltage-regulator and supply loss on a DC-input rail (efficiency near 0.8); the DRAM coefficient of about a third is unexplained (counter high, overlap with dcs or amcc, or a separate supply). The 16-21 W constant is the board at idle (SSD, fans, USB) plus loss on the idle components.
+
+**Limits.** One machine, one session; dcs and amcc are collinear so only their sum is determined; 16 points and 5 free coefficients; `PSTR` noise (sd 2-7 W within a step); the CPU load is `np.sin` (a vector workload) and may not represent decode's CPU mix.
+
+**Bottleneck after.** Speed unchanged. Energy: the SSD, now limited by the fit's noise.
+
+**Kind.** Research (structure predicted and held; every coefficient hypothesis missed).
+
+**Open, Hamed's call.** An inline USB-C power meter (settles the X10Pro and PSTR); go and estimate for E2.
 
 ### 18.119 Power accounting, step E1: what a byte of DRAM traffic costs (0.62.32)
 

@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.62.33 (2026-10-10)
+
+HANDOFF "Start here (2026-10-10, 0.62.33)" and section 18.120; the record is `docs/E1B-RESIDUAL-RECORD.md`, committed with its hypotheses and falsifier before the run (`374669c`). Measurement and one instrument; nothing in `src/` besides the version string changed.
+
+### Added
+- `benchmarks/residual_test.py` (E1b): eight load types (idle, CPU compute at 4 and 16 threads, CPU memory copy, GPU compute only, GPU stream at 50 and 100 %, GPU stream plus CPU) run twice in opposite order, with a joint regression of SMC `PSTR` on the IOReport components.
+
+### Measured
+- `PSTR` is a linear sum of the IOReport components (R^2 0.999, rms 1.3-1.4 W over 16 steps): `PSTR = 18.4 W + 1.27 x cpu + 1.24 x gpu + 0.34 x dram + 1.04 x (dcs + amcc)`.
+- That explains E1's shrinking residual: PSTR rises by only a third of a watt per IOReport DRAM watt and by 1.2-1.3 W per CPU or GPU watt, so a sum of the components is not the system draw. The uniform hypothesis is falsified; the other two pre-registered ones missed too.
+- Open: why the DRAM coefficient is low (counter reads high, overlap with dcs or amcc, or a separate supply).
+
 ## 0.62.32 (2026-10-10)
 
 HANDOFF "Start here (2026-10-10, 0.62.32)" and section 18.119; the record is `docs/E1-DRAM-CALIBRATION-RECORD.md`, its prediction committed before the run (`85d022c`). Measurement and one instrument; nothing in `src/` besides the version string changed.

@@ -1,8 +1,8 @@
 # Experiment index (charter section 7.2 and section 10)
 
-Written 2026-10-09 against runtime 0.62.32; regenerate with `benchmarks/experiment_index.py`. The charter asks for "a file of experiment records whose predictions were written before the build". The records themselves live in `docs/HANDOFF.md` section 18 (each with Baseline, Prediction, Method, Result, Explanation, Limits, Kind); this file is the index: where each record is, whether it carries a written prediction, and what kind of result it is, as its own **Kind** line says. It does not restate results. Sections before 18.75 predate the record format and are not listed; sections without a **Kind** line are listed as unlabelled and have no claim made for them here.
+Written 2026-10-09 against runtime 0.62.33; regenerate with `benchmarks/experiment_index.py`. The charter asks for "a file of experiment records whose predictions were written before the build". The records themselves live in `docs/HANDOFF.md` section 18 (each with Baseline, Prediction, Method, Result, Explanation, Limits, Kind); this file is the index: where each record is, whether it carries a written prediction, and what kind of result it is, as its own **Kind** line says. It does not restate results. Sections before 18.75 predate the record format and are not listed; sections without a **Kind** line are listed as unlabelled and have no claim made for them here.
 
-Counts of the 45 sections listed (18.75-18.119): 13 measurement, 13 unlabelled, 9 engineering, 8 research, 1 planning, 1 pricing.
+Counts of the 46 sections listed (18.75-18.120): 13 measurement, 13 unlabelled, 9 research, 9 engineering, 1 planning, 1 pricing.
 
 Research means predicted, measured and explained (charter section 8.1 rule 6); a falsified prediction is still research and is marked so in its Kind line. Engineering means it works without a written prediction, or an instrument was built.
 
@@ -10,6 +10,7 @@ Research means predicted, measured and explained (charter section 8.1 rule 6); a
 
 | section | title | prediction written | kind (as recorded) |
 |---|---|:---:|---|
+| §18.120 | Power accounting, step E1b: what the system-power residual is (0.62.33) | yes | Research (structure predicted and held; every coefficient hypothesis missed). |
 | §18.119 | Power accounting, step E1: what a byte of DRAM traffic costs (0.62.32) | yes | Research (predicted, measured, explained in part; the rate prediction missed by 2x). |
 | §18.118 | Power accounting, step E0: what this Mac exposes (0.62.31) | yes | Measurement plus instruments. Not research: no prediction was written first. |
 | §18.117 | Power accounting for SSD reads and DRAM transport: the plan, and the next session's jobs (0.62.30) | no | Planning (no run). |

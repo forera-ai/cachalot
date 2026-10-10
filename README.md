@@ -297,6 +297,8 @@ reproducible to ±0.3 %.
 
 **0.60.7 (2026-10-06): review fixes.** The run manifest no longer records credentials such as `CACHALOT_API_KEY` by value, and its Hermes Desktop check needs one process line. HANDOFF section 18.73.
 
+**0.62.33 (2026-10-10): the system-power residual explained as a fit.** Loading the CPU, the GPU compute and a memory copy separately, system power (SMC `PSTR`) is a linear sum of the IOReport components (R^2 0.999, 1.3 W rms): about 1.25 W per CPU or GPU watt, 1.04 per memory-controller watt and only 0.34 per DRAM-channel watt, over 18 W of baseline. A total joule figure must therefore be a fit to the system rail, not a sum of the counters. HANDOFF section 18.120, `docs/E1B-RESIDUAL-RECORD.md`.
+
 **0.62.32 (2026-10-10): what a byte of DRAM traffic costs.** Streaming 0 to 735 GB/s through the GPU with the IOReport energy counters read beside a root `powermetrics`, DRAM energy is linear in bytes at 49.9 pJ per byte (R^2 0.999); the memory-controller channels add 12 and 33 pJ/B (94.5 pJ/B all three). The prediction on file (30-50 pJ/B) held; its rate and watts figures missed by 2x. HANDOFF section 18.119, `docs/E1-DRAM-CALIBRATION-RECORD.md`.
 
 **0.62.31 (2026-10-10): DRAM energy is measurable, with a sampler running.** The first step of the power-accounting plan found that `powermetrics` itself reports no DRAM or SSD power, but IOReport exposes DRAM, DRAM-controller and memory-cache-controller energy counters that advance only while a root `powermetrics` is sampling; a plain user process can read them then. The SMC reports whole-system power without root. No SSD sensor exists. New `benchmarks/power_sources.py`. HANDOFF section 18.118.
