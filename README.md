@@ -297,6 +297,8 @@ reproducible to ±0.3 %.
 
 **0.60.7 (2026-10-06): review fixes.** The run manifest no longer records credentials such as `CACHALOT_API_KEY` by value, and its Hermes Desktop check needs one process line. HANDOFF section 18.73.
 
+**0.62.34 (2026-10-10): what the external drive costs.** Reading at its 1 GB/s wall the X10Pro adds about 2.7 W to the system (derived from system power after removing the reader's own activity; +-1 W), (1.4 W at half the rate). Per byte that is about 50 times DRAM; whether the drive's power is fixed or proportional to the rate is not separable at this precision. The internal drive is not measured yet. HANDOFF section 18.121, `docs/E2-SSD-POWER-RECORD.md`.
+
 **0.62.33 (2026-10-10): the system-power residual explained as a fit.** Loading the CPU, the GPU compute and a memory copy separately, system power (SMC `PSTR`) is a linear sum of the IOReport components (R^2 0.999, 1.3 W rms): about 1.25 W per CPU or GPU watt, 1.04 per memory-controller watt and only 0.34 per DRAM-channel watt, over 18 W of baseline. A total joule figure must therefore be a fit to the system rail, not a sum of the counters. HANDOFF section 18.120, `docs/E1B-RESIDUAL-RECORD.md`.
 
 **0.62.32 (2026-10-10): what a byte of DRAM traffic costs.** Streaming 0 to 735 GB/s through the GPU with the IOReport energy counters read beside a root `powermetrics`, DRAM energy is linear in bytes at 49.9 pJ per byte (R^2 0.999); the memory-controller channels add 12 and 33 pJ/B (94.5 pJ/B all three). The prediction on file (30-50 pJ/B) held; its rate and watts figures missed by 2x. HANDOFF section 18.119, `docs/E1-DRAM-CALIBRATION-RECORD.md`.

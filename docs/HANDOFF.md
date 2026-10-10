@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-10, 0.62.34): the X10Pro costs about 2.7 W while reading; next = E3 (joules a token with every component), the internal drive, E4, Lab brief
+>
+> Section 18.121, record `docs/E2-SSD-POWER-RECORD.md` (prediction committed first). **Derived:** the X10Pro adds +2.71 W (se 0.85) to the system at 0.99 GB/s, +1.4 W at 0.5 GB/s, 2.7 nJ a byte at full rate, 50x DRAM; fixed against rate-proportional power is not separable (six-step line: intercept 0.3 W, slope 2.3 W per GB/s). All predictions held, narrowly. **Uncertainty** about +-0.9 W statistical and +-0.8 W systematic (the E1b coefficients); an inline USB-C meter would replace the derivation with a measurement. **Not measured:** the internal drive (no large file; a 48 GiB temporary file written with F_NOCACHE and deleted after is Hamed's call). **Next, each needing Hamed's go and an estimate:** E3 (the 0.62.29 arms with SoC from IOReport, DRAM at 49.9 pJ/B, the drive at its measured W, a PSTR fit as the total and a coverage figure), the internal drive, E4 (index), the Lab brief.
+>
 > ## Start here (2026-10-10, 0.62.33): PSTR is a linear fit of the counters, not their sum; next = E2 SSD (detectability limited), E3, E4, Lab brief
 >
 > Section 18.120, record `docs/E1B-RESIDUAL-RECORD.md` (hypotheses committed first). **Measured:** over 16 load steps `PSTR = 18.4 W + 1.27 cpu + 1.24 gpu + 0.34 dram + 1.04 (dcs+amcc)`, R^2 0.999, rms 1.3-1.4 W. E1's shrinking residual is the low DRAM coefficient. All three pre-registered hypotheses missed. **Consequences:** a total joule figure is a fit to PSTR (or a meter), not a sum of counters; E2's SSD signal (about 3-6 W busy, nominal) sits near the fit's noise, so an inline meter on the X10Pro is worth more now; the 49.9 pJ/B stands as an IOReport-side figure, with a PSTR-side figure of 0.34 x 49.9 (about 17) pJ/B plus the controllers. **Open:** why the DRAM coefficient is low. **Next, each needing Hamed's go and an estimate:** E2 (or the meter), E3, E4, the Lab brief.
@@ -8982,6 +8986,30 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.121 Power accounting, step E2: what the X10Pro costs when it reads (0.62.34)
+
+**Goal.** Measure a drive's contribution to system power (plan step E2), first drive: the X10Pro.
+
+**Baseline.** E1b: `PSTR = 18.4 + 1.27 cpu + 1.24 gpu + 0.34 dram + 1.04 (dcs+amcc)`, rms 1.3-1.4 W. No SSD sensor exists (18.118).
+
+**Prediction (committed first, `a579fb3`).** +3.5 W (2.0-5.5) at duty 1.0; the duty-0.25 rise 40-90 % of that; the full-duty rise above twice its standard error; falsifiers in the record, section 3.
+
+**Method.** `benchmarks/ssd_power_test.py`: two threads of `pread` of 8 MiB blocks with `F_NOCACHE` from the DeepSeek q2g128 bank on the X10Pro (142 GB, read-only), each block read at most once; thirteen 30 s steps (idle, 25 %, idle, 50 %, idle, 100 %, idle, 100 %, idle, 50 %, idle, 25 %, idle); each load step against the mean of its two idle neighbours and corrected with the E1b coefficients. Hamed's root `powermetrics` beside; 02:19-02:26.
+
+**Result (derived).** Full duty (0.99 GB/s) +2.71 W (se 0.85); 0.5 GB/s +1.41 W (0.95); mean 0.47 GB/s +1.25 W (1.13); ratio 0.46. Raw rise +8.25 W at full duty, 5.5 W of it the reader's own activity. No cache hit (top rate 0.99 GB/s). Table in the record.
+
+**Explanation.** 2.7 nJ a byte at the wall, 50x DRAM's 50 pJ. Whether the power is fixed while active (controller, bridge, link) or proportional to the rate cannot be told apart: a line through all six load steps has intercept 0.3 W and slope 2.3 W per GB/s, each as uncertain as its own size. The first duty-0.25 step read 0.68 GB/s instead of 0.25; not explained.
+
+**Preview, not a result.** A read-bound DeepSeek token on the X10Pro takes about 0.39-0.45 s with the drive busy: 2.7 W x 0.4 s is about 1.1 J for the drive, against the 2.52 J of CPU+GPU+ANE (18.116) and about 0.4 J of DRAM at 50 pJ/B for the ~7.5 GB streamed (0.7 J counting the controllers). E3 measures this; these are order-of-magnitude arithmetic from derived figures, not data.
+
+**Limits.** One drive, one port, one session; two repeats a level; the drive's idle-to-active step cannot be separated from its rate dependence at this standard error; correction coefficients from a 16-point fit; the internal drive untested.
+
+**Bottleneck after.** Speed unchanged. Energy: E3 and the internal drive.
+
+**Kind.** Research (predicted, measured, partly explained; every prediction held narrowly).
+
+**Open, Hamed's call.** An inline USB-C meter on the X10Pro (replaces +-1 W of derivation with a measurement); the 48 GiB temporary file on the internal drive; go and estimate for E3.
 
 ### 18.120 Power accounting, step E1b: what the system-power residual is (0.62.33)
 

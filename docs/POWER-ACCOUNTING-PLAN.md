@@ -77,3 +77,5 @@ E0 is done and its results replace the "to verify" tags in section 2 for these r
 **E1 (2026-10-10, 0.62.32, HANDOFF 18.119).** DRAM energy is linear in bytes: 49.9 pJ per byte (DCS 12.0, AMCC 32.6; 94.5 together, possibly overlapping). The residual between PSTR and the IOReport components falls from 18 W at idle to 3 W at full stream and is unexplained, which limits E2 until bounded.
 
 **E1b (2026-10-10, 0.62.33, HANDOFF 18.120).** The residual is not a constant remainder: `PSTR = 18.4 W + 1.27 cpu + 1.24 gpu + 0.34 dram + 1.04 (dcs+amcc)` (R^2 0.999, rms 1.3-1.4 W). A total is a fit to PSTR, not a sum of counters. E2's SSD signal is near the fit's noise.
+
+**E2, first drive (2026-10-10, 0.62.34, HANDOFF 18.121).** The X10Pro adds +2.71 W (se 0.85, derived) while reading at 0.99 GB/s, fixed against rate-proportional power not separable at this precision. The internal drive is not measured.

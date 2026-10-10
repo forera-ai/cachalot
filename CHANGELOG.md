@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.62.34 (2026-10-10)
+
+HANDOFF "Start here (2026-10-10, 0.62.34)" and section 18.121; the record is `docs/E2-SSD-POWER-RECORD.md`, committed with its prediction and falsifier before the run (`a579fb3`). Measurement and one instrument; nothing in `src/` besides the version string changed.
+
+### Added
+- `benchmarks/ssd_power_test.py` (E2): 8 MiB `F_NOCACHE` reads, each block read at most once, duty-cycled between idle steps, with the change in system power corrected by the E1b fit for the reader's own CPU, DRAM and controller activity.
+
+### Measured
+- The X10Pro adds **+2.71 W** (se 0.85, derived) to the system while reading at 0.99 GB/s, +1.4 W at 0.5 GB/s and +1.25 W at a mean 0.47 GB/s: 2.7 nJ a byte at the full rate, 50 times DRAM's per-byte cost; a fixed active power cannot be told from a rate-proportional one at this precision (a six-step line gives intercept 0.3 W, slope 2.3 W per GB/s). Raw rise +8.25 W, of which 5.5 W is the reader's own activity and is corrected away.
+- All predictions held, narrowly (3.5 W predicted, 2.71 measured, inside 2.0-5.5; ratio 0.46 inside 0.4-0.9; 3.2 sigma). Uncertainty about +-0.9 W statistical and +-0.8 W from the correction coefficients.
+- Unexplained: the first duty-0.25 step read 0.68 GB/s, not 0.25.
+
 ## 0.62.33 (2026-10-10)
 
 HANDOFF "Start here (2026-10-10, 0.62.33)" and section 18.120; the record is `docs/E1B-RESIDUAL-RECORD.md`, committed with its hypotheses and falsifier before the run (`374669c`). Measurement and one instrument; nothing in `src/` besides the version string changed.
