@@ -55,3 +55,7 @@ Speed: unchanged. Energy: the access-pattern dependence of the memory and SoC ra
 ## 9. Kind
 
 Research (predicted, measured, partly explained): the error replicates and is localized to three rails; H-channels is not supported; P3 missed; the cause is a hypothesis.
+
+## 10. Erratum (2026-10-10, 0.62.37, after the gather test, HANDOFF 18.124)
+
+Section 5 says the decode excess "appears on the SoC supply rails and on the memory rail" (`PVCC` +11 W, `PSVR` +8 W, `PMVR` +5 W) and section 6 reads that as evidence of power outside the channels. The gather test (`docs/E3C-GATHER-RECORD.md`) shows rail residuals of -15 to +10 W in synthetic steps whose `PSTR` is within a few watts of its fit (`PVCC` -14.7 W on small random reads with `PSTR` -4.9 W). A rail's residual therefore moves with the access pattern and the mix of components without extra total power; the rail localization is **suggestive, not established**. What stands from E3b: the error against `PSTR` replicates (+12.6, +13.9 W), it is not a missing Energy Model channel that was tested (a second GPU view), and it is not the fans.

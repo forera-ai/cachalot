@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.62.37 (2026-10-10)
+
+HANDOFF "Start here (2026-10-10, 0.62.37)" and section 18.124; the record is `docs/E3C-GATHER-RECORD.md`, committed with its predictions and falsifier before the run (`3b6f8ee`). Measurement and instruments; nothing in `src/` besides the version string changed.
+
+### Added
+- `benchmarks/gather_test.py`: a GPU read of a 4 GiB buffer in eight conditions (sequential 9.5 MiB blocks at three duty levels, random 9.5 MiB blocks, random 1 MiB blocks, groups of 8 with a synchronization each) with full-channel logging.
+- `benchmarks/ssd_power_test.py` gains `--period`, `--wrap` and `--seq`; `docs/E2I-INTERNAL-SSD-RECORD.md` holds the internal-drive test's hypothesis and prediction, written before its run.
+
+### Measured
+- Scattered GPU reads do **not** reproduce real decode's 13 W power excess: against the sequential steps' +1.6 W mean error of the component fit, random 9.5 MiB blocks are +1.4/+1.6 W, random 1 MiB blocks +4.3 W, synchronized groups +2.9 W; no step above +5.0 W (decode: +12.6, +13.9 W). The access-pattern hypothesis is falsified by its own criterion (nearest, +2.7 W against 3 W).
+- Rail residuals (`PVCC`, `PSVR`, `PMVR`) move by -15 to +10 W in steps whose system power is within a few watts of the fit, so E3b's localization of the excess to those rails is suggestive, not established (erratum added to `docs/E3B-REFIT-RECORD.md`).
+- New hypothesis (untested): the internal SSD, reading 1.8 GB/s even in the all-resident phase, draws the excess; its controller is on the SoC and no energy channel reports it.
+
 ## 0.62.36 (2026-10-10)
 
 HANDOFF "Start here (2026-10-10, 0.62.36)" and section 18.123; the record is `docs/E3B-REFIT-RECORD.md`, committed with its hypotheses and falsifiers before the run (`74b6123`). Measurement and instruments; nothing in `src/` besides the version string changed.

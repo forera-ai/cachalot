@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-10, 0.62.37): scattered GPU reads do not reproduce the 13 W decode excess; next = the internal SSD test (hypothesis written first)
+>
+> Section 18.124, record `docs/E3C-GATHER-RECORD.md` (predictions committed first), erratum in `docs/E3B-REFIT-RECORD.md`. **Measured:** the fit's error for random 9.5 MiB blocks is +1.4/+1.6 W (sequential +1.6), random 1 MiB blocks +4.3, synchronized groups +2.9, no step above +5.0 W, against decode's +12.6/+13.9: the access-pattern hypothesis is falsified by its own criterion. Rail residuals move by -15 to +10 W without total error, so E3b's rail localization is withdrawn as established. **New hypothesis, pre-registered in `docs/E2I-INTERNAL-SSD-RECORD.md`:** the internal SSD (1.8 GB/s of prefetch reads even when all-resident) draws the excess; P 30 %; predicted +4 W at 1.7 GB/s, +7 W at 6.8 GB/s, falsified below 3 W at 1.7 GB/s. **Next:** run it (about 12 min with the sampler, reads 700 GB of the internal bank, read-only, no temporary file), then E4, the Lab brief, GLM and MiniMax arms.
+>
 > ## Start here (2026-10-10, 0.62.36): the 13 W decode excess replicates and sits on the SoC and memory supply rails; thermal state moves a token 6-11 %; next = GPU gather test, E2 internal, E4, Lab brief
 >
 > Section 18.123, record `docs/E3B-REFIT-RECORD.md` (hypotheses committed first). **Measured:** the component fit under-predicts real decode by +12.6 W (all-resident) and +13.9 W (read-bound) again, no ramp; not a missing Energy Model channel, not fans; on the SMC rails PVCC +11 W, PSVR +8 W, PMVR +5 W. **Energy a token in this session:** about 6.8 J resident, 11.9 J read-bound (E3: 6.42, 10.73); thermal state adds 4-8 W at idle. **Hypothesis, untested:** irregular access costs more per byte in DRAM, fabric and cache than the streaming calibration. **Test:** a synthetic GPU gather of 9.5 MiB blocks at random offsets should reproduce the rail excess without a model (about 10 min). **Then, each needing Hamed's go and an estimate:** E2 for the internal drive (read the 142 GB internal bank), E4 (index), the Lab brief, GLM and MiniMax arms.
@@ -8994,6 +8998,28 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.124 Power accounting, step E3c: does a synthetic read pattern reproduce the decode excess? (0.62.37)
+
+**Goal.** Test E3b's hypothesis that irregular access explains the 13 W by which real decode exceeds the component fit (18.123).
+
+**Baseline.** The fit's error: +12.6 and +13.9 W in decode, rms 3.0 W on the synthetic steps of the same session.
+
+**Prediction (committed first, `3b6f8ee`).** Random 9.5 MiB blocks within +3 W of sequential (70 %); random 1 MiB blocks at least +3 W above (45 %); synchronized groups at least +2 W above (40 %); no step +8 W (70 %); falsifier: none of the three at least 3 W above.
+
+**Method.** `benchmarks/gather_test.py`: `mx.sum` over slices of a 4 GiB bf16 buffer; SEQ25/50/100 (reference), R95-100/50, R1-100, DL-100 (groups of 8 evaluated and waited on), idle; 30 s each, two passes in opposite order; full-channel logging; Hamed's root `powermetrics -n 700`; Lab closed; 15:52:33-16:01.
+
+**Result (measured).** Table in the record. Sequential mean error +1.6 W; R95-100 +1.4; R95-50 +1.6; R1-100 +4.3; DL-100 +2.9; maximum any step +5.0. Two predictions held, two missed narrowly (R1-100 +2.7 above sequential against +3; DL-100 +1.3 against +2); the falsifier fired.
+
+**Explanation.** A read pattern of this kind adds at most a few watts; what real decode has that these steps lack is open: (a) the internal SSD (1.82 GB/s of prefetch reads in the all-resident phase and 3.56 in the read-bound; the idle server phases without reads had no excess; no energy channel reports it); (b) the real quantized matmul and attention kernels; (c) CPU-side server work; (d) 67 GB resident memory. Rail residuals vary -15 to +10 W in steps with a good total, so rails do not localize extra power.
+
+**Limits.** One session; the sequential reference reached 349 GB/s here, not 735 as in E1 (slice kernels, 64 per evaluation, are launch-bound); small blocks and groups reached 85 and 140 GB/s, so they probe launch-bound reads, not high-rate random reads; 16 steps.
+
+**Bottleneck after.** Speed unchanged. Energy: the 13 W unexplained; next is hypothesis (a).
+
+**Kind.** Research (predicted, measured, explained in part; the hypothesis falsified).
+
+**Open, Hamed's call.** Go for the internal-drive test (record `docs/E2I-INTERNAL-SSD-RECORD.md`, about 12 minutes with a sampler, reads 700 GB of the internal bank, read-only).
 
 ### 18.123 Power accounting, step E3b: where the decode excess sits (0.62.36)
 

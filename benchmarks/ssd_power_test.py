@@ -43,7 +43,7 @@ F_NOCACHE = getattr(fcntl, "F_NOCACHE", 48)
 class Blocks:
     """A shuffled list of (path, offset) used without replacement; fd opened with F_NOCACHE per file."""
 
-    def __init__(self, root: str, pattern: str, seed: int):
+    def __init__(self, root: str, pattern: str, seed: int, wrap: bool = False):
         files = sorted(Path(root).glob(pattern))
         if not files:
             raise SystemExit(f"no files match {root}/{pattern}")
@@ -55,12 +55,14 @@ class Blocks:
             n = os.fstat(fd).st_size // BLOCK
             self.items += [(str(f), i * BLOCK) for i in range(n)]
         random.Random(seed).shuffle(self.items)
-        self.next, self.lock = 0, threading.Lock()
+        self.next, self.lock, self.wrap = 0, threading.Lock(), wrap
 
     def take(self):
         with self.lock:
             if self.next >= len(self.items):
-                raise SystemExit("ran out of unread blocks (the run would repeat reads and risk cache hits)")
+                if not self.wrap:
+                    raise SystemExit("ran out of unread blocks (the run would repeat reads and risk cache hits)")
+                self.next = 0  # --wrap: a block repeats only after the whole list (>> RAM) was read
             it = self.items[self.next]
             self.next += 1
         return it
@@ -74,18 +76,18 @@ def burst(blocks: Blocks, until: float, state: dict, buf_size=BLOCK) -> None:
             state["bytes"] += n
 
 
-def run_step(duty: float, seconds: float, blocks: Blocks, state: dict, threads: int) -> None:
+def run_step(duty: float, seconds: float, blocks: Blocks, state: dict, threads: int, period: float = 1.0) -> None:
     end = time.time() + seconds
     while time.time() < end:
         w0 = time.time()
         if duty > 0:
-            busy_until = w0 + duty
+            busy_until = w0 + duty * period
             ts = [threading.Thread(target=burst, args=(blocks, busy_until, state)) for _ in range(threads)]
             for t in ts:
                 t.start()
             for t in ts:
                 t.join()
-        rest = 1.0 - (time.time() - w0)
+        rest = period - (time.time() - w0)
         if rest > 0:
             time.sleep(rest)
 
@@ -150,15 +152,24 @@ def main() -> int:
     ap.add_argument("--step-seconds", type=float, default=30.0)
     ap.add_argument("--skip", type=float, default=5.0)
     ap.add_argument("--seed", type=int, default=20261010)
+    ap.add_argument("--period", type=float, default=1.0, help="duty-cycle window in seconds (0.1 gives a steadier rate)")
+    ap.add_argument("--wrap", action="store_true", help="cycle the block list instead of stopping when it is exhausted (a bank larger than RAM)")
+    ap.add_argument("--seq", default="", help="comma list of duties replacing the default sequence (idle steps inserted between)")
     ap.add_argument("--no-check", action="store_true", help="smoke test only")
     ap.add_argument("--analyze", metavar="JSONL")
     a = ap.parse_args()
     if a.analyze:
         analyze([json.loads(l) for l in open(a.analyze)], a.skip)
         return 0
-    blocks = Blocks(a.root, a.glob, a.seed)
-    need = int(sum(SEQ) * a.step_seconds * 1.3e9 / BLOCK)
-    print(f"{len(blocks.items)} unread blocks of 8 MiB; the run needs about {need} at 1.3 GB/s")
+    blocks = Blocks(a.root, a.glob, a.seed, a.wrap)
+    seq = SEQ
+    if a.seq:
+        ds = [float(x) for x in a.seq.split(',')]
+        seq = [0]
+        for d in ds:
+            seq += [d, 0]
+    need = int(sum(seq) * a.step_seconds * 1.3e9 / BLOCK)
+    print(f"{len(blocks.items)} blocks of 8 MiB; the run needs about {need} at 1.3 GB/s ({'wrapping' if a.wrap else 'no wrap'})")
     probe = ps.IOReport("Energy Model")
     j0 = dc.joules_by_component(probe)
     time.sleep(2.0)
@@ -169,11 +180,11 @@ def main() -> int:
     state = {"step": "warmup", "bytes": 0, "lock": threading.Lock()}
     lg = dc.Logger(state)
     lg.start()
-    t0, total = time.time(), len(SEQ) * a.step_seconds
-    for i, d in enumerate(SEQ):
+    t0, total = time.time(), len(seq) * a.step_seconds
+    for i, d in enumerate(seq):
         state["step"] = f"{i + 1}:{d}"
         print(f"{time.strftime('%H:%M:%S')} step {state['step']}  (~{max(0, total - (time.time() - t0)) / 60:.1f} min left, {blocks.next} blocks read)", flush=True)
-        run_step(d, a.step_seconds, blocks, state, a.threads)
+        run_step(d, a.step_seconds, blocks, state, a.threads, a.period)
     lg.stop.set()
     lg.join()
     out = RES / f"e2-{a.label}{'-smoke' if a.no_check else ''}.jsonl"
