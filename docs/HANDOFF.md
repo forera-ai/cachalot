@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-10, 0.62.35): a DeepSeek token costs 6.4 J (resident) or 10.7 J (read-bound) at the system rail; the component fit does not transfer to decode
+>
+> Section 18.122, record `docs/E3-JOULES-TOKEN-RECORD.md` (predictions committed first). **Measured:** system energy a token = `PSTR` x seconds a token: all-resident **6.42 J** (74.5 W, 86 ms), read-bound **10.73 J** (76.2 W, 141 ms), ratio 1.67; idle server 25-30 W; package-only (cpu+gpu+ane) was 1.68 and 2.84 J (0.62.29: 1.73 and 2.52). **The E1b fit under-predicts real decode by 12.8 W (resident) and 14.3 W (read-bound)**, a falsifier (8 W) fired; cause unknown. The internal drive reads 1.8 GB/s even in the all-resident phase (prefetch loads). Predicted system energy was 43-53 % low; the ratio held. **Next, each needing Hamed's go and an estimate:** refit with every Energy Model channel logged and the decode phases included (the logger kept only aggregates); E2 for the internal drive (read from the 142 GB internal bank, no temporary file needed); E4 index; the Lab brief (route 1 works while his sampler runs).
+>
 > ## Start here (2026-10-10, 0.62.34): the X10Pro costs about 2.7 W while reading; next = E3 (joules a token with every component), the internal drive, E4, Lab brief
 >
 > Section 18.121, record `docs/E2-SSD-POWER-RECORD.md` (prediction committed first). **Derived:** the X10Pro adds +2.71 W (se 0.85) to the system at 0.99 GB/s, +1.4 W at 0.5 GB/s, 2.7 nJ a byte at full rate, 50x DRAM; fixed against rate-proportional power is not separable (six-step line: intercept 0.3 W, slope 2.3 W per GB/s). All predictions held, narrowly. **Uncertainty** about +-0.9 W statistical and +-0.8 W systematic (the E1b coefficients); an inline USB-C meter would replace the derivation with a measurement. **Not measured:** the internal drive (no large file; a 48 GiB temporary file written with F_NOCACHE and deleted after is Hamed's call). **Next, each needing Hamed's go and an estimate:** E3 (the 0.62.29 arms with SoC from IOReport, DRAM at 49.9 pJ/B, the drive at its measured W, a PSTR fit as the total and a coverage figure), the internal drive, E4 (index), the Lab brief.
@@ -8986,6 +8990,28 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.122 Power accounting, step E3: joules a token with every component (0.62.35)
+
+**Goal.** Joules a token for DeepSeek decode with the system rail, DRAM and the drive included (plan step E3), comparable with 18.116's package-only 1.73 and 2.52 J.
+
+**Baseline.** 18.116 (package only), 18.119 (DRAM 49.9 pJ/B), 18.120 (the PSTR fit), 18.121 (X10Pro 2.7 W).
+
+**Prediction (committed first, `0510af2`).** PSTR 55 W (all-resident) and 50 W (read-bound); energy a token 4.5 and 7.0 J; ratio 1.55 (1.4-1.7); the fit within 4 W per phase; internal drive between -1 and +4 W; falsifiers: fit error above 8 W, ratio outside 1.3-1.8, energy more than 25 % outside its range.
+
+**Method.** `benchmarks/energy_arms.sh` (server, then the logger and the four-phase driver) with Hamed's root `powermetrics -n 1100` beside; Lab closed; 02:37:50-02:46:19; `benchmarks/energy_e3.py` joins the logger's per-second rows to the driver's phase clock times (3 s dropped at each phase start).
+
+**Result (measured).** Table in the record. A idle 25.3 W; B 74.5 W, 6.42 J a token; C 76.2 W, 10.73 J; D idle 30.4 W. Fit error: A -0.6, B +12.8, C +14.3, D +1.0 W. Store reads: B 1.82 GB/s with 0.0 misses a token, C 3.56 GB/s with 33.7 misses.
+
+**Explanation.** The system totals stand (they are the SMC's reading times time). Why the fit misses by 13-14 W under real decode is open: unused Energy Model channels, a different DRAM coefficient for decode's access pattern, or a mixed GPU-compute-plus-memory load. The drive is active in both phases, but the 1.5 W difference for a 1.74 GB/s difference is inside the 1.3-1.4 W noise.
+
+**Limits.** One run; the logger stored only aggregates by component, so the fit cannot be redone from it; the package-only part differs from 0.62.29 (CPU in C was 9.1 W against 7.35 W) and the reason is not isolated; PSTR sd within a phase 6-8 W; Lab was closed this time, whether it was in 0.62.29 is not known.
+
+**Bottleneck after.** Speed unchanged. Energy: the unexplained 13-14 W, and any component split of a token.
+
+**Kind.** Research (predicted, measured, partly explained; most predictions missed, one fired a falsifier).
+
+**Open, Hamed's call.** Go and estimate for the refit run (log all 565 channels; about the same 13 minutes); E2 for the internal drive; the Lab brief route.
 
 ### 18.121 Power accounting, step E2: what the X10Pro costs when it reads (0.62.34)
 

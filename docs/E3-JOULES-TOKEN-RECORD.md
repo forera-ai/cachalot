@@ -25,6 +25,35 @@ Any of: the fit's prediction of a phase's PSTR off by more than 8 W (15 %), so t
 
 None to the runtime. New: `benchmarks/energy_logger.py` (a user-level logger of IOReport energy by component, `PSTR`, and the server's `/v1/stats` counters, once a second, started after the server is up), `benchmarks/energy_e3.py` (per-phase analysis against the driver's phase clock times), and `benchmarks/energy_arms.sh` starts and stops the logger. Needs Hamed's `sudo powermetrics` sampling for the whole run (about 15 minutes; the run is about 13).
 
-## 5. Result, explanation, generalization, bottleneck after, kind
+## 5. Result (measured; 2026-10-10, run 02:37:50-02:46:19, Cachalot Lab closed; `benchmarks/results/energy/e3-log.jsonl`, `arms-driver.jsonl`, sampler `e3-sampler.txt`)
 
-To be written after the run.
+Per phase (IOReport watts, SMC `PSTR`, the E1b fit's prediction `fit`, `err = PSTR - fit`, energy a token = PSTR times seconds a token):
+
+| phase | s | tokens | ms/token | cpu W | gpu W | dram W | dcs+amcc W | PSTR W (sd) | fit W | err W | system J/token | cpu+gpu+ane J/token |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| A idle server | 90 | 0 | - | 1.9 | 0.4 | 1.1 | 4.0 | 25.3 (6.4) | 25.9 | -0.6 | - | - |
+| B all-resident | 124 | 1440 | 86 | 4.7 | 14.8 | 10.2 | 14.9 | 74.5 (6.5) | 61.7 | +12.8 | **6.42** | 1.68 |
+| C read-bound | 152 | 1080 | 141 | 9.1 | 11.1 | 8.3 | 14.8 | 76.2 (6.6) | 61.9 | +14.3 | **10.73** | 2.84 |
+| D idle server | 90 | 0 | - | 3.0 | 0.9 | 1.6 | 5.3 | 30.4 (8.3) | 29.4 | +1.0 | - | - |
+
+Store counters: B read 1.82 GB/s from the internal drive with 0.0 misses a token (speculative prefetch loads); C read 3.56 GB/s with 33.7 misses a token. System energy a token split by the fit's terms: B 6.42 J = baseline 1.58 + cpu 0.52 + gpu 1.58 + dram 0.30 + dcs+amcc 1.33 + unfitted 1.10 (the fit's 12.8 W error times 86 ms); C 10.73 J = baseline 2.59 + cpu 1.63 + gpu 1.93 + dram 0.40 + dcs+amcc 2.17 + unfitted 2.02. Ratio C over B: **1.67** for system energy, 1.68 for cpu+gpu+ane (0.62.29 measured 1.46 for the latter, with C at 18.3 W and 2.52 J a token; this run's C read 20.2 W and 2.84 J a token, the CPU 9.1 W against 7.35 W).
+
+Against the predictions: system power B 55 W (45-65) **missed** (74.5); C 50 W (42-60) **missed** (76.2); energy a token B 4.5 J (3.7-5.4) **missed** (6.42, +43 %); C 7.0 J (5.7-8.5) **missed** (10.73, +53 %); ratio 1.55 (1.4-1.7) held at the upper end (1.67); **the fit's prediction of a phase's PSTR within 4 W: falsified** (error +12.8 and +14.3 W; the falsifier was 8 W); the internal drive (C minus B of the error) +1.5 W, inside -1 to +4 W but under 1.4 W of noise, so not resolved. The falsifier "fit error above 8 W" fired, and a second one (system energy a token more than 25 % outside its range) fired for both phases.
+
+## 6. Explanation
+
+The E1b fit holds at idle (errors -0.6 and +1.0 W) and on its synthetic loads (rms 1.3 W) but under-predicts the real decode by 13-14 W, in the all-resident phase as well as the read-bound one, so the missing power is not the read-bound drive. Not explained. Candidates, none tested: (a) the IOReport channels used by the fit do not capture some real-decode draw (the "Energy Model" group has other GPU channels, `GPU0_0` and `GPU CS0_0` among them, that the fit did not use; the logger kept only the aggregates, so this cannot be refit from this run); (b) the fit's DRAM coefficient of 0.34, learned on streaming loads, does not hold for decode's access pattern (here the DRAM counter reads 10.2 W, and a coefficient near 1.6 instead of 0.34 would close the gap); (c) the internal drive is active in both phases (1.8 and 3.6 GB/s) and the Apple SSD's NAND draws more than the 2.7 W an external drive adds, but a drive would not give the same 12.8 W with 0.0 misses a token unless prefetch reads cost that much, which a 1.5 W difference for a 1.7 GB/s difference argues against; (d) a mix of GPU compute and memory traffic at once has a different loss than either alone (E1b ran them apart, except for one GPU-plus-CPU step). The measured quantity, PSTR times seconds a token, does not depend on the fit.
+
+Package-only ratio: 1.68 here against 1.46 in 0.62.29 is a run-to-run difference of C's package power (20.2 against 18.3 W); the conditions differ in what else ran (this run: Lab closed, the logger and a different sampler file), not isolated.
+
+## 7. Generalization
+
+Hardware-specific and workload-specific (DeepSeek exact decode, internal bank, 48 GiB budget, a repeated prompt and ten fresh ones). The transferable form: a fit made on single-source loads does not extrapolate to a mixed real workload; a joule total must be measured at the system rail, and a decomposition by component needs the real workload in its fit.
+
+## 8. Bottleneck after
+
+Speed: unchanged. Energy: the 13-14 W the fit does not explain under real decode, and therefore any split of a token's energy by component beyond the measured system total. The next step is to log every Energy Model channel, not only the aggregates, and refit with decode phases included.
+
+## 9. Kind
+
+Research (predicted, measured, partly explained); several predictions missed and one fired a falsifier, recorded as such.

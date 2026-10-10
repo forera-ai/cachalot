@@ -79,3 +79,5 @@ E0 is done and its results replace the "to verify" tags in section 2 for these r
 **E1b (2026-10-10, 0.62.33, HANDOFF 18.120).** The residual is not a constant remainder: `PSTR = 18.4 W + 1.27 cpu + 1.24 gpu + 0.34 dram + 1.04 (dcs+amcc)` (R^2 0.999, rms 1.3-1.4 W). A total is a fit to PSTR, not a sum of counters. E2's SSD signal is near the fit's noise.
 
 **E2, first drive (2026-10-10, 0.62.34, HANDOFF 18.121).** The X10Pro adds +2.71 W (se 0.85, derived) while reading at 0.99 GB/s, fixed against rate-proportional power not separable at this precision. The internal drive is not measured.
+
+**E3, DeepSeek arm (2026-10-10, 0.62.35, HANDOFF 18.122).** System energy a token (PSTR x time): 6.42 J all-resident, 10.73 J read-bound (ratio 1.67). The E1b fit under-predicts real decode by 12.8 and 14.3 W; refit with every channel logged before splitting a token by component. GLM and MiniMax arms not run.

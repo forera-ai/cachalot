@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.62.35 (2026-10-10)
+
+HANDOFF "Start here (2026-10-10, 0.62.35)" and section 18.122; the record is `docs/E3-JOULES-TOKEN-RECORD.md`, committed with its predictions and falsifiers before the run (`0510af2`). Measurement and instruments; nothing in `src/` besides the version string changed.
+
+### Added
+- `benchmarks/energy_logger.py` (a user-level per-second logger of IOReport energy by component, SMC `PSTR` and the server's `/v1/stats` counters), `benchmarks/energy_e3.py` (per-phase analysis), and `benchmarks/energy_arms.sh` now starts and stops the logger.
+
+### Measured
+- **System energy a token** (SMC `PSTR` times seconds a token, DeepSeek exact decode, internal bank, 48 GiB): all-resident **6.42 J** (74.5 W, 86 ms), read-bound **10.73 J** (76.2 W, 141 ms), ratio 1.67. Idle server 25-30 W.
+- The E1b fit **does not transfer to real decode**: PSTR was 12.8 W (all-resident) and 14.3 W (read-bound) above the fit's prediction; it holds at idle (-0.6, +1.0 W). The falsifier (8 W) fired. Cause unknown.
+- The internal drive was active in the "all-resident" phase (1.8 GB/s of speculative prefetch loads, 0.0 misses a token) and at 3.6 GB/s in the read-bound one.
+- Predicted system energy a token was low by 43-53 %; the ratio prediction (1.55, range 1.4-1.7) held at the upper end. The package-only ratio read 1.68 this time against 1.46 in 0.62.29 (the read-bound phase's CPU power was higher).
+
 ## 0.62.34 (2026-10-10)
 
 HANDOFF "Start here (2026-10-10, 0.62.34)" and section 18.121; the record is `docs/E2-SSD-POWER-RECORD.md`, committed with its prediction and falsifier before the run (`a579fb3`). Measurement and one instrument; nothing in `src/` besides the version string changed.

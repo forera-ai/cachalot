@@ -297,6 +297,8 @@ reproducible to ±0.3 %.
 
 **0.60.7 (2026-10-06): review fixes.** The run manifest no longer records credentials such as `CACHALOT_API_KEY` by value, and its Hermes Desktop check needs one process line. HANDOFF section 18.73.
 
+**0.62.35 (2026-10-10): joules a token at the system rail.** With the sampler beside and every component logged, a DeepSeek token costs 6.42 J of system energy when every expert is resident (74.5 W, 86 ms) and 10.73 J when it waits for the drive (76.2 W, 141 ms), 1.67 times as much; the CPU+GPU+ANE figures of 0.62.29 were about a quarter of it. The system-power fit made on synthetic loads under-predicts real decode by 13-14 W, cause unknown, so only the measured total stands. HANDOFF section 18.122, `docs/E3-JOULES-TOKEN-RECORD.md`.
+
 **0.62.34 (2026-10-10): what the external drive costs.** Reading at its 1 GB/s wall the X10Pro adds about 2.7 W to the system (derived from system power after removing the reader's own activity; +-1 W), (1.4 W at half the rate). Per byte that is about 50 times DRAM; whether the drive's power is fixed or proportional to the rate is not separable at this precision. The internal drive is not measured yet. HANDOFF section 18.121, `docs/E2-SSD-POWER-RECORD.md`.
 
 **0.62.33 (2026-10-10): the system-power residual explained as a fit.** Loading the CPU, the GPU compute and a memory copy separately, system power (SMC `PSTR`) is a linear sum of the IOReport components (R^2 0.999, 1.3 W rms): about 1.25 W per CPU or GPU watt, 1.04 per memory-controller watt and only 0.34 per DRAM-channel watt, over 18 W of baseline. A total joule figure must therefore be a fit to the system rail, not a sum of the counters. HANDOFF section 18.120, `docs/E1B-RESIDUAL-RECORD.md`.
