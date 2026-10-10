@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-11, 0.62.40): the server is not where the 11 W is; the kernels (or the resident memory) are
+>
+> Section 18.127, record `docs/E3E-INPROC-KERNELS-RECORD.md` (hypotheses, predictions and falsifier committed first, `22f0499`). **Measured:** the DeepSeek decode kernels driven in-process (`benchmarks/decode_power_inproc.py`, no server, all-resident, prediction off, 48 GiB budget): decode-only fit error **+11.5 W** (server, E3d: +10.9), PSTR 73.1 W, **79.3 ms** and **5.79 J** a token (server 83 ms, 5.90 J); prefill alone **+7.8 W** (95.4 W). All numeric predictions held; H-server (error at or below 6 W) falsified. The unexplained power follows the model's real GPU work in decode and in prefill, and the server, the drive, the prediction and the read pattern are all excluded. Not separated: the kernels from the 62 GiB of resident memory. Next (hypothesis written first, Hamed's go and sampler): (iii) the same in-process decode at a smaller expert budget (working set unchanged). Then E4 and the Lab brief.
+>
 > ## Start here (2026-10-10, 0.62.39): with the drive silent and the prediction off, decode still draws 10.9 W above the component fit; about 11 W is not storage
 >
 > Section 18.126, record `docs/E3D-NO-PREFETCH-RECORD.md` (hypothesis, prediction and falsifier written before the run). **Measured:** `CACHALOT_PREDICT_TOPK=0`, the E3b energy arms. Phase B (all-resident) read **0.00 GB/s** from the drive and the fit error was **+10.9 W** (E3b +12.6; predicted 9.8, interval 7.0-12.5: held), 83 ms a token (predicted 76: missed), 5.90 J a token (held). Phase C (read-bound, 2.09 GB/s, 33.5 misses a token) +14.0 W (predicted 9.0: missed). So about **11 W of decode power is unexplained in both phases, independent of the drive, of the prefetch loads and of the read rate**; H-prediction-work (error below 6 W) is not supported. Remaining candidates: the model's quantized kernels, the server's CPU work, the 67 GB of resident memory. Next (hypothesis written first, Hamed's go and sampler): (ii) the kernels in-process without the server, (iii) a smaller resident budget. Nothing in `src/` changed; `energy_arms.sh` gained `E_TAG`.
@@ -9006,6 +9010,28 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.127 Power accounting, step E3e: the kernels in-process, without the server (0.62.40)
+
+**Goal.** Separate the model's kernels from the server's CPU work as the owner of the ~11 W of decode power the component fit and storage do not explain (18.126).
+
+**Baseline.** E3d: +10.9 W with the drive silent and the prediction off, through the server, 83 ms and 5.90 J a token.
+
+**Prediction (committed first, `22f0499`).** H-kernels 50 %: decode-only error +10.5 W (7.5-13.5), PSTR 71 W (65-77), 80 ms (76-86), 5.7 J (5.0-6.5). H-server 35 %: error at or below 6 W. H-other 15 %: above 13.5 W.
+
+**Method.** New `benchmarks/decode_power_inproc.py` and `benchmarks/inproc_arms.sh`: `TextDecodeRuntime` driven directly (16 prompt tokens, 32 decode tokens a pass, the same tokens every pass), the serve.sh environment, `CACHALOT_PREDICT_TOPK=0`, 48 GiB budget; phases A idle 90 s, B all-resident 120 s, P prefill only 45 s, D idle 90 s; the energy logger (`--full`) started by the script; Hamed's root `powermetrics -n 700`; Lab closed; 00:03:28-00:09:54. The prefill share of B (17.2 %) taken out by the time-weighted mean using phase P.
+
+**Result (measured).** B: 79.27 ms a token, 0 misses, 0 bytes read, PSTR 76.9 W, fit error +10.9 W; P: 95.4 W, +7.8 W; corrected decode-only: **+11.5 W**, 73.1 W, **5.79 J** a token. Idle A +0.2, D -2.3 W. Fans 1,004-1,121 RPM. All four numeric predictions held; preconditions met; H-server falsified.
+
+**Explanation.** The server contributes about 3.7 ms of a token and nothing resolvable in power; prefill shows the same kind of excess (+7.8 W), so it follows the model's real GPU work, not decode's token loop. A fit made on synthetic matmul and stream loads under-predicts the quantized kernels at the system rail. A reading, not a test; the kernels and the 62 GiB of resident memory are not separated.
+
+**Limits.** One run, one cool session; the prefill correction assumes linear mixing and that prefill inside B has the power of phase P (reset and Python gaps are folded in); D idled 4.5 W below A; the fit's own error is 1.3-3 W.
+
+**Bottleneck after.** Speed unchanged. Energy: ~11 W of system power per real model run beyond the component fit, kernel or memory.
+
+**Kind.** Research (predicted, measured, explained in part).
+
+**Open, Hamed's call.** (iii) a smaller expert budget at the same work (about 10 minutes plus the sampler), then E4 and the Lab brief.
 
 ### 18.126 Power accounting, step E3d: does the unexplained decode power stay when the drive reads are switched off? (0.62.39)
 

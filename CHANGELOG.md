@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.62.40 (2026-10-11)
+
+HANDOFF "Start here (2026-10-11, 0.62.40)" and section 18.127; the record is `docs/E3E-INPROC-KERNELS-RECORD.md`, its hypotheses, predictions and falsifier committed before the run (`22f0499`). Measurement and an instrument; nothing in `src/` besides the version string changed.
+
+### Added
+- `benchmarks/decode_power_inproc.py` and `benchmarks/inproc_arms.sh`: the DeepSeek decode driven in-process (no server) through the energy phases, with a prefill-only phase so the prefill share can be taken out; `SMOKE=1` is a short precheck without the energy logger.
+
+### Measured
+- Without the server, the all-resident decode (prediction off, 48 GiB) draws **+11.5 W** above the component fit (decode-only, prefill share removed; with the server in E3d: +10.9 W), at **79.3 ms** and **5.79 J** a token (server: 83 ms, 5.90 J). The server's CPU work costs about 3.7 ms a token and no resolvable power; the hypothesis that it explains the unexplained decode power is falsified.
+- Prefill alone (no drive reads, no per-token synchronization) sits **+7.8 W** above the fit (95.4 W), so the excess follows the model's real GPU work, not decode's token loop. The kernels and the 62 GiB of resident memory are not separated yet.
+- All four numeric predictions held (error +11.5 W against 10.5, range 7.5-13.5; 73.1 W against 71; 79.3 ms against 80; 5.79 J against 5.7).
+
 ## 0.62.39 (2026-10-10)
 
 HANDOFF "Start here (2026-10-10, 0.62.39)" and section 18.126; the record is `docs/E3D-NO-PREFETCH-RECORD.md`, its hypotheses, predictions and falsifier written before the run. Measurement only; nothing in `src/` besides the version string changed.
