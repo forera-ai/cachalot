@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.62.38 (2026-10-10)
+
+HANDOFF "Start here (2026-10-10, 0.62.38)" and section 18.125; the record is `docs/E2I-INTERNAL-SSD-RECORD.md`, its hypothesis and prediction committed before the run (`e2ff497`). Measurement only; nothing in `src/` besides the version string changed.
+
+### Measured
+- The internal SSD's power is close to proportional to its read rate: **+1.7 W at 1.0 GB/s, +3.1 at 1.85, +4.6 at 3.4, +7.6 at 6.4 GB/s** (derived from system power with the reader's own activity removed; about 1.1 W per GB/s, 1.1 nJ a byte, cheaper per byte than the X10Pro's 2.7). The two passes differ by up to 4 W at the low duties (unexplained).
+- Hypothesis "the internal drive explains at least half of the decode power excess": **not supported**. At the drive's own rate in decode (1.82 GB/s resident, 3.56 read-bound) it accounts for about 2.8 W and 4.7 W of the 12.6 and 13.9 W; about 10 W and 9 W remain, almost equal in both phases, so independent of the read rate.
+- All numeric predictions held (+3.09 W against +4 W predicted at 1.7 GB/s, +7.56 against +7 at 6.8 GB/s, ratio 0.41 against at least 0.40, top rate 6.46 GB/s under 7.5).
+
 ## 0.62.37 (2026-10-10)
 
 HANDOFF "Start here (2026-10-10, 0.62.37)" and section 18.124; the record is `docs/E3C-GATHER-RECORD.md`, committed with its predictions and falsifier before the run (`3b6f8ee`). Measurement and instruments; nothing in `src/` besides the version string changed.

@@ -85,3 +85,5 @@ E0 is done and its results replace the "to verify" tags in section 2 for these r
 **E3b (2026-10-10, 0.62.36, HANDOFF 18.123).** The decode excess replicates (+12.6, +13.9 W) and is on the SMC rails PVCC, PSVR and PMVR, not in a missing channel and not the fans. Totals must be taken at the system rail; thermal state moves a token's system energy 6-11 % between sessions. Test of the access-pattern hypothesis: a synthetic random-access GPU read.
 
 **E3c (2026-10-10, 0.62.37, HANDOFF 18.124).** Scattered, small or synchronized GPU reads add at most +5 W to the component fit's error against the +12.6/+13.9 W of real decode. E3b's rail localization is withdrawn as established. Next: the internal SSD (`docs/E2I-INTERNAL-SSD-RECORD.md`).
+
+**E2i (2026-10-10, 0.62.38, HANDOFF 18.125).** The internal SSD adds about 1.1 W per GB/s (+7.6 W at 6.4 GB/s); at decode's rates 2.8-4.7 W. About 10 W of decode power stays unexplained, equal in both phases.

@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-10, 0.62.38): the internal SSD costs about 1.1 W per GB/s; about 10 W of decode power remains unexplained, the same resident and read-bound
+>
+> Section 18.125, record `docs/E2I-INTERNAL-SSD-RECORD.md` (hypothesis and prediction committed first). **Derived:** the internal SSD adds +1.7 W (1.0 GB/s), +3.1 (1.85), +4.6 (3.4), +7.6 W (6.4 GB/s), about 1.1 nJ a byte; at E3's rates it explains about 2.8 W (all-resident, prefetch) and 4.7 W (read-bound) of the 12.6 and 13.9 W by which decode exceeds the component fit. **About 9.8 W and 9.2 W remain unexplained, nearly equal although the read rate doubled**: not read pattern (18.124), not fans, not the drive. The H-internal-SSD hypothesis (at least half) is not supported (mean +3.09 W, larger repeat +5.08, against 6.5 W needed; not falsified by the letter, +3.09 against 3). Pass-to-pass drift up to 4 W at low duty, unexplained. **Derived split of the all-resident phase, 74.5 W:** baseline 18.4, cpu terms 6.0, gpu terms 18.4, dram 3.5, controllers 15.5, internal SSD ~2.8, unexplained ~10. **Next, each needing Hamed's go and an estimate:** decode with the drive reads switched off (the drive part should vanish, the rest stay) and the model's kernels in-process without the server; E4 (index); the Lab brief; GLM and MiniMax arms.
+>
 > ## Start here (2026-10-10, 0.62.37): scattered GPU reads do not reproduce the 13 W decode excess; next = the internal SSD test (hypothesis written first)
 >
 > Section 18.124, record `docs/E3C-GATHER-RECORD.md` (predictions committed first), erratum in `docs/E3B-REFIT-RECORD.md`. **Measured:** the fit's error for random 9.5 MiB blocks is +1.4/+1.6 W (sequential +1.6), random 1 MiB blocks +4.3, synchronized groups +2.9, no step above +5.0 W, against decode's +12.6/+13.9: the access-pattern hypothesis is falsified by its own criterion. Rail residuals move by -15 to +10 W without total error, so E3b's rail localization is withdrawn as established. **New hypothesis, pre-registered in `docs/E2I-INTERNAL-SSD-RECORD.md`:** the internal SSD (1.8 GB/s of prefetch reads even when all-resident) draws the excess; P 30 %; predicted +4 W at 1.7 GB/s, +7 W at 6.8 GB/s, falsified below 3 W at 1.7 GB/s. **Next:** run it (about 12 min with the sampler, reads 700 GB of the internal bank, read-only, no temporary file), then E4, the Lab brief, GLM and MiniMax arms.
@@ -8998,6 +9002,28 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.125 Power accounting, step E2i: what the internal SSD costs when it reads (0.62.38)
+
+**Goal.** Measure the internal drive's contribution to system power and test whether it is the 13 W by which real decode exceeds the component fit (hypothesis (a) of 18.124).
+
+**Baseline.** E3: the drive read 1.82 GB/s in the all-resident phase (prefetch loads) and 3.56 GB/s read-bound; the excess +12.6 and +13.9 W; X10Pro (18.121) +2.71 W at 0.99 GB/s.
+
+**Prediction (committed first, `e2ff497`).** H-internal-SSD (at least half of the 13 W) at 30 %; +4 W (1.5-9) at 1.7 GB/s; +7 W (2-14) at 6.8 GB/s; duty-0.25 rise at least 40 % of full; falsifier a rise below 3 W at 1.7 GB/s; rate not above 7.5 GB/s.
+
+**Method.** `benchmarks/ssd_power_test.py --root ~/DeepSeek-V4.1-Flash-q2g128 --label internal --threads 4 --period 0.1 --wrap --seq 0.1,0.25,0.5,1.0,1.0,0.5,0.25,0.1`: 8 MiB `F_NOCACHE` preads from the 142 GB internal bank, the shuffled list cycled; 17 steps of 30 s; Hamed's root `powermetrics -n 700` beside; Lab closed; 17:58:38-18:07; each load step against its idle neighbours and corrected with the E1b coefficients.
+
+**Result (derived).** +1.68 W at 1.02 GB/s, +3.09 at 1.85, +4.56 at 3.40, +7.56 at 6.39 GB/s (se about 1.0-1.1); the two passes differ by up to 4 W at low duty (duty 0.25: +1.10 then +5.08). Top rate 6.46 GB/s. Numeric predictions held; the headline hypothesis is not supported.
+
+**Explanation.** Drive power roughly proportional to the read rate (1.1 W per GB/s, intercept 0.7 W). At the drive's decode rates it is about 2.8 and 4.7 W; about 10 and 9 W of decode power are not explained by it, the same in both phases.
+
+**Limits.** Two passes; the correction coefficients come from the E1b fit, which did not transfer to decode; the pass-to-pass drift (second pass higher at every low duty) is unexplained and not covered by the standard errors; reads by four threads at 100 ms windows are not the pattern of the store's reader; one drive, one session.
+
+**Bottleneck after.** Speed unchanged. Energy: about 10 W of decode, rate-independent.
+
+**Kind.** Research (predicted, measured, explained in part; the hypothesis not supported).
+
+**Open, Hamed's call.** Go and estimate for the next test: decode with the drive reads switched off, and the kernels in-process.
 
 ### 18.124 Power accounting, step E3c: does a synthetic read pattern reproduce the decode excess? (0.62.37)
 

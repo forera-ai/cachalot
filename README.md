@@ -297,6 +297,8 @@ reproducible to ±0.3 %.
 
 **0.60.7 (2026-10-06): review fixes.** The run manifest no longer records credentials such as `CACHALOT_API_KEY` by value, and its Hermes Desktop check needs one process line. HANDOFF section 18.73.
 
+**0.62.38 (2026-10-10): what the internal SSD costs.** Reading the internal bank, the drive adds about 1.1 W per GB/s to the system (1.7 W at 1 GB/s, 7.6 W at 6.4 GB/s), so in a real decode it accounts for about 3 W (all-resident, prefetch reads) to 5 W (read-bound) of the 13-14 W excess over the component fit, not for it all: about 10 W remain unexplained in both phases. HANDOFF section 18.125, `docs/E2I-INTERNAL-SSD-RECORD.md`.
+
 **0.62.37 (2026-10-10): the decode power excess is not a read pattern.** A synthetic GPU read of scattered or synchronized blocks adds at most 5 W over a sequential stream, against the 13 W a real DeepSeek decode draws beyond the component fit; the earlier attribution to the supply rails is withdrawn as not established. The next suspect is the internal SSD, which reads 1.8 GB/s even when every expert is resident. HANDOFF section 18.124, `docs/E3C-GATHER-RECORD.md`.
 
 **0.62.36 (2026-10-10): the missing decode power is on the supply rails.** Logging every energy channel and the SMC rails through the synthetic loads and the decode arms, the 13 W that a real DeepSeek decode draws beyond the component fit reproduced (12.6 and 13.9 W), is not a channel the fit left out and not the fans, and shows up on the SoC supply rails and the memory rail (11, 8 and 5 W). A streaming calibration is a lower bound for irregular access; the system rail is the total. Thermal state moves a token's system energy 6-11 % between sessions. HANDOFF section 18.123, `docs/E3B-REFIT-RECORD.md`.
