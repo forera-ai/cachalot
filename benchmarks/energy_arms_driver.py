@@ -26,8 +26,8 @@ def ask(text):
     t0 = time.time()
     out = json.loads(urllib.request.urlopen(req, timeout=3600).read())
     cx = out["usage"].get("cachalot", {})
-    if cx.get("energy") is not None:  # CACHALOT_ENERGY=1: the server's own report for this request, to compare with the logger's PSTR x time
-        log({"event": "request", "start": t0, "end": time.time(), "tokens": out["usage"]["completion_tokens"], "decode_seconds": cx.get("decode_seconds"), "energy": cx["energy"]})
+    # one event a request: the server's decode time, and with CACHALOT_ENERGY=1 its own energy report (to compare with the logger's PSTR x time; null otherwise)
+    log({"event": "request", "start": t0, "end": time.time(), "tokens": out["usage"]["completion_tokens"], "decode_seconds": cx.get("decode_seconds"), "energy": cx.get("energy")})
     return out["usage"]["completion_tokens"], cx
 def log(rec): print(json.dumps(rec), flush=True)
 t0 = time.time()
@@ -50,6 +50,8 @@ def resident(sec):
     return f
 def readbound(sec):
     def f():
+        if sec < 0:  # E_C=-1 skips the read-bound phase
+            return 0
         tok, t = 0, time.time()
         for p in MIXED:
             if time.time() - t > sec: break

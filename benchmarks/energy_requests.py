@@ -59,6 +59,8 @@ def main() -> int:
     print("request end   tokens  decode_s | meter J    logger J   diff  | meter J/tok  logger J/tok | components (meter vs logger, dram / gpu J)")
     for q in reqs:
         e = q["energy"]
+        if e is None:
+            continue  # an arm with the meter off
         if not e.get("available") or not e.get("decode"):
             print(f"{q['end']:.0f}  {q['tokens']:5d} {q['decode_seconds'] or 0:8.1f} | meter unavailable: {e.get('reason', 'no decode window')}")
             continue
