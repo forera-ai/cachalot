@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.64.0 (2026-10-11)
+
+HANDOFF "Start here (2026-10-11, 0.64.0)" and section 18.134; Lab brief `docs/lab/briefs/2026-10-11-runtime-0.64.0.md`. Hamed chose the default: sampled, one decode token in four. Outputs unchanged; off by default.
+
+### Added
+- **`CACHALOT_TOKEN_TRACE=1`** (DeepSeek server; default off) records one decode token in `CACHALOT_TOKEN_TRACE_EVERY` (default 4; 1 records every token). `/v1/stats.token_trace` reports running means over the sampled tokens: router sync, main-thread wait for experts (exposed I/O), drive-read busy time, the part hidden behind other work, reads, bytes, events, and the exposed share of read time. The trace drains into the sums at the end of each request; prefill reads and idle warming are never recorded. GLM and MiniMax print a notice and ignore the knob.
+- `TokenTraceMeter` in `src/cachalot/metrics/token_trace.py`; 7 tests (613 pass in all). `TokenTrace` records nothing outside a sampled token.
+
+### Measured
+- Live smoke through `./serve.sh --expert-budget-gib 34` with the knob on: three requests (258 decode tokens) gave 64 sampled tokens (one in four), 0 dropped events, a repeated greedy prompt returned identical text, and the exposed share of read time was 0.58-0.62 (router sync 62 ms, blocked 60-78 ms, read busy 103-126 ms, 295-314 events a sampled token). Continuous recording costs +0.55 ms a decode token (95 % +0.05 to +1.11, 0.63.4), so the default costs about 0.14 ms averaged (derived, not measured).
+
 ## 0.63.4 (2026-10-11)
 
 HANDOFF "Start here (2026-10-11, 0.63.4)" and section 18.133; the addendum to `docs/L2-IN-SITU-PRICE-RECORD.md` was written with its prediction before the run. Measurement and tooling only; nothing in `src/` changed.

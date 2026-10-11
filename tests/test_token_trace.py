@@ -33,13 +33,11 @@ def test_summary_splits_exposed_and_hidden_reads():
     assert row["hidden_read_ms"] < row["read_busy_ms"]
 
 
-def test_inactive_tokens_stamp_but_do_not_record():
-    trace = tt.TokenTrace()
-    trace.active = False
-    trace.begin_token(1)
+def test_unsampled_tokens_stamp_but_do_not_record():
+    trace = tt.TokenTrace(every=2)
+    trace.begin_token(1)  # odd position: not sampled
     trace.emit(tt.SYNC_START, 0)
-    trace.active = True
-    trace.begin_token(2)
+    trace.begin_token(2)  # sampled
     trace.emit(tt.SYNC_START, 0)
     trace.emit(tt.SYNC_END, 0)
     trace.begin_token(3)
@@ -50,8 +48,17 @@ def test_inactive_tokens_stamp_but_do_not_record():
     assert rows[0]["events"] == 3
 
 
+def test_nothing_is_recorded_outside_a_sampled_token():
+    trace = tt.TokenTrace(every=4)
+    trace.emit(tt.READ_START, 1, 1)  # a prefill read before any decode token
+    trace.begin_token(5)  # not sampled
+    trace.emit(tt.READ_START, 1, 1)
+    assert len(trace.drain()["ts"]) == 0
+
+
 def test_capacity_drops_are_counted_not_raised():
     trace = tt.TokenTrace(capacity=4)
+    trace.active = True
     for i in range(10):
         trace.emit(tt.SYNC_START, i)
     drained = trace.drain()
@@ -74,3 +81,31 @@ def test_alternate_records_only_the_chosen_parity_and_minus_one_records_nothing(
         trace.begin_token(pos)
         trace.emit(tt.SYNC_START, 0)
     assert len(trace.drain()["ts"]) == 0
+
+
+def test_meter_samples_every_fourth_token_and_reports_running_means():
+    meter = tt.TokenTraceMeter(every=4)
+    trace = meter.trace
+    for request in range(2):
+        meter.begin_request()
+        for pos in range(12):
+            trace.begin_token(100 * request + pos)
+            if trace.active:
+                trace.emit(tt.SYNC_START, 0)
+                trace.emit(tt.SYNC_END, 0)
+        meter.collect()
+    stats = meter.stats()
+    assert stats["every"] == 4 and stats["requests"] == 2
+    # per request: positions 0, 4, 8 are sampled and the last stamp has no successor, so tokens 0, 4 and 8 give rows; 8 -> 11 ends at stamp 11
+    assert stats["sampled_tokens"] == 6
+    assert stats["mean_per_sampled_token"]["events"] == 3
+    assert stats["exposed_read_share"] is None  # no reads recorded
+    assert stats["dropped_events"] == 0
+
+
+def test_begin_request_discards_what_a_cancelled_request_left():
+    meter = tt.TokenTraceMeter(every=1)
+    meter.trace.begin_token(1)
+    meter.trace.emit(tt.SYNC_START, 0)
+    meter.begin_request()
+    assert len(meter.trace.drain()["ts"]) == 0

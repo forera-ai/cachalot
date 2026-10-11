@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-11, 0.64.0): `CACHALOT_TOKEN_TRACE=1`, sampled one decode token in four, built and checked live
+>
+> Section 18.134, Lab brief `docs/lab/briefs/2026-10-11-runtime-0.64.0.md`. Hamed's call (sampled by default). **New, DeepSeek server only, default off:** `CACHALOT_TOKEN_TRACE=1`, `CACHALOT_TOKEN_TRACE_EVERY=N` (default 4; 1 is continuous at +0.55 ms a token); `/v1/stats.token_trace` running means over sampled tokens and `exposed_read_share`; GLM/MiniMax ignore it with a notice. Live smoke (`./serve.sh --expert-budget-gib 34`, three requests, 258 tokens): 64 sampled tokens, 0 dropped, identical text on a repeat, exposed share 0.58-0.62. 613 tests. Nothing needs Hamed except the Lab side of the brief.
+>
 > ## Start here (2026-10-11, 0.63.4): the tracer's cost on 30 turns: +0.55 ms a token (+0.05 to +1.11), the 1.0 ms rule is not met
 >
 > Section 18.133, addendum to `docs/L2-IN-SITU-PRICE-RECORD.md` (prediction first). **Mixed workload, 34 GiB (the guard refused 38), 27 usable turns, position-matched:** **+0.554 ms a decode token (95 % +0.051 to +1.114)**, text identical in 12 of 12 turns. The upper bound is above the registered stop rule, so the continuous tracer is **not certified**; the lower bound excludes zero, so the cost is real (about 1.9 microseconds an event at 294 events a token, 4 times the simulated token's contended cost). My predicted upper bound (0.6-0.95) was missed; the point estimate (+0.35 predicted) held inside its interval. Exposed share of read time 60 %. **Hamed's call:** the default of the future `CACHALOT_TOKEN_TRACE` knob: sampled every 4th token (about 0.14 ms averaged) with continuous as an opt-in, or continuous at +0.55 ms.
@@ -9034,6 +9038,24 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.134 `CACHALOT_TOKEN_TRACE`: the sampled per-token trace as a server knob (0.64.0)
+
+**Goal.** Hamed: "go, sampled every 4th token, build the knob" (the open item of 18.133).
+
+**What was built.** `TokenTrace(every=N)` records a decode token only when its position is a multiple of N, and nothing outside such a token (so a long prefill's reads and idle warming never fill the per-thread buffers); `TokenTraceMeter` owns a trace, clears it at the start of each request (what a cancelled request left), and drains it into running sums at the end of each request; `Engine.token_trace` calls both and `Engine.stats()` reports `token_trace`. `cli.py` reads `CACHALOT_TOKEN_TRACE` (on unless unset, `0`, `off`, `false`) and `CACHALOT_TOKEN_TRACE_EVERY` (default 4) for the DeepSeek server only. No new log text, no per-request field. 7 unit tests; 613 pass.
+
+**Prediction (stated in the brief's contract, checked by the smoke).** About one sampled token in four, no dropped events at this volume, `/v1/stats.token_trace` present only with the knob on, text unchanged.
+
+**Result (measured, a smoke, not a benchmark).** `./serve.sh --expert-budget-gib 34` with the knob on, three requests: 258 decode tokens, 64 sampled, 0 dropped events, text of a repeated greedy prompt identical, exposed share 0.622 / 0.594 / 0.582 (cumulative), router sync 62-63 ms, blocked 60-78 ms, read busy 103-126 ms, 295-314 events a sampled token. The smoke did not price the sampled default's overhead; its 0.14 ms a token is the continuous cost divided by four (derived).
+
+**Limits.** DeepSeek only; one smoke; the exposed share is the main thread's wait (a lower bound on what a faster drive would buy), and `sync_ms` includes queued GPU work. A read that straddles a token boundary is dropped from its token, so shares are approximate by a few percent.
+
+**Bottleneck after.** Unchanged.
+
+**Kind.** Engineering (instrument): it works and was checked live; no speed or output change, and the cost of the shipped default is derived, not measured.
+
+**Open.** Lab's view of `token_trace` (the brief fixes the contract); L4(b): fit the overlap term from per-layer rows (needs the raw columns, which the server does not keep); the same hooks for GLM and MiniMax; an in-situ price of the 1-in-4 default if Hamed wants the number.
 
 ### 18.133 The tracer's cost on 30 turns: +0.55 ms a decode token, the stop rule not met (0.63.4)
 

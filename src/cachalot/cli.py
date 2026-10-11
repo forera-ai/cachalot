@@ -295,6 +295,22 @@ def cmd_serve(args) -> None:
         print("energy meter on (CACHALOT_ENERGY=1): system power from SMC PSTR; component counters advance only while a root powermetrics "
               "samples beside the server; /v1/stats energy, usage.cachalot.energy, [request] J/tok",
               file=sys.stderr, flush=True)
+    tt_flag = os.environ.get("CACHALOT_TOKEN_TRACE", "").strip().lower()
+    if tt_flag and tt_flag not in ("0", "off", "false"):
+        if _family(args) in ("glm", "minimax"):
+            print("token trace: CACHALOT_TOKEN_TRACE is set but only the DeepSeek server is hooked (HANDOFF 18.134); ignored",
+                  file=sys.stderr, flush=True)
+        else:
+            # HANDOFF 18.134: a sampled per-token critical-path trace. Continuous recording costs +0.55 ms a token (95 % +0.05 to +1.11,
+            # 18.133), so the default records one decode token in four; CACHALOT_TOKEN_TRACE_EVERY=1 records every token.
+            from cachalot.metrics.token_trace import TokenTraceMeter
+
+            every = max(int(os.environ.get("CACHALOT_TOKEN_TRACE_EVERY", "4")), 1)
+            meter_tt = TokenTraceMeter(every=every)
+            model.runtime.set_token_trace(meter_tt.trace)
+            engine.token_trace = meter_tt
+            print(f"token trace on (CACHALOT_TOKEN_TRACE): one decode token in {every} is recorded (router sync, wait for experts, drive reads); "
+                  f"/v1/stats token_trace; outputs unchanged", file=sys.stderr, flush=True)
     app = create_app(
         engine,
         ServerConfig(

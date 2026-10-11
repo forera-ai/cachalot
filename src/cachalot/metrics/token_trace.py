@@ -38,9 +38,12 @@ class _Columns:
 
 
 class TokenTrace:
-    def __init__(self, capacity: int = THREAD_CAPACITY) -> None:
+    def __init__(self, capacity: int = THREAD_CAPACITY, every: int = 1) -> None:
         self.capacity = capacity
-        self.active = True
+        # Record one decode token in `every` (by position). 1 records every token. Outside a sampled token `active` is False,
+        # so prefill reads and idle warming never fill the buffers.
+        self.every = max(int(every), 1)
+        self.active = False
         # None: record every token. 0 or 1: record only tokens whose position has that parity (a benchmark alternates
         # recording per token to price the tracer inside one process); -1 records nothing (the off-against-off control).
         self.alternate: int | None = None
@@ -78,6 +81,8 @@ class TokenTrace:
         now = perf_counter_ns()
         if self.alternate is not None:
             self.active = position % 2 == self.alternate
+        else:
+            self.active = self.every == 1 or position % self.every == 0
         self._token_stamps.append(now)
         self._token_positions.append(position)
         if self.active:
@@ -125,6 +130,56 @@ class TokenTrace:
             "token_positions": positions,
             "dropped": dropped,
         }
+
+
+class TokenTraceMeter:
+    """
+    The server's use of a TokenTrace (CACHALOT_TOKEN_TRACE, HANDOFF 18.134): sampled recording, drained at the end of every request
+    into running sums that /v1/stats reports. Nothing is written per token beyond the trace's own columns.
+    """
+
+    SUMS = ("wall_ms", "sync_ms", "blocked_ms", "read_busy_ms", "hidden_read_ms", "reads", "bytes", "events")
+
+    def __init__(self, every: int = 4) -> None:
+        self.trace = TokenTrace(every=every)
+        self._lock = threading.Lock()
+        self.tokens = 0
+        self.requests = 0
+        self.dropped = 0
+        self.sums = {k: 0.0 for k in self.SUMS}
+
+    def begin_request(self) -> None:
+        """Called with the engine lock held, before any work: discard what a cancelled request left behind."""
+        self.trace.active = False
+        self.trace.drain()
+
+    def collect(self) -> int:
+        """Called at the end of a request: summarize the sampled tokens into the running sums. Returns the tokens added."""
+        self.trace.active = False
+        drained = self.trace.drain()
+        rows = summarize(drained)
+        with self._lock:
+            self.requests += 1
+            self.dropped += int(drained["dropped"])
+            for row in rows:
+                self.tokens += 1
+                for k in self.SUMS:
+                    self.sums[k] += row[k]
+        return len(rows)
+
+    def stats(self) -> dict:
+        with self._lock:
+            n = self.tokens
+            mean = {k: round(v / n, 3) for k, v in self.sums.items()} if n else {}
+            busy = self.sums["read_busy_ms"]
+            return {
+                "every": self.trace.every,
+                "sampled_tokens": n,
+                "requests": self.requests,
+                "dropped_events": self.dropped,
+                "mean_per_sampled_token": mean,
+                "exposed_read_share": round(self.sums["blocked_ms"] / busy, 3) if busy > 0 else None,
+            }
 
 
 def _union(starts: np.ndarray, ends: np.ndarray) -> list[tuple[int, int]]:

@@ -202,6 +202,7 @@ class Engine:
     _vision: Any = None
     images_served: int = 0
     energy: Any = None  # cachalot.metrics.energy.EnergyMeter when CACHALOT_ENERGY=1 (0.63.0), else None
+    token_trace: Any = None  # cachalot.metrics.token_trace.TokenTraceMeter when CACHALOT_TOKEN_TRACE is set (0.64.0), else None
     # Recent replies, for splicing the model's own tokens back into a
     # client's re-rendered history (see _splice_own_replies).
     _own_replies: deque = field(default_factory=lambda: deque(maxlen=64))
@@ -386,6 +387,8 @@ class Engine:
                 # the client left while this request was queued
                 return
             t_energy0 = time.time()
+            if self.token_trace is not None:
+                self.token_trace.begin_request()
             if self.system_date is not None:
                 messages, note = self.system_date.apply(req.messages)
                 if note:
@@ -479,6 +482,8 @@ class Engine:
                         self._remember_reply(prompt_tokens, splitter.tokens, splitter.text, req.thinking_mode)
                     energy = (self.energy.request_report(t_energy0, time.time(), event.decode_seconds, len(splitter.tokens))
                               if self.energy is not None else None)
+                    if self.token_trace is not None:
+                        self.token_trace.collect()
                     _log_request(
                         n_prompt, reused, prefill_seconds, len(splitter.tokens),
                         event.decode_seconds, finish,
@@ -544,6 +549,8 @@ class Engine:
         )
         if self.energy is not None:
             s["energy"] = self.energy.stats()
+        if self.token_trace is not None:
+            s["token_trace"] = self.token_trace.stats()
         return s
 
 
