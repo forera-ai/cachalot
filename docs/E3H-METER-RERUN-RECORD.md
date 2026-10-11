@@ -30,3 +30,27 @@ cd /Users/hamedprooshani/Projects/deepseek-v41-mac && sudo powermetrics --sample
 ```bash
 cd /Users/hamedprooshani/Projects/deepseek-v41-mac && ./benchmarks/meter_ab.sh > benchmarks/results/energy/e3h-run.log 2>&1
 ```
+
+## 5. Result (measured; 2026-10-11, arms 12:43:42-12:58:47, Cachalot Lab closed; `benchmarks/results/energy/e3h-{1-off,2-on,3-on,4-off}-*`, sampler `e3h-sampler.txt`; analysis `benchmarks/meter_ab_analyze.py`)
+
+**The all-resident precondition failed in every arm.** The repeated prompt at 160 tokens was not all-resident: each arm's requests missed **10.9 experts a token** (hit rate 95 %, 20.3 misses on the first pass) pass after pass, because a 160-token reply touches more experts than the 48 GiB cache keeps between passes and the same experts are evicted and re-read each time (the 120-token arms of E3-E3e had 0.0 misses). I raised the reply from 120 to 160 tokens to get decode windows of at least 8 s without checking that the arm stayed resident; the smoke run that would have shown it was not made. Per the void list in section 3 (an arm with misses a token above 0.5), **all four arms are void as registered**, the cost reading and the tail check alike. What follows is what was observed, with that stated.
+
+**Cost (void, observed only).** Server-side decode time a token, per arm (9, 9, 8, 8 requests of 160 tokens): off1 median 99.58 ms (sd 0.36), on2 99.95 (0.72), on3 100.67 (mean 101.85, sd 3.47, last third 106.4), off4 114.47 (sd 1.15). The drift check failed hard: off1 minus off4 is -14.7 ms (limit 3), on2 minus on3 -2.1 ms; arm 4 ran hot (fans 1,770 to 1,830 RPM against 1,056 to 1,238 in arms 1 and 2; the drive-influenced token drifts with temperature, HANDOFF 18.82). The pooled on-minus-off (-5.9 ms mean, -0.08 ms median) is meaningless under that drift. The one pair taken in the same cool state (arm 1 against arm 2, similar fans) differs by +0.07 ms (means 99.66 and 99.72; sds 0.4 and 0.7 ms), which is consistent with a cost under about 1 ms and is **not** a measurement of it. The meter's cost on a decode token is **unmeasured**; the prediction (+0.1 ms, -1.5 to +1.5) is neither held nor missed.
+
+**Tail fix, live (observed; the miss precondition was not met).** Over the two "on" arms, requests with decode windows of at least 8 s (decode 15.9 to 18.4 s): system joules, n 15, median absolute difference from the logger **0.2 %**, maximum **0.6 %**; component joules (DRAM and GPU), n 30, median absolute **1.1 %**, signed median **-0.2 %**, maximum **8.5 %**. Against the predictions (components: median under 3 %, signed within +-2 %, maximum under 10 %; system: median under 1.5 %, maximum under 6 %): all five numbers fall inside. The failure of the miss precondition does not bear on this comparison (the meter and the logger measure the same power whatever the workload; the precondition was written for the cost claim), but it was registered in the void list, so a strict reading voids this too, and the windows here are 16 to 18 s, longer than the 5 s windows that showed the bug; a one-interval error is 6 % of 16 s, so the longer windows test the fix less sharply than MiniMax's did.
+
+## 6. Explanation
+
+The old bias (-7.9 % on components) has gone: the signed median is -0.2 % on windows where the held tail would have cost about 3 to 6 %. The maximum of 8.5 % is a single figure; the 1 Hz sampling of two processes at independent phases leaves up to one interval of error at each end of a window, as the Lab brief says. The cost question needs a corrected design: the 120-token reply that stays resident (0.0 misses, 79 to 83 ms), arms short enough not to drift (the same machine drifted 15 % over eleven minutes in 18.82), and an ABBA order repeated or interleaved so that drift cancels. The expected effect (two clock readings per request, one thread tick a second) is far below what such a design resolves, about +-1 ms.
+
+## 7. Generalization
+
+The meter's component and system joules match an independent logger on DeepSeek, GLM and MiniMax servers (E3g, E3h) to about 1 % median on windows of 8 s or more. No claim about the meter's cost beyond "no difference visible at about 1 ms in the one cool pair".
+
+## 8. Bottleneck after
+
+Speed unchanged. Energy: the instruments are verified; what is open is only a clean cost price (a corrected ABBA with resident arms) and Lab's use of the figures.
+
+## 9. Kind
+
+Research (predicted, measured): the tail-fix predictions held; the cost question was not answered because the arm's design failed its own precondition (my error, recorded), and the drift check, designed for this, caught it.

@@ -297,6 +297,8 @@ reproducible to ±0.3 %.
 
 **0.60.7 (2026-10-06): review fixes.** The run manifest no longer records credentials such as `CACHALOT_API_KEY` by value, and its Hermes Desktop check needs one process line. HANDOFF section 18.73.
 
+**0.63.2 (2026-10-11): the energy meter's component figures are confirmed.** With the meter and an independent logger sampling a DeepSeek server, the meter's DRAM and GPU joules agree with the logger to a median 1.1 % (the earlier -7.9 % bias is gone) and its system joules to 0.2 %. Its cost on a decode token is not yet priced (the test arm I ran did not stay resident, and the record says so). HANDOFF section 18.131, `docs/E3H-METER-RERUN-RECORD.md`.
+
 **0.63.1 (2026-10-11): energy on three models.** With the meter on, a resident MiniMax token costs 5.4 J (128 W, 42 ms) and a read-bound one 9.3 J; a GLM token costs 36 to 70 J at 36-38 W, almost all of it waiting on the drive. The meter's system figure matches an independent integral to under 1 % over windows of 10 s or more, and a bug that made its component figures read low on short windows is fixed. The IOReport component fit is 14-19 % short of system power wherever the GPU runs quantized kernels hard, on DeepSeek and MiniMax alike. HANDOFF section 18.130, `docs/E3G-GLM-MINIMAX-RECORD.md`.
 
 **0.63.0 (2026-10-11): energy per request and per token.** New and off by default, `CACHALOT_ENERGY=1` makes the server report the system energy of each request and its joules per output token (`/v1/stats`, `usage.cachalot.energy`, the `[request]` line), from the SMC's whole-system power; the SoC component counters are added while a root `powermetrics` runs beside the server. Outputs are unchanged. HANDOFF section 18.129, Lab brief `docs/lab/briefs/2026-10-11-runtime-0.63.0.md`.

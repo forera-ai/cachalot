@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.63.2 (2026-10-11)
+
+HANDOFF "Start here (2026-10-11, 0.63.2)" and section 18.131; the record is `docs/E3H-METER-RERUN-RECORD.md`, its predictions committed before the run (`b30e4e1`). Measurement and tooling only; nothing in `src/` besides the version string changed.
+
+### Added
+- `benchmarks/meter_ab.sh` and `benchmarks/meter_ab_analyze.py` (four server arms, meter off, on, on, off, with the cost, drift and tail checks); the energy driver logs every request's server-side decode time and takes `E_C=-1` to skip its read-bound phase.
+
+### Measured
+- **The 0.63.1 component-tail fix holds live**, with the meter and the logger sampling independently on a DeepSeek server: component joules median absolute difference 1.1 %, signed median -0.2 % (was -7.9 %), maximum 8.5 %; system joules median 0.2 %, maximum 0.6 %.
+- **The meter's cost on a decode token is still not measured.** The arms used a 160-token reply that did not stay resident (10.9 misses a token in every arm), so they are void by the record's own precondition, and the drift check (first off 99.6 ms, last off 114.5 ms) confirmed it; the one cool pair differs by +0.07 ms. A corrected design (120 tokens, resident, short interleaved arms) would resolve about 1 ms.
+
 ## 0.63.1 (2026-10-11)
 
 HANDOFF "Start here (2026-10-11, 0.63.1)" and section 18.130; the record is `docs/E3G-GLM-MINIMAX-RECORD.md`, its hypotheses, predictions and falsifier committed before the runs (`8a18d00`). No new knob, field or default; no Lab brief needed.

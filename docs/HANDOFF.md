@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-11, 0.63.2): the meter's component-tail fix confirmed live; its cost on a token not measured (my arm was not all-resident)
+>
+> Section 18.131, record `docs/E3H-METER-RERUN-RECORD.md` (predictions committed first, `b30e4e1`). **Tail fix, live (DeepSeek, two meter-on arms, windows of 15.9-18.4 s):** component joules (DRAM, GPU) median absolute difference from the logger **1.1 %**, signed median **-0.2 %** (was -7.9 %), maximum 8.5 %; system joules median 0.2 %, maximum 0.6 %: all five predictions inside. **Cost: unmeasured.** I raised the repeated reply to 160 tokens to get long enough windows and did not check that the arm stayed resident: every arm missed 10.9 experts a token pass after pass (the 120-token arms of E3-E3e had 0.0), so all four arms are void by the record's own precondition, and the drift check caught the rest (off1 99.6 ms against off4 114.5 ms, arm 4 ran hot). The one cool pair differs by +0.07 ms (means 99.66, 99.72, sd 0.4-0.7), consistent with under about 1 ms, not a measurement. The tail-fix numbers were taken under the same void list; I judge them independent of the miss precondition (meter and logger measure the same power) and say so. Next, if Hamed wants the price: a 120-token, resident, short-armed, interleaved ABBA. Nothing in `src/` changed.
+>
 > ## Start here (2026-10-11, 0.63.1): the energy arms on GLM and MiniMax, the meter's first live reads, and a tail bug found and fixed
 >
 > Section 18.130, record `docs/E3G-GLM-MINIMAX-RECORD.md` (hypotheses, predictions and falsifier committed first, `8a18d00`). **The meter works live on both servers:** system joules agree with an independent `PSTR` integral to a median 0.2 % (GLM, 46-52 s windows) and 0.6 % (MiniMax, 10-13 s), maximum 5.6 %. **Its component joules missed the 8 % prediction on MiniMax's short windows** (median 7.3 %, the meter below the logger): a window ending after the last sample held the components but extended the system figure; fixed in 0.63.1 (components continue at their last rate) and checked offline against the logger's rows (median error -7.9 % to 0.0 %), not yet re-run live. **Energy:** MiniMax resident 42 ms, 128 W, **5.38 J a token** (GPU 42 W, fit error +19.5 W = 15.2 % of PSTR), read-bound 104 ms, 89.6 W, 9.34 J (+17.0 W, 19.0 %); GLM 36.4 J (B, read-bound: the shipped miss budget of 2 keeps a repeated prompt from becoming resident) and 69.7 J (C) a token at 36-38 W, GPU 0.5 W, fit error +3.5/+2.6 W (9.3 %, 7.2 %; about 0-3 % after the derived X10Pro 2.4 W). **Verdict:** H-model-specific falsified; the fit is 14-19 % of PSTR short wherever the GPU works hard on quantized kernels (DeepSeek, MiniMax) and not on GLM, whose GPU idles (the mechanism of E3f); H-format and H-activity both partly met as registered. Open: the meter's cost on a token, a live re-run of the tail fix, Lab's views.
@@ -9022,6 +9026,26 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.131 Power accounting, step E3h: the meter's tail fix live, and its cost (0.63.2)
+
+**Goal.** Confirm the 0.63.1 component-tail fix with the meter and the logger sampling independently, and price the meter on a decode token.
+
+**Prediction (committed first, `b30e4e1`).** Cost +0.1 ms (-1.5 to +1.5) a token pooled over ABBA arms (off, on, on, off), A/A drift under 3 ms; tail fix: components median absolute under 3 %, signed within +-2 %, maximum under 10 %, system median under 1.5 %, maximum under 6 %.
+
+**Method.** `benchmarks/meter_ab.sh` (four fresh DeepSeek server arms, 130 s of the repeated prompt at 160 tokens, the logger and Hamed's root `powermetrics -n 1300` beside throughout; 12:43:42-12:58:47) and `benchmarks/meter_ab_analyze.py`.
+
+**Result (measured).** Tail fix: components n 30 median |diff| 1.1 %, signed -0.2 %, max 8.5 %; system n 15 median 0.2 %, max 0.6 %. Cost: void. Per-arm decode ms a token 99.58 / 99.95 / 100.67 / 114.47 (off, on, on, off); drift off1-off4 -14.7 ms; misses a token 10.9 in every arm.
+
+**What went wrong (mine).** The 160-token reply did not stay resident (10.9 misses a token, 95 % hit, evicted and re-read every pass), against the registered precondition of 0.5; I had changed 120 to 160 tokens for longer windows without a smoke run. The record's void list covers it, so the arms are void as registered; the tail-fix numbers are reported with that stated.
+
+**Explanation.** The fix removed the -7.9 % bias; the remaining spread is the 1 Hz sampling of two processes. The cost stays below the design's resolution; the expected size is two clock readings per request and a once-a-second thread.
+
+**Limits.** Windows of 16-18 s test the tail fix less sharply than 5 s windows (a one-interval error is 6 % of 16 s); one machine, one session; arm 4 ran hot.
+
+**Kind.** Research (predicted, measured): tail-fix predictions held; the cost question unanswered by a design that failed its precondition.
+
+**Open.** A corrected cost price (120 tokens, resident, short arms, interleaved ABBA): optional, expected under 1 ms; Lab's views of the new fields (brief of 0.63.0).
 
 ### 18.130 Power accounting, step E3g: the energy arms on GLM and MiniMax (0.63.1)
 
