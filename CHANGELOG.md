@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.64.3 (2026-10-11)
+
+HANDOFF "Start here (2026-10-11, 0.64.3)" and section 18.137; arm 2 of `docs/L4B-RAW-LAYER-RECORD.md`, its prediction and falsifier written before the run. Measurement only; nothing in `src/` changed, no default changed.
+
+### Measured
+- The 18.136 recording repeated with `CACHALOT_PREDICT_TOPK=0` (24 mixed turns, 2,452 tokens, 34 GiB, 43.0 misses a token in both arms): decode 151.6 to 167.3 ms a token (+10.4 %, all 24 turns slower), blocked on experts 59.2 to 84.2 ms (+42 %), read busy 101.8 to 82.5 ms, hidden share of reads 43.5 % to 0 %. Decode prefetch is worth about 16 ms a token (10 %) in this regime; the earlier ledger figure of about 1 ms was at 48 GiB and 23.5 misses a token. Layers 0 and 1 wait about the same either way (3.1 to 3.2 ms with prediction off), so prediction does not reach them.
+
+### Closed
+- "Prefetch is nearly neutral on the internal drive": true at 23.5 misses a token, false at 43.
+
 ## 0.64.2 (2026-10-11)
 
 HANDOFF "Start here (2026-10-11, 0.64.2)" and section 18.136; the record `docs/L4B-RAW-LAYER-RECORD.md` was written with its prediction before the run. Measurement and tooling; nothing in `src/` changed.

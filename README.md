@@ -297,6 +297,8 @@ reproducible to ±0.3 %.
 
 **0.60.7 (2026-10-06): review fixes.** The run manifest no longer records credentials such as `CACHALOT_API_KEY` by value, and its Hermes Desktop check needs one process line. HANDOFF section 18.73.
 
+**0.64.3 (2026-10-11): what decode prefetch is worth, by layer.** Switching it off at a 34 GiB budget (43 misses a token) slows every one of 24 turns, 151.6 to 167.3 ms a token (+10 %): it hides about 25 ms of waiting for experts at the cost of about 20 ms of unused speculative reads. At 48 GiB with fewer misses it was nearly neutral. Nothing in the runtime changed. HANDOFF section 18.137.
+
 **0.64.2 (2026-10-11): the per-layer view of a decode token.** Recorded for the first time with raw tracer rows (2,452 tokens at 34 GiB): the wait for experts is about 59 ms of a 150 ms token and moves between layers from token to token (the ten worst layers hold 74 % of it in a token, but each layer averages about the same), except layers 0 and 1, which wait about twice as long as the rest. Nothing in the runtime changed. HANDOFF section 18.136.
 
 **0.64.1 (2026-10-11): the overlap term, fitted offline.** From the saved per-token trace rows (5,939 tokens, two runs, four held-out splits), a DeepSeek decode token hides about 10-14 ms of its read time regardless plus 28-33 % of the rest; that predicts the exposed wait to 7-9 ms but does not predict the token better than wall = a + b x reads (2.4-10.2 % worse), so the what-if calculator is unchanged. Nothing in the runtime changed. HANDOFF section 18.135.

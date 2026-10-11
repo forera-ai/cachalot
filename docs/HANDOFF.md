@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-11, 0.64.3): decode prefetch off, recorded per layer: it is worth about 16 ms a token (10 %) at 34 GiB, not the ledger's 1 ms
+>
+> Section 18.137, record `docs/L4B-RAW-LAYER-RECORD.md` (arm 2, prediction and falsifier written before the run). Nothing in `src/` changed. **Measured** (same 24 mixed turns, 2,452 tokens, 34 GiB, `CACHALOT_PREDICT_TOPK=0` against the shipped default; every one of the 24 turns slower): decode 151.6 to 167.3 ms a token (+10.4 %), blocked on experts 59.2 to 84.2 ms (+42 %), read busy 101.8 to 82.5 ms, hidden share 43.5 % to 0 %. So prefetch hides about 25 ms of waiting and costs 20 ms of wasted reads. The ledger's older figure (prediction nets ~1 ms, 48 GiB, 23.5 misses a token) is a different regime (here 43 misses a token): hypothesis, prefetch is worth more the more misses a token has. Layers 0 and 1 wait about the same with prediction off (prediction does not reach them): 6.2-6.7 ms of the wait. No default changed. First job and open items: `docs/NEXT-SESSION-PROMPT.md` v186.
+>
 > ## Start here (2026-10-11, 0.64.2): the raw per-layer rows of the DeepSeek decode token, recorded and analysed
 >
 > Section 18.136, record `docs/L4B-RAW-LAYER-RECORD.md` (prediction and falsifier written before the run), recorder `benchmarks/token_trace_raw.py`, analysis `benchmarks/layer_rows.py`. Nothing in `src/` changed. **Measured** (24 mixed turns, 2,452 decode tokens, 34 GiB, tracer on every token, 0 events dropped, 302 events a token): per token, router sync 63.1 ms, blocked on experts 59.2, read busy 101.8 (replicates 0.63.4 within 6 %). Blocked time is concentrated in each token (the ten worst layers carry a median 74 % of it) but not in fixed layers: the mean blocked time per layer is flat (0.8-2.5 ms) except layers 0 and 1 (3.8 and 2.7 ms, together about 11 % of the blocked time; no earlier layer can predict them). The hidden share of reads is 41 % in layers 0-19 and 46 % in layers 20-39: the opposite direction to my prediction. Raw columns are local in `benchmarks/results/l4b-raw/` (git-ignored). First job and open items: `docs/NEXT-SESSION-PROMPT.md` v185.
@@ -9046,6 +9050,32 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.137 The raw per-layer rows with decode prefetch off (0.64.3)
+
+**Goal.** Hamed: "go, record prediction off" (the open item of 18.136, regime 2 of 3). Record: arm 2 of `docs/L4B-RAW-LAYER-RECORD.md`.
+
+**Baseline.** Arm 1 (18.136): decode 151.6 ms a token, blocked 59.2, read busy 101.8, hidden share 43.5 %, top-10 share 74.2 %. Ledger DS-PRED-AB: prediction nets about 1 ms on the internal drive at 48 GiB.
+
+**Prediction (written first).** 0 dropped and 220-270 events a token; read busy 55-85 ms; hidden share 5-30 %; blocked within +-8 % of arm 1; top-10 share at least 60 % and layers 0/1 still about twice the mean; decode within +-6 %. Falsifier: blocked more than 15 % higher or lower.
+
+**Method.** The 18.136 recorder with `CACHALOT_PREDICT_TOPK=0`, 24 turns, 128 tokens, greedy, 34 GiB, guard; a separate process, not alternated.
+
+**Result (measured).** Events 247.0 a token, 0 dropped, 43.0 misses a token in both arms. Sync 59.2 (63.1), blocked 84.2 (59.2), busy 82.5 (101.8), hidden share 0.0 % (43.5 %), decode 167.3 (151.6) ms a token. Top-10 share 55.2 % (74.2 %). Mean blocked layers 0 / 1 / 2-39: 3.08 / 3.17 / 2.05 ms (3.79 / 2.69 / 1.39). All 24 turns slower, ratios 1.03-1.29.
+
+**Against the prediction.** Events and read busy held. The hidden share was badly framed (without speculative reads nothing can hide, so 0.0 %). Blocked time (+42 %) and decode time (+10.4 %) falsified, and the registered falsifier fired. The top-10 share missed narrowly (55 against at least 60); layers 0 and 1 are 1.5x the mean, not 2.3x, because the mean rises when prediction is off.
+
+**Explanation (hypothesis).** Prefetch reads one layer ahead and hides about 25 ms of waiting, at the price of about 20 ms of speculative reads that are not used; the net is about 16 ms a token here. The older ledger figure is a different regime (23.5 misses a token at 48 GiB). Layers 0 and 1 are not helped by prediction (no earlier layer to predict from).
+
+**Limits.** Two arms in two processes, not alternated; one machine, one budget, short mixed prompts; the per-turn sign consistency argues against drift for the sign, not for the size.
+
+**What shipped.** Documentation, the ledger row DS-PRED-LAYER and the record's arm 2. No default, output or numerics changed; no Lab brief.
+
+**Bottleneck after.** Unchanged (waiting on expert reads).
+
+**Open.** Prefetch's value as a function of misses a token (the same recording at 48 GiB, about 20 minutes plus load, needs Hamed's go and a memory guard that accepts it: the guard refused 38 and 48 GiB earlier today); regime 3 (shipped decode miss budget 0) is not recorded; the cliff (smaller budget) is not recorded.
+
+**Kind.** Research (predicted, measured, explained as hypothesis): two of six predictions held, two fell with the registered falsifier firing, one was badly framed, one missed narrowly.
 
 ### 18.136 The raw per-layer rows of the DeepSeek decode token (0.64.2)
 
