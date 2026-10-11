@@ -42,6 +42,12 @@ def main() -> None:
 
     model = V41Model.from_pretrained(os.environ["CACHALOT_MODEL_PATH"], max_seq_len=16384,
                                      expert_cache_budget_bytes=int(a.budget_gib * 2**30))
+    from cachalot.cli import _decode_miss_budget_from_env  # the server applies this knob in cli.py, not in the model
+
+    budget = _decode_miss_budget_from_env(os.environ)
+    if budget is not None:
+        model.set_decode_miss_budget(budget)
+    print(f"decode miss budget: {budget}", flush=True)
     engine = Engine(model)
     rt = model.runtime
     trace = tt.TokenTrace(every=1)

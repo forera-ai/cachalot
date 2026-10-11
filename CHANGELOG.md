@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.64.4 (2026-10-11)
+
+HANDOFF "Start here (2026-10-11, 0.64.4)" and section 18.138; arm 3 of `docs/L4B-RAW-LAYER-RECORD.md`, prediction and falsifier written before the run. Measurement and an instrument fix; nothing in `src/` changed.
+
+### Fixed
+- `benchmarks/token_trace_raw.py` now applies `CACHALOT_DECODE_MISS_BUDGET` (the server applies it in `cli.py`; the recorder bypassed that, so its first budget 0 run changed nothing). That void run is kept as a replicate of the prediction-on arm: decode 153.6 against 151.6 ms a token (+1.3 %), which bounds same-configuration process drift.
+
+### Measured
+- Shipped decode miss budget 0 against the exact path (24 mixed turns, 34 GiB, prefetch on): decode 151.6 to 112.2 ms a token (-26.0 %, 24 of 24 turns faster), blocked on experts 59.2 to 16.3 ms, read busy 101.8 to 67.1, hidden share of reads 43 % to 77 %, misses a token 43.0 to 24.2. Layers 0 and 1 stop waiting (3.8 / 2.7 ms to 0.04 / 0.06). The token is then 66 ms router sync, 16 ms waiting, about 30 ms other work. Output changes with budget 0 (quality evidence: 18.59-18.74).
+
 ## 0.64.3 (2026-10-11)
 
 HANDOFF "Start here (2026-10-11, 0.64.3)" and section 18.137; arm 2 of `docs/L4B-RAW-LAYER-RECORD.md`, its prediction and falsifier written before the run. Measurement only; nothing in `src/` changed, no default changed.

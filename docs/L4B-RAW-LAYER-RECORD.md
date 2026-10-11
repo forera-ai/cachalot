@@ -107,3 +107,60 @@ Two arms in two separate processes, not alternated (a process drift of 5-10 % is
 ## Decision
 
 No default changes: prediction stays on. Recorded: DS-PRED-LAYER in the ledger. Open: prefetch value as a function of misses a token (the same recording at 48 GiB or with a larger budget) would turn the hypothesis into a curve, and the layers 0 and 1 lead now has a cleaner statement (6.2-6.7 ms of blocked time a token that prediction cannot reach, about 7-11 % of it).
+
+# Arm 3: the same recording with the shipped decode miss budget 0 (`CACHALOT_DECODE_MISS_BUDGET=0`), opened 2026-10-11 before the run
+
+Hamed's go: "go, record the shipped decode miss budget 0" (2026-10-11), estimate "about 20 minutes plus load". Same recorder and workload (24 turns, 128 tokens, 34 GiB, greedy, guard), prefetch on (shipped), only `CACHALOT_DECODE_MISS_BUDGET=0` added, as `serve.sh` sets it. Output `benchmarks/results/l4b-raw-budget0/`. **Output-changing:** the generated text differs from arms 1 and 2 (experts missing in a decode layer are dropped, not read), so token counts per turn differ; per-token quantities are compared, not texts. This is a speed and layer-structure recording, not a quality test (quality: HANDOFF 18.59-18.74).
+
+## Baseline
+Arm 1 (prefetch on, exact): decode 151.6 ms a token, blocked 59.2, read busy 101.8, hidden share 43.5 %, top-10 share 74.2 %, layers 0/1 at 3.79 / 2.69 ms against 1.39 for layers 2-39. Ledger: budget 0 takes the decode step -22 to -27 % (DS-BUDGET-CURVE, 22k context; 19.5 experts dropped a token), and 26.4 % of decode layers route to an in-flight predicted load (18.76).
+
+## Prediction (written before the run)
+1. 0 events dropped; 250-300 events a token (prefetch reads remain, demand reads vanish).
+2. Decode time a token 108-125 ms (-18 % to -29 % against arm 1).
+3. Blocked time a token 5-25 ms (the layers that route to an in-flight load still wait; demand misses no longer do).
+4. Hidden share of read busy 70-95 % (the remaining reads are prefetch reads, outside the blocked windows).
+5. The top-10 layers' share of blocked time at least 60 %; layers 0 and 1 no longer elevated (below 1.5x the mean of layers 2-39), since a first-layer miss is dropped like any other.
+6. Misses a token as the store counts them (`cache_misses`) fall from 43 to 15-30.
+
+## Falsifier
+Decode reduction under 10 % or over 35 % means the ledger's -22 to -27 % does not transfer to this workload and budget; blocked time above 30 ms means demand waits survive budget 0 (an in-flight load wait is larger than priced). Layers 0/1 still above 2x the rest would put the first-layer wait outside the drop rule.
+
+## Limits
+As arm 1 and 2 (separate processes, not alternated, one budget, short mixed prompts); output differs, so a turn's tokens and its prompt-dependent miss rate are not the same population as in arm 1 (shorter or longer replies; the per-token means weight turns by token count).
+
+## Arm 3, first attempt: void as a budget arm, kept as a replicate of arm 1 (2026-10-11)
+
+The run above did not apply the budget. `CACHALOT_DECODE_MISS_BUDGET` is read by `cli.py` (`model.set_decode_miss_budget`), not by the model or `Engine`, and `token_trace_raw.py` built the model directly, so the environment variable changed nothing: same 2,452 tokens, 43.0 misses a token, 301.7 events a token as arm 1. My mistake; the recorder is fixed to apply the knob (printing `decode miss budget: N` at start) and the arm is rerun below. The void run is kept in `benchmarks/results/l4b-raw-replicate/` because it is an unplanned replicate of arm 1 in a separate process: decode 153.6 against 151.6 ms a token (+1.3 %), blocked 63.4 against 59.2, busy 105.6 against 101.8, hidden share 41.3 against 43.3 %, top-10 share 73.8 against 74.2 %, layers 0/1 3.96 / 2.78 against 3.79 / 2.69. So two processes on the same configuration differ by about 1-2 % in decode and 4-7 % in blocked time, which bounds the process drift behind arm 2's +10.4 % decode and +42 % blocked (not alternated, but about eight times larger than the replicate's difference).
+
+## Arm 3 result (measured, 2026-10-11, runtime 0.64.3; recorder fixed, budget applied)
+
+`CACHALOT_DECODE_MISS_BUDGET=0`, prefetch on, 24 recorded turns, 34 GiB, 0 events dropped. The text differs from arms 1 and 2 (dropped experts), so there are 2,548 decode tokens (not 2,452) and turns end at different lengths; per-token quantities are compared. Raw columns local in `benchmarks/results/l4b-raw-budget0/`.
+
+| per decode token | arm 1: exact, prefetch on | arm 3: budget 0, prefetch on |
+|---|---|---|
+| events | 301.7 | 263.8 |
+| decode (server timing) | 151.6 ms | 112.2 ms (-26.0 %; all 24 turns faster) |
+| router sync | 63.1 ms | 66.1 ms |
+| blocked on experts | 59.2 ms | 16.3 ms (-72 %) |
+| read busy | 101.8 ms | 67.1 ms |
+| hidden share of read busy | 43.3 % | 77.1 % (first half 79.1, second half 74.9) |
+| top-10 layers' share of blocked | 74.2 % | 86.5 % |
+| misses a token (store counter) | 43.0 | 24.2 |
+| mean blocked, layers 0 / 1 / 2-39 | 3.79 / 2.69 / 1.39 ms | 0.04 / 0.06 / 0.43 ms |
+
+## Against the prediction
+
+All six held: (1) 0 dropped, 263.8 events (250-300); (2) 112.2 ms (108-125), -26.0 % (predicted -18 to -29); (3) blocked 16.3 ms (5-25); (4) hidden share 77.1 % (70-95); (5) top-10 share 86.5 % (at least 60), layers 0 and 1 not elevated (0.12x the mean of layers 2-39, below the predicted 1.5x ceiling); (6) 24.2 misses a token (15-30). The falsifier did not fire. The ledger's -22 to -27 % (DS-BUDGET-CURVE, 22k Hermes context) transfers to this short-prompt, 34 GiB workload.
+
+## Explanation (hypothesis)
+
+Budget 0 turns the layers' demand misses into drops, so what is left of the wait (16 ms, 14 % of the token) is layers whose expert is an in-flight prefetch load, not a demand miss; layers 0 and 1, whose misses cannot be prefetched, nearly stop waiting (0.04 and 0.06 ms) because every first-layer miss is simply dropped. The token is then 66 ms of router sync, 16 of waiting and about 30 of other work: it is close to its all-resident floor (79-85 ms measured with all experts resident; here 112 with 24 misses a token still read as prefetch). The price is output change: the quality evidence for budget 0 is HANDOFF 18.59-18.74 (C# worse in one of three tests, neutral elsewhere), not this recording.
+
+## Limits
+
+Output-changing arm: texts, lengths and therefore the prompt-dependent miss mix differ from arm 1 (the means weight turns by token count); not alternated with arm 1. The void replicate bounds process drift at about 1-2 % in decode, far below 26 %.
+
+## Decision
+
+No default changes (budget 0 is already `serve.sh`'s default; arms 1 and 2 are the exact path). Ledger row DS-BUDGET0-LAYER. What is left for the speed story at this budget is router sync (66 ms of 112) and the remaining 16 ms of waiting behind in-flight loads.

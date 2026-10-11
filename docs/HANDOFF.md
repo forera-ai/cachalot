@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-11, 0.64.4): the shipped decode miss budget 0, recorded per layer: -26 % a token, the wait falls to 16 ms, layers 0 and 1 stop waiting
+>
+> Section 18.138, record `docs/L4B-RAW-LAYER-RECORD.md` (arm 3, prediction and falsifier written before the run). Nothing in `src/` changed except that the recorder `benchmarks/token_trace_raw.py` now applies `CACHALOT_DECODE_MISS_BUDGET` (the first run did not: the knob is applied in `cli.py`, so that run became an unplanned replicate of arm 1). **Measured** (24 mixed turns, 34 GiB, prefetch on): decode 151.6 to 112.2 ms a token (-26.0 %, 24 of 24 turns faster), blocked on experts 59.2 to 16.3 ms, read busy 101.8 to 67.1, hidden share 43 % to 77 %, misses a token 43.0 to 24.2, layers 0 and 1 from 3.8 / 2.7 ms to 0.04 / 0.06. All six predictions held. The replicate bounds same-configuration process drift at 1-2 % in decode (4-7 % in blocked time), so arm 2's +10.4 % (prefetch off) is real. Output changes with budget 0; quality evidence is 18.59-18.74. First job and open items: `docs/NEXT-SESSION-PROMPT.md` v187.
+>
 > ## Start here (2026-10-11, 0.64.3): decode prefetch off, recorded per layer: it is worth about 16 ms a token (10 %) at 34 GiB, not the ledger's 1 ms
 >
 > Section 18.137, record `docs/L4B-RAW-LAYER-RECORD.md` (arm 2, prediction and falsifier written before the run). Nothing in `src/` changed. **Measured** (same 24 mixed turns, 2,452 tokens, 34 GiB, `CACHALOT_PREDICT_TOPK=0` against the shipped default; every one of the 24 turns slower): decode 151.6 to 167.3 ms a token (+10.4 %), blocked on experts 59.2 to 84.2 ms (+42 %), read busy 101.8 to 82.5 ms, hidden share 43.5 % to 0 %. So prefetch hides about 25 ms of waiting and costs 20 ms of wasted reads. The ledger's older figure (prediction nets ~1 ms, 48 GiB, 23.5 misses a token) is a different regime (here 43 misses a token): hypothesis, prefetch is worth more the more misses a token has. Layers 0 and 1 wait about the same with prediction off (prediction does not reach them): 6.2-6.7 ms of the wait. No default changed. First job and open items: `docs/NEXT-SESSION-PROMPT.md` v186.
@@ -9050,6 +9054,32 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.138 The raw per-layer rows with the shipped decode miss budget 0 (0.64.4)
+
+**Goal.** Hamed: "go, record the shipped decode miss budget 0" (regime 3 of 18.136). Record: arm 3 of `docs/L4B-RAW-LAYER-RECORD.md`.
+
+**Baseline.** Arm 1 (18.136): decode 151.6 ms a token, blocked 59.2, read busy 101.8, hidden share 43.3 %, layers 0/1 at 3.79 / 2.69 ms. Ledger: budget 0 takes the decode step -22 to -27 % at 22k context.
+
+**Prediction (written first).** 0 dropped, 250-300 events; decode 108-125 ms (-18 to -29 %); blocked 5-25 ms; hidden share 70-95 %; top-10 share at least 60 % and layers 0/1 below 1.5x the rest; misses a token 15-30. Falsifier: decode reduction under 10 % or over 35 %; blocked above 30 ms; layers 0/1 above 2x.
+
+**What went wrong first.** The first run did not apply the budget: `CACHALOT_DECODE_MISS_BUDGET` is read in `cli.py`, and `token_trace_raw.py` builds the model directly. It produced the same 2,452 tokens and 43.0 misses a token as arm 1 and is kept as `benchmarks/results/l4b-raw-replicate/`, a replicate of arm 1 in a separate process (decode 153.6 against 151.6 ms, +1.3 %; blocked 63.4 against 59.2). The recorder now applies the knob (`_decode_miss_budget_from_env`, `set_decode_miss_budget`). A lesson for any recorder that bypasses `cli.py`: check a knob took effect from the output, not from the environment.
+
+**Result (measured).** 2,548 tokens (text differs), 263.8 events a token, 0 dropped. Decode 112.2 ms (-26.0 %, 24 of 24 turns faster), sync 66.1, blocked 16.3, busy 67.1, hidden share 77.1 %, top-10 share 86.5 %, 24.2 misses a token, layers 0 / 1 / 2-39 blocked 0.04 / 0.06 / 0.43 ms.
+
+**Against the prediction.** All six held; no falsifier fired.
+
+**Explanation (hypothesis).** Demand misses become drops, so the remaining 16 ms of waiting is layers behind in-flight prefetch loads; first-layer misses are dropped like any other, so layers 0 and 1 stop waiting. The token is now 66 ms router sync, 16 ms waiting and about 30 ms other work.
+
+**Limits.** Output-changing arm, not alternated with arm 1; texts and lengths differ. The replicate bounds drift at 1-2 %.
+
+**What shipped.** The recorder fix, ledger rows DS-BUDGET0-LAYER and the replicate's figures in the record. No default, output or numerics changed; no Lab brief.
+
+**Bottleneck after.** At 34 GiB with budget 0 the token is router-sync-bound (66 of 112 ms), not wait-bound.
+
+**Open.** The cliff (a smaller budget) is not recorded; prefetch's value against misses a token (48 GiB) is not recorded; layers 0 and 1 matter only for the exact path now.
+
+**Kind.** Research (predicted, measured, explained as hypothesis): all six predictions held; plus an instrument fix after a void first run.
 
 ### 18.137 The raw per-layer rows with decode prefetch off (0.64.3)
 
