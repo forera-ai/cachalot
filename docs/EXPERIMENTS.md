@@ -1,8 +1,8 @@
 # Experiment index (charter section 7.2 and section 10)
 
-Written 2026-10-09 against runtime 0.63.2; regenerate with `benchmarks/experiment_index.py`. The charter asks for "a file of experiment records whose predictions were written before the build". The records themselves live in `docs/HANDOFF.md` section 18 (each with Baseline, Prediction, Method, Result, Explanation, Limits, Kind); this file is the index: where each record is, whether it carries a written prediction, and what kind of result it is, as its own **Kind** line says. It does not restate results. Sections before 18.75 predate the record format and are not listed; sections without a **Kind** line are listed as unlabelled and have no claim made for them here.
+Written 2026-10-09 against runtime 0.63.3; regenerate with `benchmarks/experiment_index.py`. The charter asks for "a file of experiment records whose predictions were written before the build". The records themselves live in `docs/HANDOFF.md` section 18 (each with Baseline, Prediction, Method, Result, Explanation, Limits, Kind); this file is the index: where each record is, whether it carries a written prediction, and what kind of result it is, as its own **Kind** line says. It does not restate results. Sections before 18.75 predate the record format and are not listed; sections without a **Kind** line are listed as unlabelled and have no claim made for them here.
 
-Counts of the 57 sections listed (18.75-18.131): 19 research, 13 measurement, 13 unlabelled, 10 engineering, 1 planning, 1 pricing.
+Counts of the 58 sections listed (18.75-18.132): 20 research, 13 measurement, 13 unlabelled, 10 engineering, 1 planning, 1 pricing.
 
 Research means predicted, measured and explained (charter section 8.1 rule 6); a falsified prediction is still research and is marked so in its Kind line. Engineering means it works without a written prediction, or an instrument was built.
 
@@ -10,6 +10,7 @@ Research means predicted, measured and explained (charter section 8.1 rule 6); a
 
 | section | title | prediction written | kind (as recorded) |
 |---|---|:---:|---|
+| §18.132 | L2 per-token trace for DeepSeek decode: built, and priced inside a real server token (0.63.3) | yes | Research (predicted, measured, explained in part) plus an instrument. |
 | §18.131 | Power accounting, step E3h: the meter's tail fix live, and its cost (0.63.2) | yes | Research (predicted, measured): tail-fix predictions held; the cost question unanswered by a design that failed its precondition. |
 | §18.130 | Power accounting, step E3g: the energy arms on GLM and MiniMax (0.63.1) | yes | Research (predicted, measured, explained in part). |
 | §18.129 | Power accounting, step E4, route 1: the energy meter in the server (0.63.0) | no | Engineering (instrument). No prediction on file, no default and no output changed. |

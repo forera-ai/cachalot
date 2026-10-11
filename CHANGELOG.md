@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.63.3 (2026-10-11)
+
+HANDOFF "Start here (2026-10-11, 0.63.3)" and section 18.132; the record is `docs/L2-IN-SITU-PRICE-RECORD.md`, its predictions written before the build and the run. A per-token critical-path tracer for DeepSeek decode, off unless installed, and its price inside a real server token.
+
+### Added
+- `src/cachalot/metrics/token_trace.py` (`TokenTrace`, `summarize`): per-thread preallocated columns, merged only when drained; per decode token it yields the router-sync time, the time the main thread is blocked on expert reads (exposed I/O), the union of drive-read intervals, the part of them hidden behind other work, reads, bytes and events. Hook sites: the router sync and `get_many` in `moe_layer_metal.py`, `ResidentExpertStore._read_into` (worker threads), and the token boundary in `text_decode_runtime.py`. The store's `token_trace` attribute is `None` unless `V41Runtime.set_token_trace` installs one, so the hot path costs one `getattr` and one `is not None` test per site. There is no CLI flag or environment knob yet.
+- `benchmarks/token_trace_price.py` (the price benchmark and its position-matched analysis), `tests/test_token_trace.py` (4 tests; 609 pass in all).
+
+### Measured
+- **Cost of the tracer on a decode token, inside `Engine.chat` at 38 GiB:** +0.095 ms (95 % turn bootstrap -0.28 to +0.42) on a workload of 24.8 misses a token and +0.449 ms (-0.24 to +1.21) at 42.4 misses a token; pooled, post hoc, +0.32 ms (-0.17 to +0.84). The mixed interval cannot exclude the 1.0 ms stop rule written in the record, so the continuous tracer is likely cheap (about 0.1-0.5 ms, 0.3 % of a token) but not certified. Generated text identical on and off in 15 of 15 turns. The estimator is a position-matched difference in differences chosen after the planned adjacent-token pairing failed (token times vary with misses, sd 24 ms; a parity effect of about 2.5 ms; two unrecorded passes differ by 6-8 ms).
+- **The first exposed-against-hidden split for DeepSeek decode:** of a 127-144 ms token at 38 GiB, about 60 ms is the router sync (queued GPU work included), 41-52 ms the main thread blocked on reads, and the drive is busy 72-90 ms on 48-60 reads, 43 % of that hidden behind other work (57 % exposed in both workloads).
+
+### Not shipped
+- The environment knob and the `/v1/stats` field for the trace; GLM and MiniMax hooks; the 30-turn mixed arm that would settle the 1.0 ms rule.
+
 ## 0.63.2 (2026-10-11)
 
 HANDOFF "Start here (2026-10-11, 0.63.2)" and section 18.131; the record is `docs/E3H-METER-RERUN-RECORD.md`, its predictions committed before the run (`b30e4e1`). Measurement and tooling only; nothing in `src/` besides the version string changed.

@@ -278,6 +278,8 @@ class ResidentExpertStore:
         self.ssd_read_seconds = 0.0
         self.promotion_seconds = 0.0
         self._read_tally_lock = threading.Lock()
+        # a cachalot.metrics.token_trace.TokenTrace (HANDOFF 18.132) or None; set by the runtime, read by every drive read
+        self.token_trace = None
         self.reads = 0
         self.fast_reads = 0
         self.read_wall_seconds = 0.0
@@ -558,6 +560,9 @@ class ResidentExpertStore:
         self._items[resident.key] = resident
 
     def _read_into(self, entry: ExpertEntry, slot: ExpertSlot) -> tuple[int, float]:
+        trace = self.token_trace
+        if trace is not None:
+            trace.emit(5, entry.layer, entry.expert)  # READ_START
         with self._read_tally_lock:
             t0 = perf_counter()
             if self._reads_in_flight == 0:
@@ -572,6 +577,8 @@ class ResidentExpertStore:
                 if self._reads_in_flight == 0:
                     self.read_busy_seconds += t1 - self._busy_since
         seconds = t1 - t0
+        if trace is not None:
+            trace.emit(6, entry.layer, nbytes)  # READ_END
         with self._read_tally_lock:
             self.reads += 1
             self.fast_reads += seconds < FAST_READ_SECONDS

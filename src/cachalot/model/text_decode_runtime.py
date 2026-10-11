@@ -1661,6 +1661,10 @@ class TextDecodeRuntime:
         # predicted next-layer sets; None leaves the hot path one getattr.
         self.expert_store.pred_tracer = tracer
 
+    def set_token_trace(self, trace) -> None:
+        """Install (or remove) a per-token critical-path trace (HANDOFF 18.132, docs/L2-IN-SITU-PRICE-RECORD.md)."""
+        self.expert_store.token_trace = trace
+
     def _trace_prefill_route(
         self,
         layer_id: int,
@@ -2651,6 +2655,9 @@ class TextDecodeRuntime:
 
         if self.tracer is not None:
             self.tracer.decode_position = start_pos
+        token_trace = getattr(self.expert_store, "token_trace", None)
+        if token_trace is not None:
+            token_trace.begin_token(start_pos)
 
         hash_rows = (
             self.engram_hash.push(

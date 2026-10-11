@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-11, 0.63.3): the per-token trace for DeepSeek decode, built and priced inside a real server token
+>
+> Section 18.132, record `docs/L2-IN-SITU-PRICE-RECORD.md` (predictions written before the build and the run). **New, off unless installed:** `cachalot.metrics.token_trace.TokenTrace` with hooks at the router sync, `get_many`, every drive read (worker threads) and the token boundary; `V41Runtime.set_token_trace(trace)`; no CLI knob yet. **Price, inside `Engine.chat` (38 GiB; the memory guard refused 48 and 40):** position-matched, +0.095 ms (95 % -0.28 to +0.42) a decode token at 24.8 misses and +0.449 ms (-0.24 to +1.21) at 42.4; pooled post hoc +0.32 (-0.17 to +0.84); text identical on and off in 15 of 15 turns. **The pre-registered stop rule is not met on the mixed arm** (its interval cannot exclude 1.0 ms), so the tracer is likely cheap but not certified; a 30-turn mixed arm (about 12 minutes of decode) would settle it. **Missed predictions:** the "resident" workload was not resident (24.8 misses a token, the lesson of 18.131 not applied); events a token were 256-280 not 340-420; the planned adjacent-token pairing could not resolve the effect (sd 24 ms, a ~2.5 ms parity effect, 6-8 ms between two unrecorded passes) and a position-matched estimator, chosen after seeing that, replaced it. **First reading it gives:** of a 127-144 ms token, router sync ~59-63 ms, main thread blocked on reads 41-52 ms, drive busy 72-90 ms on 48-60 reads, 57 % of the read time exposed. Nothing needs Hamed.
+>
 > ## Start here (2026-10-11, 0.63.2): the meter's component-tail fix confirmed live; its cost on a token not measured (my arm was not all-resident)
 >
 > Section 18.131, record `docs/E3H-METER-RERUN-RECORD.md` (predictions committed first, `b30e4e1`). **Tail fix, live (DeepSeek, two meter-on arms, windows of 15.9-18.4 s):** component joules (DRAM, GPU) median absolute difference from the logger **1.1 %**, signed median **-0.2 %** (was -7.9 %), maximum 8.5 %; system joules median 0.2 %, maximum 0.6 %: all five predictions inside. **Cost: unmeasured.** I raised the repeated reply to 160 tokens to get long enough windows and did not check that the arm stayed resident: every arm missed 10.9 experts a token pass after pass (the 120-token arms of E3-E3e had 0.0), so all four arms are void by the record's own precondition, and the drift check caught the rest (off1 99.6 ms against off4 114.5 ms, arm 4 ran hot). The one cool pair differs by +0.07 ms (means 99.66, 99.72, sd 0.4-0.7), consistent with under about 1 ms, not a measurement. The tail-fix numbers were taken under the same void list; I judge them independent of the miss precondition (meter and logger measure the same power) and say so. Next, if Hamed wants the price: a 120-token, resident, short-armed, interleaved ABBA. Nothing in `src/` changed.
@@ -9026,6 +9030,32 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.132 L2 per-token trace for DeepSeek decode: built, and priced inside a real server token (0.63.3)
+
+**Goal.** Hamed: "go, option 1, L2 in-situ price" (charter `docs/RESEARCH-DIRECTION.md` section 13.4 item 1). The simulated price was 0.17 ms a token (18.114); the in-situ step needed the tracer to exist in `src/`, so this session built it and priced it. Record: `docs/L2-IN-SITU-PRICE-RECORD.md`.
+
+**Baseline.** No per-token tracer existed; the turn-level server A/B resolves about 3 % with a +-7 ms control (18.59), which cannot see 0.2 ms.
+
+**Prediction (written first).** Events a token 340-420 resident and up to 520 mixed; overhead +0.15 ms resident, +0.3 mixed (interval 0.0 to +0.6); control within +-0.15 ms; exposed I/O 60-95 % of read-busy time on the mixed workload; text unchanged. Falsifier: an upper bound above 1.0 ms a token, a control interval excluding zero, any text difference, or a blocked share below 40 %.
+
+**What was built.** `src/cachalot/metrics/token_trace.py` (per-thread preallocated `array('q')` columns, merge on `drain()`, `summarize()` per decode token), hooks in `moe_layer_metal.py` (router sync, `get_many`), `resident_store.py` (`_read_into`, on worker threads) and `text_decode_runtime.py` (token boundary, `set_token_trace`). `alternate` records only the tokens of one position parity so a benchmark can price the tracer inside one process; the token boundary is stamped in every state. 4 unit tests, 609 pass.
+
+**Method.** `benchmarks/token_trace_price.py` under `guarded_run.sh` (budget 38 GiB: the guard refused 48 and 40 with 69.4 GiB available), `Engine.chat`, exact decode, 160-token greedy replies. Passes p0 (records even positions), p1 (odd), ctl (records nothing), after a tracer-free pass for the bit-identity text. Resident workload: one prompt, 6 turns a pass. Mixed: twelve prompts. Started 13:48, finished about 14:07 (19 minutes, plus a model load).
+
+**Result (measured; the estimator post hoc).** See the record's table. Position-matched cost a decode token: +0.095 ms (-0.276 to +0.417) at 24.8 misses a token, +0.449 ms (-0.239 to +1.214) at 42.4; pooled +0.324 ms (-0.170 to +0.838). Events a token 256 and 280; reads 47.7 and 59.5; router sync 59.2 and 63.0 ms; blocked 41.0 and 51.6 ms; read busy 72.4 and 89.8 ms; hidden read 32.6 and 39.7 ms; blocked / read busy 0.57 in both. Text identical in 15 of 15 traced turns.
+
+**Against the prediction.** Held: the point estimates, text unchanged. Missed: events a token (the build records two events a read, no submit event, and reads were 48-60), the resident workload (it was not resident), the blocked share (57 %, not 60-95 %), and the control, which as designed measured the wrong thing (the quantity that mattered was the pass-to-pass difference, -6 to -8 ms). **The stop rule as written is not met on the mixed arm** (upper bound 1.21).
+
+**Explanation.** The cost is a few hundred events of 0.15 to 0.5 microseconds each: the simulated unit cost times the measured event count gives 0.04-0.14 ms, below the in-situ point estimates, which are inside their own noise. The adjacent-token design failed because a token's time follows its misses; matching the same position across passes removes that, and the same-prompt greedy replies make the match exact. The parity effect (even against odd positions, about 2.5 ms, sign flips with the parity recorded) is common to both states and cause not found.
+
+**Limits.** One machine, one run, a 38 GiB budget that is not the shipped 48 (the guard refused it), display on, 11 mixed turns. The exposed split is the tracer's definition (main thread inside `get_many`), not a proof of the critical path: the router sync includes queued GPU work, and the tracer sees no GPU time. DeepSeek only; GLM and MiniMax unhooked. No environment knob or `/v1/stats` field yet, so no Lab brief.
+
+**Bottleneck after.** Unchanged (not a speed change). The measurement it opens: of the drive-read time, 57 % is exposed at 38 GiB with prediction on; L4(b) can now fit the overlap term from per-layer rows instead of counters.
+
+**Kind.** Research (predicted, measured, explained in part) plus an instrument.
+
+**Open.** (a) A 30-turn mixed arm at the shipped 48 GiB when memory allows, to certify the 1.0 ms rule; (b) the `CACHALOT_TOKEN_TRACE` knob and a `/v1/stats` summary (then a Lab brief); (c) L4(b): fit the overlap term from the per-layer rows; (d) the same hooks for GLM and MiniMax.
 
 ### 18.131 Power accounting, step E3h: the meter's tail fix live, and its cost (0.63.2)
 

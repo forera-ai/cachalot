@@ -219,6 +219,9 @@ def moe_layer_forward(
 
     # Routing is needed on the CPU to address the resident store.
     sub_tau = getattr(expert_store, "decode_substitute_tau", None)
+    token_trace = getattr(expert_store, "token_trace", None)
+    if token_trace is not None:
+        token_trace.emit(1, layer_id)  # SYNC_START
     mx.eval(
         route.indices,
         route.weights,
@@ -227,6 +230,8 @@ def moe_layer_forward(
         *predicted_weights,
         *([prelaunched_shared] if PRELAUNCH_SHARED == 2 else []),
     )
+    if token_trace is not None:
+        token_trace.emit(2, layer_id)  # SYNC_END
 
     if pred_tracer is not None:
         # Host values of arrays the one sync above already evaluated: no
@@ -287,12 +292,16 @@ def moe_layer_forward(
     # All misses of this layer are read concurrently instead of one
     # blocking SSD read per expert on the main thread.
     miss_budget = getattr(expert_store, "decode_miss_budget", None)
+    if token_trace is not None:
+        token_trace.emit(3, layer_id, len(entries))  # GET_START
     experts = expert_store.get_many(
         entries,
         max_misses=miss_budget,
         priorities=router_weights,
         prefetch=prefetch_entries or None,
     )
+    if token_trace is not None:
+        token_trace.emit(4, layer_id, len(entries))  # GET_END
 
     weights = route.weights
 
