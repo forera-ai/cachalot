@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-11, 0.64.1): L4(b), the overlap term fitted offline from the L2 rows: a true description, not a better token predictor
+>
+> Section 18.135, record `docs/L4B-OVERLAP-FIT-RECORD.md` (prediction and falsifier written before the fit), instrument `benchmarks/overlap_fit.py`. Nothing in `src/` changed, no machine run. **Measured (offline, 5,939 per-token rows of the saved L2 runs, four held-out directions):** about 10-14 ms of a token's read time hides regardless, plus 28-33 % of the rest (hidden = 9.6-13.7 + 0.28-0.33 x read busy; read busy 1.5 ms a read); this affine overlap predicts the exposed (blocked) time to 7.0-9.4 ms RMSE, better than a constant (14.7-16.0) or a proportional share (8.4-12.1). As a token predictor it does **not** beat the straight line of wall on reads: 2.4-10.2 % worse held out, so `benchmarks/whatif.py` is unchanged. L4(b) is closed at the token level; a layer-level fit needs a new recording with raw rows (machine, Hamed's go). First job and open items are in `docs/NEXT-SESSION-PROMPT.md` v184.
+>
 > ## Start here (2026-10-11, 0.64.0): `CACHALOT_TOKEN_TRACE=1`, sampled one decode token in four, built and checked live
 >
 > Section 18.134, Lab brief `docs/lab/briefs/2026-10-11-runtime-0.64.0.md`. Hamed's call (sampled by default). **New, DeepSeek server only, default off:** `CACHALOT_TOKEN_TRACE=1`, `CACHALOT_TOKEN_TRACE_EVERY=N` (default 4; 1 is continuous at +0.55 ms a token); `/v1/stats.token_trace` running means over sampled tokens and `exposed_read_share`; GLM/MiniMax ignore it with a notice. Live smoke (`./serve.sh --expert-budget-gib 34`, three requests, 258 tokens): 64 sampled tokens, 0 dropped, identical text on a repeat, exposed share 0.58-0.62. 613 tests. Nothing needs Hamed except the Lab side of the brief.
@@ -9038,6 +9042,32 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.135 L4(b): the overlap term fitted offline from the L2 rows (0.64.1)
+
+**Goal.** First job A(3) of the v183 prompt: fit `exposed_io = max(0, io_time - useful_overlap)` from the L2 traces and test it on held-out traces (charter section 4.6 L4(b)). Record: `docs/L4B-OVERLAP-FIT-RECORD.md`, written with its prediction and falsifier before the script existed.
+
+**Baseline.** The only token model that uses read counts is the straight line of `whatif.py`; it has no overlap term. The saved L2 rows (`benchmarks/results/l2-price/run.json`, 2,243 token rows over 36 turns, 38 GiB; `run30.json`, 3,696 rows over 60 turns, 34 GiB) hold per-token wall, router sync, blocked time, read busy time, hidden read time and reads, not raw per-layer rows.
+
+**Prediction (written first).** (1) An affine hidden share beats a constant and a proportional one on held-out blocked time. (2) Its blocked-time RMSE is 8-14 ms. (3) The wall model is within +-10 % of the straight line. (4) The slope agrees between the runs within 0.1 and the constant part of the token differs by 5-15 ms. Falsifier: adopt the term in `whatif.py` only if held-out wall error is 15 % or more lower than the line's.
+
+**Method.** `benchmarks/overlap_fit.py`: three overlap forms (constant H, proportional f, affine h0 + h1 x) plus reads to busy time (k per read) and a constant w0, fitted by least squares; scored on four held-out splits (each run against the other, even against odd turns inside each run); the wall comparison carries a bootstrap over whole turns. Three tests in `tests/test_overlap_fit.py`.
+
+**Result (measured offline).** Affine hidden = 9.6-13.7 ms + 0.28-0.33 x read busy (slope 0.330 on run.json, 0.293 on run30.json); read busy 1.53-1.58 ms a read; w0 91-95 ms. Held-out blocked-time RMSE: affine 7.0-9.4 ms, proportional 8.4-12.1, constant 14.7-16.0. Held-out wall RMSE against the line: affine +5.3 %, +8.5 %, +10.2 %, +2.4 % (every turn-bootstrap interval above zero).
+
+**Against the prediction.** (1) held in all four directions. (2) held in two directions; 7.0 and 7.4 ms are below the predicted 8-14. (3) held narrowly: the term is 2.4-10.2 % worse than the line, not equal; 10.2 % is at the edge. (4) the slope agreed (0.037 apart); the w0 difference was 2.1 ms, not 5-15.
+
+**Explanation (hypothesis).** The overlap is real and stable, but read busy time is nearly a straight line in reads, so the line already carries the information; the overlap model adds a reads-to-busy step and a constant w0, each with error. The hidden time is a product of the decode schedule, so a model of it describes where the time goes without predicting the token better. A layer-level view (which layers hide reads) was not possible: the raw rows were not saved.
+
+**Limits.** Two runs, two budgets (38 and 34 GiB), one machine, one workload family; rows within a turn are not independent; `blocked` and `hidden` come from the same events and the same instrument.
+
+**What shipped.** `benchmarks/overlap_fit.py`, `tests/test_overlap_fit.py`, `docs/L4B-OVERLAP-FIT-RECORD.md`, LEDGER row DS-OVERLAP. No default, output or numerics changed; no Lab brief (no knob, stat or log line changed).
+
+**Bottleneck after.** Unchanged.
+
+**Open.** A recording with raw per-layer rows (`TokenTrace.drain()`; `CACHALOT_TOKEN_TRACE_EVERY=1` for an hour of machine time, Hamed's go) would show which layers hide reads and support L4(c)(d)(f).
+
+**Kind.** Research (predicted, measured offline, explained as hypothesis): three of four predictions held, the wall comparison went the wrong way for adoption, and the term is closed as a token predictor.
 
 ### 18.134 `CACHALOT_TOKEN_TRACE`: the sampled per-token trace as a server knob (0.64.0)
 

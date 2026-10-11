@@ -1,8 +1,8 @@
 # Experiment index (charter section 7.2 and section 10)
 
-Written 2026-10-09 against runtime 0.64.0; regenerate with `benchmarks/experiment_index.py`. The charter asks for "a file of experiment records whose predictions were written before the build". The records themselves live in `docs/HANDOFF.md` section 18 (each with Baseline, Prediction, Method, Result, Explanation, Limits, Kind); this file is the index: where each record is, whether it carries a written prediction, and what kind of result it is, as its own **Kind** line says. It does not restate results. Sections before 18.75 predate the record format and are not listed; sections without a **Kind** line are listed as unlabelled and have no claim made for them here.
+Written 2026-10-09 against runtime 0.64.1; regenerate with `benchmarks/experiment_index.py`. The charter asks for "a file of experiment records whose predictions were written before the build". The records themselves live in `docs/HANDOFF.md` section 18 (each with Baseline, Prediction, Method, Result, Explanation, Limits, Kind); this file is the index: where each record is, whether it carries a written prediction, and what kind of result it is, as its own **Kind** line says. It does not restate results. Sections before 18.75 predate the record format and are not listed; sections without a **Kind** line are listed as unlabelled and have no claim made for them here.
 
-Counts of the 60 sections listed (18.75-18.134): 21 research, 13 measurement, 13 unlabelled, 11 engineering, 1 planning, 1 pricing.
+Counts of the 61 sections listed (18.75-18.135): 22 research, 13 measurement, 13 unlabelled, 11 engineering, 1 planning, 1 pricing.
 
 Research means predicted, measured and explained (charter section 8.1 rule 6); a falsified prediction is still research and is marked so in its Kind line. Engineering means it works without a written prediction, or an instrument was built.
 
@@ -10,6 +10,7 @@ Research means predicted, measured and explained (charter section 8.1 rule 6); a
 
 | section | title | prediction written | kind (as recorded) |
 |---|---|:---:|---|
+| §18.135 | L4(b): the overlap term fitted offline from the L2 rows (0.64.1) | yes | Research (predicted, measured offline, explained as hypothesis): three of four predictions held, the wall comparison went the wrong way for adoption, and the term is closed as a token predictor. |
 | §18.134 | `CACHALOT_TOKEN_TRACE`: the sampled per-token trace as a server knob (0.64.0) | yes | Engineering (instrument): it works and was checked live; no speed or output change, and the cost of the shipped default is derived, not measured. |
 | §18.133 | The tracer's cost on 30 turns: +0.55 ms a decode token, the stop rule not met (0.63.4) | yes | Research (predicted, measured, explained as hypothesis); the prediction's upper bound missed and the registered stop rule is not met. |
 | §18.132 | L2 per-token trace for DeepSeek decode: built, and priced inside a real server token (0.63.3) | yes | Research (predicted, measured, explained in part) plus an instrument. |

@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.64.1 (2026-10-11)
+
+HANDOFF "Start here (2026-10-11, 0.64.1)" and section 18.135; the record `docs/L4B-OVERLAP-FIT-RECORD.md` was written with its prediction before the fit. Offline measurement and tooling; nothing in `src/` changed.
+
+### Added
+- `benchmarks/overlap_fit.py` fits the overlap term of the DeepSeek token model from the saved L2 per-token rows and scores it on held-out splits; `tests/test_overlap_fit.py` (3 tests).
+
+### Measured
+- On 5,939 per-token rows (38 and 34 GiB runs, four held-out directions): a token hides about 10-14 ms of read time regardless plus 28-33 % of its read busy time (read busy is 1.5 ms a read); the affine overlap predicts the exposed (blocked) time to 7.0-9.4 ms RMSE, against 14.7-16.0 for a constant and 8.4-12.1 for a proportional share.
+- As a token predictor it is **not** better than the straight line of wall on reads (2.4-10.2 % worse held out), so `benchmarks/whatif.py` is unchanged.
+
+### Closed
+- L4(b) at the token level. A layer-level fit needs a new recording with raw per-layer rows (machine time, Hamed's go).
+
 ## 0.64.0 (2026-10-11)
 
 HANDOFF "Start here (2026-10-11, 0.64.0)" and section 18.134; Lab brief `docs/lab/briefs/2026-10-11-runtime-0.64.0.md`. Hamed chose the default: sampled, one decode token in four. Outputs unchanged; off by default.
