@@ -1,7 +1,11 @@
 """Energy arms driver (HANDOFF 18.116): after the server is ready, four phases with wall-clock times logged for powermetrics_parse.py.
 A idle-server 90 s, B all-resident decode (one prompt repeated, greedy 120 tokens), C read-bound decode (fresh prompts), D idle-server 90 s."""
-import json, sys, time, urllib.request
-URL = "http://127.0.0.1:8011/v1"
+import json, os, sys, time, urllib.request
+# E3g (0.63.1): the model, the URL, the reply length and the phase lengths come from the environment so the GLM and MiniMax servers can use the same driver
+URL = os.environ.get("E_URL", "http://127.0.0.1:8011/v1")
+MODEL = os.environ.get("E_MODEL", "deepseek-v4.1-flash")
+MAXTOK = int(os.environ.get("E_MAX_TOKENS", "120"))
+PH = [float(os.environ.get(k, d)) for k, d in (("E_A", "90"), ("E_B", "120"), ("E_C", "150"), ("E_D", "90"))]
 FLOOR = "Write a detailed paragraph about how lighthouses work, from the lamp to the lens to the keeper's routine."
 MIXED = [
     "Write a Python function that merges overlapping intervals and explain its complexity.",
@@ -17,10 +21,14 @@ MIXED = [
 ]
 def now(): return time.strftime("%H:%M:%S")
 def ask(text):
-    body = {"model": "deepseek-v4.1-flash", "messages": [{"role": "user", "content": text}], "max_tokens": 120, "temperature": 0, "stream": False}
+    body = {"model": MODEL, "messages": [{"role": "user", "content": text}], "max_tokens": MAXTOK, "temperature": 0, "stream": False}
     req = urllib.request.Request(URL + "/chat/completions", data=json.dumps(body).encode(), headers={"Content-Type": "application/json"})
-    out = json.loads(urllib.request.urlopen(req, timeout=1800).read())
-    return out["usage"]["completion_tokens"], out["usage"].get("cachalot", {})
+    t0 = time.time()
+    out = json.loads(urllib.request.urlopen(req, timeout=3600).read())
+    cx = out["usage"].get("cachalot", {})
+    if cx.get("energy") is not None:  # CACHALOT_ENERGY=1: the server's own report for this request, to compare with the logger's PSTR x time
+        log({"event": "request", "start": t0, "end": time.time(), "tokens": out["usage"]["completion_tokens"], "decode_seconds": cx.get("decode_seconds"), "energy": cx["energy"]})
+    return out["usage"]["completion_tokens"], cx
 def log(rec): print(json.dumps(rec), flush=True)
 t0 = time.time()
 while time.time() - t0 < 900:
@@ -48,6 +56,6 @@ def readbound(sec):
             tok += ask(p)[0]
         return tok
     return f
-phase("A idle-server", idle(90)); phase("B all-resident", resident(120)); phase("C read-bound", readbound(150)); phase("D idle-server", idle(90))
+phase("A idle-server", idle(PH[0])); phase("B all-resident", resident(PH[1])); phase("C read-bound", readbound(PH[2])); phase("D idle-server", idle(PH[3]))
 log({"event": "stats", "stats": json.loads(urllib.request.urlopen(URL + "/stats", timeout=30).read())})
 log({"event": "done", "clock": now()})
