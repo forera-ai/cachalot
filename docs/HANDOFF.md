@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-11, 0.64.2): the raw per-layer rows of the DeepSeek decode token, recorded and analysed
+>
+> Section 18.136, record `docs/L4B-RAW-LAYER-RECORD.md` (prediction and falsifier written before the run), recorder `benchmarks/token_trace_raw.py`, analysis `benchmarks/layer_rows.py`. Nothing in `src/` changed. **Measured** (24 mixed turns, 2,452 decode tokens, 34 GiB, tracer on every token, 0 events dropped, 302 events a token): per token, router sync 63.1 ms, blocked on experts 59.2, read busy 101.8 (replicates 0.63.4 within 6 %). Blocked time is concentrated in each token (the ten worst layers carry a median 74 % of it) but not in fixed layers: the mean blocked time per layer is flat (0.8-2.5 ms) except layers 0 and 1 (3.8 and 2.7 ms, together about 11 % of the blocked time; no earlier layer can predict them). The hidden share of reads is 41 % in layers 0-19 and 46 % in layers 20-39: the opposite direction to my prediction. Raw columns are local in `benchmarks/results/l4b-raw/` (git-ignored). First job and open items: `docs/NEXT-SESSION-PROMPT.md` v185.
+>
 > ## Start here (2026-10-11, 0.64.1): L4(b), the overlap term fitted offline from the L2 rows: a true description, not a better token predictor
 >
 > Section 18.135, record `docs/L4B-OVERLAP-FIT-RECORD.md` (prediction and falsifier written before the fit), instrument `benchmarks/overlap_fit.py`. Nothing in `src/` changed, no machine run. **Measured (offline, 5,939 per-token rows of the saved L2 runs, four held-out directions):** about 10-14 ms of a token's read time hides regardless, plus 28-33 % of the rest (hidden = 9.6-13.7 + 0.28-0.33 x read busy; read busy 1.5 ms a read); this affine overlap predicts the exposed (blocked) time to 7.0-9.4 ms RMSE, better than a constant (14.7-16.0) or a proportional share (8.4-12.1). As a token predictor it does **not** beat the straight line of wall on reads: 2.4-10.2 % worse held out, so `benchmarks/whatif.py` is unchanged. L4(b) is closed at the token level; a layer-level fit needs a new recording with raw rows (machine, Hamed's go). First job and open items are in `docs/NEXT-SESSION-PROMPT.md` v184.
@@ -9042,6 +9046,32 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.136 The raw per-layer rows of the DeepSeek decode token (0.64.2)
+
+**Goal.** Hamed: "go, record the raw per-layer rows" (the open item of 18.135, estimate about an hour; the run took about 15 minutes of recording after the model load). Record: `docs/L4B-RAW-LAYER-RECORD.md`.
+
+**Baseline.** The saved L2 rows were per-token sums; the raw tracer columns were never kept, so no layer-level view existed. 0.63.4's pooled means at 34 GiB: sync 62.4, blocked 62.8, read busy 104.4 ms.
+
+**Prediction (written first).** No dropped events; the ten worst layers carry at least 55 % of a token's blocked time; the first half of the layers hides at least 5 points more of its reads than the second half; the pooled means reproduce 0.63.4 within 10 %.
+
+**Method.** `benchmarks/token_trace_raw.py` through `Engine.chat`, tracer `every=1`, the 12 mixed prompts twice (24 turns, 128 new tokens, greedy), 4 unrecorded warm turns, 34 GiB under `guarded_run.sh`; each turn's `drain()` columns saved. `benchmarks/layer_rows.py` cuts them into one row per (token, layer): window from the layer's router-sync start to the next layer's, sync time, `get_many` blocked time, read busy time (union of read intervals clipped to the window), hidden part. Tests: `tests/test_layer_rows.py`.
+
+**Result (measured).** 2,452 tokens, 301.7 events a token, 0 dropped, misses 31-76 a token, decode 4.8-7.2 tok/s. Per token: sync 63.1, blocked 59.2, busy 101.8 ms. Median top-10-layers share of blocked time 74.2 %. Mean blocked per layer 0.8-2.5 ms except layer 0 (3.8) and layer 1 (2.7). Hidden share of read busy 41.1 % (layers 0-19), 46.0 % (layers 20-39).
+
+**Against the prediction.** Dropped events, the 74 % concentration and the three pooled means held; the depth prediction was falsified in direction (second half hides 4.9 points more); reads a token was not recomputed.
+
+**Explanation (hypothesis).** The concentration is in the token (which layers miss), not in fixed layers, so a per-layer pin or prefetch has little to grip except layers 0 and 1, which cannot be predicted from an earlier layer. The depth effect is small and its cause is not isolated.
+
+**Limits.** One machine, one budget (34 GiB), short prompts, greedy, 24 turns; the tracer's own +0.55 ms a token is inside; raw data is local only (results are git-ignored).
+
+**What shipped.** `benchmarks/token_trace_raw.py`, `benchmarks/layer_rows.py`, `tests/test_layer_rows.py`, `docs/L4B-RAW-LAYER-RECORD.md`, LEDGER row DS-LAYER-BLOCKED. No default, output or numerics change; no Lab brief.
+
+**Bottleneck after.** Unchanged (waiting on expert reads, about 60 % of a token at this budget).
+
+**Open.** Layers 0 and 1 (about 11 % of blocked time) as a lead; L4(c)(d) need other regimes (budgets, prefetch off) recorded the same way, each an hour of machine time and Hamed's go.
+
+**Kind.** Research (predicted, measured, explained as hypothesis): three of four predictions held and one was falsified in direction.
 
 ### 18.135 L4(b): the overlap term fitted offline from the L2 rows (0.64.1)
 

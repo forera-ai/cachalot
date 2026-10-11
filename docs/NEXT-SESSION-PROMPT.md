@@ -1,10 +1,11 @@
-# Next-session prompt — **v184**, written 2026-10-11
+# Next-session prompt — **v185**, written 2026-10-11
 
 **This is the file to paste.** `docs/NEXT-SESSION-PROMPT.md` is always current; superseded ones live in
 `docs/next-session-prompts/`.
 
 | version | written | produced by | what changed |
 |---|---|---|---|
+| **v185** | 2026-10-11 | Hamed: "go, record the raw per-layer rows" (v184 First job 2) | **0.64.2, measurement, nothing in `src/`: raw tracer rows for 2,452 decode tokens at 34 GiB, 0 dropped. Blocked time (59.2 of a ~150 ms token) sits in whichever layers miss on that token (top 10 layers hold a median 74 %), not in fixed layers; layers 0 and 1 wait about twice as long as the rest (3.8 and 2.7 ms, ~11 % of blocked time); hidden share of reads 41 % early, 46 % late (predicted the reverse). New `benchmarks/token_trace_raw.py`, `layer_rows.py`; record `docs/L4B-RAW-LAYER-RECORD.md`.** §18.136 |
 | **v184** | 2026-10-11 | Hamed: "/ca read the handoff and session prompts and do the tasks" (v183 First job A(3), L4(b)) | **0.64.1, offline measurement, nothing in `src/`: the overlap term fitted from the saved L2 rows. A token hides about 10-14 ms of read time regardless plus 28-33 % of its read busy time (read busy 1.5 ms a read); the affine overlap predicts blocked time to 7.0-9.4 ms held out (constant 14.7-16.0, proportional 8.4-12.1) but is 2.4-10.2 % WORSE than wall = a + b x reads as a token predictor, so `whatif.py` is unchanged and L4(b) is closed at the token level. Record `docs/L4B-OVERLAP-FIT-RECORD.md`; new `benchmarks/overlap_fit.py`.** §18.135 |
 | **v183** | 2026-10-11 | Hamed: "go, sampled every 4th token, build the knob" (v182 A.2) | **0.64.0: `CACHALOT_TOKEN_TRACE=1` on the DeepSeek server, off by default, records one decode token in `CACHALOT_TOKEN_TRACE_EVERY` (default 4) and reports running means in `/v1/stats.token_trace` (router sync, wait for experts, drive-read busy and hidden time, reads, exposed share). Live smoke: 258 tokens, 64 sampled, 0 dropped, identical text, exposed share 0.58-0.62. Lab brief `docs/lab/briefs/2026-10-11-runtime-0.64.0.md`; 613 tests.** §18.134 |
 | **v182** | 2026-10-11 | Hamed: "go, run the 30-turn certifying arm" (v181 A.1) | **0.63.4, measurement only: the per-token tracer costs +0.554 ms a decode token (95 % +0.051 to +1.114) on 27 mixed turns at a 34 GiB budget (the guard refused 38); text identical 12 of 12; the registered 1.0 ms stop rule is NOT met (upper bound 1.11), the cost is real (lower bound above zero). Hamed's call: the default of the future knob, sampled every 4th token (~0.14 ms) or continuous (+0.55). 60 % of read time exposed. Addendum in `docs/L2-IN-SITU-PRICE-RECORD.md`.** §18.133 |
@@ -146,14 +147,15 @@
 | v46 | 2026-09-25 | Hamed asked for GLM-5.3-Flash on Cachalot | 0.17.0: GLM through `serve-glm.sh` / `chat-glm.sh`. §17 |
 | v45 | 2026-09-24 | same as v47, one day earlier | 0.16.0: disk snapshot store by last use; lookahead and local compression closed. §15.12 |
 
-## First jobs (v184): L4(b) is closed; what is left needs the machine or Hamed
+## First jobs (v185): the raw layer rows exist; what is left needs Hamed's pick of a regime
 
-Read HANDOFF section 18.135 and `docs/L4B-OVERLAP-FIT-RECORD.md` first. Tools first (caveman, Jev, codebase-memory), the machine gate, then these. Each long run needs an estimate and Hamed's go; every research item opens with a written Baseline, Prediction and Falsifier. Hamed runs every `sudo`.
+Read HANDOFF section 18.136 and `docs/L4B-RAW-LAYER-RECORD.md` first. Tools first (caveman, Jev, codebase-memory), the machine gate, then these. Each long run needs an estimate and Hamed's go; every research item opens with a written Baseline, Prediction and Falsifier. Hamed runs every `sudo`. Lesson: the guard accepted 34 GiB with 2.4 GiB of stale swap; the run took about 15 minutes of recording after the load.
 
-1. **Autonomous items are exhausted.** L4(b) is done (an overlap description, not a better predictor); the offline L3 sweeps were exhausted in 0.63.3. Say so to Hamed and ask which machine job he wants.
-2. **A raw-row recording** (needs the machine and Hamed's go, about an hour with the estimate confirmed first): DeepSeek server with `CACHALOT_TOKEN_TRACE=1 CACHALOT_TOKEN_TRACE_EVERY=1` at 34 GiB on the mixed workload of `benchmarks/token_trace_price.py`, saving `TokenTrace.drain()` columns (the saved L2 rows are per-token summaries only). It would show which layers hide reads and is the input for L4(c) (the memory cliff as a region), L4(d) (prefetch precision as a parameter) and L4(f) (the floor roofline). Write the prediction first.
-3. **The in-situ price of the 1-in-4 default** (optional, about an hour; derived cost about 0.14 ms a token).
-4. **The previous list, unchanged below** (energy lane done but the optional meter-cost price; Lab's views are on Hamed's and Lab's side; a live Hermes session read with `CACHALOT_SERVER_DUMP` is always welcome).
+1. **Autonomous items are exhausted again.** Ask Hamed which machine job he wants.
+2. **Other regimes recorded the same way** (`benchmarks/token_trace_raw.py`, about 15-20 minutes each plus load; `layer_rows.py` reads them): a smaller budget (the cliff as a region, L4(c)), `CACHALOT_PREDICT_TOPK=0` (what prefetch hides per layer, L4(d)), and the shipped decode miss budget 0. Compare against the 34 GiB prediction-on rows in `benchmarks/results/l4b-raw/` (local, git-ignored; re-record if the folder is gone).
+3. **Layers 0 and 1** (about 11 % of blocked time, 6.5 ms of 59): a lead, not priced. A price would be arithmetic on the rows first (what a perfect pin of their experts would save), then a decision.
+4. **The in-situ price of the 1-in-4 default** (optional, about an hour; derived cost about 0.14 ms a token).
+5. **The previous list, unchanged below.**
 
 ## First jobs (v181): the L2 tracer exists and is priced; the next steps are its knob, L4(b), and one certifying arm
 

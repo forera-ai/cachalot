@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.64.2 (2026-10-11)
+
+HANDOFF "Start here (2026-10-11, 0.64.2)" and section 18.136; the record `docs/L4B-RAW-LAYER-RECORD.md` was written with its prediction before the run. Measurement and tooling; nothing in `src/` changed.
+
+### Added
+- `benchmarks/token_trace_raw.py` records the tracer's raw columns for every decode token of a mixed-workload run, one file per turn; `benchmarks/layer_rows.py` cuts them into per-layer rows (sync, blocked, read busy, hidden); `tests/test_layer_rows.py`.
+
+### Measured
+- 24 turns, 2,452 decode tokens at 34 GiB, 0 dropped events, 302 events a token. Per token: router sync 63.1 ms, blocked on experts 59.2, read busy 101.8 (0.63.4: 62.4 / 62.8 / 104.4). The ten worst layers carry a median 74 % of a token's blocked time, but the mean per layer is flat (0.8-2.5 ms) except layers 0 and 1 (3.8 and 2.7 ms, about 11 % of the blocked time together). The hidden share of reads is 41 % in layers 0-19 and 46 % in layers 20-39.
+
+### Closed
+- "Blocked time sits in a fixed set of layers": no, it sits in whichever layers miss on that token.
+
 ## 0.64.1 (2026-10-11)
 
 HANDOFF "Start here (2026-10-11, 0.64.1)" and section 18.135; the record `docs/L4B-OVERLAP-FIT-RECORD.md` was written with its prediction before the fit. Offline measurement and tooling; nothing in `src/` changed.
