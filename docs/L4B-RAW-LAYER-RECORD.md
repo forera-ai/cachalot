@@ -164,3 +164,63 @@ Output-changing arm: texts, lengths and therefore the prompt-dependent miss mix 
 ## Decision
 
 No default changes (budget 0 is already `serve.sh`'s default; arms 1 and 2 are the exact path). Ledger row DS-BUDGET0-LAYER. What is left for the speed story at this budget is router sync (66 ms of 112) and the remaining 16 ms of waiting behind in-flight loads.
+
+# Arm 4: the same recording at a smaller expert budget, 28 GiB (the cliff, L4(c)), opened 2026-10-11 before the run
+
+Hamed's go: "go, record the memory cliff" (2026-10-11), estimate about 20 minutes plus load (more misses make decode slower, so perhaps 25). Exact path (no miss budget), prefetch on, 24 turns, 128 tokens, greedy, guard, only `--budget-gib 28` differs from arm 1 (34 GiB). Output `benchmarks/results/l4b-raw-28gib/`. The text is identical to arm 1 (exact decode), so token counts match and per-turn pairs are valid. Whether a cliff exists between 28 and 34 GiB is the question; one extra budget gives two points, so it can show a bend only against the ledger's curve (DS-BUDGET-CURVE: 36 / 44 / 48 GiB gave 31.8 / 27.1 / 25.3 misses a token on a 22k Hermes context; this short-prompt workload read 43.0 at 34 GiB).
+
+## Baseline
+Arm 1 (34 GiB): decode 151.6 ms a token, 43.0 misses a token, blocked 59.2, read busy 101.8, hidden share 43.3 %, top-10 share 74.2 %, layers 0/1 3.79 / 2.69 ms against 1.39. Earlier wall-on-reads line from the L2 rows: wall = 65.6 + 1.33 ms x reads.
+
+## Prediction (written before the run)
+1. 0 events dropped; misses a token 55-75 (+28 % to +75 % against 43.0): a smaller cache loses more of the working set than the ledger's gentle 36-48 GiB slope suggests, but not a collapse.
+2. Decode 175-215 ms a token (+15 % to +42 %).
+3. Blocked on experts 80-105 ms; read busy 125-165 ms; router sync stays 62-66 ms.
+4. Hidden share 35-50 % (prefetch keeps hiding what it hid; its hit rate falls a little).
+5. Top-10 layers' share of blocked at least 65 %; layers 0 and 1 stay at least 1.8x the mean of layers 2-39.
+6. Pairwise by turn, every one of the 24 turns slower than in arm 1.
+
+## Falsifier
+Misses above 86 a token (double) or decode above 240 ms: a cliff (a region, not a slope) lies between 28 and 34 GiB. Misses below 50 or decode below 160 ms: no bend in this range, the slope is the ledger's. Memory pressure or swap growth during the run is recorded from the guard's samples.
+
+## Limits
+Two budgets only; one workload (short cold prompts, which the 34 GiB hit rate of 82 % reflects, unlike a 22k agent context); not alternated; drift bound 1-2 % (replicate). A cliff shape cannot be established from two points; this arm can only falsify a smooth slope or show a bend.
+
+## Arm 4 result (measured, 2026-10-11, runtime 0.64.4)
+
+Exact decode, prefetch on, 28 GiB, 24 recorded turns, 2,452 tokens (identical text to arm 1), 0 events dropped. Guard samples: pressure 1 throughout, swap flat at 2,527 MB. Raw columns local in `benchmarks/results/l4b-raw-28gib/`.
+
+| per decode token | 34 GiB (arm 1) | 28 GiB (arm 4) |
+|---|---|---|
+| events | 301.7 | 324.3 |
+| decode (server timing) | 151.6 ms | 165.8 ms (+9.4 %; 24 of 24 turns slower, ratios 1.01-1.20, mean 1.087) |
+| misses a token | 43.0 | 51.0 (+18.6 %) |
+| router sync | 63.1 ms | 65.1 ms |
+| blocked on experts | 59.2 ms | 72.7 ms (+23 %) |
+| read busy | 101.8 ms | 119.3 ms |
+| hidden share of read busy | 43.3 % | 40.2 % |
+| top-10 layers' share of blocked | 74.2 % | 68.2 % |
+| mean blocked, layers 0 / 1 / 2-39 | 3.79 / 2.69 / 1.39 ms | 4.61 / 3.16 / 1.71 ms |
+
+## Against the prediction
+
+1. **Partly held.** 0 dropped; misses 51.0 against the predicted 55-75 (below the range, +18.6 % against +28 to +75 %).
+2. **Missed low.** Decode 165.8 against 175-215 ms (+9.4 %, predicted +15 to +42 %).
+3. **Missed low** on blocked (72.7 against 80-105) and read busy (119.3 against 125-165); router sync held (65.1, predicted 62-66).
+4. **Held.** Hidden share 40.2 % (35-50).
+5. **Held.** Top-10 share 68.2 % (at least 65), layers 0 and 1 at 2.27x the mean of layers 2-39 (at least 1.8).
+6. **Held.** All 24 turns slower.
+
+The falsifier did not fire in either direction: misses are not above 86 and decode not above 240 (no cliff in this range), and misses are not below 50 and decode not below 160 (it is not flat either; 51.0 and 165.8 are close to the lower thresholds).
+
+## Explanation (hypothesis)
+
+Between 28 and 34 GiB the cost is a slope, not a cliff: each GiB removed adds about 1.3 misses a token (8.0 over 6 GiB) and about 2.4 ms a token (14.2 ms over 6 GiB, about 1.8 ms a miss), steeper than the ledger's 0.59 misses per GiB between 36 and 48 GiB (a 22k Hermes context, a different workload) as expected below the working set, but gentler than I predicted. The structure of the wait does not change: the hidden share, the top-10 concentration and the layer 0 and 1 excess all stay close to their 34 GiB values. A cliff, if there is one, lies below 28 GiB or in the pressure/paging region above 48 GiB (DS-GPU-CLIFF), not here.
+
+## Limits
+
+Two budgets, one workload, not alternated (the replicate bounds drift at 1-2 %, much less than the 9.4 % here). Two points cannot show a bend; they show that the slope between 28 and 34 GiB is smooth: about 1.3 misses and 2.4 ms a token per GiB.
+
+## Decision
+
+No default changes. Ledger row DS-BUDGET-SLOPE-28-34. L4(c) as a region remains open below 28 GiB (a third point, for example 22 GiB, would show a bend if one exists; it needs the guard to accept it and Hamed's go).

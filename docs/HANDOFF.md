@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-11, 0.64.5): the expert budget 28 against 34 GiB, recorded per layer: a smooth slope, not a cliff
+>
+> Section 18.139, record `docs/L4B-RAW-LAYER-RECORD.md` (arm 4, prediction and falsifier written before the run). Nothing in `src/` changed. **Measured** (same 24 mixed turns, 2,452 tokens, exact decode, prefetch on, 0 dropped, no memory pressure or swap growth): 28 GiB against 34: misses a token 43.0 to 51.0 (+18.6 %), decode 151.6 to 165.8 ms (+9.4 %, 24 of 24 turns slower), blocked on experts 59.2 to 72.7, read busy 101.8 to 119.3; the structure holds (hidden share 43 to 40 %, top-10 share 74 to 68 %, layers 0 and 1 still 2.3x the rest). That is about 1.3 misses and 2.4 ms a token per GiB removed in this range, steeper than the ledger's 36-48 GiB slope but smooth: no cliff between 28 and 34 GiB. My predicted size was too large (decode +15 to +42 %). First job and open items: `docs/NEXT-SESSION-PROMPT.md` v188.
+>
 > ## Start here (2026-10-11, 0.64.4): the shipped decode miss budget 0, recorded per layer: -26 % a token, the wait falls to 16 ms, layers 0 and 1 stop waiting
 >
 > Section 18.138, record `docs/L4B-RAW-LAYER-RECORD.md` (arm 3, prediction and falsifier written before the run). Nothing in `src/` changed except that the recorder `benchmarks/token_trace_raw.py` now applies `CACHALOT_DECODE_MISS_BUDGET` (the first run did not: the knob is applied in `cli.py`, so that run became an unplanned replicate of arm 1). **Measured** (24 mixed turns, 34 GiB, prefetch on): decode 151.6 to 112.2 ms a token (-26.0 %, 24 of 24 turns faster), blocked on experts 59.2 to 16.3 ms, read busy 101.8 to 67.1, hidden share 43 % to 77 %, misses a token 43.0 to 24.2, layers 0 and 1 from 3.8 / 2.7 ms to 0.04 / 0.06. All six predictions held. The replicate bounds same-configuration process drift at 1-2 % in decode (4-7 % in blocked time), so arm 2's +10.4 % (prefetch off) is real. Output changes with budget 0; quality evidence is 18.59-18.74. First job and open items: `docs/NEXT-SESSION-PROMPT.md` v187.
@@ -9054,6 +9058,32 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.139 The raw per-layer rows at 28 GiB: the expert budget slope (0.64.5)
+
+**Goal.** Hamed: "go, record the memory cliff" (the last open regime of 18.136). Record: arm 4 of `docs/L4B-RAW-LAYER-RECORD.md`.
+
+**Baseline.** Arm 1 (34 GiB): decode 151.6 ms, 43.0 misses a token, blocked 59.2, busy 101.8, hidden share 43.3 %, top-10 74.2 %, layers 0/1 2.3x the rest. Ledger DS-BUDGET-CURVE slope 0.59 misses a GiB (36-48 GiB, a 22k context).
+
+**Prediction (written first).** Misses 55-75, decode 175-215 ms, blocked 80-105, busy 125-165, sync 62-66, hidden share 35-50 %, top-10 at least 65 %, layers 0/1 at least 1.8x, every turn slower. Falsifier: misses above 86 or decode above 240 ms (a cliff); misses below 50 or decode below 160 (no bend).
+
+**Method.** The 18.136 recorder with `--budget-gib 28`, exact decode, prefetch on, same 24 turns, under `guarded_run.sh`; same text as arm 1.
+
+**Result (measured).** 324.3 events a token, 0 dropped. Misses 51.0, decode 165.8 ms (+9.4 %, 24/24 slower, ratios 1.01-1.20), sync 65.1, blocked 72.7, busy 119.3, hidden share 40.2 %, top-10 68.2 %, layers 0 / 1 / 2-39 blocked 4.61 / 3.16 / 1.71 ms. Guard: pressure 1, swap flat.
+
+**Against the prediction.** Structure (sync, hidden share, concentration, layers 0/1, every turn slower) held; the size missed low (misses 51 against 55-75, decode +9.4 % against +15 to +42 %, blocked and busy below range). No falsifier fired.
+
+**Explanation (hypothesis).** A smooth slope of about 1.3 misses and 2.4 ms (about 1.8 ms a miss) per GiB removed between 28 and 34 GiB. A cliff, if any, is below 28 GiB or in the GPU-allocation region above 48 GiB (18.52), not here.
+
+**Limits.** Two budgets, one workload, not alternated (drift bound 1-2 %); two points cannot show a bend.
+
+**What shipped.** Record arm 4 and ledger row DS-BUDGET-SLOPE-28-34. No default, output or numerics change; no Lab brief.
+
+**Bottleneck after.** Unchanged.
+
+**Open.** A third budget below 28 GiB (for example 22 GiB) would show a bend if there is one; the prefetch pair at 48 GiB; the router-sync reconciliation of 18.138.
+
+**Kind.** Research (predicted, measured, explained as hypothesis): the structure predictions held, the size was over-predicted, no falsifier fired.
 
 ### 18.138 The raw per-layer rows with the shipped decode miss budget 0 (0.64.4)
 

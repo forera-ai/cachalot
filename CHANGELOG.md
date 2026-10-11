@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.64.5 (2026-10-11)
+
+HANDOFF "Start here (2026-10-11, 0.64.5)" and section 18.139; arm 4 of `docs/L4B-RAW-LAYER-RECORD.md`, prediction and falsifier written before the run. Measurement only; nothing in `src/` changed.
+
+### Measured
+- The 18.136 recording at a 28 GiB expert budget against 34 GiB (same 24 mixed turns, exact decode, prefetch on, no memory pressure): misses a token 43.0 to 51.0 (+18.6 %), decode 151.6 to 165.8 ms (+9.4 %, all 24 turns slower), blocked on experts 59.2 to 72.7 ms, read busy 101.8 to 119.3. The hidden share (43 to 40 %), the top-10 layers' share (74 to 68 %) and the layer 0 and 1 excess (2.3x) hold. About 1.3 misses and 2.4 ms a token per GiB removed in this range: a smooth slope, no cliff between 28 and 34 GiB.
+
 ## 0.64.4 (2026-10-11)
 
 HANDOFF "Start here (2026-10-11, 0.64.4)" and section 18.138; arm 3 of `docs/L4B-RAW-LAYER-RECORD.md`, prediction and falsifier written before the run. Measurement and an instrument fix; nothing in `src/` changed.

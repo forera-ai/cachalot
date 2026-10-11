@@ -297,6 +297,8 @@ reproducible to ±0.3 %.
 
 **0.60.7 (2026-10-06): review fixes.** The run manifest no longer records credentials such as `CACHALOT_API_KEY` by value, and its Hermes Desktop check needs one process line. HANDOFF section 18.73.
 
+**0.64.5 (2026-10-11): the expert budget, 28 against 34 GiB.** Taking 6 GiB off the expert cache adds 8 misses a token (43 to 51) and 14 ms a token (151.6 to 165.8, +9 %) with the same structure per layer: a smooth slope of about 2.4 ms a GiB, not a cliff. Nothing in the runtime changed. HANDOFF section 18.139.
+
 **0.64.4 (2026-10-11): the shipped decode miss budget, by layer.** Recorded on the same 24 turns at 34 GiB: budget 0 takes a decode token from 151.6 to 112.2 ms (-26 %, every turn faster); the wait for experts falls from 59 to 16 ms and the token is then mostly router sync (66 ms). It changes outputs (quality evidence in HANDOFF 18.59-18.74). Nothing in the runtime changed. HANDOFF section 18.138.
 
 **0.64.3 (2026-10-11): what decode prefetch is worth, by layer.** Switching it off at a 34 GiB budget (43 misses a token) slows every one of 24 turns, 151.6 to 167.3 ms a token (+10 %): it hides about 25 ms of waiting for experts at the cost of about 20 ms of unused speculative reads. At 48 GiB with fewer misses it was nearly neutral. Nothing in the runtime changed. HANDOFF section 18.137.
