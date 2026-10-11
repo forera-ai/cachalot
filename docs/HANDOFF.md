@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-11, 0.63.0): the energy meter (route 1), off by default: joules per request and per token in `/v1/stats`, `usage.cachalot.energy` and the `[request]` line
+>
+> Section 18.129, Lab brief `docs/lab/briefs/2026-10-11-runtime-0.63.0.md`. **New, `CACHALOT_ENERGY=1` (default off, all three model families):** a sampler thread reads the SMC's whole-system power (`PSTR`, no root) and the IOReport energy counters once a second; `src/cachalot/metrics/energy.py` keeps cumulative joules in a ring, so a request gets its energy from two clock readings and a lookup (no syscall, no GPU work on the decode path). `/v1/stats.energy`, `usage.cachalot.energy` (request and decode windows, joules per output token) and ` J/tok= W=` in the `[request]` line. The component counters (CPU, GPU, ANE, DRAM, DCS, AMCC) are `available: false` unless Hamed's root `powermetrics` is running beside the server; system energy works without it. The IOReport and SMC readers moved from `benchmarks/power_sources.py` into `src/cachalot/metrics/power_sources.py`. Checked: 605 tests pass (9 new), and a live DeepSeek server with the knob on returned a request report and a stats object (system only, no sampler). **Not measured:** the meter's own cost on a decode token (the work off the hot path is one `time.time()` pair and a ring lookup; a server A/B has not been run) and a live read with the sampler beside it (the GLM and MiniMax arms next will be the first). Output unchanged; no numerics change.
+>
 > ## Start here (2026-10-11, 0.62.41): the model's own quantized kernels, run alone, draw the unexplained decode power; the fit is ~15 % short for them
 >
 > Section 18.128, record `docs/E3F-REAL-KERNELS-RECORD.md` (hypotheses, predictions and falsifier committed first, `d7e6ff3`). **Measured, no model loaded:** the trunk's FP8 GEMV and the experts' 2-bit `quantized_matmul` on random buffers, read once per "token" with a sync per layer at decode's cadence (TOK-80, 95 GB/s of weights, `benchmarks/kernel_power.py`) draw **+9.0 W** above the E1b component fit (both passes above +8; decode: +10.9 server, +11.5 in-process). H-real-kernels held, H-rest-of-model falsified. So the ~11 W of 18.123-18.127 is mostly the kernels' own draw against a fit made on bf16 and streaming loads; the resident 62 GiB and the rest of the model are not needed. **Derived (post hoc):** the fit's error is 14-16 % of PSTR in every real-kernel load and in decode (TOK-80 14.8 %, TOK 14.9, TOK-NS 14.6, FP8 13.9, Q2 14.3, decode 15.3-15.7). Four of five secondary point predictions missed (rates and loads above decode's). Next: E4 and the Lab brief (Hamed: route 1 or 2), then the GLM and MiniMax arms with the ratio as a prediction; an optional bf16 control. Nothing in `src/` changed.
@@ -9014,6 +9018,22 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.129 Power accounting, step E4, route 1: the energy meter in the server (0.63.0)
+
+**Goal.** Hamed's directive (2026-10-10) that energy per token be monitored in Cachalot Lab, and his choice of route 1 (the runtime reads the sources itself) for it.
+
+**What shipped (engineering; off by default, outputs unchanged).** `CACHALOT_ENERGY=1`: `cachalot.metrics.energy.EnergyMeter` (a daemon thread sampling at `CACHALOT_ENERGY_INTERVAL`, default 1 s, SMC `PSTR` and the IOReport "Energy Model" counters; cumulative joules by trapezoid and by counter difference in a ring of 7,200 samples). `Engine` and `GlmEngine` (which also serves MiniMax) take the energy between the clock times at the start of the request's turn on the lock and at its end, and between the last `decode_seconds` and the end for the decode figure. Exposed as `/v1/stats.energy`, `usage.cachalot.energy` (non-stream and stream), and ` J/tok=` and ` W=` in `[request]`. The contract and its caveats are in the Lab brief. The readers moved to `src/cachalot/metrics/power_sources.py`; `benchmarks/power_sources.py` imports them.
+
+**Design rules held.** Unavailable is `available: false` with a reason, never zero. Components are only reported while the DRAM counter has moved in the last five intervals (a root `powermetrics` beside the server). Every figure carries its source and tag. Nothing runs on the decode path but two `time.time()` calls and a lookup after the last token. The meter cannot raise into a request (every sample and report is guarded).
+
+**Verified.** 605 tests (new `tests/test_energy.py`: interpolation, windows outside the samples, frozen DRAM counter, stale samples, the decode window and the log fields, bounded history, usage and stats only when the meter is on). A live DeepSeek server with the knob on: a 7-token request reported 135.2 J over 2.85 s (47.4 W) and 7.20 J a token for its 0.89 s of decode, `components` unavailable (no sampler up), stats shaped as in the brief.
+
+**Limits.** A request shorter than a few intervals has up to one interval of error at each end (the 7-token request above: its decode window of 0.89 s was a single sample interval); system watts include everything else on the machine; no SSD or DRAM-transport figure exists in the runtime (derived offline in 18.119-18.125); the meter's cost on a token was not measured with a server A/B; the component counters need Hamed's root sampler.
+
+**Kind.** Engineering (instrument). No prediction on file, no default and no output changed.
+
+**Next.** The GLM and MiniMax energy arms (18.130), the first live reads with the sampler beside the meter.
 
 ### 18.128 Power accounting, step E3f: the model's own kernels, run alone (0.62.41)
 

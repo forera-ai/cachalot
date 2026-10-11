@@ -297,6 +297,8 @@ reproducible to ±0.3 %.
 
 **0.60.7 (2026-10-06): review fixes.** The run manifest no longer records credentials such as `CACHALOT_API_KEY` by value, and its Hermes Desktop check needs one process line. HANDOFF section 18.73.
 
+**0.63.0 (2026-10-11): energy per request and per token.** New and off by default, `CACHALOT_ENERGY=1` makes the server report the system energy of each request and its joules per output token (`/v1/stats`, `usage.cachalot.energy`, the `[request]` line), from the SMC's whole-system power; the SoC component counters are added while a root `powermetrics` runs beside the server. Outputs are unchanged. HANDOFF section 18.129, Lab brief `docs/lab/briefs/2026-10-11-runtime-0.63.0.md`.
+
 **0.62.41 (2026-10-11): it is the kernels.** The model's own FP8 and 2-bit kernels, run alone with no model at decode's weight rate and cadence, draw 9.0 W above the component power fit (decode itself: 10.9-11.5 W), so most of the previously unexplained decode power is the quantized kernels' draw, about 15 % more than a fit calibrated on bf16 and streaming loads names. The system-power reading (`PSTR`) is the total to use. HANDOFF section 18.128, `docs/E3F-REAL-KERNELS-RECORD.md`.
 
 **0.62.40 (2026-10-11): nor is it the server.** Driving the DeepSeek decode kernels in one process without the server, the all-resident decode still draws 11.5 W above the component fit (10.9 W through the server), at 79.3 ms and 5.79 J a token; prefill alone sits 7.8 W above it. The unexplained power follows the model's real GPU work, and the server, the drive, the prediction and the read pattern are excluded; the kernels against the resident memory is the remaining split. HANDOFF section 18.127, `docs/E3E-INPROC-KERNELS-RECORD.md`.

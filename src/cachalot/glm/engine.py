@@ -232,6 +232,7 @@ class GlmEngine:
     tokens_generated: int = 0
     started_at: float = field(default_factory=time.time)
     images_served: int = 0
+    energy: Any = None  # cachalot.metrics.energy.EnergyMeter when CACHALOT_ENERGY=1 (0.63.0), else None
 
     def __post_init__(self):
         self.tokenizer = self.model.tokenizer
@@ -279,6 +280,7 @@ class GlmEngine:
         with self._lock:
             if cancel is not None and cancel.is_set():
                 return
+            t_energy0 = time.time()
             prompt, spans = self._encode_with_images(req)
             self.images_served += len(spans)
             boundary = self.system_prefix_len(req, prompt)
@@ -364,8 +366,10 @@ class GlmEngine:
                     self.requests_served += 1
                     self.tokens_generated += n_out
                     dump_reply(prompt, splitter.tokens, reused)
+                    energy = (self.energy.request_report(t_energy0, time.time(), event[2], n_out)
+                              if self.energy is not None else None)
                     _log_request(len(prompt), reused, prefill_s, n_out, event[2], finish, len(spans), 0,
-                                 self._expert_counts(), decode_start)
+                                 self._expert_counts(), decode_start, energy=energy)
                     yield Delta(
                         content=tail.content,
                         reasoning=tail.reasoning,
@@ -376,6 +380,7 @@ class GlmEngine:
                         reused_prefix_tokens=reused,
                         prefill_seconds=prefill_s,
                         decode_seconds=event[2],
+                        energy=energy,
                     )
 
     def chat(self, req: ChatRequest) -> ChatOutput:
@@ -401,12 +406,13 @@ class GlmEngine:
             prefill_seconds=last.prefill_seconds,
             decode_seconds=last.decode_seconds,
             raw_text="".join(content),
+            energy=last.energy,
         )
 
     def stats(self) -> dict[str, Any]:
         store = self.model.store
         s = store.stats()
-        return {
+        out = {
             "model": self.model_id,
             "uptime_seconds": time.time() - self.started_at,
             "requests_served": self.requests_served,
@@ -432,3 +438,6 @@ class GlmEngine:
             # experts a GLM decode miss budget dropped (0.62.14; always 0 with the budget off)
             "skipped_experts": store.skipped_experts,
         }
+        if self.energy is not None:
+            out["energy"] = self.energy.stats()
+        return out

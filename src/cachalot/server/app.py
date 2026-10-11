@@ -241,7 +241,7 @@ def create_app(engine: Engine, config: ServerConfig | None = None) -> FastAPI:
         )
 
     def usage(d: Delta) -> dict[str, Any]:
-        return {
+        u = {
             "prompt_tokens": d.prompt_tokens,
             "completion_tokens": d.completion_tokens,
             "total_tokens": d.prompt_tokens + d.completion_tokens,
@@ -252,6 +252,9 @@ def create_app(engine: Engine, config: ServerConfig | None = None) -> FastAPI:
                 "decode_tok_per_s": round(d.completion_tokens / d.decode_seconds, 3) if d.decode_seconds else None,
             },
         }
+        if d.energy is not None:  # CACHALOT_ENERGY=1 only; absent otherwise (0.63.0)
+            u["cachalot"]["energy"] = d.energy
+        return u
 
     async def run_stream(request: Request, produce, sse_chunk, model_name: str, include_usage: bool,
                          keepalive_chunk: dict | None = None):
@@ -375,6 +378,7 @@ def create_app(engine: Engine, config: ServerConfig | None = None) -> FastAPI:
             reused_prefix_tokens=out.reused_prefix_tokens,
             prefill_seconds=out.prefill_seconds,
             decode_seconds=out.decode_seconds,
+            energy=out.energy,
         )
         return {
             "id": rid,

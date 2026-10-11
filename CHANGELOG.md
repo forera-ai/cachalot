@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.63.0 (2026-10-11)
+
+HANDOFF "Start here (2026-10-11, 0.63.0)" and section 18.129; Lab brief `docs/lab/briefs/2026-10-11-runtime-0.63.0.md`. A new off-by-default knob; outputs and numerics unchanged, no snapshot bump.
+
+### Added
+- **`CACHALOT_ENERGY=1`** (with `CACHALOT_ENERGY_INTERVAL`, default 1 s): an energy meter for all three model families. A sampler thread reads the SMC's whole-system power and the IOReport energy counters; a request's energy is the integral between two clock readings. Reported in `/v1/stats` (`energy`), `usage.cachalot.energy` (the request window and the decode window, with joules per output token and mean watts) and as ` J/tok= W=` in the `[request]` line. System energy needs no root; the component counters (CPU, GPU, ANE, DRAM, DCS, AMCC) are reported only while a root `powermetrics` runs beside the server and are `available: false` with a reason otherwise. Every figure carries its source and the tag `measured`.
+- `src/cachalot/metrics/energy.py` and `src/cachalot/metrics/power_sources.py` (the IOReport and SMC readers, moved from `benchmarks/power_sources.py`, which imports them); `tests/test_energy.py`.
+
+### Verified, not measured
+- 605 tests; a live DeepSeek server with the knob on returned a request report and a stats object (system only). The meter's cost on a decode token and a live read with the sampler beside it have not been measured yet.
+
 ## 0.62.41 (2026-10-11)
 
 HANDOFF "Start here (2026-10-11, 0.62.41)" and section 18.128; the record is `docs/E3F-REAL-KERNELS-RECORD.md`, its hypotheses, predictions and falsifier committed before the run (`d7e6ff3`). Measurement and an instrument; nothing in `src/` besides the version string changed.

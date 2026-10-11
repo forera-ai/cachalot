@@ -285,6 +285,16 @@ def cmd_serve(args) -> None:
             model.runtime.set_tracer(tracer)
             print(f"routing trace on: {trace_path} (saved at exit; weights cost a device read per layer)",
                   file=sys.stderr, flush=True)
+    from cachalot.metrics.energy import EnergyMeter
+
+    meter = EnergyMeter.from_env()
+    if meter is not None:
+        # HANDOFF 18.129: off by default. A sampler thread reads the SMC's system power and the IOReport energy counters once a second;
+        # requests ask it for the energy between two clock times (no GPU work, no syscall on the decode path).
+        engine.energy = meter.start()
+        print("energy meter on (CACHALOT_ENERGY=1): system power from SMC PSTR; component counters advance only while a root powermetrics "
+              "samples beside the server; /v1/stats energy, usage.cachalot.energy, [request] J/tok",
+              file=sys.stderr, flush=True)
     app = create_app(
         engine,
         ServerConfig(

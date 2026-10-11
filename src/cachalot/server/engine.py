@@ -19,6 +19,7 @@ from dataclasses import dataclass, field, replace
 from typing import Any
 
 from cachalot.model.api import V41Model
+from cachalot.metrics.energy import log_fields
 from cachalot.model.generation import (
     SamplingParams,
     load_official_encoding,
@@ -58,6 +59,7 @@ class Delta:
     reused_prefix_tokens: int = 0
     prefill_seconds: float = 0.0
     decode_seconds: float = 0.0
+    energy: dict[str, Any] | None = None  # CACHALOT_ENERGY=1: the request's energy report (final delta only)
 
 
 @dataclass
@@ -70,6 +72,7 @@ class ChatOutput:
     prefill_seconds: float
     decode_seconds: float
     raw_text: str
+    energy: dict[str, Any] | None = None
 
 
 class _TextSplitter:
@@ -198,6 +201,7 @@ class Engine:
     vision_enabled: bool = True
     _vision: Any = None
     images_served: int = 0
+    energy: Any = None  # cachalot.metrics.energy.EnergyMeter when CACHALOT_ENERGY=1 (0.63.0), else None
     # Recent replies, for splicing the model's own tokens back into a
     # client's re-rendered history (see _splice_own_replies).
     _own_replies: deque = field(default_factory=lambda: deque(maxlen=64))
@@ -381,6 +385,7 @@ class Engine:
             if cancel is not None and cancel.is_set():
                 # the client left while this request was queued
                 return
+            t_energy0 = time.time()
             if self.system_date is not None:
                 messages, note = self.system_date.apply(req.messages)
                 if note:
@@ -472,12 +477,14 @@ class Engine:
                         # ended on EOS, so a client's history renders it as
                         # reply + EOS: a candidate for the next turn's splice
                         self._remember_reply(prompt_tokens, splitter.tokens, splitter.text, req.thinking_mode)
+                    energy = (self.energy.request_report(t_energy0, time.time(), event.decode_seconds, len(splitter.tokens))
+                              if self.energy is not None else None)
                     _log_request(
                         n_prompt, reused, prefill_seconds, len(splitter.tokens),
                         event.decode_seconds, finish,
                         len(images.spans) if images is not None else 0,
                         self.replies_spliced - spliced_before,
-                        self._expert_counts(), decode_start,
+                        self._expert_counts(), decode_start, energy=energy,
                     )
                     yield Delta(
                         content=tail.content,
@@ -489,6 +496,7 @@ class Engine:
                         reused_prefix_tokens=reused,
                         prefill_seconds=prefill_seconds,
                         decode_seconds=event.decode_seconds,
+                        energy=energy,
                     )
 
     def chat(self, req: ChatRequest) -> ChatOutput:
@@ -516,6 +524,7 @@ class Engine:
             prefill_seconds=last.prefill_seconds,
             decode_seconds=last.decode_seconds,
             raw_text="".join(content),
+            energy=last.energy,
         )
 
     def stats(self) -> dict[str, Any]:
@@ -533,6 +542,8 @@ class Engine:
                 "vision_rows_reused": self._vision.cache_hits if self._vision is not None else 0,
             }
         )
+        if self.energy is not None:
+            s["energy"] = self.energy.stats()
         return s
 
 
@@ -551,7 +562,7 @@ def _mlx_memory() -> str:
 
 
 def _log_request(prompt, reused, prefill_s, completion, decode_s, finish, n_images, spliced=0,
-                 experts_end=None, experts_start=None):
+                 experts_end=None, experts_start=None, energy=None):
     """One stderr line per request: where the time went, for agent sessions.
     miss/tok is expert-cache misses per decoded token, which is what decode
     speed follows (HANDOFF section 15.5). read= is the mean wall time of one
@@ -572,7 +583,7 @@ def _log_request(prompt, reused, prefill_s, completion, decode_s, finish, n_imag
     print(
         f"[request] prompt={prompt} reused={reused} prefilled={prompt - reused} "
         f"prefill={prefill_s:.2f}s completion={completion} decode={decode_s:.2f}s "
-        f"({tps:.2f} tok/s) images={n_images} spliced={spliced}{misses} finish={finish}{_mlx_memory()}",
+        f"({tps:.2f} tok/s) images={n_images} spliced={spliced}{misses}{log_fields(energy)} finish={finish}{_mlx_memory()}",
         file=sys.stderr,
         flush=True,
     )
