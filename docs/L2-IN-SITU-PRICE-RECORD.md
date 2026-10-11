@@ -85,3 +85,34 @@ One machine, one build, one display state; the drift check is the control and th
 ## Kind
 
 Research (predicted, measured, explained in part): the point estimates of the overhead held, the event count and the workload precondition were missed, the planned estimator failed and was replaced by a position-matched one (post hoc), and the pre-registered stop rule is not met on the mixed arm by interval width. Also an instrument (`TokenTrace`, hooks in the DeepSeek decode path, off unless installed).
+
+## Addendum 2026-10-11 (second session hour): the certifying arm, prediction written before the run
+
+**Baseline.** The first run's mixed arm gave +0.449 ms (95 % turn bootstrap -0.239 to +1.214) from 11 turns; turn-to-turn range -1.6 to +3.2 ms.
+
+**Question.** Is the matched cost on a miss-bearing workload under the 1.0 ms stop rule, with the upper bound of its interval under 1.0?
+
+**Method.** Same script and estimator (`token_trace_price.py`, position-matched), mixed workload only: 30 turns in each of p0 and p1 (twelve prompts, the first eighteen turns repeat prompts 0-5 on a warmer cache), a 10-turn control pass, the 4-turn tracer-free text check, 160-token greedy replies. Budget: the largest the memory guard allows (the first run passed at 38 GiB and was refused at 40). The previous estimate of "about 12 minutes" omitted the second parity pass and the control; the arm is about 27 minutes plus the model load.
+
+**Prediction.** Matched cost +0.35 ms (planning interval 0.0 to +0.8); 95 % turn-bootstrap upper bound between +0.6 and +0.95 (the turn-to-turn sd of about 1.3 ms divided by the square root of 30 gives a half-width of about 0.5 ms). Generated text identical in all traced turns that have a tracer-free twin.
+
+**Falsifier / stop rule (unchanged).** Upper bound above 1.0 ms: the tracer is sampled, not continuous. Any text difference: stop and find the hook. Null contrast (p0 odd positions against the control pass) outside +-12 ms: the machine drifted too much and the arm is void.
+
+### Addendum result (run 2026-10-11 18:43-19:07, 34 GiB; the memory guard refused 38 that evening with 64.3 GiB available)
+
+Mixed workload, 30 turns planned in each of p0 and p1 (27 usable: three replies ended before 20 positions matched), a 10-turn control pass, 4 tracer-free text turns, 160-token greedy replies. Misses a token 44.2, token 153.7-155.1 ms, 294 events and 66.3 reads a token.
+
+| quantity | value |
+|---|---|
+| **matched tracer cost a decode token** | **+0.554 ms (95 % turn bootstrap +0.051 to +1.114)**, median +0.233, 27 turns |
+| pass-to-pass difference cancelled (p0 odd positions against the control pass) | -2.36 ms (-5.31 to -0.09); inside the +-12 ms limit |
+| text equal to the tracer-free text of the same prompt | 12 of 12 |
+| router sync / blocked in `get_many` / read busy / hidden read | 62.4 / 62.8 / 104.4 / 43.1 ms |
+| blocked / read busy | 0.60 |
+| events dropped | 0 |
+
+**Against the prediction.** Point estimate +0.55 against +0.35 (inside the planning interval 0.0 to +0.8): held. The upper bound **+1.11 against the predicted 0.6-0.95: missed**, because the turn-to-turn spread was larger than the 1.3 ms I assumed. Text: held. Null contrast: held.
+
+**Verdict on the falsifier, plainly.** The upper bound (+1.11) is above the 1.0 ms stop rule, and the lower bound (+0.05) excludes zero. The rule as written says the tracer is sampled, not continuous. The cost is now known to be real and about half a millisecond (0.36 % of a 154 ms token, 0.7 % of the 80 ms floor), which is 1.9 microseconds an event at 294 events, 4 times the 0.5 microseconds the simulated token showed under contention. The pre-registered rule is not met; I am not reinterpreting it. What follows from it: when the `CACHALOT_TOKEN_TRACE` knob is built, the default should be sampled (every 4th decode token would cost about 0.14 ms a token averaged), with continuous recording as an explicit opt-in whose cost is stated as +0.55 ms (up to 1.1). That default is Hamed's call.
+
+Exposed against hidden at 34 GiB: 60 % of read-busy time is exposed (first run 57 % at 38 GiB), the same within the run-to-run spread.

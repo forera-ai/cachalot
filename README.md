@@ -297,6 +297,8 @@ reproducible to ±0.3 %.
 
 **0.60.7 (2026-10-06): review fixes.** The run manifest no longer records credentials such as `CACHALOT_API_KEY` by value, and its Hermes Desktop check needs one process line. HANDOFF section 18.73.
 
+**0.63.4 (2026-10-11): the tracer's cost, measured on 30 turns.** The per-token trace adds +0.55 ms a decode token (95 % +0.05 to +1.11) on a miss-heavy workload at a 34 GiB budget, about 0.4 % of a token and about 1.9 microseconds an event, with the generated text unchanged. The upper end is above the 1.0 ms limit the experiment was registered with, so it is not certified as continuous-safe; a sampled default is the proposed next step. HANDOFF section 18.133.
+
 **0.63.3 (2026-10-11): a per-token trace for DeepSeek decode, and what it costs.** A tracer that stamps each layer's router sync, the main thread's wait for experts and every drive read now exists (off unless a benchmark installs it). Inside a real server token it adds about 0.1 to 0.5 ms (0.3 % of a token; the interval on the busier workload reaches 1.2 ms, so it is not yet certified under 1 ms), and it changes no output. First reading with it, at a 38 GiB expert budget: of a 127-144 ms token, the drive is busy 72-90 ms and 57 % of that time the main thread is waiting on it. HANDOFF section 18.132.
 
 **0.63.2 (2026-10-11): the energy meter's component figures are confirmed.** With the meter and an independent logger sampling a DeepSeek server, the meter's DRAM and GPU joules agree with the logger to a median 1.1 % (the earlier -7.9 % bias is gone) and its system joules to 0.2 %. Its cost on a decode token is not yet priced (the test arm I ran did not stay resident, and the record says so). HANDOFF section 18.131, `docs/E3H-METER-RERUN-RECORD.md`.

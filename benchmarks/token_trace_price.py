@@ -46,7 +46,7 @@ MIXED = [
 ]
 
 
-def run(out: Path, tokens: int, resident_turns: int, mixed_turns: int, budget_gib: float) -> None:
+def run(out: Path, tokens: int, resident_turns: int, mixed_turns: int, budget_gib: float, ctl_turns: int | None = None) -> None:
     import pareto
 
     pareto.serve_defaults()
@@ -92,14 +92,15 @@ def run(out: Path, tokens: int, resident_turns: int, mixed_turns: int, budget_gi
 
     # warm: the first turn loads the experts it needs and prefills; not analysed
     turn("resident", "base", RESIDENT_PROMPT, -1)
-    turn("resident", "base", RESIDENT_PROMPT, 0)
+    if resident_turns:
+        turn("resident", "base", RESIDENT_PROMPT, 0)
     for cond in ("p0", "p1", "ctl"):
-        for i in range(resident_turns):
+        for i in range(resident_turns if cond != "ctl" or ctl_turns is None else min(ctl_turns, resident_turns)):
             turn("resident", cond, RESIDENT_PROMPT, i)
     for i in range(4):
         turn("mixed", "base", MIXED[i], i)
     for cond in ("p0", "p1", "ctl"):
-        for i in range(mixed_turns):
+        for i in range(mixed_turns if cond != "ctl" or ctl_turns is None else min(ctl_turns, mixed_turns)):
             turn("mixed", cond, MIXED[i % len(MIXED)], i)
     rt.set_token_trace(None)
     model.close()
@@ -138,16 +139,19 @@ def matched_estimate(rows: list[dict]) -> dict[str, np.ndarray]:
         null_vals: list[float] = []
         for t in sorted({r["turn"] for r in rows if r["workload"] == wl and r["cond"] == "p0"}):
             g = {c: next((r for r in rows if r["workload"] == wl and r["cond"] == c and r["turn"] == t), None) for c in ("p0", "p1", "ctl")}
-            if any(v is None for v in g.values()):
+            if g["p0"] is None or g["p1"] is None:
                 continue
-            w = {c: _walls(g[c]) for c in g}
-            ks = sorted(set(w["p0"]) & set(w["p1"]) & set(w["ctl"]))
+            w = {c: _walls(g[c]) for c in g if g[c] is not None}
+            ks = sorted(set(w["p0"]) & set(w["p1"]))
             if len(ks) < 20:
                 continue
             d = np.array([w["p0"][k] - w["p1"][k] for k in ks])
             ev = np.array([k % 2 == 0 for k in ks])
             t_vals.append((d[ev].mean() - d[~ev].mean()) / 2)
-            null_vals.append(np.mean([w["p0"][k] - w["ctl"][k] for k, e in zip(ks, ev) if not e]))
+            if "ctl" in w:  # the control pass may be shorter than the others
+                kc = [k for k, e in zip(ks, ev) if not e and k in w["ctl"]]
+                if len(kc) >= 10:
+                    null_vals.append(np.mean([w["p0"][k] - w["ctl"][k] for k in kc]))
         out[wl] = np.array(t_vals)
         out[wl + "_null"] = np.array(null_vals)
     return out
@@ -202,13 +206,16 @@ def report(path: Path) -> None:
     print("\n== position-matched estimate of the tracer's cost on a decode token (estimator of record)")
     for wl in ("resident", "mixed"):
         t, nl = est[wl], est[wl + "_null"]
+        if len(t) < 2:
+            continue
         lo, hi = _boot_mean(t)
-        nlo, nhi = _boot_mean(nl)
+        nlo, nhi = _boot_mean(nl) if len(nl) > 1 else (float("nan"), float("nan"))
         print(f"{wl}: {len(t)} turns, T = {t.mean():+.3f} ms (95 % turn bootstrap {lo:+.3f} to {hi:+.3f}), median {np.median(t):+.3f}; "
               f"pass-to-pass difference the estimator cancels (p0 against ctl, both unrecorded) {nl.mean():+.2f} ms ({nlo:+.2f} to {nhi:+.2f})")
     both = np.concatenate([est["resident"], est["mixed"]])
     blo, bhi = _boot_mean(both)
-    print(f"pooled over both workloads (post hoc, not pre-registered): {len(both)} turns, T = {both.mean():+.3f} ms ({blo:+.3f} to {bhi:+.3f})")
+    if len(est["resident"]) and len(est["mixed"]):
+        print(f"pooled over both workloads (post hoc, not pre-registered): {len(both)} turns, T = {both.mean():+.3f} ms ({blo:+.3f} to {bhi:+.3f})")
 
 
 def main() -> None:
@@ -219,6 +226,7 @@ def main() -> None:
     ap.add_argument("--tokens", type=int, default=160)
     ap.add_argument("--resident-turns", type=int, default=6)
     ap.add_argument("--mixed-turns", type=int, default=12)
+    ap.add_argument("--ctl-turns", type=int, default=None, help="turns in the control pass (default: as many as the other passes)")
     args = ap.parse_args()
     sys.path.insert(0, str(REPO / "src"))
     if args.report:
@@ -227,7 +235,7 @@ def main() -> None:
         if not args.out:
             ap.error("--out is required to run")
         Path(args.out).parent.mkdir(parents=True, exist_ok=True)
-        run(Path(args.out), args.tokens, args.resident_turns, args.mixed_turns, args.budget_gib)
+        run(Path(args.out), args.tokens, args.resident_turns, args.mixed_turns, args.budget_gib, args.ctl_turns)
 
 
 if __name__ == "__main__":

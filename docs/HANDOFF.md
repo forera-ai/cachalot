@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-11, 0.63.4): the tracer's cost on 30 turns: +0.55 ms a token (+0.05 to +1.11), the 1.0 ms rule is not met
+>
+> Section 18.133, addendum to `docs/L2-IN-SITU-PRICE-RECORD.md` (prediction first). **Mixed workload, 34 GiB (the guard refused 38), 27 usable turns, position-matched:** **+0.554 ms a decode token (95 % +0.051 to +1.114)**, text identical in 12 of 12 turns. The upper bound is above the registered stop rule, so the continuous tracer is **not certified**; the lower bound excludes zero, so the cost is real (about 1.9 microseconds an event at 294 events a token, 4 times the simulated token's contended cost). My predicted upper bound (0.6-0.95) was missed; the point estimate (+0.35 predicted) held inside its interval. Exposed share of read time 60 %. **Hamed's call:** the default of the future `CACHALOT_TOKEN_TRACE` knob: sampled every 4th token (about 0.14 ms averaged) with continuous as an opt-in, or continuous at +0.55 ms.
+>
 > ## Start here (2026-10-11, 0.63.3): the per-token trace for DeepSeek decode, built and priced inside a real server token
 >
 > Section 18.132, record `docs/L2-IN-SITU-PRICE-RECORD.md` (predictions written before the build and the run). **New, off unless installed:** `cachalot.metrics.token_trace.TokenTrace` with hooks at the router sync, `get_many`, every drive read (worker threads) and the token boundary; `V41Runtime.set_token_trace(trace)`; no CLI knob yet. **Price, inside `Engine.chat` (38 GiB; the memory guard refused 48 and 40):** position-matched, +0.095 ms (95 % -0.28 to +0.42) a decode token at 24.8 misses and +0.449 ms (-0.24 to +1.21) at 42.4; pooled post hoc +0.32 (-0.17 to +0.84); text identical on and off in 15 of 15 turns. **The pre-registered stop rule is not met on the mixed arm** (its interval cannot exclude 1.0 ms), so the tracer is likely cheap but not certified; a 30-turn mixed arm (about 12 minutes of decode) would settle it. **Missed predictions:** the "resident" workload was not resident (24.8 misses a token, the lesson of 18.131 not applied); events a token were 256-280 not 340-420; the planned adjacent-token pairing could not resolve the effect (sd 24 ms, a ~2.5 ms parity effect, 6-8 ms between two unrecorded passes) and a position-matched estimator, chosen after seeing that, replaced it. **First reading it gives:** of a 127-144 ms token, router sync ~59-63 ms, main thread blocked on reads 41-52 ms, drive busy 72-90 ms on 48-60 reads, 57 % of the read time exposed. Nothing needs Hamed.
@@ -9030,6 +9034,30 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.133 The tracer's cost on 30 turns: +0.55 ms a decode token, the stop rule not met (0.63.4)
+
+**Goal.** Hamed: "go, run the 30-turn certifying arm" (the open item (a) of 18.132). Record: the addendum of `docs/L2-IN-SITU-PRICE-RECORD.md`.
+
+**Baseline.** 18.132: +0.449 ms (-0.239 to +1.214), 11 mixed turns.
+
+**Prediction (written first, in the addendum).** Matched cost +0.35 ms (0.0 to +0.8), upper bound 0.6-0.95, text identical; stop rule: upper bound above 1.0 ms.
+
+**Method.** `benchmarks/token_trace_price.py --resident-turns 0 --mixed-turns 30 --ctl-turns 10 --budget-gib 34` under `guarded_run.sh` (38 GiB was refused: 64.3 GiB available); the same position-matched estimator. About 24 minutes plus the model load, against my announcement of 27.
+
+**Result (measured).** +0.554 ms (+0.051 to +1.114), median +0.233, 27 turns; null -2.36 ms (-5.31 to -0.09); text 12 of 12 equal; 294 events, 66.3 reads, 44.2 misses a token; sync 62.4, blocked 62.8, read busy 104.4, hidden 43.1 ms; 60 % exposed.
+
+**Against the prediction.** Point estimate and text held; the upper bound (1.11) missed the predicted 0.6-0.95 because the turn-to-turn spread exceeded 1.3 ms. **The stop rule is not met.**
+
+**Explanation (hypothesis).** 0.55 ms over 294 events is 1.9 microseconds an event, 4 times the contended cost in the simulated token (0.5): a real token's GIL contention with MLX's host thread and the worker pool is heavier than the simulation. Not separated by event type.
+
+**Limits.** One machine, one budget (34 GiB), one workload family, 27 turns; the earlier run at 38 GiB is consistent (+0.449) but its interval is wider. The estimator was chosen post hoc in 18.132 and used unchanged here.
+
+**Bottleneck after.** Unchanged.
+
+**Kind.** Research (predicted, measured, explained as hypothesis); the prediction's upper bound missed and the registered stop rule is not met.
+
+**Open.** The knob's default (sampled against continuous) is Hamed's call; then `CACHALOT_TOKEN_TRACE` and the `/v1/stats` summary (a Lab brief), and L4(b).
 
 ### 18.132 L2 per-token trace for DeepSeek decode: built, and priced inside a real server token (0.63.3)
 

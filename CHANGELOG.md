@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.63.4 (2026-10-11)
+
+HANDOFF "Start here (2026-10-11, 0.63.4)" and section 18.133; the addendum to `docs/L2-IN-SITU-PRICE-RECORD.md` was written with its prediction before the run. Measurement and tooling only; nothing in `src/` changed.
+
+### Measured
+- **The certifying arm for the per-token tracer's cost:** 30 mixed-workload turns a parity pass at a 34 GiB budget (the guard refused 38): position-matched cost **+0.554 ms a decode token (95 % +0.051 to +1.114)**, 27 usable turns, text identical in 12 of 12 turns. The upper bound is above the record's 1.0 ms stop rule, so the continuous tracer is **not certified**; the cost is real (the lower bound excludes zero) and about 1.9 microseconds an event. When the knob is built its default should be sampled; that default is Hamed's call.
+- Exposed against hidden read time at 34 GiB: blocked 62.8 ms of 104.4 ms read busy (60 %), router sync 62.4 ms, 66.3 reads a token.
+
+### Changed
+- `benchmarks/token_trace_price.py` takes `--ctl-turns`, a shorter control pass, and runs a mixed-only arm (`--resident-turns 0`); its report skips an empty workload.
+
 ## 0.63.3 (2026-10-11)
 
 HANDOFF "Start here (2026-10-11, 0.63.3)" and section 18.132; the record is `docs/L2-IN-SITU-PRICE-RECORD.md`, its predictions written before the build and the run. A per-token critical-path tracer for DeepSeek decode, off unless installed, and its price inside a real server token.
