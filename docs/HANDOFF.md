@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-11, 0.62.41): the model's own quantized kernels, run alone, draw the unexplained decode power; the fit is ~15 % short for them
+>
+> Section 18.128, record `docs/E3F-REAL-KERNELS-RECORD.md` (hypotheses, predictions and falsifier committed first, `d7e6ff3`). **Measured, no model loaded:** the trunk's FP8 GEMV and the experts' 2-bit `quantized_matmul` on random buffers, read once per "token" with a sync per layer at decode's cadence (TOK-80, 95 GB/s of weights, `benchmarks/kernel_power.py`) draw **+9.0 W** above the E1b component fit (both passes above +8; decode: +10.9 server, +11.5 in-process). H-real-kernels held, H-rest-of-model falsified. So the ~11 W of 18.123-18.127 is mostly the kernels' own draw against a fit made on bf16 and streaming loads; the resident 62 GiB and the rest of the model are not needed. **Derived (post hoc):** the fit's error is 14-16 % of PSTR in every real-kernel load and in decode (TOK-80 14.8 %, TOK 14.9, TOK-NS 14.6, FP8 13.9, Q2 14.3, decode 15.3-15.7). Four of five secondary point predictions missed (rates and loads above decode's). Next: E4 and the Lab brief (Hamed: route 1 or 2), then the GLM and MiniMax arms with the ratio as a prediction; an optional bf16 control. Nothing in `src/` changed.
+>
 > ## Start here (2026-10-11, 0.62.40): the server is not where the 11 W is; the kernels (or the resident memory) are
 >
 > Section 18.127, record `docs/E3E-INPROC-KERNELS-RECORD.md` (hypotheses, predictions and falsifier committed first, `22f0499`). **Measured:** the DeepSeek decode kernels driven in-process (`benchmarks/decode_power_inproc.py`, no server, all-resident, prediction off, 48 GiB budget): decode-only fit error **+11.5 W** (server, E3d: +10.9), PSTR 73.1 W, **79.3 ms** and **5.79 J** a token (server 83 ms, 5.90 J); prefill alone **+7.8 W** (95.4 W). All numeric predictions held; H-server (error at or below 6 W) falsified. The unexplained power follows the model's real GPU work in decode and in prefill, and the server, the drive, the prediction and the read pattern are all excluded. Not separated: the kernels from the 62 GiB of resident memory. Next (hypothesis written first, Hamed's go and sampler): (iii) the same in-process decode at a smaller expert budget (working set unchanged). Then E4 and the Lab brief.
@@ -9010,6 +9014,28 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.128 Power accounting, step E3f: the model's own kernels, run alone (0.62.41)
+
+**Goal.** Test whether the model's real quantized kernels, with nothing else of the model, reproduce the ~11 W of decode power the component fit does not name (18.127 excluded the server; resident memory could not be tested all-resident below about 44 GiB: smoke checks at 40, 28 and 24 GiB all missed, because a prefill chunk's experts alone are several GiB).
+
+**Baseline.** E3d/E3e: +10.9 W (server) and +11.5 W (in-process), 71-73 W, 79-83 ms, about 94 GB/s of weights.
+
+**Prediction (committed first, `d7e6ff3`).** H-real-kernels 30 % (TOK-80 at least +8 W), H-rest-of-model 50 % (below +5 W); TOK-80 +4 W (0-9), TOK +3, FP8 +2, Q2 +2, TOK-NS within 3 W of TOK.
+
+**Method.** `benchmarks/kernel_power.py` (no model): 5.04 GiB of FP8 weights (`fp8_linear_quantized`, 8 MiB launches) and 2.36 GiB of 2-bit group-128 weights (`mx.quantized_matmul`, 3 MiB launches) read once per token over 43 layer groups, a sync per group; conditions TOK, TOK-80 (padded to 80 ms, decode's cadence), TOK-NS (no per-layer sync), FP8, Q2, idle; 40 s each, two passes in opposite order; Hamed's root `powermetrics -n 700`; Lab closed; 11:28-11:38.
+
+**Result (measured).** TOK-80 95 GB/s: **+9.0 W** (PSTR 60.8 W; +8.3, +9.7); TOK 234 GB/s +17.1; TOK-NS 420 GB/s +24.5; FP8 +14.9; Q2 +11.8; idle +1.2. Fans 1,005 to 2,402 RPM during the run (+0.2 to 1.4 W between passes). H-real-kernels held, H-rest-of-model falsified; four of five secondary point predictions missed.
+
+**Explanation.** The kernels alone explain ~80 % of the decode excess. Derived post hoc: error over PSTR is 13.9-15.7 % in every real-kernel condition and in decode, a multiplicative miss of the fit (calibrated on bf16 and streaming loads, errors -7..+4 % there) for quantized-weight kernels.
+
+**Limits.** One run, a warming session; the load levels of TOK, TOK-NS, FP8 and Q2 are not decode's, only TOK-80 matches it; the 15 % regularity was seen after the data; 9.0 versus 11.2 W leaves ~2 W (thermal drift and fit noise cover it, not resolved); no bf16 control.
+
+**Bottleneck after.** Speed unchanged. Energy: no unexplained decode power in the runtime; a calibration gap of the component fit for quantized kernels remains, with PSTR the total.
+
+**Kind.** Research (predicted, measured, explained in part).
+
+**Open.** E4 and the Lab brief (route 1 or 2: Hamed's call); GLM and MiniMax arms with "fit error about 15 % of PSTR" as the prediction; optional bf16 control (does the gap vanish with the format).
 
 ### 18.127 Power accounting, step E3e: the kernels in-process, without the server (0.62.40)
 

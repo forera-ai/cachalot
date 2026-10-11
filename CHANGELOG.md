@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.62.41 (2026-10-11)
+
+HANDOFF "Start here (2026-10-11, 0.62.41)" and section 18.128; the record is `docs/E3F-REAL-KERNELS-RECORD.md`, its hypotheses, predictions and falsifier committed before the run (`d7e6ff3`). Measurement and an instrument; nothing in `src/` besides the version string changed.
+
+### Added
+- `benchmarks/kernel_power.py`: the model's own kernels (the trunk's FP8 GEMV and the experts' 2-bit `quantized_matmul`) run alone on random buffers with no model, a sync per layer group, at several rates and at decode's cadence (95 GB/s), with full-channel logging and an analyzer.
+- `benchmarks/inproc_arms.sh` takes `CACHALOT_EXPERT_CACHE_BUDGET_GIB`, `DECODE_TOKENS` and `PROMPT_TOKENS` overrides.
+
+### Measured
+- The model's quantized kernels alone, at decode's weight rate and cadence, draw **+9.0 W** above the component fit (decode: +10.9 W through the server, +11.5 W in-process): about 80 % of the previously unexplained decode power. The hypothesis that the rest of the model (attention, router, Python loop, 62 GiB resident) is needed is falsified; the kernels' own draw is not.
+- Derived after the data: the fit's error is 13.9-15.7 % of system power in every real-kernel condition and in decode, so the component fit (calibrated on bf16 and streaming loads) is about 15 % short for quantized-weight kernels. `SMC PSTR` stays the total.
+- A smaller expert budget cannot be made all-resident below about 44 GiB (a prefill chunk's expert set alone is several GiB), so resident memory was not tested separately.
+- Four of the five secondary point predictions missed (the other loads were far above decode's: +17.1, +24.5, +14.9, +11.8 W against +3, about +17, +2, +2).
+
 ## 0.62.40 (2026-10-11)
 
 HANDOFF "Start here (2026-10-11, 0.62.40)" and section 18.127; the record is `docs/E3E-INPROC-KERNELS-RECORD.md`, its hypotheses, predictions and falsifier committed before the run (`22f0499`). Measurement and an instrument; nothing in `src/` besides the version string changed.
