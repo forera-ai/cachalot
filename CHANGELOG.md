@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.63.1 (2026-10-11)
+
+HANDOFF "Start here (2026-10-11, 0.63.1)" and section 18.130; the record is `docs/E3G-GLM-MINIMAX-RECORD.md`, its hypotheses, predictions and falsifier committed before the runs (`8a18d00`). No new knob, field or default; no Lab brief needed.
+
+### Fixed
+- The energy meter (0.63.0) extended a window that ended after its last sample with the system figure at its last watts but held the **component** joules at the last sample's value, so component figures lost up to one sampling interval at the end of every window (7.9 % low on MiniMax's 5 s windows, 1 % on GLM's 50 s ones). The components now continue at their last observed rate for up to two intervals. Test added; replayed offline over 72 DRAM and GPU figures, the median error went from -7.9 % to 0.0 %. Not re-run live.
+
+### Added
+- `benchmarks/energy_requests.py` (the server's per-request energy against the logger's integral) and `E_URL`, `E_MODEL`, `E_MAX_TOKENS`, `E_A`-`E_D`, `E_SERVE`, `E_SERVE_ARGS` on the energy driver and `energy_arms.sh`, so the same arms run GLM and MiniMax.
+
+### Measured
+- **The meter works live on the GLM and MiniMax servers**: system joules within a median 0.2 % (GLM) and 0.6 % (MiniMax) of an independent `PSTR` integral over decode windows of 10 s or more (maximum 5.6 %).
+- **MiniMax**: resident 42 ms a token at 128 W, **5.38 J a token**; read-bound 104 ms at 90 W, **9.34 J**. **GLM** (read-bound in both phases; the shipped decode miss budget of 2 keeps a repeated prompt from becoming resident): **36.4 J** and **69.7 J** a token at 36-38 W with the GPU at 0.5 W.
+- The component fit is 15.2 % (resident) and 19.0 % (read-bound) of system power short on MiniMax, the same band as DeepSeek (14-19 %); on GLM, whose GPU idles, 9.3 % and 7.2 % (about 0-3 % after the derived X10Pro drive term). The shortfall follows the GPU's quantized-kernel work and is not DeepSeek-specific (the model-specific hypothesis is falsified).
+
 ## 0.63.0 (2026-10-11)
 
 HANDOFF "Start here (2026-10-11, 0.63.0)" and section 18.129; Lab brief `docs/lab/briefs/2026-10-11-runtime-0.63.0.md`. A new off-by-default knob; outputs and numerics unchanged, no snapshot bump.

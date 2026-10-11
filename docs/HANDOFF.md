@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-11, 0.63.1): the energy arms on GLM and MiniMax, the meter's first live reads, and a tail bug found and fixed
+>
+> Section 18.130, record `docs/E3G-GLM-MINIMAX-RECORD.md` (hypotheses, predictions and falsifier committed first, `8a18d00`). **The meter works live on both servers:** system joules agree with an independent `PSTR` integral to a median 0.2 % (GLM, 46-52 s windows) and 0.6 % (MiniMax, 10-13 s), maximum 5.6 %. **Its component joules missed the 8 % prediction on MiniMax's short windows** (median 7.3 %, the meter below the logger): a window ending after the last sample held the components but extended the system figure; fixed in 0.63.1 (components continue at their last rate) and checked offline against the logger's rows (median error -7.9 % to 0.0 %), not yet re-run live. **Energy:** MiniMax resident 42 ms, 128 W, **5.38 J a token** (GPU 42 W, fit error +19.5 W = 15.2 % of PSTR), read-bound 104 ms, 89.6 W, 9.34 J (+17.0 W, 19.0 %); GLM 36.4 J (B, read-bound: the shipped miss budget of 2 keeps a repeated prompt from becoming resident) and 69.7 J (C) a token at 36-38 W, GPU 0.5 W, fit error +3.5/+2.6 W (9.3 %, 7.2 %; about 0-3 % after the derived X10Pro 2.4 W). **Verdict:** H-model-specific falsified; the fit is 14-19 % of PSTR short wherever the GPU works hard on quantized kernels (DeepSeek, MiniMax) and not on GLM, whose GPU idles (the mechanism of E3f); H-format and H-activity both partly met as registered. Open: the meter's cost on a token, a live re-run of the tail fix, Lab's views.
+>
 > ## Start here (2026-10-11, 0.63.0): the energy meter (route 1), off by default: joules per request and per token in `/v1/stats`, `usage.cachalot.energy` and the `[request]` line
 >
 > Section 18.129, Lab brief `docs/lab/briefs/2026-10-11-runtime-0.63.0.md`. **New, `CACHALOT_ENERGY=1` (default off, all three model families):** a sampler thread reads the SMC's whole-system power (`PSTR`, no root) and the IOReport energy counters once a second; `src/cachalot/metrics/energy.py` keeps cumulative joules in a ring, so a request gets its energy from two clock readings and a lookup (no syscall, no GPU work on the decode path). `/v1/stats.energy`, `usage.cachalot.energy` (request and decode windows, joules per output token) and ` J/tok= W=` in the `[request]` line. The component counters (CPU, GPU, ANE, DRAM, DCS, AMCC) are `available: false` unless Hamed's root `powermetrics` is running beside the server; system energy works without it. The IOReport and SMC readers moved from `benchmarks/power_sources.py` into `src/cachalot/metrics/power_sources.py`. Checked: 605 tests pass (9 new), and a live DeepSeek server with the knob on returned a request report and a stats object (system only, no sampler). **Not measured:** the meter's own cost on a decode token (the work off the hot path is one `time.time()` pair and a ring lookup; a server A/B has not been run) and a live read with the sampler beside it (the GLM and MiniMax arms next will be the first). Output unchanged; no numerics change.
@@ -9018,6 +9022,26 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.130 Power accounting, step E3g: the energy arms on GLM and MiniMax (0.63.1)
+
+**Goal.** Test whether the component fit's shortfall (18.128) is DeepSeek-specific, format-general or follows the GPU's activity, and give the 0.63.0 meter its first live reads.
+
+**Prediction (committed first, `8a18d00`, analysis script `e8a6431`).** H-format 40 % (10-20 % of PSTR in B and C of both models), H-model-specific 35 % (outside 6-25 % somewhere), H-activity 25 % (GLM C under 6 %, MiniMax 10-20 %); energy a token GLM B 15 J, C 60 J, MiniMax B 3.5 J, C 8 J; the meter against the logger within 8 % (median under 4 %) for windows of 10 s or more, components within 8 %.
+
+**Method.** `benchmarks/energy_arms.sh` with `E_SERVE`, `E_SERVE_ARGS`, `E_MODEL`, `E_MAX_TOKENS`, `E_A`-`E_D` (new, defaults are DeepSeek), `CACHALOT_ENERGY=1`, Hamed's root `powermetrics`, full-channel logger; GLM `./serve-glm.sh --expert-budget-gib 46` 12:19:55-12:30:01, MiniMax `./serve-minimax.sh` 12:31:56-12:38:45; `energy_e3.py` for the phases, new `energy_requests.py` for the meter against the logger.
+
+**Result (measured).** See the record, sections 5, 8 and 9. MiniMax B 127.9 W, +19.5 W (15.2 %), 5.38 J a token; C 89.6 W, +17.0 W (19.0 %), 9.34 J. GLM B 37.6 W, +3.5 W (9.3 %), 36.4 J; C 36.0 W, +2.6 W (7.2 %), 69.7 J; GLM's GPU 0.5 W. The meter: system joules median 0.2 % (GLM) and 0.6 % (MiniMax) from the logger over windows of 10 s or more; components median 0.6 % on GLM's 50 s windows, 7.3 % on MiniMax's mostly 5 s windows.
+
+**Bug found and fixed (0.63.1).** `EnergyMeter._cum_at` extended a window past its last sample for the system figure but not for the components; the components lost up to one interval at the end of every window. Fixed (each continues at its last observed rate, for up to two intervals), test added, and replayed offline over 72 DRAM and GPU figures: median error -7.9 % before, 0.0 % after (the replay reuses the logger's rows, so it tests the arithmetic only).
+
+**Explanation.** The shortfall of the IOReport-component fit is a property of the GPU's quantized-kernel work, about 15-19 % of the draw on DeepSeek and MiniMax and absent on a model whose GPU idles (GLM). Neither registered format hypothesis nor activity hypothesis is falsified; the model-specific one is.
+
+**Limits.** One run per model; fans rose from 1,015 to 2,075 RPM through the MiniMax run (about 1 W); GLM's phase B was read-bound, not resident (the miss budget of 2 drops uncached experts), so GLM has no resident arm; the GLM subtraction of the X10Pro term is derived from E2 (+-0.9 W); the MiniMax measurements were taken with miss substitution on (shipped); the tail fix is not re-run live; the meter's cost on a token is not measured.
+
+**Kind.** Research (predicted, measured, explained in part).
+
+**Open, Hamed's call.** A live re-run of the meter on a DeepSeek or MiniMax server with the sampler up to confirm the tail fix and to price the meter on a token (server A/B, about 25 minutes); a resident GLM arm (`CACHALOT_GLM_DECODE_MISS_BUDGET=off`); Lab's use of the new fields.
 
 ### 18.129 Power accounting, step E4, route 1: the energy meter in the server (0.63.0)
 

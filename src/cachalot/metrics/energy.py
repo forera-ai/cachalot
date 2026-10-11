@@ -163,7 +163,7 @@ class EnergyMeter:
 
     # ----------------------------------------------------------------- interpolation
     def _cum_at(self, t: float) -> tuple[float, dict[str, float]] | None:
-        """Cumulative (system J, component J) at clock time t: linear between samples, held at the latest watts for up to 2 intervals past the last."""
+        """Cumulative (system J, component J) at clock time t: linear between samples; up to 2 intervals past the last, system power held at its latest watts and each component continued at its last observed rate."""
         ts = self._t
         if not ts or t < ts[0]:
             return None
@@ -173,7 +173,11 @@ class EnergyMeter:
             if over > 2 * self.interval:
                 return None
             w = self._watts[-1] or 0.0
-            return self._sys[-1] + w * over, dict(self._comp[-1])
+            comp = dict(self._comp[-1])
+            if len(ts) >= 2 and ts[-1] > ts[-2]:  # the components continue at their last observed rate, as the system figure does at its last watts
+                dt = ts[-1] - ts[-2]
+                comp = {c: comp[c] + (self._comp[-1][c] - self._comp[-2][c]) / dt * over for c in COMPONENTS}
+            return self._sys[-1] + w * over, comp
         f = (t - ts[i]) / (ts[i + 1] - ts[i])
         sj = self._sys[i] + f * (self._sys[i + 1] - self._sys[i])
         cj = {c: self._comp[i][c] + f * (self._comp[i + 1][c] - self._comp[i][c]) for c in COMPONENTS}

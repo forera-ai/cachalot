@@ -74,3 +74,40 @@ The result for the energy lane that stands without that caveat: GLM costs 36 to 
 ## 7. Generalization (GLM)
 
 Model- and workload-specific. The meter works on the GLM server (the one engine MiniMax shares), agrees with an independent integral to under half a percent over 46 to 52 s windows, and reports its components when the sampler is up. A shipped GLM decode miss budget of 2 keeps a repeated prompt from becoming resident, so a "resident" GLM arm needs the budget off.
+
+## 8. Result, MiniMax (measured; 2026-10-11, run 12:31:56-12:38:45, `./serve-minimax.sh` shipped configuration (68 GiB, substitution on), Cachalot Lab closed, fans 1,015 RPM at the start rising to 2,075 (mean 1,409) as the run warmed the machine; `benchmarks/results/energy/e3g-mm-e3b-arms.jsonl`, `e3g-mm-arms-driver.jsonl`, sampler `e3g-mm-sampler.txt`)
+
+| phase | s | tokens | ms/token | cpu / gpu / dram / dcs+amcc W | PSTR W (sd) | fit W | error W | error / PSTR | drive GB/s | misses/token | system J/token |
+|---|---:|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|
+| A idle server | 60 | 0 | - | 2.0 / 0.2 / 1.2 / 4.2 | 24.2 (5.3) | 25.8 | -1.7 | - | 0 | - | - |
+| B repeated prompt (resident) | 121 | 2,880 | 42 | 9.3 / 41.9 / 16.2 / 19.9 | 127.9 (7.1) | 108.4 | **+19.5** | **15.2 %** | 0.67 | 1.2 | **5.38** |
+| C fresh prompts (read-bound) | 125 | 1,200 | 104 | 7.2 / 20.4 / 10.4 / 15.6 | 89.6 (16.3) | 72.6 | **+17.0** | **19.0 %** | 3.26 | 15.8 | **9.34** |
+| D idle server | 61 | 0 | - | 4.1 / 0.1 / 1.7 / 6.6 | 31.1 (8.6) | 31.2 | -0.1 | - | 0 | - | - |
+
+MiniMax's resident token draws 128 W, far above DeepSeek's 71 to 77 W (GPU 42 W against 15). Hit rate 97.5 % over the run, no experts skipped, MLX active 74 GiB. Components were available throughout (checked at the end of the run).
+
+**The meter against the logger.** Thirty-nine requests; the six with decode windows of at least 10 s (10.7 to 13.2 s, phase C): system joules median **0.6 %**, maximum **5.6 %** (the prediction: median under 4 %, all within 8 %: **held**); 32 shorter windows (4.4 to 9.2 s) not scored, with the system figure within +-1.5 % for 29 and 3.6 to 7.3 % for the other three. **The meter's component joules missed the 8 % prediction**: against the logger's IOReport differences, median 7.3 %, maximum 32.4 %, with the meter systematically below the logger (for example DRAM 77 against 78 to 89 J, GPU 195 against 219 J on 5 s windows; the six scored C windows 4.7 to 9.0 % low). Cause found: the meter extended a window that ended after its last sample with the system figure at its last watts but held the components at the last sample's value, so a window lost up to one interval of component energy at its end (10 % of a 5 s window; 1 % of GLM's 50 s windows, hence GLM's 0.6 %). Fixed in 0.63.1 (each component continues at its last observed rate for up to two intervals, as the system figure does), with a unit test. **Offline check of the fix, not a live re-run:** replaying the logger's own once-a-second rows through the meter, truncated at each request's end, the old rule reproduces the live bias (median error -7.9 % over 72 DRAM and GPU figures), the fixed rule has median error 0.0 %, median absolute 0.5 %, maximum absolute 13.6 %. The replay uses the logger's samples as the meter's, so it tests the arithmetic, not the two processes' sampling phases against each other.
+
+Against the predictions. Energy a token, phase B 3.5 J (2.5 to 5): **missed** (5.38 J: the machine draws 128 W, not the 70 to 80 W assumed); phase C 8 J (6 to 11): **held** (9.34). C over B 1.6 to 2.6: **held** (1.74). Idle phases within +-3 W: met (-1.7, -0.1). Fans at the start at or below 1,300: met (1,015); the run warmed to 2,075 RPM, which can move a condition by about 1 W (E3f). Hypotheses (MiniMax part): error over PSTR 10 to 20 % in B and C: **held** (15.2 %, 19.0 %), the band the DeepSeek decode phases sit in (13.9 to 19.1 %).
+
+## 9. Result summed over the two models, and the verdict on the hypotheses
+
+| model | phase | GPU W | error W | error / PSTR | drive GB/s |
+|---|---|---:|---:|---:|---:|
+| DeepSeek (E3d/E3e) | resident / read-bound | 15.5 / 11.3 | +10.9 / +14.0 | 15.3 % / 19.1 % | 0 / 2.1 |
+| MiniMax | resident / read-bound | 41.9 / 20.4 | +19.5 / +17.0 | 15.2 % / 19.0 % | 0.7 / 3.3 |
+| GLM | B / C (both read-bound) | 0.5 / 0.4 | +3.5 / +2.6 | 9.3 % / 7.2 % | 0.87 / 0.89 |
+
+As registered: H-format (10 to 20 % in B and C of both): MiniMax inside the band, GLM B 9.3 % and C 7.2 % just below it, in the unresolved band; H-model-specific (outside 6 to 25 % somewhere): **not met**, falsified; H-activity (GLM C under 6 %, MiniMax in 10 to 20 %): MiniMax met, GLM **missed narrowly** (7.2 %), and its falsifier (GLM C at or above 10 %) not fired. So the pre-registered criteria leave H-format and H-activity both partly met, neither falsified, H-model-specific falsified. What the data say beyond the criteria (derived, post hoc): on two different quantized model families (DeepSeek's FP8/2-bit, MiniMax's 3-bit coded experts) wherever the GPU works hard the component fit is 14 to 19 % of PSTR short, whether the phase is resident or read-bound and at GPU powers from 11 W to 42 W; on GLM, whose GPU draws 0.5 W, it is 7 to 9 % raw and, after the derived X10Pro term (E2: about 2.4 W at 0.88 GB/s), 0.6 to 3 %. The shortfall therefore follows the GPU's quantized-kernel work (the mechanism of H-activity, E3f) and its size is about 15 to 19 % of the draw when the GPU is busy; it is not specific to DeepSeek.
+
+## 10. Generalization
+
+Model-family-general across DeepSeek and MiniMax on this Mac (two quantizations, two kernel mixes), with GLM as the idle-GPU control; hardware-specific. The energy lane's rule stands and is now supported on three models: take the total from the SMC system rail; a component sum from the IOReport fit under-reports a quantized-weight workload by about 15 to 19 % of the draw when the GPU is busy. The meter (0.63.0 and the 0.63.1 tail fix) agrees with an independent system integral to under 1 % on windows of 10 s or more on both servers; its component joules are only as good as 1 Hz sampling (one interval of error at each end of a window).
+
+## 11. Bottleneck after
+
+Speed unchanged. Energy: the instruments exist; the open items are the meter's cost on a decode token (no server A/B), a live re-run to confirm the tail fix with two processes sampling independently, and showing the figures in Cachalot Lab (Hamed's and Lab's side).
+
+## 12. Kind
+
+Research (predicted, measured, explained in part): the meter claim held for system energy and missed for components, with the cause found and fixed; the shortfall hypotheses are partly decided (model-specific falsified, format and activity both partly met); GLM's phase B was not the all-resident arm it was named for and is recorded as read-bound.

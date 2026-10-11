@@ -148,3 +148,13 @@ def test_usage_and_stats_carry_the_energy_only_when_the_meter_is_on():
         assert stats["enabled"] is True and stats["components"]["available"] is False and stats["system"]["available"] is True
     finally:
         meter.stop()
+
+
+def test_a_window_ending_after_the_last_sample_extends_components_at_their_last_rate():
+    clock = Clock()
+    m = EnergyMeter(interval=1.0, reader=Reader(clock), clock=clock)
+    m.sample_once()
+    run(m, clock, 10)  # last sample at 1010.0; dram +10 J/s, gpu +20 J/s, system 60 W
+    r = m.between(1006.0, 1010.5)
+    assert abs(r["system_joules"] - 60.0 * 4.5) < 1e-6
+    assert abs(r["components_joules"]["dram"] - 45.0) < 1e-6 and abs(r["components_joules"]["gpu"] - 90.0) < 1e-6
