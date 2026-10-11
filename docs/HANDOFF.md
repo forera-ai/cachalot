@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-12, 0.64.6): the expert budget 22, 28 and 34 GiB, recorded per layer: still a smooth, nearly linear slope
+>
+> Section 18.140, record `docs/L4B-RAW-LAYER-RECORD.md` (arm 5, prediction and falsifier written before the run, from the measured 28-34 slope). Nothing in `src/` changed. **Measured** (same 24 mixed turns, 2,452 tokens, exact decode, prefetch on, 0 dropped, pressure 1 and swap flat): 22 GiB gives 62.2 misses a token and 178.1 ms a token (34 GiB: 43.0 and 151.6; 28 GiB: 51.0 and 165.8). Decode is nearly linear in the budget (2.4 ms a GiB from 34 to 28, 2.1 from 28 to 22); misses are mildly convex (1.33 then 1.87 a GiB) but each added miss costs less (1.78 then 1.10 ms). The structure drifts slowly in one direction (hidden share 43, 40, 39 %; top-10 share 74, 68, 64 %), no change of regime: no cliff in 22-34 GiB. All predictions held except one turn of 24 not slower than at 28 GiB. First job and open items: `docs/NEXT-SESSION-PROMPT.md` v189.
+>
 > ## Start here (2026-10-11, 0.64.5): the expert budget 28 against 34 GiB, recorded per layer: a smooth slope, not a cliff
 >
 > Section 18.139, record `docs/L4B-RAW-LAYER-RECORD.md` (arm 4, prediction and falsifier written before the run). Nothing in `src/` changed. **Measured** (same 24 mixed turns, 2,452 tokens, exact decode, prefetch on, 0 dropped, no memory pressure or swap growth): 28 GiB against 34: misses a token 43.0 to 51.0 (+18.6 %), decode 151.6 to 165.8 ms (+9.4 %, 24 of 24 turns slower), blocked on experts 59.2 to 72.7, read busy 101.8 to 119.3; the structure holds (hidden share 43 to 40 %, top-10 share 74 to 68 %, layers 0 and 1 still 2.3x the rest). That is about 1.3 misses and 2.4 ms a token per GiB removed in this range, steeper than the ledger's 36-48 GiB slope but smooth: no cliff between 28 and 34 GiB. My predicted size was too large (decode +15 to +42 %). First job and open items: `docs/NEXT-SESSION-PROMPT.md` v188.
@@ -9058,6 +9062,32 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.140 The raw per-layer rows at 22 GiB: the expert budget slope continues (0.64.6)
+
+**Goal.** Hamed: "go, record 22 GiB" (the bend question left by 18.139). Record: arm 5 of `docs/L4B-RAW-LAYER-RECORD.md`.
+
+**Baseline.** 34 GiB: 151.6 ms, 43.0 misses; 28 GiB: 165.8 ms, 51.0 misses (1.33 misses and 2.37 ms a GiB).
+
+**Prediction (written first, from the measured slope).** Misses 57-68, decode 176-195 ms, blocked 80-92, busy 130-142, sync 64-67, hidden share 35-45 %, top-10 share at least 60 %, layers 0/1 at least 1.8x, every turn slower than at 28 GiB. Falsifier: decode above 205 ms or misses above 72 (a bend); decode below 172 (flattening); pressure above 1 or swap growth (a paging arm).
+
+**Method.** The 18.136 recorder with `--budget-gib 22`, exact decode, prefetch on, the same 24 turns, under `guarded_run.sh`.
+
+**Result (measured).** 354.4 events a token, 0 dropped. Misses 62.2, decode 178.1 ms, sync 66.0, blocked 83.3, busy 134.2, hidden share 39.0 %, top-10 share 64.0 %, layers 0 / 1 / 2-39 blocked 5.32 / 3.50 / 1.96 ms. 23 of 24 turns slower than at 28 GiB (mean ratio 1.079). Guard: pressure 1, swap flat, peak wired 47.1 GiB.
+
+**Against the prediction.** All held except "every turn slower" (23 of 24). The straight line through 34 and 28 GiB said 180.0 ms; the measurement is 178.1. No falsifier fired.
+
+**Explanation (hypothesis).** Misses are mildly convex in the budget, but the marginal cost of a miss falls (1.78 then 1.10 ms) because more misses in flight overlap better, so decode time is nearly linear in the budget: about `151.6 + 2.2 x (34 - GiB)` ms between 22 and 34 GiB. The structure drifts slowly with the budget without a change of regime.
+
+**Limits.** Three budgets, one workload, not alternated (drift bound 1-2 %). Not measured below 22 GiB, where a prefill chunk's working set (several GiB) starts to compete with the cache.
+
+**What shipped.** Record arm 5 and ledger row DS-BUDGET-SLOPE-22-34. No default, output or numerics change; no Lab brief.
+
+**Bottleneck after.** Unchanged.
+
+**Open.** The prefetch on/off pair at 48 GiB; the router-sync reconciliation; the in-situ price of the 1-in-4 default.
+
+**Kind.** Research (predicted from the measured slope, measured, explained as hypothesis): predictions held but one; the L4(c) question is answered for this workload as a slope, not a region.
 
 ### 18.139 The raw per-layer rows at 28 GiB: the expert budget slope (0.64.5)
 

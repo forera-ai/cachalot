@@ -1,10 +1,11 @@
-# Next-session prompt — **v188**, written 2026-10-11
+# Next-session prompt — **v189**, written 2026-10-12
 
 **This is the file to paste.** `docs/NEXT-SESSION-PROMPT.md` is always current; superseded ones live in
 `docs/next-session-prompts/`.
 
 | version | written | produced by | what changed |
 |---|---|---|---|
+| **v189** | 2026-10-12 | Hamed: "go, record 22 GiB" (v188 First job 2) | **0.64.6, measurement only: the 0.64.2 recording at 22 GiB (exact, prefetch on): 62.2 misses, 178.1 ms a token (28 GiB: 51.0 / 165.8; 34: 43.0 / 151.6). Decode ~ 151.6 + 2.2 x (34 - GiB) ms, nearly linear; misses mildly convex but each added miss costs less (1.78 then 1.10 ms); no bend, pressure 1, swap flat. Predicted from the measured slope, all held but one turn of 24. Record arm 5.** §18.140 |
 | **v188** | 2026-10-11 | Hamed: "go, record the memory cliff" (v187 First job 3) | **0.64.5, measurement only: the 0.64.2 recording at 28 GiB against 34 (exact, prefetch on): misses a token 43.0 to 51.0, decode 151.6 to 165.8 ms (+9.4 %, 24 of 24 turns), blocked 59.2 to 72.7; structure unchanged (hidden share 40 %, top-10 share 68 %, layers 0/1 2.3x). A smooth slope of ~2.4 ms a token per GiB, no cliff between 28 and 34 GiB; my size prediction was too high, no falsifier fired. Record arm 4.** §18.139 |
 | **v187** | 2026-10-11 | Hamed: "go, record the shipped decode miss budget 0" (v186 First job 3) | **0.64.4, measurement and a recorder fix, nothing in `src/`: budget 0 against exact at 34 GiB (24 turns, prefetch on): decode 151.6 to 112.2 ms a token (-26.0 %, 24 of 24 turns), blocked 59.2 to 16.3 ms, hidden share 43 % to 77 %, misses a token 43.0 to 24.2, layers 0 and 1 stop waiting; all six predictions held. The first run did not apply the budget (the knob lives in `cli.py`); it is kept as a replicate of arm 1 (decode +1.3 %, a drift bound). Record `docs/L4B-RAW-LAYER-RECORD.md` arm 3.** §18.138 |
 | **v186** | 2026-10-11 | Hamed: "go, record prediction off" (v185 First job 2) | **0.64.3, measurement, nothing in `src/`: the 0.64.2 recording repeated with `CACHALOT_PREDICT_TOPK=0` at 34 GiB (43 misses a token): decode 151.6 to 167.3 ms a token (+10.4 %, 24 of 24 turns slower), blocked 59.2 to 84.2 ms, read busy 101.8 to 82.5, hidden share 43.5 % to 0 %. Prefetch is worth ~16 ms a token here (the ledger's ~1 ms was 48 GiB, 23.5 misses); the registered falsifier fired. Layers 0 and 1 wait the same either way. Record `docs/L4B-RAW-LAYER-RECORD.md` arm 2.** §18.137 |
@@ -150,13 +151,13 @@
 | v46 | 2026-09-25 | Hamed asked for GLM-5.3-Flash on Cachalot | 0.17.0: GLM through `serve-glm.sh` / `chat-glm.sh`. §17 |
 | v45 | 2026-09-24 | same as v47, one day earlier | 0.16.0: disk snapshot store by last use; lookahead and local compression closed. §15.12 |
 
-## First jobs (v188): four raw-row arms exist (34 GiB on/off/budget 0, 28 GiB); the rest are Hamed's pick
+## First jobs (v189): five raw-row arms exist (34 GiB on/off/budget 0; 28 and 22 GiB); the rest are Hamed's pick
 
-Read HANDOFF sections 18.136-18.139 and `docs/L4B-RAW-LAYER-RECORD.md` first. Tools first (caveman, Jev, codebase-memory), the machine gate, then these. Each long run needs an estimate and Hamed's go; every research item opens with a written Baseline, Prediction and Falsifier. Hamed runs every `sudo`. Lessons: a recorder that builds the model directly bypasses `cli.py` (knobs like `CACHALOT_DECODE_MISS_BUDGET` are applied there); arms are separate processes, not alternated, drift bound 1-2 %; my size predictions have run high twice (18.137 hidden share, 18.139), so lean on the ledger's measured slopes.
+Read HANDOFF sections 18.136-18.140 and `docs/L4B-RAW-LAYER-RECORD.md` first. Tools first (caveman, Jev, codebase-memory), the machine gate, then these. Each long run needs an estimate and Hamed's go; every research item opens with a written Baseline, Prediction and Falsifier. Hamed runs every `sudo`. Lessons: a recorder that builds the model directly bypasses `cli.py` (knobs like `CACHALOT_DECODE_MISS_BUDGET` are applied there); arms are separate processes, not alternated, drift bound 1-2 %; predict from measured slopes (the 22 GiB prediction, made that way, held).
 
 1. **Autonomous items are exhausted.** Ask Hamed which machine job he wants.
-2. **A bend below 28 GiB** (L4(c)): the same recording at 22 GiB (more misses, slower, perhaps 30-35 minutes; check the guard accepts it). Prediction first from the 28-34 slope (2.4 ms a GiB): a straight line gives about 180 ms; a bend shows as a clear excess.
-3. **Prefetch value against misses a token** (18.137): the on/off pair at 48 GiB (the guard refused 38 and 48 earlier; Hamed may need to free memory), about 20 minutes each plus load.
+2. **Prefetch value against misses a token** (18.137): the on/off pair at 48 GiB (the guard refused 38 and 48 earlier; Hamed may need to free memory), about 20 minutes each plus load. Prediction first: the on/off gap shrinks from 16 ms (43 misses) toward the ledger's ~1 ms (23.5 misses); the new fact to use is that decode is ~2.2 ms a GiB.
+3. **Below 22 GiB** only if a reason appears (a prefill chunk's working set of several GiB starts to compete with the cache; 18.127).
 4. **Router sync** (66 of 112 ms in a budget-0 token): reconcile with the 18.75 floor profile before any lever; the tracer's sync window includes the routing eval.
 5. **The in-situ price of the 1-in-4 default** (optional, about an hour; derived cost about 0.14 ms a token).
 6. **The previous list, unchanged below.**

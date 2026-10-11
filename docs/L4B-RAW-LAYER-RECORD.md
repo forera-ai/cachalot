@@ -224,3 +224,58 @@ Two budgets, one workload, not alternated (the replicate bounds drift at 1-2 %, 
 ## Decision
 
 No default changes. Ledger row DS-BUDGET-SLOPE-28-34. L4(c) as a region remains open below 28 GiB (a third point, for example 22 GiB, would show a bend if one exists; it needs the guard to accept it and Hamed's go).
+
+# Arm 5: the same recording at 22 GiB (a bend below 28 GiB, L4(c)), opened 2026-10-12 before the run
+
+Hamed's go: "go, record 22 GiB" (2026-10-12), estimate about 30 minutes plus load. Exact decode, prefetch on, 24 turns, 128 tokens, greedy, guard, only `--budget-gib 22` differs from arms 1 and 4. Output `benchmarks/results/l4b-raw-22gib/`. Text identical to arms 1 and 4.
+
+## Baseline
+34 GiB: 43.0 misses, 151.6 ms. 28 GiB: 51.0 misses, 165.8 ms, blocked 72.7, busy 119.3, hidden share 40.2 %, top-10 share 68.2 %, layers 0/1 2.27x. Slope between them: 1.33 misses and 2.37 ms a token per GiB.
+
+## Prediction (written before the run), from the measured slope, not from ideas
+Straight line from 34 and 28 GiB extended 6 GiB: misses 51.0 + 8.0 = 59.0; decode 165.8 + 14.2 = 180.0 ms; blocked 72.7 + 13.5 = 86; busy 119.3 + 17 = 136.
+1. 0 events dropped; misses 57-68 (the line plus a small convexity allowance).
+2. Decode 176-195 ms.
+3. Blocked 80-92 ms; read busy 130-142 ms; router sync 64-67.
+4. Hidden share 35-45 %; top-10 share at least 60 %; layers 0/1 at least 1.8x the mean of layers 2-39.
+5. All 24 turns slower than at 28 GiB.
+
+## Falsifier
+Decode above 205 ms or misses above 72: a bend (cliff) between 22 and 28 GiB. Decode below 172 ms: the slope flattens. Guard samples with pressure above 1 or swap growth would make the arm a paging arm, reported as such, not a pure budget arm.
+
+## Limits
+Three budgets now (22, 28, 34): enough to show a bend against the two-point line, not its shape. Same workload and caveats as arms 1-4; not alternated, drift bound 1-2 %.
+
+## Arm 5 result (measured, 2026-10-12, runtime 0.64.5)
+
+Exact decode, prefetch on, 22 GiB, 24 recorded turns, 2,452 tokens (text identical to arms 1 and 4), 0 events dropped. Guard: pressure 1 throughout, swap flat (2,511 to 2,479 MB), peak wired 47.1 GiB. Raw columns local in `benchmarks/results/l4b-raw-22gib/`.
+
+| per decode token | 34 GiB | 28 GiB | 22 GiB |
+|---|---|---|---|
+| events | 301.7 | 324.3 | 354.4 |
+| decode (server timing) | 151.6 ms | 165.8 ms | 178.1 ms |
+| misses a token | 43.0 | 51.0 | 62.2 |
+| router sync | 63.1 ms | 65.1 | 66.0 |
+| blocked on experts | 59.2 ms | 72.7 | 83.3 |
+| read busy | 101.8 ms | 119.3 | 134.2 |
+| hidden share of read busy | 43.3 % | 40.2 % | 39.0 % |
+| top-10 layers' share of blocked | 74.2 % | 68.2 % | 64.0 % |
+| mean blocked, layers 0 / 1 / 2-39 | 3.79 / 2.69 / 1.39 | 4.61 / 3.16 / 1.71 | 5.32 / 3.50 / 1.96 |
+
+Per-GiB slopes between points (removing a GiB): misses 1.33 (34 to 28) and 1.87 (28 to 22); decode 2.37 and 2.05 ms; blocked 2.25 and 1.77 ms; busy 2.92 and 2.48 ms. Per added miss: decode 1.78 ms (34 to 28) and 1.10 ms (28 to 22).
+
+## Against the prediction
+
+All held except one: (1) misses 62.2 (57-68); (2) decode 178.1 ms (176-195; the straight line said 180.0); (3) blocked 83.3 (80-92), busy 134.2 (130-142), sync 66.0 (64-67); (4) hidden share 39.0 % (35-45), top-10 share 64.0 % (at least 60), layers 0/1 at 2.25x (at least 1.8); (5) **23 of 24 turns slower than at 28 GiB, not all 24** (mean ratio 1.079). No falsifier fired: decode is not above 205 ms and misses are not above 72 (no bend), decode is not below 172 (no flattening).
+
+## Explanation (hypothesis)
+
+The miss count is mildly convex in the budget (1.33 to 1.87 misses a GiB), but each added miss costs less (1.78 to 1.10 ms): more misses in flight overlap better, so decode time is close to linear in the budget (2.4 then 2.1 ms a GiB). The structure keeps drifting in one direction as the budget falls (hidden share 43 to 40 to 39 %, concentration 74 to 68 to 64 %, router sync 63 to 65 to 66 ms), with no change of regime. A cliff is not in 22-34 GiB at this workload. Memory pressure never rose, so this is not a paging effect either.
+
+## Limits
+
+Three budgets, one workload, not alternated (drift bound 1-2 %, against 7-9 % between neighbours). The 22 GiB point is the smallest tried; below it the expert cache would also stop holding a layer's working set for one token (a prefill chunk's experts alone are several GiB, 18.127), so a limit exists but is not measured here.
+
+## Decision
+
+No default changes. Ledger row DS-BUDGET-SLOPE-22-34. L4(c) at this workload: the cost of the expert budget is a smooth, nearly linear slope of about 2.1-2.4 ms a token per GiB between 22 and 34 GiB; the model line is `decode = 151.6 + 2.2 x (34 - GiB)` ms to within 1 ms at 28 and 22 GiB.

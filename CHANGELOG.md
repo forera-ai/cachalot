@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.64.6 (2026-10-12)
+
+HANDOFF "Start here (2026-10-12, 0.64.6)" and section 18.140; arm 5 of `docs/L4B-RAW-LAYER-RECORD.md`, prediction and falsifier written before the run. Measurement only; nothing in `src/` changed.
+
+### Measured
+- The 18.136 recording at 22 GiB (same 24 mixed turns, exact decode, prefetch on, no memory pressure): 62.2 misses a token and 178.1 ms a token, against 51.0 and 165.8 at 28 GiB and 43.0 and 151.6 at 34 GiB. Decode is nearly linear in the budget (about `151.6 + 2.2 x (34 - GiB)` ms between 22 and 34 GiB); misses are mildly convex but each added miss costs less (1.78 then 1.10 ms). No bend or cliff in 22-34 GiB; the per-layer structure drifts slowly (hidden share 43, 40, 39 %; top-10 share 74, 68, 64 %).
+
 ## 0.64.5 (2026-10-11)
 
 HANDOFF "Start here (2026-10-11, 0.64.5)" and section 18.139; arm 4 of `docs/L4B-RAW-LAYER-RECORD.md`, prediction and falsifier written before the run. Measurement only; nothing in `src/` changed.
