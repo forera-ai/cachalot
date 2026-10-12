@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-12, 0.64.7): decode prefetch on and off at 46 GiB: the gap shrinks to 10 ms but does not vanish
+>
+> Section 18.141, record `docs/L4B-RAW-LAYER-RECORD.md` (arm 6, prediction and falsifier written before the run; run at 46 GiB because the guard needs the budget plus 29 GiB available and had 75.3 GiB after Hamed quit VMware and ran `sudo purge`). Nothing in `src/` changed. **Measured** (24 mixed turns each, 2,452 tokens, exact decode, 31.4 misses a token in both arms, pressure 1): prefetch on 131.8 ms a token, off 141.9 (gap 10.1 ms, 7.7 %; off slower in 21 of 24 turns), against 151.6 and 167.3 at 34 GiB (gap 15.7 ms). Gap per miss 0.32 against 0.37 ms: roughly proportional to the misses, so prefetch stays worth it at 46 GiB; the ledger's old "about 1 ms at 48 GiB" came from another workload. Decode against budget flattens above 34 GiB (1.65 ms a GiB, against 2.1-2.4 below). All six predictions held. First job and open items: `docs/NEXT-SESSION-PROMPT.md` v190.
+>
 > ## Start here (2026-10-12, 0.64.6): the expert budget 22, 28 and 34 GiB, recorded per layer: still a smooth, nearly linear slope
 >
 > Section 18.140, record `docs/L4B-RAW-LAYER-RECORD.md` (arm 5, prediction and falsifier written before the run, from the measured 28-34 slope). Nothing in `src/` changed. **Measured** (same 24 mixed turns, 2,452 tokens, exact decode, prefetch on, 0 dropped, pressure 1 and swap flat): 22 GiB gives 62.2 misses a token and 178.1 ms a token (34 GiB: 43.0 and 151.6; 28 GiB: 51.0 and 165.8). Decode is nearly linear in the budget (2.4 ms a GiB from 34 to 28, 2.1 from 28 to 22); misses are mildly convex (1.33 then 1.87 a GiB) but each added miss costs less (1.78 then 1.10 ms). The structure drifts slowly in one direction (hidden share 43, 40, 39 %; top-10 share 74, 68, 64 %), no change of regime: no cliff in 22-34 GiB. All predictions held except one turn of 24 not slower than at 28 GiB. First job and open items: `docs/NEXT-SESSION-PROMPT.md` v189.
@@ -9062,6 +9066,32 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.141 Decode prefetch on and off at 46 GiB (0.64.7)
+
+**Goal.** Hamed: "go, record the prefetch pair at 48 GiB", then "retry" after quitting VMware and "ran the sudo purge". The 48 GiB budget needs 77 GiB available by the guard's rule (budget plus 29 GiB); after the purge it saw 75.3, so the pair ran at 46 GiB (75 needed), guard unchanged, no `--force`. Record: arm 6 of `docs/L4B-RAW-LAYER-RECORD.md`.
+
+**Baseline.** 34 GiB (43.0 misses): on 151.6 ms, off 167.3 (gap 15.7 ms). Ledger DS-PRED-AB: about 1 ms at 48 GiB with 23.5 misses (another workload).
+
+**Prediction (written first).** On-arm misses 28-38 (29-40 for 46 GiB); decode 122-137 on, 130-150 off; gap 4-12 ms; hidden share 40-50 %; blocked 35-55 on and 45-70 off; off slower in at least 20 of 24; 0 dropped, equal misses. Falsifier: gap above 15 ms or below 0; on-arm misses below 20 or above 42.
+
+**Method.** The 18.136 recorder, `--budget-gib 46`, exact decode, 24 turns, under `guarded_run.sh`; prefetch on, then (after `settle.sh`) `CACHALOT_PREDICT_TOPK=0`.
+
+**Result (measured).** On: 131.8 ms, 31.4 misses, blocked 45.7, busy 80.1, hidden share 44.4 %, 268.6 events. Off: 141.9 ms, 31.4 misses, blocked 62.2, busy 60.7, hidden 0 %, 223.8 events. Gap 10.1 ms (21 of 24 turns). 0 dropped; pressure 1, swap flat, peak wired 69.3 GiB.
+
+**Against the prediction.** All six held; no falsifier fired. The interpolation I used gave about 7 ms; the measured gap is 10.1.
+
+**Explanation (hypothesis).** The gap is about 0.32-0.37 ms a miss, roughly proportional to the misses in this workload; the old 1 ms is workload-specific. Decode against budget flattens above 34 GiB.
+
+**Limits.** 46 GiB, not 48 (the guard); separate processes, not alternated (drift bound 1-2 %); one workload (short cold prompts); the 22k agent context behind the old figure not re-measured.
+
+**What shipped.** Record arm 6, ledger row DS-PRED-LAYER-46. No default, output or numerics change; no Lab brief.
+
+**Bottleneck after.** Unchanged.
+
+**Open.** The same pair on the 22k Hermes-context workload to settle the old 1 ms figure (a longer run; needs the dumped bodies); the router-sync reconciliation; the in-situ price of the 1-in-4 default.
+
+**Kind.** Research (predicted, measured, explained as hypothesis): all six predictions held; the budget was changed from 48 to 46 GiB before the run for the guard.
 
 ### 18.140 The raw per-layer rows at 22 GiB: the expert budget slope continues (0.64.6)
 

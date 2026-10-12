@@ -279,3 +279,67 @@ Three budgets, one workload, not alternated (drift bound 1-2 %, against 7-9 % be
 ## Decision
 
 No default changes. Ledger row DS-BUDGET-SLOPE-22-34. L4(c) at this workload: the cost of the expert budget is a smooth, nearly linear slope of about 2.1-2.4 ms a token per GiB between 22 and 34 GiB; the model line is `decode = 151.6 + 2.2 x (34 - GiB)` ms to within 1 ms at 28 and 22 GiB.
+
+# Arm 6: the prefetch on/off pair at 48 GiB (prefetch value against misses a token), opened 2026-10-12 before the run
+
+Hamed's go: "go, record the prefetch pair at 48 GiB" (2026-10-12). Estimate: two arms of about 20 minutes each plus a model load each (fewer misses make decode faster), about 50 minutes in all, run one after the other (prefetch on first, then off) under `guarded_run.sh`, 24 turns, 128 tokens, greedy, exact decode, only `--budget-gib 48` and `CACHALOT_PREDICT_TOPK=0` for the second differ from arms 1 and 2. Output `benchmarks/results/l4b-raw-48gib-on/` and `-off/`. The guard refused 38 and 48 GiB earlier on 2026-10-11 for lack of available memory; if it refuses again the arm is not run and that is reported.
+
+## Baseline
+At 34 GiB (43.0 misses a token) prefetch on against off: decode 151.6 against 167.3 ms (a gap of 15.7 ms, 10.4 %), blocked 59.2 against 84.2, read busy 101.8 against 82.5. The ledger (DS-PRED-AB) had the gap at about 1 ms at 48 GiB with 23.5 misses a token on another workload. Budget slope (DS-BUDGET-SLOPE-22-34): decode about 151.6 + 2.2 x (34 - GiB) ms, which extrapolated to 48 GiB gives 120.8 ms; the slope will flatten above the working set, so this is an upper bound on the improvement.
+
+## Prediction (written before the run)
+Linear interpolation of the gap in misses a token between the two known points (43 misses, 15.7 ms; 23.5 misses, about 1 ms) gives 0.75 ms a miss.
+1. Misses a token with prefetch on at 48 GiB: 28-38 (the ledger slope of 0.59 a GiB gives 35, our 1.33 a GiB gives 24; the lower slope applies above the working set).
+2. Decode with prefetch on: 122-137 ms; with prefetch off: 130-150 ms.
+3. The on/off gap: 4-12 ms (the interpolation at about 33 misses gives about 8 ms), clearly smaller than the 15.7 ms at 34 GiB.
+4. Hidden share with prefetch on: 40-50 %; blocked on, 35-55 ms; blocked off, 45-70 ms.
+5. All turns slower with prefetch off in at least 20 of 24.
+6. Zero events dropped; misses a token (store counter) equal between the two arms to within 1.
+
+## Falsifier
+Gap above 15 ms (as large as at 34 GiB): prefetch's value does not shrink with the misses, and the ledger's 1 ms was workload-specific. Gap below 0: prefetch hurts at this budget (the 1 ms ledger gain reversed). Misses on at 48 GiB below 20 or above 42: the budget axis behaves unlike 22-34 GiB and the interpolation does not apply.
+
+## Limits
+Two arms in two processes, not alternated (drift bound 1-2 %, small against the predicted 4-12 ms gap but not against a gap of 1-2 ms); one workload; one budget above the working set of this workload (whether 48 GiB holds it is exactly what the miss count shows).
+
+## Arm 6 outcome: not run (2026-10-12)
+
+The memory guard refused both arms at preflight (50.8 and 51.5 GiB available against 77 GiB needed for a 48 GiB budget; 2 GiB of stale swap in use). No model was loaded and no data exist. The prediction above stands unmeasured. The arm needs about 77 GiB available (applications closed), or a budget the guard accepts; with the same memory state a 34 GiB run (63 GiB needed) would also be refused.
+
+## Arm 6 amendment, 2026-10-12: run at 46 GiB, not 48 (before the run)
+
+After Hamed quit VMware and ran `sudo purge`, the guard counted 75.3 GiB available against the 77 GiB a 48 GiB budget needs (need = budget + 29 GiB); 46 GiB needs 75 GiB and is accepted. Hamed asked for the pair to run, so it runs at 46 GiB with the guard unchanged (not `--force`). The prediction above is unchanged in form: two more GiB of cache move the expected misses a token up by about 1-3 (0.6-1.3 a GiB), so the ranges 1-6 stand, with the on-arm misses at 29-40. Output folders `l4b-raw-46gib-on/` and `-off/`. A reboot would have allowed 48 but was not needed.
+
+## Arm 6 result (measured, 2026-10-12, runtime 0.64.6; run at 46 GiB, see the amendment above)
+
+Exact decode, 24 recorded turns each, 2,452 tokens each (identical text across all arms), 0 events dropped, 31.4 misses a token in both arms. Guard: pressure 1 throughout, swap flat (1,914 to 1,906 MB), peak wired 69.3 GiB. Prefetch on ran first, off second (separate processes, not alternated). Raw columns local in `benchmarks/results/l4b-raw-46gib-on/` and `-off/`.
+
+| per decode token | 46 GiB prefetch on | 46 GiB prefetch off | 34 GiB on | 34 GiB off |
+|---|---|---|---|---|
+| events | 268.6 | 223.8 | 301.7 | 247.0 |
+| decode (server timing) | 131.8 ms | 141.9 ms | 151.6 | 167.3 |
+| misses a token | 31.4 | 31.4 | 43.0 | 43.0 |
+| router sync | 59.5 | 56.1 | 63.1 | 59.2 |
+| blocked on experts | 45.7 | 62.2 | 59.2 | 84.2 |
+| read busy | 80.1 | 60.7 | 101.8 | 82.5 |
+| hidden share of read busy | 44.4 % | 0 % | 43.3 % | 0 % |
+| top-10 layers' share of blocked | 84.4 % | 62.4 % | 74.2 % | 55.2 % |
+| mean blocked, layers 0 / 1 / 2-39 | 2.73 / 2.00 / 1.08 | 2.16 / 2.22 / 1.52 | 3.79 / 2.69 / 1.39 | 3.08 / 3.17 / 2.05 |
+
+The on/off gap in decode: 10.1 ms at 46 GiB (7.7 %; prefetch off slower in 21 of 24 turns, ratio mean 1.076, range 0.88-1.20), 15.7 ms at 34 GiB (10.4 %). Gap per miss: 0.32 ms at 46 GiB, 0.37 ms at 34 GiB. Blocked-time gap: 16.5 ms against 25.0 ms.
+
+## Against the prediction
+
+All six held, no falsifier fired: (1) 31.4 misses (28-38; 29-40 after the amendment); (2) decode 131.8 on (122-137) and 141.9 off (130-150); (3) the gap is 10.1 ms (4-12), clearly under the 15.7 ms at 34 GiB; (4) hidden share 44.4 % (40-50), blocked 45.7 on (35-55) and 62.2 off (45-70); (5) off slower in 21 of 24 (at least 20); (6) 0 dropped, misses equal. The interpolation I used (0.75 ms a miss between the 43-miss and the 23.5-miss points) would have given about 7 ms; the measured gap is 10.1.
+
+## Explanation (hypothesis)
+
+The prefetch gap tracks the misses a token roughly in proportion in this workload (0.32-0.37 ms a miss) rather than the offset line I interpolated. It shrinks as the budget grows but does not vanish at 46 GiB. The ledger's old figure (about 1 ms at 48 GiB and 23.5 misses, DS-PRED-AB) is lower than this proportionality would give (about 8 ms at 23.5 misses) and came from another workload, a 22k Hermes context; I have not measured this pair there. The slope of decode time against budget also flattens above 34 GiB: 1.65 ms a GiB between 34 and 46 (with prefetch on), against 2.1-2.4 below.
+
+## Limits
+
+Two processes per pair, not alternated (drift bound 1-2 %, small against 10 ms); 46 GiB, not 48 (amended before the run); one workload; the other workload (22k agent context) behind the old ledger figure is not re-measured.
+
+## Decision
+
+No default changes (prefetch stays on). Ledger row DS-PRED-LAYER-46 refines DS-PRED-LAYER and flags DS-PRED-AB's 1 ms as workload-specific, not general.

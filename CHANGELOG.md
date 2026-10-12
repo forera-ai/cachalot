@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.64.7 (2026-10-12)
+
+HANDOFF "Start here (2026-10-12, 0.64.7)" and section 18.141; arm 6 of `docs/L4B-RAW-LAYER-RECORD.md`, prediction and falsifier written before the run. Measurement only; nothing in `src/` changed.
+
+### Measured
+- Decode prefetch on against off at a 46 GiB expert budget (the guard refused 48; same 24 mixed turns, exact decode, 31.4 misses a token in both arms, no memory pressure): 131.8 against 141.9 ms a token (a gap of 10.1 ms, 7.7 %; off slower in 21 of 24 turns), blocked on experts 45.7 against 62.2 ms. At 34 GiB the gap was 15.7 ms. The gap is about 0.32-0.37 ms a miss, so it shrinks with the misses but stays: prefetch is still worth it at 46 GiB. The ledger's "about 1 ms" was another workload. Decode against budget flattens above 34 GiB (1.65 ms a GiB).
+
 ## 0.64.6 (2026-10-12)
 
 HANDOFF "Start here (2026-10-12, 0.64.6)" and section 18.140; arm 5 of `docs/L4B-RAW-LAYER-RECORD.md`, prediction and falsifier written before the run. Measurement only; nothing in `src/` changed.

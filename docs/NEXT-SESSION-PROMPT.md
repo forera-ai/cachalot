@@ -1,10 +1,11 @@
-# Next-session prompt — **v189**, written 2026-10-12
+# Next-session prompt — **v190**, written 2026-10-12
 
 **This is the file to paste.** `docs/NEXT-SESSION-PROMPT.md` is always current; superseded ones live in
 `docs/next-session-prompts/`.
 
 | version | written | produced by | what changed |
 |---|---|---|---|
+| **v190** | 2026-10-12 | Hamed: "go, record the prefetch pair at 48 GiB" (v189 First job 2), then quit VMware, `sudo purge`, "retry" | **0.64.7, measurement only: decode prefetch on/off at 46 GiB (the guard needs budget + 29 GiB available; 75.3 after the purge, 48 would need 77): 131.8 vs 141.9 ms a token (gap 10.1 ms, 21 of 24 turns), 31.4 misses; at 34 GiB the gap was 15.7 ms. About 0.32-0.37 ms a miss; prefetch stays worth it. Decode vs budget flattens above 34 GiB (1.65 ms a GiB). All six predictions held. Record arm 6.** §18.141 |
 | **v189** | 2026-10-12 | Hamed: "go, record 22 GiB" (v188 First job 2) | **0.64.6, measurement only: the 0.64.2 recording at 22 GiB (exact, prefetch on): 62.2 misses, 178.1 ms a token (28 GiB: 51.0 / 165.8; 34: 43.0 / 151.6). Decode ~ 151.6 + 2.2 x (34 - GiB) ms, nearly linear; misses mildly convex but each added miss costs less (1.78 then 1.10 ms); no bend, pressure 1, swap flat. Predicted from the measured slope, all held but one turn of 24. Record arm 5.** §18.140 |
 | **v188** | 2026-10-11 | Hamed: "go, record the memory cliff" (v187 First job 3) | **0.64.5, measurement only: the 0.64.2 recording at 28 GiB against 34 (exact, prefetch on): misses a token 43.0 to 51.0, decode 151.6 to 165.8 ms (+9.4 %, 24 of 24 turns), blocked 59.2 to 72.7; structure unchanged (hidden share 40 %, top-10 share 68 %, layers 0/1 2.3x). A smooth slope of ~2.4 ms a token per GiB, no cliff between 28 and 34 GiB; my size prediction was too high, no falsifier fired. Record arm 4.** §18.139 |
 | **v187** | 2026-10-11 | Hamed: "go, record the shipped decode miss budget 0" (v186 First job 3) | **0.64.4, measurement and a recorder fix, nothing in `src/`: budget 0 against exact at 34 GiB (24 turns, prefetch on): decode 151.6 to 112.2 ms a token (-26.0 %, 24 of 24 turns), blocked 59.2 to 16.3 ms, hidden share 43 % to 77 %, misses a token 43.0 to 24.2, layers 0 and 1 stop waiting; all six predictions held. The first run did not apply the budget (the knob lives in `cli.py`); it is kept as a replicate of arm 1 (decode +1.3 %, a drift bound). Record `docs/L4B-RAW-LAYER-RECORD.md` arm 3.** §18.138 |
@@ -151,15 +152,15 @@
 | v46 | 2026-09-25 | Hamed asked for GLM-5.3-Flash on Cachalot | 0.17.0: GLM through `serve-glm.sh` / `chat-glm.sh`. §17 |
 | v45 | 2026-09-24 | same as v47, one day earlier | 0.16.0: disk snapshot store by last use; lookahead and local compression closed. §15.12 |
 
-## First jobs (v189): five raw-row arms exist (34 GiB on/off/budget 0; 28 and 22 GiB); the rest are Hamed's pick
+## First jobs (v190): seven raw-row arms exist (34 GiB on/off/budget 0; 28, 22 and 46 GiB on/off); the rest are Hamed's pick
 
-Read HANDOFF sections 18.136-18.140 and `docs/L4B-RAW-LAYER-RECORD.md` first. Tools first (caveman, Jev, codebase-memory), the machine gate, then these. Each long run needs an estimate and Hamed's go; every research item opens with a written Baseline, Prediction and Falsifier. Hamed runs every `sudo`. Lessons: a recorder that builds the model directly bypasses `cli.py` (knobs like `CACHALOT_DECODE_MISS_BUDGET` are applied there); arms are separate processes, not alternated, drift bound 1-2 %; predict from measured slopes (the 22 GiB prediction, made that way, held).
+Read HANDOFF sections 18.136-18.141 and `docs/L4B-RAW-LAYER-RECORD.md` first. Tools first (caveman, Jev, codebase-memory), the machine gate, then these. Each long run needs an estimate and Hamed's go; every research item opens with a written Baseline, Prediction and Falsifier. Hamed runs every `sudo`. Lessons: a recorder that builds the model directly bypasses `cli.py` (knobs are applied there); arms are separate processes, not alternated, drift bound 1-2 %; predict from measured slopes; **the guard's rule is available memory (free + speculative + purgeable + inactive file cache) at least budget + 29 GiB; the active file cache is not counted, so after long runs `sudo purge` (Hamed runs it) raises "available" by ~17 GiB, and 48 GiB needs a reboot or more free memory beyond that.**
 
 1. **Autonomous items are exhausted.** Ask Hamed which machine job he wants.
-2. **Prefetch value against misses a token** (18.137): the on/off pair at 48 GiB (the guard refused 38 and 48 earlier; Hamed may need to free memory), about 20 minutes each plus load. Prediction first: the on/off gap shrinks from 16 ms (43 misses) toward the ledger's ~1 ms (23.5 misses); the new fact to use is that decode is ~2.2 ms a GiB.
-3. **Below 22 GiB** only if a reason appears (a prefill chunk's working set of several GiB starts to compete with the cache; 18.127).
-4. **Router sync** (66 of 112 ms in a budget-0 token): reconcile with the 18.75 floor profile before any lever; the tracer's sync window includes the routing eval.
-5. **The in-situ price of the 1-in-4 default** (optional, about an hour; derived cost about 0.14 ms a token).
+2. **The prefetch pair on the 22k Hermes-context workload** to settle the old ledger figure (about 1 ms, DS-PRED-AB) against the 0.32-0.37 ms a miss measured here: needs the dumped Hermes bodies (`CACHALOT_SERVER_DUMP`), a longer run (estimate with Hamed), and a prediction first.
+3. **Router sync** (59-66 ms of the token, 1.5 ms a layer): reconcile with the 18.75 floor profile before any lever; the tracer's sync window includes the routing eval.
+4. **The in-situ price of the 1-in-4 default** (optional, about an hour; derived cost about 0.14 ms a token).
+5. **Below 22 GiB** only if a reason appears (a prefill chunk's working set competes with the cache; 18.127).
 6. **The previous list, unchanged below.**
 
 ## First jobs (v181): the L2 tracer exists and is priced; the next steps are its knob, L4(b), and one certifying arm
