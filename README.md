@@ -297,6 +297,8 @@ reproducible to ±0.3 %.
 
 **0.60.7 (2026-10-06): review fixes.** The run manifest no longer records credentials such as `CACHALOT_API_KEY` by value, and its Hermes Desktop check needs one process line. HANDOFF section 18.73.
 
+**0.64.13 (2026-10-12): the "budget-0 excess" was run-to-run variation.** Recording budget 0 a second time, with the tracer now counting the experts each layer keeps, gives a decode token of 105.6 ms (112.2 the first time) and a router-evaluation window 6 ms below the exact path (3 ms above it before); the window after a layer that dropped experts is no different from the window after a full one. Two runs of one configuration differ by about 6 % in decode, so single cross-process timing gaps below that size are not resolved. HANDOFF section 18.147.
+
 **0.64.12 (2026-10-12): the budget-0 router-eval excess.** With the shipped decode miss budget the router-evaluation window runs 3 ms a token longer than on the exact path despite 20 fewer misses; reads in flight explain under a quarter of it, and it is a small uniform shift across all 40 layers, not a stall. Unexplained and too small (2.7 % of a token) to be a lever. Nothing in the runtime changed. HANDOFF section 18.146.
 
 **0.64.11 (2026-10-12): decode prefetch on a long agent context, alternated in one process.** Flipping prefetch per turn across the 12 Hermes prompts (a prompt's two runs a pass apart) gives +5.5 ms a token (95 % +0.7 to +9.1), agreeing with the two-process pair; running a prompt twice back to back is void (the second run inherits the first's cached experts). Nothing in the runtime changed. HANDOFF section 18.145.

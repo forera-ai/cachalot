@@ -301,7 +301,8 @@ def moe_layer_forward(
         prefetch=prefetch_entries or None,
     )
     if token_trace is not None:
-        token_trace.emit(4, layer_id, len(entries))  # GET_END
+        # b is the number of experts kept: len(entries) unless the decode miss budget dropped some (None entries).
+        token_trace.emit(4, layer_id, sum(e is not None for e in experts))  # GET_END
 
     weights = route.weights
 

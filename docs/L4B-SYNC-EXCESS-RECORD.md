@@ -50,3 +50,67 @@ What is established is a negative: the excess is not read overlap, not the text,
 ## Decision
 
 Nothing in `src/` or any default changes. The excess is 3 ms of 112 ms (2.7 %) of a token; the router-eval window is mostly GPU compute (18.142), so it is not a lever. The candidate test is cheap and not run: make GET_END record the number of experts kept (one tracer field, off by default) and record a budget-0 arm, then compare the window of layers by kept count. Ledger row DS-SYNC-EXCESS.
+
+# Addendum: the kept-expert count test, opened 2026-10-12 before the run
+
+Hamed's go: "go, record the kept-expert count test" (2026-10-12). Change in `src/` (tracer-only, off by default, no numerics): `moe_layer_metal.py` now writes the number of experts kept (non-None after `get_many`) into GET_END's `b`; GET_START keeps the requested count. With exact decode kept equals requested, so every earlier trace stays comparable; traces from before 0.64.13 carry the requested count in both. `layer_rows.py` rows now have `requested` and `kept`. Estimate: a 34 GiB budget-0 recording of the 24 mixed turns of arm 3 (same recorder, `CACHALOT_DECODE_MISS_BUDGET=0`), about 20 minutes plus a model load of 3, under `guarded_run.sh`. Output `benchmarks/results/l4b-raw-budget0-kept/`. Compare with the saved exact arm 1 and the saved budget-0 arm 3 (same prompts, same text as arm 3: greedy, same budget).
+
+## Baseline
+Budget 0's window is +3.01 ms a token above the exact arm (+0.075 ms in every layer, medians lower); about 19.5 experts dropped a token in earlier measurements (18.59), so roughly 0.5 of 6 per layer. The GPU work queued for a layer's router eval is the previous layer's MoE compute (with the kept experts) plus this layer's attention.
+
+## Hypotheses
+- H-shape: the variable number of kept experts (0 to 6) into the fused kernels costs more than the work it saves (kernel grid or graph shape variation, encode cost). Prediction: windows following a layer with fewer than 6 kept are higher than windows following a layer with all 6 kept, despite less compute; the budget-0 excess concentrates in windows after layers with kept < 6; windows after full layers match the exact arm.
+- H-uniform (not shape): the excess is the same after full and after reduced layers (a property of the budget-0 run, not of the count).
+- H-compute: windows after reduced layers are shorter (less work), so the mean excess must come from elsewhere.
+
+## Prediction (written before the run)
+1. Share of layers with kept < 6 in the budget-0 recording: 35-55 % (about 19.5 drops a token over 40 layers: 20-30 layers have a miss... the share of layers with at least one drop is the quantity; the 26.4 % in-flight figure of 18.76 is a different quantity).
+2. Layer-fixed-effect difference in the next layer's window, after a layer with kept < 6 minus after kept = 6: **+0.15 ms** (planning interval +0.05 to +0.40).
+3. Windows after full layers (kept = 6): excess over the exact arm at most 0.04 ms a layer (under half of the average 0.075); windows after reduced layers: at least 0.12 ms a layer.
+4. The tally: sum over layers of the excess attributable to reduced layers is at least 60 % of the +3.0 ms.
+5. Text identical to arm 3 (greedy, same budget): at least 22 of 24 turns; 0 events dropped; token total within 3 % of arm 3's 2,548.
+Registered reading: H-shape if predictions 2-4 hold; H-uniform if the difference in prediction 2 is under 0.05 ms and prediction 3's two numbers are within 0.03 of each other; H-compute if the difference is negative.
+
+## Falsifier
+Difference under 0.05 ms or negative, or the full-layer excess above 0.06 ms: H-shape is not the explanation, and the +3 ms stays unexplained (two hypotheses down).
+
+## Limits
+Observational within one recording (reduced layers are not randomly assigned: a layer drops experts when it misses, and misses correlate with layer type and token); the contrast is within a recording and layer type is controlled by layer fixed effects; the comparison with the exact arm crosses processes (drift 1-2 %); the tracer's own +0.55 ms is inside; the change to `moe_layer_metal.py` adds one generator expression per layer per traced token.
+
+## Addendum result (measured, 2026-10-12, runtime 0.64.13 tracer)
+
+Budget 0, 34 GiB, 24 mixed turns, prefetch on, recorded as `benchmarks/results/l4b-raw-budget0-kept/` (local), 0 events dropped, 2,533 decode tokens (arm 3: 2,548; the token counts differ in 4 of 24 turns although greedy: with budget 0 what is dropped depends on what is resident or in flight at that moment, so the text is not reproducible run to run), requested 6.00 and **kept 5.31** experts a layer, 27.8 experts dropped a token, 44.3 % of layers with fewer than 6 kept (kept distribution 0: 1.1 %, 1: 0.7, 2: 0.9, 3: 2.5, 4: 9.0, 5: 30.2, 6: 55.7).
+
+| | exact (arm 1) | budget 0 (arm 3) | budget 0 again (this run) |
+|---|---|---|---|
+| decode (server timing) | 151.6 ms | 112.2 | **105.6** |
+| misses a token | 43.0 | 24.2 | 24.5 |
+| router-eval window (mean) | 63.1 | 66.1 | **56.8** |
+| sum of per-layer medians | 64.3 | 60.7 | 54.1 |
+| wait-free (sum of 10th percentiles) | 48.9 | 49.2 | 47.8 |
+| blocked on experts | 59.2 | 16.3 | 19.8 |
+| read busy | 101.8 | 67.1 | 68.0 |
+| hidden share | 43.3 % | 77.1 | 72.3 |
+
+**The window of this run is 6.3 ms below the exact arm, not 3.0 above it.** By the previous layer's kept count the window minus the exact arm's layer mean is -0.126 to -0.161 ms for every count from 0 to 6 (1,141 rows at kept 0, 54,360 at kept 6); the difference between windows after reduced and after full layers is **+0.004 ms** (layer fixed effects). Tally of the excess over the exact arm: full -3.48, reduced -2.76, first layer -0.08 ms a token.
+
+## Against the prediction
+
+1. Share of layers with kept < 6: 44.3 % (35-55): held.
+2. The reduced-minus-full difference: +0.004 ms against the predicted +0.15 (falsifier: under 0.05): **falsified**; H-shape (the variable expert count) is not the explanation. No difference at all by kept count (including 0 experts, where `mx.zeros` replaces the expert kernels).
+3. The full-layer excess at most 0.04 and the reduced at least 0.12: both are about -0.16 ms; the two numbers are within 0.03 of each other, as the registered reading for H-uniform requires, but the excess itself did not reproduce (it is negative).
+4. The attribution of 60 % of +3.0 ms to reduced layers: not testable, there is no excess to attribute.
+5. Text identical in at least 22 of 24 turns: 20 (missed); 0 dropped events held; tokens within 3 % of arm 3 (0.6 %) held.
+
+## Explanation
+
+The +3.01 ms was not a property of budget 0. Two recordings of the same configuration (budget 0, 34 GiB, prefetch on, the same prompts) differ by 9.3 ms in the router-eval window mean (66.1 against 56.8), 6.6 ms in decode (112.2 against 105.6, 5.9 %) and 6.6 ms in the sum of medians, while the wait-free floor (sum of 10th percentiles: 49.2 and 47.8) and the miss count (24.2 and 24.5) agree. The upper part of the window distribution moves between processes by amounts larger than the budget-0 effect it was credited with. The cause of that movement (thermal or clock state, background load: the guard's samples list VMware as the largest other process in this run's first seconds, 1.6 GiB resident, after Hamed had quit it earlier; other tools) is not isolated.
+
+## Consequences for earlier records (corrections)
+
+- The "budget-0 router-eval excess" (18.142, 18.146) is withdrawn as a budget-0 property: it is the between-run variation of this metric, here at least 9 ms.
+- The drift bound used throughout this series (1-2 % between processes, from one replicate pair: decode +1.3 %) is too small: the same configuration differs by 5.9 % in decode between these two budget-0 runs. Cross-process decode gaps below about 6 % (arm 7's prefetch gap 3.3 %; the 28-34 GiB step of 9.4 % and the 22-28 GiB step of 7.4 %) are not resolved by a single pair of processes; the budget-0 saving (-26 % to -30 %), the prefetch-off penalty at 34 GiB (+10.4 %), the miss counts and the wait-free floor are robust. The alternated one-process design (arm 8b) is the trustworthy prefetch number (+5.5 ms, +0.7 to +9.1).
+
+## Decision
+
+No change in `src/` beyond the tracer field. Budget 0 stays as shipped. The excess question is closed: no mechanism to find. Ledger row DS-SYNC-KEPT, DS-SYNC-EXCESS marked superseded.

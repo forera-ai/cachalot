@@ -20,8 +20,8 @@ import numpy as np
 TOKEN = 0
 SYNC_START = 1
 SYNC_END = 2
-GET_START = 3
-GET_END = 4
+GET_START = 3  # b: experts requested
+GET_END = 4  # b: experts kept (equal to the requested count unless the decode miss budget dropped some; 0.64.13)
 READ_START = 5
 READ_END = 6
 

@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-12, 0.64.13): the kept-expert test: the "budget-0 excess" was run-to-run variation; the between-process drift bound is about 6 %, not 1-2 %
+>
+> Section 18.147, addendum of `docs/L4B-SYNC-EXCESS-RECORD.md` (prediction and falsifier written before the run), new `benchmarks/kept_experts.py`. **One tracer-only change in `src/`:** GET_END's `b` is now the number of experts kept (GET_START's `b` the requested count); exact decode is unchanged (kept equals requested), nothing else, no numerics. **Measured:** budget 0, 34 GiB, prefetch on, again (kept 5.31 of 6, 44.3 % of layers reduced, 27.8 dropped a token): decode 105.6 ms (arm 3: 112.2), router-eval window 56.8 ms (arm 3: 66.1; exact arm: 63.1), so this run's window is 6.3 ms **below** the exact arm, not 3.0 above it; the window after a reduced layer equals the window after a full layer (+0.004 ms; 0 to 6 kept all within -0.13 to -0.16 ms of the exact layer mean). H-shape is falsified and the excess did not reproduce: two runs of one configuration differ by 9.3 ms in the window, 5.9 % in decode, 6.6 ms in the sum of medians, while the wait-free floor (47.8 vs 49.2) and the miss count (24.5 vs 24.2) agree. **Corrections:** 18.142/18.146's "budget-0 excess" is withdrawn as a property of budget 0; the between-process drift bound used since 0.64.3 (1-2 %) is too small, use about 6 % for decode between processes (so cross-process decode gaps under 6 %, such as the 28-34 and 22-28 GiB steps and arm 7's prefetch gap, are not resolved by one pair; misses, the budget-0 saving of 26-30 %, the prefetch-off penalty at 34 GiB and the wait-free floor are). Budget-0 text is not reproducible run to run (4 of 24 turns differ in length). First job and open items: `docs/NEXT-SESSION-PROMPT.md` v196.
+>
 > ## Start here (2026-10-12, 0.64.12): the budget-0 router-eval excess: not read overlap, not text, not spikes; unexplained (3 ms of 112)
 >
 > Section 18.146, record `docs/L4B-SYNC-EXCESS-RECORD.md` (prediction and falsifier written before the analysis), new `benchmarks/sync_excess.py`, `layer_rows.py` gained `sync_read_ms`. Offline, nothing in `src/` changed. **Measured:** budget 0's router-eval window is +3.01 ms a token above the exact 34 GiB arm with 20 fewer misses. Read time overlapping the window is higher (34.5 against 28.5 ms) and the window rises 0.119 ms per ms of it, but that explains only 23 % of the excess (the falsifier, below 30 %, fired). The excess is a uniform +0.075 ms in every one of the 40 layers while the median falls 3.55 ms in total (a right-skewed shift, not spikes: 1.84 % of rows above 3 ms, mostly on the heavy attention layers); it is the same on the 18 turns with equal token counts (+2.04), has no position dependence, and the rest of the token (decode minus window minus blocked) is the same (29.8 against 29.3 ms). Across the six exact arms the window follows read activity per token (54.1 + 0.088 x busy) but budget 0 sits +6.1 ms above that line with a within-arm slope of zero. Candidate (untested): the drop branch (variable expert count into the fused kernels); the tracer does not record kept experts. 3 ms of 112 is not a lever. First job and open items: `docs/NEXT-SESSION-PROMPT.md` v195.
@@ -9086,6 +9090,34 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.147 The kept-expert count test: the budget-0 excess was run-to-run variation (0.64.13)
+
+**Goal.** Hamed: "go, record the kept-expert count test" (the open item of 18.146). Record: the addendum of `docs/L4B-SYNC-EXCESS-RECORD.md`.
+
+**Baseline.** 18.146: budget 0's router-eval window +3.01 ms above the exact arm, uniform across layers, unexplained; candidate H-shape (the variable expert count into the fused kernels).
+
+**Prediction (written first).** 35-55 % of layers with kept < 6; the next layer's window +0.15 ms after a reduced layer than after a full one (planning +0.05 to +0.40); the excess concentrated after reduced layers; text identical to arm 3 in at least 22 of 24 turns. Falsifier: the difference under 0.05 ms, or the full-layer excess above 0.06.
+
+**Method.** The tracer's GET_END `b` records the experts kept (one expression in `moe_layer_metal.py`, tracer-only); `layer_rows.py` gains `requested` and `kept`; `token_trace_raw.py` with `CACHALOT_DECODE_MISS_BUDGET=0`, 34 GiB, the 24 mixed turns of arm 3, under `guarded_run.sh`; `benchmarks/kept_experts.py` compares each layer's window by the previous layer's kept count and against the exact arm's layer means. Tests: `tests/test_kept_experts.py`, an added case in `tests/test_layer_rows.py`.
+
+**Result (measured).** Kept 5.31 of 6, 27.8 dropped a token, 44.3 % of layers reduced; decode 105.6 ms (arm 3: 112.2), window 56.8 ms (arm 3: 66.1, exact: 63.1), floor (p10 sum) 47.8 (49.2), misses 24.5 (24.2); window after reduced minus after full +0.004 ms; by previous kept count 0 to 6 the window is -0.126 to -0.161 ms against the exact layer mean; tokens 2,533 against 2,548, with 4 of 24 turns of a different length.
+
+**Against the prediction.** The reduced share held (44.3 %); the difference (+0.004 against +0.15) fell with its falsifier; the premise of the excess did not reproduce (the window is 6.3 ms below the exact arm); text identity missed (20 of 24).
+
+**Explanation.** Two recordings of one configuration differ by 9.3 ms in the window and 5.9 % in decode; the wait-free floor and the misses agree. The upper part of the window distribution and the decode time vary between processes by more than the effect the earlier sections credited to budget 0. Cause not isolated (thermal or clock state, background load: VMware appears as the largest other process in the guard samples).
+
+**Corrections.** The budget-0 excess of 18.142 and 18.146 is withdrawn as a property of budget 0. The between-process drift bound of 1-2 % used since 0.64.3 (one replicate pair, +1.3 %) is too small: about 6 % for decode. DS-BUDGET-SLOPE-28-34 and -22-34 decode steps (9.4 % and 7.4 %), DS-PRED-LAYER-HERMES22K's 3.3 % gap and DS-PRED-LAYER's +10.4 % are single cross-process pairs: the misses, the sign and the structure stand, the sizes carry about +-6 %; DS-PRED-LAYER-ALT (one process, interleaved) is the prefetch number to quote.
+
+**Limits.** One extra recording; the cause of the run-to-run movement is not isolated; the kept-count contrast is observational within one recording (layer type controlled by fixed effects).
+
+**What shipped.** The tracer field, `benchmarks/kept_experts.py`, tests, the addendum, ledger rows DS-SYNC-KEPT (new) and notes on DS-SYNC-EXCESS and the drift bound. No default or numerics change; no Lab brief (the tracer's `b` field is not a stat or flag).
+
+**Bottleneck after.** Unchanged.
+
+**Open.** A cheap, useful measurement of the between-process drift itself: the same configuration repeated three or more times, interleaved with the other work, so every cross-process figure carries a measured bound (about 20 minutes a run).
+
+**Kind.** Research (predicted, measured, explained): the central prediction fell with its falsifier and, more usefully, the premise of the question did not reproduce; a bound used in earlier sections was too small.
 
 ### 18.146 The budget-0 router-eval excess: partly characterized, unexplained (0.64.12)
 

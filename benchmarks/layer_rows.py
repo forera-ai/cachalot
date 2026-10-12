@@ -44,18 +44,22 @@ def layer_rows(d: dict) -> list[dict]:
         ev = []
         for c0, c1, tag in ((tt.SYNC_START, tt.SYNC_END, "sync"), (tt.GET_START, tt.GET_END, "get")):
             s_m, e_m = sel & (code == c0), sel & (code == c1)
-            pend: dict[int, list[int]] = {}
-            for t, kind, layer in sorted([(t, 0, l) for t, l in zip(ts[s_m].tolist(), a[s_m].tolist())]
-                                         + [(t, 1, l) for t, l in zip(ts[e_m].tolist(), a[e_m].tolist())]):
+            pend: dict[int, list[tuple[int, int]]] = {}
+            for t, kind, layer, bv in sorted([(t, 0, l, bb) for t, l, bb in zip(ts[s_m].tolist(), a[s_m].tolist(), b[s_m].tolist())]
+                                             + [(t, 1, l, bb) for t, l, bb in zip(ts[e_m].tolist(), a[e_m].tolist(), b[e_m].tolist())]):
                 if kind == 0:
-                    pend.setdefault(layer, []).append(t)
+                    pend.setdefault(layer, []).append((t, bv))
                 elif pend.get(layer):
-                    ev.append((tag, layer, pend[layer].pop(0), t))
+                    s0, b0 = pend[layer].pop(0)
+                    ev.append((tag, layer, s0, t, b0, bv))
         rs, re_ = np.sort(ts[sel & (code == tt.READ_START)]), np.sort(ts[sel & (code == tt.READ_END)])
         n = min(len(rs), len(re_))
         reads = tt._union(rs[:n], re_[:n]) if n else []
-        sync = {l: (s, e) for tag, l, s, e in ev if tag == "sync"}
-        get = {l: (s, e) for tag, l, s, e in ev if tag == "get"}
+        sync = {l: (s, e) for tag, l, s, e, _b0, _b1 in ev if tag == "sync"}
+        get = {l: (s, e) for tag, l, s, e, _b0, _b1 in ev if tag == "get"}
+        # GET_START b = experts requested; GET_END b = experts kept (equal unless the decode miss budget dropped some; traces
+        # recorded before 0.64.13 wrote the requested count in both)
+        counts = {l: (b0, b1) for tag, l, _s, _e, b0, b1 in ev if tag == "get"}
         layers = sorted(sync)
         for i, l in enumerate(layers):
             w_lo = sync[l][0]
@@ -67,7 +71,8 @@ def layer_rows(d: dict) -> list[dict]:
             ov = tt._overlap(win, [g]) if g and win else 0
             sync_reads = sum(e - s for s, e in _clip(reads, sync[l][0], sync[l][1]))
             rows.append({"position": int(positions[k]), "layer": int(l), "sync_ms": (sync[l][1] - sync[l][0]) / 1e6,
-                         "sync_read_ms": sync_reads / 1e6,
+                         "sync_read_ms": sync_reads / 1e6, "requested": int(counts[l][0]) if l in counts else 0,
+                         "kept": int(counts[l][1]) if l in counts else 0,
                          "blocked_ms": blocked / 1e6, "busy_ms": busy / 1e6, "hidden_ms": (busy - ov) / 1e6,
                          "window_ms": (w_hi - w_lo) / 1e6})
     return rows

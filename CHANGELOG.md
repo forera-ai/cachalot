@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.64.13 (2026-10-12)
+
+HANDOFF "Start here (2026-10-12, 0.64.13)" and section 18.147; addendum of `docs/L4B-SYNC-EXCESS-RECORD.md`, prediction and falsifier written before the run.
+
+### Changed
+- The tracer's GET_END event now carries the number of experts kept in its `b` field (GET_START keeps the requested count). Exact decode is unchanged (kept equals requested); the tracer is off unless `CACHALOT_TOKEN_TRACE` is set; no numerics, default or stat changes.
+
+### Added
+- `benchmarks/kept_experts.py`; `layer_rows.py` rows carry `requested` and `kept`; `tests/test_kept_experts.py` and a `layer_rows` test.
+
+### Measured
+- Budget 0 again (34 GiB, prefetch on, 44 % of layers with fewer than 6 experts kept, 27.8 dropped a token): decode 105.6 ms a token (the earlier recording: 112.2), router-eval window 56.8 ms (earlier 66.1; exact path 63.1). The window after a layer that kept fewer experts equals the window after a full layer (+0.004 ms). The +3 ms "budget-0 excess" of 18.142 and 18.146 did not reproduce and is withdrawn: two runs of one configuration differ by 9.3 ms in the window and 5.9 % in decode while the wait-free floor and the miss count agree.
+
+### Corrected
+- The between-process drift bound used since 0.64.3 (1-2 %) is too small: about 6 % in decode. Cross-process decode gaps under that size are single pairs; the miss counts, the budget-0 saving, the prefetch-off penalty at 34 GiB and the alternated prefetch result (HANDOFF 18.145) are not affected.
+
 ## 0.64.12 (2026-10-12)
 
 HANDOFF "Start here (2026-10-12, 0.64.12)" and section 18.146; the record `docs/L4B-SYNC-EXCESS-RECORD.md` was written with its prediction and falsifier before the analysis. Offline analysis and tooling; nothing in `src/` changed.

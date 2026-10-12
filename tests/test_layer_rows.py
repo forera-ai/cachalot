@@ -34,3 +34,17 @@ def test_sync_read_overlap_is_the_read_time_inside_the_sync_interval():
     rows = lr.layer_rows(_drained())
     # layer 0 syncs 0-10 with a read 5-25: 5 ns inside the sync interval; layer 1 syncs 40-50 with a read 60-70: none
     assert abs(rows[0]["sync_read_ms"] - 5 / 1e6) < 1e-12 and rows[1]["sync_read_ms"] == 0.0
+
+
+def test_requested_and_kept_counts_come_from_get_start_and_get_end():
+    d = _drained()
+    # layer 0: 6 requested, 4 kept (budget 0 dropped two); layer 1 untouched (b = 0 in the fixture)
+    ts, code, a, b = d["ts"], d["code"], d["a"], d["b"].copy()
+    for i in range(len(ts)):
+        if a[i] == 0 and code[i] == tt.GET_START:
+            b[i] = 6
+        if a[i] == 0 and code[i] == tt.GET_END:
+            b[i] = 4
+    d["b"] = b
+    rows = lr.layer_rows(d)
+    assert rows[0]["requested"] == 6 and rows[0]["kept"] == 4
