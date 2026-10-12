@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-12, 0.64.9): the in-situ price of the 1-in-4 default: bounded below 0.65 ms a token, not certified
+>
+> Section 18.143, addendum 2 of `docs/L2-IN-SITU-PRICE-RECORD.md` (prediction and rule written before the run), new `benchmarks/token_trace_price_sampled.py` and `tests/test_token_trace_price_sampled.py`. Nothing in `src/` changed. **Measured** (30 prompt pairs, 34 GiB, exact decode, 39.2 misses a token, text identical 30 of 30, 0 dropped): the cost of a sampled token T = +1.10 ms (95 % -0.26 to +2.58), the average over all tokens T / 4 = **+0.274 ms (-0.065 to +0.645)**; the control (a second stamp-only tracer against the first, which cannot cost anything) reads +1.84 ms (-1.47 to +5.28), so the estimator's noise at this size is as large as the effect. **The registered rule (upper bound below 0.5 ms) is not met**, and nor is a bigger cost shown: the default is bounded (below about 0.65 ms, 0.45 % of a token, at 95 %), consistent with the derived 0.14 and with +0.55 / 4; certifying it would need about five times the pairs (90-100 minutes). The default stays as shipped. First job and open items: `docs/NEXT-SESSION-PROMPT.md` v192.
+>
 > ## Start here (2026-10-12, 0.64.8): the tracer's "router sync" is GPU compute, not a synchronization cost; 18.138's wording corrected
 >
 > Section 18.142, record `docs/L4B-SYNC-RECONCILE-RECORD.md` (prediction and falsifier written before the analysis), new `benchmarks/sync_profile.py`. Read from the seven saved raw-row arms; no machine run, nothing in `src/` changed. **Finding:** the tracer's sync window (56-66 ms a token) wraps the router `mx.eval`, which blocks until the GPU finishes everything queued since the previous eval, so it is mostly GPU compute: its wait-free part (sum of per-layer 10th percentiles) is 46.5-50.2 ms (about 1.13 ms for an ordinary layer), matching 18.75's 53.8 ms inside eval at a 512-token context; the isolated round trip (0.27 ms x 40 = 11 ms, "9-12 ms") is a subset that overlaps inside it. It depends on the layer type (attention layers 1, 2, 8, 14, 20 are 0.4-0.7 ms heavier, layers 24-36 every fourth 0.2) and prefetch adds 3.4-3.9 ms (its arrays share the eval). The extra 9-16 ms up to the mean is contention (reads in flight, a heavy tail; budget 0 has the highest sync with the fewest misses, unexplained). **18.138 was wrong** to call the budget-0 token "router-sync-bound": there is no 40-60 ms synchronization saving; 18.75's levers stand. First job and open items: `docs/NEXT-SESSION-PROMPT.md` v191.
@@ -9070,6 +9074,32 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.143 The in-situ price of the 1-in-4 default (0.64.9)
+
+**Goal.** Hamed: "go, record the in-situ price of the 1-in-4 default" (the optional item of 18.134). Record: addendum 2 of `docs/L2-IN-SITU-PRICE-RECORD.md`.
+
+**Baseline.** Continuous recording costs +0.554 ms a token (95 % +0.051 to +1.114, 18.133); the default records one token in four, derived average about 0.14 ms; never measured.
+
+**Prediction (written first).** T = +0.55 ms a sampled token (planning 0.0 to +1.1); T / 4 = +0.14 (interval within -0.05 to +0.30); control within +-0.4 ms; texts identical 30 of 30, 0 dropped. Rule: certified if the upper end of T / 4 is below 0.5 ms; falsified by a point above 0.30 or an upper bound at or above 0.5.
+
+**Method.** `benchmarks/token_trace_price_sampled.py` through `Engine.chat` at 34 GiB: each of 30 prompts run twice back to back (a `TokenTrace(every=4)` and a stamp-only tracer, order alternating), a position-matched difference in differences (sampled positions k % 4 == 0 against the rest), 10 control pairs (a second stamp-only tracer against the first), bootstrap over pairs.
+
+**Result (measured).** T = +1.097 ms (-0.261 to +2.580) from 27 pairs; T / 4 = +0.274 ms (-0.065 to +0.645); control T = +1.843 (-1.471 to +5.282) from 9 pairs; text identical 30 of 30, 0 dropped, 39.2 misses a token, token 145.0 ms, pressure 1.
+
+**Against the prediction.** T inside its planning interval at the upper edge; T / 4's point inside but its upper bound outside; the control outside +-0.4; identity and drops held; events a sampled token not recorded. The rule is **not met** (upper bound 0.645 against 0.5).
+
+**Explanation (hypothesis).** The estimator cannot resolve a tenth of a millisecond at 27 pairs: the control, which holds no tracing at all, is as large as the effect. The best statements are a bound and a consistency: the average cost of the default is below about 0.65 ms a token (0.45 %), and the estimates (+0.27 measured, +0.14 derived, +0.55 / 4 from the continuous run) agree within the noise.
+
+**Limits.** One machine, 34 GiB, one workload; the estimator's noise; the stamp-only tracer's own cost is in both arms.
+
+**What shipped.** The script, three tests, addendum 2, ledger row L2-TRACE-E4-COST. No default, output or numerics change; no Lab brief.
+
+**Bottleneck after.** Unchanged.
+
+**Open.** A certified number needs about five times the pairs (about 140, 90-100 minutes) or a token-level ABBA design; justified only if something needs it.
+
+**Kind.** Research (predicted, measured, explained as hypothesis): identity held, the interval predictions missed, the registered rule not met and no larger cost shown; the instrument's noise floor was the finding.
 
 ### 18.142 The router sync reconciled: it is GPU compute, not a synchronization cost (0.64.8)
 

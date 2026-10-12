@@ -1,8 +1,8 @@
 # Experiment index (charter section 7.2 and section 10)
 
-Written 2026-10-09 against runtime 0.64.8; regenerate with `benchmarks/experiment_index.py`. The charter asks for "a file of experiment records whose predictions were written before the build". The records themselves live in `docs/HANDOFF.md` section 18 (each with Baseline, Prediction, Method, Result, Explanation, Limits, Kind); this file is the index: where each record is, whether it carries a written prediction, and what kind of result it is, as its own **Kind** line says. It does not restate results. Sections before 18.75 predate the record format and are not listed; sections without a **Kind** line are listed as unlabelled and have no claim made for them here.
+Written 2026-10-09 against runtime 0.64.9; regenerate with `benchmarks/experiment_index.py`. The charter asks for "a file of experiment records whose predictions were written before the build". The records themselves live in `docs/HANDOFF.md` section 18 (each with Baseline, Prediction, Method, Result, Explanation, Limits, Kind); this file is the index: where each record is, whether it carries a written prediction, and what kind of result it is, as its own **Kind** line says. It does not restate results. Sections before 18.75 predate the record format and are not listed; sections without a **Kind** line are listed as unlabelled and have no claim made for them here.
 
-Counts of the 68 sections listed (18.75-18.142): 29 research, 13 measurement, 13 unlabelled, 11 engineering, 1 planning, 1 pricing.
+Counts of the 69 sections listed (18.75-18.143): 30 research, 13 measurement, 13 unlabelled, 11 engineering, 1 planning, 1 pricing.
 
 Research means predicted, measured and explained (charter section 8.1 rule 6); a falsified prediction is still research and is marked so in its Kind line. Engineering means it works without a written prediction, or an instrument was built.
 
@@ -10,6 +10,7 @@ Research means predicted, measured and explained (charter section 8.1 rule 6); a
 
 | section | title | prediction written | kind (as recorded) |
 |---|---|:---:|---|
+| §18.143 | The in-situ price of the 1-in-4 default (0.64.9) | yes | Research (predicted, measured, explained as hypothesis): identity held, the interval predictions missed, the registered rule not met and no larger cost shown; the instrument's noise floor was the finding. |
 | §18.142 | The router sync reconciled: it is GPU compute, not a synchronization cost (0.64.8) | yes | Research (predicted, measured offline, explained): three predictions held, one held in direction only, and an earlier section's interpretation corrected. |
 | §18.141 | Decode prefetch on and off at 46 GiB (0.64.7) | yes | Research (predicted, measured, explained as hypothesis): all six predictions held; the budget was changed from 48 to 46 GiB before the run for the guard. |
 | §18.140 | The raw per-layer rows at 22 GiB: the expert budget slope continues (0.64.6) | yes | Research (predicted from the measured slope, measured, explained as hypothesis): predictions held but one; the L4(c) question is answered for this workload as a slope, not a region. |

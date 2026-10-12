@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.64.9 (2026-10-12)
+
+HANDOFF "Start here (2026-10-12, 0.64.9)" and section 18.143; addendum 2 of `docs/L2-IN-SITU-PRICE-RECORD.md`, prediction and rule written before the run. Measurement and tooling; nothing in `src/` changed.
+
+### Added
+- `benchmarks/token_trace_price_sampled.py` prices the 1-in-4 tracer default inside a real decode (position-matched difference in differences on back-to-back prompt pairs, with a control); `tests/test_token_trace_price_sampled.py` (3 tests).
+
+### Measured
+- At 34 GiB (30 prompt pairs, text identical in all, no dropped events): a sampled token costs +1.10 ms (95 % -0.26 to +2.58); the average over all tokens is +0.274 ms (-0.065 to +0.645). The control reads +1.84 ms (-1.47 to +5.28), so the estimator's noise is as large as the effect; the default is bounded below about 0.65 ms a token (0.45 %) but **not certified** under the registered rule (upper bound below 0.5 ms). It stays as shipped (off unless `CACHALOT_TOKEN_TRACE=1`).
+
 ## 0.64.8 (2026-10-12)
 
 HANDOFF "Start here (2026-10-12, 0.64.8)" and section 18.142; the record `docs/L4B-SYNC-RECONCILE-RECORD.md` was written with its prediction before the analysis. Offline analysis and tooling; nothing in `src/` changed.

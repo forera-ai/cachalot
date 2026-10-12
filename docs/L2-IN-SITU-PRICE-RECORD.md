@@ -116,3 +116,60 @@ Mixed workload, 30 turns planned in each of p0 and p1 (27 usable: three replies 
 **Verdict on the falsifier, plainly.** The upper bound (+1.11) is above the 1.0 ms stop rule, and the lower bound (+0.05) excludes zero. The rule as written says the tracer is sampled, not continuous. The cost is now known to be real and about half a millisecond (0.36 % of a 154 ms token, 0.7 % of the 80 ms floor), which is 1.9 microseconds an event at 294 events, 4 times the 0.5 microseconds the simulated token showed under contention. The pre-registered rule is not met; I am not reinterpreting it. What follows from it: when the `CACHALOT_TOKEN_TRACE` knob is built, the default should be sampled (every 4th decode token would cost about 0.14 ms a token averaged), with continuous recording as an explicit opt-in whose cost is stated as +0.55 ms (up to 1.1). That default is Hamed's call.
 
 Exposed against hidden at 34 GiB: 60 % of read-busy time is exposed (first run 57 % at 38 GiB), the same within the run-to-run spread.
+
+# Addendum 2: the in-situ price of the 1-in-4 default (opened 2026-10-12, before the script ran against the model)
+
+Hamed's go: "go, record the in-situ price of the 1-in-4 default" (2026-10-12). Estimate: model load about 3 minutes, 4 warm turns, 30 prompt pairs of two 128-token runs (about 40 s a pair, 20 minutes) and 10 control pairs (7 minutes): about 30-35 minutes, 34 GiB, exact decode, under `guarded_run.sh`.
+
+## Baseline
+Continuous recording (`every=1`) costs +0.554 ms a decode token (95 % +0.051 to +1.114, 27 turns, 34 GiB; 0.63.4, 18.133), 1.9 microseconds an event over 294 events. The shipped default records one token in four, so the derived average is about 0.14 ms a token (0.4 % -> 0.1 % of ~150 ms). It was never measured: `benchmarks/token_trace_price.py` alternates tokens by parity and cannot represent a 1-in-4 phase.
+
+## Method
+`benchmarks/token_trace_price_sampled.py`, `Engine.chat`, `serve_defaults()` environment, 34 GiB, greedy, 128 new tokens, the 12 mixed prompts cycled. Each of 30 prompts is run twice back to back, once with `TokenTrace(every=4)` and once with a stamp-only tracer, the order alternating by prompt (so a prompt's second run, with a warmer cache, falls on each side equally). Position-matched difference in differences: T = mean over sampled positions (k % 4 == 0) of (wall_e4 - wall_off) minus the same mean over the other positions; the cost of a sampled token is T and the average over all tokens is T / 4. Interval: bootstrap over prompts. Control: 10 pairs of a second stamp-only tracer against the stamp-only one, same labels, for the noise floor of T. Text identity of the pair and dropped events are checked. The stamp-only tracer's own cost (a `perf_counter_ns` and two array appends a token) is in both arms and not priced.
+
+## Prediction (written before the run)
+1. The cost of a sampled token T is +0.55 ms (the continuous per-recorded-token cost), with a planning interval 0.0 to +1.1.
+2. The average over all tokens, T / 4, is +0.14 ms, 95 % interval within -0.05 to +0.30.
+3. The control pairs give T within +-0.4 ms of zero.
+4. The e4 and off texts are identical in 30 of 30 pairs; 0 events dropped; about 300 events a sampled token (about 75 a token averaged).
+Registered rule: the sampled default is certified if the upper end of the 95 % interval of T / 4 is below 0.5 ms (about 0.3 % of a token).
+
+## Falsifier
+Point estimate of T / 4 above 0.30 ms (twice the derived cost), or an upper bound at or above 0.5 ms: the sampled default is not certified and the cost is not what the continuous figure scaled by a quarter predicts (a per-sampled-token cost larger than the per-recorded-token cost, for instance from a cold buffer or a drain).
+
+## Limits
+One machine, 34 GiB, one workload; the estimator resolves a few tenths of a millisecond a sampled token, so a true 0.14 ms average (0.55 a sampled token) sits near the interval's width; the server's `TokenTraceMeter` bookkeeping between requests is outside the decode window and not priced here.
+
+## Addendum 2 result (measured, 2026-10-12, runtime 0.64.8): the design could not certify the default
+
+`benchmarks/token_trace_price_sampled.py --budget-gib 34`, 30 prompt pairs (27 usable, the others had fewer than 20 shared positions or too few sampled positions) and 10 control pairs (9 usable), 39.2 misses a token, tokens about 145 ms (off runs), 103.7 tokens a run on average, pressure 1, swap flat. Text identical in 30 of 30 pairs, 0 events dropped. Results are in `benchmarks/results/l2-price/run-e4.json` (local).
+
+| estimate | mean | 95 % bootstrap over pairs | median |
+|---|---|---|---|
+| T, the cost of a sampled token (27 pairs) | +1.097 ms | -0.261 to +2.580 | +0.682 |
+| T / 4, the average over all tokens | +0.274 ms | -0.065 to +0.645 | |
+| control T, a second stamp-only tracer against off (9 pairs) | +1.843 ms | -1.471 to +5.282 | |
+| control per token (T / 4) | +0.461 ms | | |
+
+## Against the prediction
+
+1. T = +1.10 ms against the predicted +0.55 (planning interval 0.0 to +1.1): at the upper edge of the planning interval, with a confidence interval that contains the prediction.
+2. T / 4 = +0.274 ms against +0.14, interval predicted within -0.05 to +0.30: the point is inside, **the upper bound (+0.645) is not**; missed.
+3. Control T within +-0.4 ms of zero: **missed**, +1.84 ms (-1.47 to +5.28). The noise floor of this estimator at 27 pairs is larger than the effect it is meant to resolve; the control, which cannot contain any tracing cost, reads +0.46 ms a token on average.
+4. Texts identical 30 of 30 and 0 dropped: held. Events a sampled token were not summarized in this run (the stamps and positions were kept, the events were not): unverified.
+
+**The registered rule is not met.** The default is certified if the upper end of T / 4 is below 0.5 ms; it is +0.645. The falsifier's upper-bound clause fired. The point estimate (+0.274) is below the falsifier's 0.30 point threshold.
+
+## Explanation (hypothesis)
+
+The estimate is too noisy for the question. The per-pair standard deviation of T is several milliseconds (a quarter of the positions are treated, about 26 positions a run, against a token-to-token sd of several ms), and the control shows the estimator's bias or noise at the same scale as the effect. Neither "0.14 ms" nor "0.65 ms" can be excluded. What is established is a bound: with 95 % confidence the average cost of the 1-in-4 default is below about 0.65 ms a token (0.45 % of a 145 ms token); the point estimate +0.27 ms is consistent with the derived 0.14 and with the continuous per-recorded-token cost (+0.55 x 1/4).
+
+To certify under the registered rule the half-width of T would need to fall from about 1.4 to about 0.6 ms: roughly five times the pairs (about 140 pairs, about 90-100 minutes of machine time), or longer runs of the same prompts, or an ABBA order at the token level. Not done.
+
+## Limits
+
+The control's non-zero mean (+1.84) means the estimator may carry a bias at this size; the order alternation was meant to cancel it; the control pairs were also alternated and show it did not shrink below the noise. One machine, one budget, one workload. Interval widths: the bootstrap is over pairs (27 and 9).
+
+## Decision
+
+The sampled default stays (off unless `CACHALOT_TOKEN_TRACE=1`, one token in four). Its cost is bounded, not certified: below about 0.65 ms a token at 95 % confidence, point +0.27, derived +0.14. No change to the knob or its default. A tighter price needs a design with much more power; the cost is small against the question it answers (a trace of 40 layers at +0.1 % of a token) and the knob is off by default, so more machine time is not justified unless a use appears that needs the number.
