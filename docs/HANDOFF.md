@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-12, 0.64.12): the budget-0 router-eval excess: not read overlap, not text, not spikes; unexplained (3 ms of 112)
+>
+> Section 18.146, record `docs/L4B-SYNC-EXCESS-RECORD.md` (prediction and falsifier written before the analysis), new `benchmarks/sync_excess.py`, `layer_rows.py` gained `sync_read_ms`. Offline, nothing in `src/` changed. **Measured:** budget 0's router-eval window is +3.01 ms a token above the exact 34 GiB arm with 20 fewer misses. Read time overlapping the window is higher (34.5 against 28.5 ms) and the window rises 0.119 ms per ms of it, but that explains only 23 % of the excess (the falsifier, below 30 %, fired). The excess is a uniform +0.075 ms in every one of the 40 layers while the median falls 3.55 ms in total (a right-skewed shift, not spikes: 1.84 % of rows above 3 ms, mostly on the heavy attention layers); it is the same on the 18 turns with equal token counts (+2.04), has no position dependence, and the rest of the token (decode minus window minus blocked) is the same (29.8 against 29.3 ms). Across the six exact arms the window follows read activity per token (54.1 + 0.088 x busy) but budget 0 sits +6.1 ms above that line with a within-arm slope of zero. Candidate (untested): the drop branch (variable expert count into the fused kernels); the tracer does not record kept experts. 3 ms of 112 is not a lever. First job and open items: `docs/NEXT-SESSION-PROMPT.md` v195.
+>
 > ## Start here (2026-10-12, 0.64.11): the alternated prefetch pair: prefetch is worth about 5.5 ms a token on the 22k Hermes context; the first design was void
 >
 > Section 18.145, arms 8 and 8b of `docs/L4B-RAW-LAYER-RECORD.md` (predictions and falsifiers written before each run), new `benchmarks/prefetch_alternated.py` and `tests/test_prefetch_alternated.py`. Nothing in `src/` changed. **Arm 8 (void):** running each prompt twice back to back gave a 34 ms order effect (the second run inherits the first's resident experts; misses 28.5 against 22.7), gap -3.1 ms (-14.2 to +6.0): useless. **Arm 8b (the corrected design, one process, `moe_layer_metal.PREDICT_TOPK` flipped per turn, the 12 prompts in four passes with the condition alternating by prompt and swapped between passes so a prompt's twins are 12 turns apart; 22k Hermes context, 42 GiB, misses a token 35.3 on and 34.3 off):** prefetch on 134.2 ms a token, off 139.7, **gap +5.50 ms (95 % bootstrap over the 12 prompts +0.73 to +9.06)**, on faster in 18 of 24 pairs, order effect 3.8 ms, hidden share 46.7 % against 0.0 %, blocked 42.4 against 57.0. Agrees with arm 7 (+4.62, +1.68 to +7.30 across processes); together: about 5 ms (4 %), half the short-prompt 10 ms; the old ledger 1 ms is excluded by arm 7 and not by 8b. All predictions held except the interval half-width (4.2 against 3.5). Prefetch stays on. First job and open items: `docs/NEXT-SESSION-PROMPT.md` v194.
@@ -9082,6 +9086,32 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.146 The budget-0 router-eval excess: partly characterized, unexplained (0.64.12)
+
+**Goal.** Hamed: "go, reconcile the budget-0 router-eval excess" (the open item of 18.142). Record: `docs/L4B-SYNC-EXCESS-RECORD.md`.
+
+**Baseline.** 18.142: budget 0 has the highest router-eval window (66.1 ms) with the fewest misses (24.2 against 43.0 at 34 GiB); +3.0 ms against the exact arm; medians lower, means higher.
+
+**Prediction (written first).** H-read (reads in flight slow the GPU): overlap higher in budget 0 by at least 5 ms; slope 0.1-0.4; the regression explains at least 60 % of the excess (residual under 1.2); tail larger; no position dependence. Falsifier: explained share under 30 % or slope outside 0.05-0.6; position slope above 0.02.
+
+**Method.** Offline from the raw rows of seven arms: the read time overlapping each router-eval interval (new `sync_read_ms` in `layer_rows.py`), a pooled fit with per-layer constants (`benchmarks/sync_excess.py`), per-layer and per-turn differences, a spike census, a per-token regression on read activity, and the tracer's code path (`moe_layer_metal.py` after `get_many`).
+
+**Result (measured).** Overlap 34.5 against 28.5 ms; slope 0.119; explained +0.70 of +3.01 ms (23 %), residual +2.31. Uniform +0.075 ms in all 40 layers, sum of medians -3.55 ms, 1.84 % of rows above 3 ms (0.09 % exact), +1.93 ms a turn (19 of 24 turns), +2.04 ms on equal-length turns, position slope under 0.0015, the rest of the token 29.8 against 29.3 ms. Per token across the six exact arms sync = 54.1 + 0.088 x read busy; budget 0 is +6.1 ms above it with a within-arm slope of -0.012.
+
+**Against the prediction.** Overlap, slope, the tail's size and the position result held; the explained share (23 %) and the residual (+2.31) missed and the falsifier fired: H-read is not the explanation. The tail is a shift of the upper half, not spikes.
+
+**Explanation (hypothesis, untested).** The drop branch after `get_many` (rebuilt weights array, `tolist`, a variable number of experts into the fused kernels) may change the queued GPU work or the encode cost of the next router eval. The tracer's GET_END records the requested count, not the kept count.
+
+**Limits.** Observational, pooled across arms with confounds; one workload; the saved rows cannot test the candidate.
+
+**What shipped.** `benchmarks/sync_excess.py`, `sync_read_ms` in `layer_rows.py`, tests (`tests/test_sync_excess.py`, one added to `test_layer_rows.py`), the record, ledger row DS-SYNC-EXCESS. No default, output or numerics change; no Lab brief.
+
+**Bottleneck after.** Unchanged. 3 ms of a 112 ms budget-0 token is not a lever.
+
+**Open.** Record the kept-expert count in the tracer (GET_END `b`, tracer-only, off by default) and a budget-0 arm to test the variable-count candidate (about 20 minutes plus a small change in `src/`, Hamed's go); not worth it unless something needs the 3 ms.
+
+**Kind.** Research (predicted, analysed offline, explained as hypothesis): three predictions held, the central one fell with its falsifier, and the excess is characterized but unexplained.
 
 ### 18.145 The alternated prefetch pair (0.64.11)
 

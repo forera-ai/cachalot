@@ -65,7 +65,9 @@ def layer_rows(d: dict) -> list[dict]:
             g = get.get(l)
             blocked = (g[1] - g[0]) if g else 0
             ov = tt._overlap(win, [g]) if g and win else 0
+            sync_reads = sum(e - s for s, e in _clip(reads, sync[l][0], sync[l][1]))
             rows.append({"position": int(positions[k]), "layer": int(l), "sync_ms": (sync[l][1] - sync[l][0]) / 1e6,
+                         "sync_read_ms": sync_reads / 1e6,
                          "blocked_ms": blocked / 1e6, "busy_ms": busy / 1e6, "hidden_ms": (busy - ov) / 1e6,
                          "window_ms": (w_hi - w_lo) / 1e6})
     return rows

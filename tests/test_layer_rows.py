@@ -28,3 +28,9 @@ def test_layer_windows_blocked_and_hidden():
     assert r0["blocked_ms"] == 20 / 1e6 and r0["busy_ms"] == 20 / 1e6
     assert abs(r0["hidden_ms"] - 5 / 1e6) < 1e-12  # the read's first 5 before the get window
     assert r1["busy_ms"] == 10 / 1e6 and r1["hidden_ms"] == 10 / 1e6
+
+
+def test_sync_read_overlap_is_the_read_time_inside_the_sync_interval():
+    rows = lr.layer_rows(_drained())
+    # layer 0 syncs 0-10 with a read 5-25: 5 ns inside the sync interval; layer 1 syncs 40-50 with a read 60-70: none
+    assert abs(rows[0]["sync_read_ms"] - 5 / 1e6) < 1e-12 and rows[1]["sync_read_ms"] == 0.0

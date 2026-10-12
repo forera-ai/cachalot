@@ -1,8 +1,8 @@
 # Experiment index (charter section 7.2 and section 10)
 
-Written 2026-10-09 against runtime 0.64.11; regenerate with `benchmarks/experiment_index.py`. The charter asks for "a file of experiment records whose predictions were written before the build". The records themselves live in `docs/HANDOFF.md` section 18 (each with Baseline, Prediction, Method, Result, Explanation, Limits, Kind); this file is the index: where each record is, whether it carries a written prediction, and what kind of result it is, as its own **Kind** line says. It does not restate results. Sections before 18.75 predate the record format and are not listed; sections without a **Kind** line are listed as unlabelled and have no claim made for them here.
+Written 2026-10-09 against runtime 0.64.12; regenerate with `benchmarks/experiment_index.py`. The charter asks for "a file of experiment records whose predictions were written before the build". The records themselves live in `docs/HANDOFF.md` section 18 (each with Baseline, Prediction, Method, Result, Explanation, Limits, Kind); this file is the index: where each record is, whether it carries a written prediction, and what kind of result it is, as its own **Kind** line says. It does not restate results. Sections before 18.75 predate the record format and are not listed; sections without a **Kind** line are listed as unlabelled and have no claim made for them here.
 
-Counts of the 71 sections listed (18.75-18.145): 32 research, 13 measurement, 13 unlabelled, 11 engineering, 1 planning, 1 pricing.
+Counts of the 72 sections listed (18.75-18.146): 33 research, 13 measurement, 13 unlabelled, 11 engineering, 1 planning, 1 pricing.
 
 Research means predicted, measured and explained (charter section 8.1 rule 6); a falsified prediction is still research and is marked so in its Kind line. Engineering means it works without a written prediction, or an instrument was built.
 
@@ -10,6 +10,7 @@ Research means predicted, measured and explained (charter section 8.1 rule 6); a
 
 | section | title | prediction written | kind (as recorded) |
 |---|---|:---:|---|
+| §18.146 | The budget-0 router-eval excess: partly characterized, unexplained (0.64.12) | yes | Research (predicted, analysed offline, explained as hypothesis): three predictions held, the central one fell with its falsifier, and the excess is characterized but unexplained. |
 | §18.145 | The alternated prefetch pair (0.64.11) | yes | Research (predicted, measured, explained as hypothesis): arm 8 void by its registered falsifier (the mechanism was named, its size underestimated); arm 8b held on all but the interval width. |
 | §18.144 | Decode prefetch on and off on the 22k Hermes context (0.64.10) | yes | Research (predicted with a rule fixed beforehand, measured, explained as hypothesis): most numeric predictions missed narrowly and the discrimination came out ambiguous, with a result between the two hypotheses. |
 | §18.143 | The in-situ price of the 1-in-4 default (0.64.9) | yes | Research (predicted, measured, explained as hypothesis): identity held, the interval predictions missed, the registered rule not met and no larger cost shown; the instrument's noise floor was the finding. |

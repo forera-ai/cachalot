@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.64.12 (2026-10-12)
+
+HANDOFF "Start here (2026-10-12, 0.64.12)" and section 18.146; the record `docs/L4B-SYNC-EXCESS-RECORD.md` was written with its prediction and falsifier before the analysis. Offline analysis and tooling; nothing in `src/` changed.
+
+### Added
+- `benchmarks/sync_excess.py` (the router-eval window against the read time overlapping it, pooled over the raw-row arms); `layer_rows.py` rows carry `sync_read_ms`; `tests/test_sync_excess.py` and a `layer_rows` test.
+
+### Measured
+- Budget 0's router-eval window is +3.01 ms a token above the exact 34 GiB arm with 20 fewer misses. Reads in flight explain 23 % of it (the registered 30 % floor fired): it is a uniform +0.075 ms in all 40 layers with the median falling, the same on equal-length turns, independent of position and of the rest of the token. Across the exact arms the window follows read activity (54.1 + 0.088 x busy); budget 0 sits +6.1 ms above that line. Unexplained; 3 ms of a 112 ms token is not a lever. A candidate (the drop branch's variable expert count) needs the tracer to record kept experts.
+
 ## 0.64.11 (2026-10-12)
 
 HANDOFF "Start here (2026-10-12, 0.64.11)" and section 18.145; arms 8 and 8b of `docs/L4B-RAW-LAYER-RECORD.md`, predictions and falsifiers written before each run. Measurement and tooling; nothing in `src/` changed.
