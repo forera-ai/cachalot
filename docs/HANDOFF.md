@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-12, 0.64.8): the tracer's "router sync" is GPU compute, not a synchronization cost; 18.138's wording corrected
+>
+> Section 18.142, record `docs/L4B-SYNC-RECONCILE-RECORD.md` (prediction and falsifier written before the analysis), new `benchmarks/sync_profile.py`. Read from the seven saved raw-row arms; no machine run, nothing in `src/` changed. **Finding:** the tracer's sync window (56-66 ms a token) wraps the router `mx.eval`, which blocks until the GPU finishes everything queued since the previous eval, so it is mostly GPU compute: its wait-free part (sum of per-layer 10th percentiles) is 46.5-50.2 ms (about 1.13 ms for an ordinary layer), matching 18.75's 53.8 ms inside eval at a 512-token context; the isolated round trip (0.27 ms x 40 = 11 ms, "9-12 ms") is a subset that overlaps inside it. It depends on the layer type (attention layers 1, 2, 8, 14, 20 are 0.4-0.7 ms heavier, layers 24-36 every fourth 0.2) and prefetch adds 3.4-3.9 ms (its arrays share the eval). The extra 9-16 ms up to the mean is contention (reads in flight, a heavy tail; budget 0 has the highest sync with the fewest misses, unexplained). **18.138 was wrong** to call the budget-0 token "router-sync-bound": there is no 40-60 ms synchronization saving; 18.75's levers stand. First job and open items: `docs/NEXT-SESSION-PROMPT.md` v191.
+>
 > ## Start here (2026-10-12, 0.64.7): decode prefetch on and off at 46 GiB: the gap shrinks to 10 ms but does not vanish
 >
 > Section 18.141, record `docs/L4B-RAW-LAYER-RECORD.md` (arm 6, prediction and falsifier written before the run; run at 46 GiB because the guard needs the budget plus 29 GiB available and had 75.3 GiB after Hamed quit VMware and ran `sudo purge`). Nothing in `src/` changed. **Measured** (24 mixed turns each, 2,452 tokens, exact decode, 31.4 misses a token in both arms, pressure 1): prefetch on 131.8 ms a token, off 141.9 (gap 10.1 ms, 7.7 %; off slower in 21 of 24 turns), against 151.6 and 167.3 at 34 GiB (gap 15.7 ms). Gap per miss 0.32 against 0.37 ms: roughly proportional to the misses, so prefetch stays worth it at 46 GiB; the ledger's old "about 1 ms at 48 GiB" came from another workload. Decode against budget flattens above 34 GiB (1.65 ms a GiB, against 2.1-2.4 below). All six predictions held. First job and open items: `docs/NEXT-SESSION-PROMPT.md` v190.
@@ -9067,6 +9071,32 @@ line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderb
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
+### 18.142 The router sync reconciled: it is GPU compute, not a synchronization cost (0.64.8)
+
+**Goal.** Hamed: "go, reconcile the router sync" (18.138 had called the 66 ms of the tracer's sync window a floor and the budget-0 token "router-sync-bound", against 18.75's 9-12 ms). Record: `docs/L4B-SYNC-RECONCILE-RECORD.md`.
+
+**Baseline.** Tracer sync 56-66 ms a token (1.4-1.65 ms a layer); 18.75: 55.5 ms inside `mx.eval`, 53.8 of it in the 40 router evals, an isolated round trip of 0.272 ms (11.9 ms for 44).
+
+**Prediction (written first).** Layer-type dependence of 0.3-0.7 ms; 10th-percentile sum 42-54 ms; prefetch on minus off 3-5 ms; sync rising 1-3 ms a step as the budget falls. Falsifier: percentile sum below 35 or above 60 ms; no layer-type pattern; prefetch difference outside 1-8 ms.
+
+**Method.** Offline, from the raw rows of the seven arms in `benchmarks/results/l4b-raw*/` (`benchmarks/sync_profile.py`: per-layer mean, median and 10th percentile of the sync window), plus the code (`moe_layer_metal.py` lines 221-234: SYNC_START and SYNC_END bracket the one `mx.eval` of the router outputs, the predicted-set arrays and, in one mode, the prelaunched shared expert).
+
+**Result (measured).** Sum of per-layer 10th percentiles 46.5-50.2 ms, sum of means 56.1-66.1 across arms; ordinary layers 1.40-1.44 ms (p10 1.13), layer 0 1.04, layers 1, 2, 8, 14, 20 at 1.70-2.10, layers 24, 28, 32, 36 at 1.62-1.64; prefetch on minus off +3.4 (46 GiB) and +3.9 ms (34 GiB); sync by budget 59.5, 63.1, 65.1, 66.0 (46, 34, 28, 22 GiB); budget 0 66.1.
+
+**Against the prediction.** Layer-type pattern held (a little under at 24-36: +0.2); percentile sum held; prefetch difference held; the budget trend held only in direction (+3.6, +2.0, +0.9) and the budget-0 arm (fewest misses, highest sync) is unexplained. No falsifier fired.
+
+**Explanation.** `mx.eval` waits for the queued GPU work, so the window is GPU compute (wait-free about 47-50 ms a token) plus contention; the 9-12 ms is the isolated round trip, a subset that overlaps inside it. **Correction:** 18.138's "router-sync-bound" and "per-layer floor" are withdrawn; the budget-0 token is GPU-compute-bound with 16 ms waiting and about 30 ms CPU and other work. No 40-60 ms synchronization saving exists.
+
+**Limits.** Different contexts (18.75 at 512 tokens, these at 20-250); instruments differ; the tracer's +0.55 ms inside; no new run.
+
+**What shipped.** `benchmarks/sync_profile.py`, the record, this section, a correction of 18.138's wording in the Start here block and the prompt. No code in `src/`, default or numerics changed; no Lab brief.
+
+**Bottleneck after.** Unchanged. The levers of 18.75 stand: CPU graph building outside the evals (17.9 ms), attention kernels (25.6 ms).
+
+**Open.** The budget-0 sync excess (66.1 with the fewest misses); whether contention from in-flight reads is measurable by a read-throttled arm.
+
+**Kind.** Research (predicted, measured offline, explained): three predictions held, one held in direction only, and an earlier section's interpretation corrected.
+
 ### 18.141 Decode prefetch on and off at 46 GiB (0.64.7)
 
 **Goal.** Hamed: "go, record the prefetch pair at 48 GiB", then "retry" after quitting VMware and "ran the sudo purge". The 48 GiB budget needs 77 GiB available by the guard's rule (budget plus 29 GiB); after the purge it saw 75.3, so the pair ran at 46 GiB (75 needed), guard unchanged, no `--force`. Record: arm 6 of `docs/L4B-RAW-LAYER-RECORD.md`.
@@ -9165,7 +9195,7 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **What shipped.** The recorder fix, ledger rows DS-BUDGET0-LAYER and the replicate's figures in the record. No default, output or numerics changed; no Lab brief.
 
-**Bottleneck after.** At 34 GiB with budget 0 the token is router-sync-bound (66 of 112 ms), not wait-bound.
+**Bottleneck after.** At 34 GiB with budget 0 the token is router-sync-bound (66 of 112 ms), not wait-bound. **[Corrected in 18.142: the 66 ms is GPU compute queued before the router eval (wait-free about 47-50 ms), not a synchronization cost; the budget-0 token is GPU-compute-bound, and there is no 40-60 ms sync saving.]**
 
 **Open.** The cliff (a smaller budget) is not recorded; prefetch's value against misses a token (48 GiB) is not recorded; layers 0 and 1 matter only for the exact path now.
 

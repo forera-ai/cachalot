@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.64.8 (2026-10-12)
+
+HANDOFF "Start here (2026-10-12, 0.64.8)" and section 18.142; the record `docs/L4B-SYNC-RECONCILE-RECORD.md` was written with its prediction before the analysis. Offline analysis and tooling; nothing in `src/` changed.
+
+### Added
+- `benchmarks/sync_profile.py`: the router-eval window by layer from the raw tracer rows.
+
+### Measured
+- The tracer's "router sync" (56-66 ms a token) is GPU compute, not a synchronization cost: its wait-free part is 46.5-50.2 ms (about 1.13 ms for an ordinary layer), matching the floor profile's 53.8 ms inside `mx.eval`; the isolated round trip (about 11 ms in all) is a subset that overlaps inside it. It depends on the layer type (attention layers 0.4-0.7 ms heavier) and prefetch adds 3.4-3.9 ms. The extra 9-16 ms up to the mean is contention.
+
+### Corrected
+- HANDOFF 18.138 called the budget-0 token "router-sync-bound" and the window a per-layer floor; both withdrawn. There is no 40-60 ms synchronization saving; 18.75's levers stand.
+
 ## 0.64.7 (2026-10-12)
 
 HANDOFF "Start here (2026-10-12, 0.64.7)" and section 18.141; arm 6 of `docs/L4B-RAW-LAYER-RECORD.md`, prediction and falsifier written before the run. Measurement only; nothing in `src/` changed.

@@ -155,7 +155,7 @@ All six held: (1) 0 dropped, 263.8 events (250-300); (2) 112.2 ms (108-125), -26
 
 ## Explanation (hypothesis)
 
-Budget 0 turns the layers' demand misses into drops, so what is left of the wait (16 ms, 14 % of the token) is layers whose expert is an in-flight prefetch load, not a demand miss; layers 0 and 1, whose misses cannot be prefetched, nearly stop waiting (0.04 and 0.06 ms) because every first-layer miss is simply dropped. The token is then 66 ms of router sync, 16 of waiting and about 30 of other work: it is close to its all-resident floor (79-85 ms measured with all experts resident; here 112 with 24 misses a token still read as prefetch). The price is output change: the quality evidence for budget 0 is HANDOFF 18.59-18.74 (C# worse in one of three tests, neutral elsewhere), not this recording.
+Budget 0 turns the layers' demand misses into drops, so what is left of the wait (16 ms, 14 % of the token) is layers whose expert is an in-flight prefetch load, not a demand miss; layers 0 and 1, whose misses cannot be prefetched, nearly stop waiting (0.04 and 0.06 ms) because every first-layer miss is simply dropped. [Corrected 2026-10-12, docs/L4B-SYNC-RECONCILE-RECORD.md: the "router sync" window is GPU compute queued before the router eval, not a synchronization cost.] The token is then 66 ms of router sync, 16 of waiting and about 30 of other work: it is close to its all-resident floor (79-85 ms measured with all experts resident; here 112 with 24 misses a token still read as prefetch). The price is output change: the quality evidence for budget 0 is HANDOFF 18.59-18.74 (C# worse in one of three tests, neutral elsewhere), not this recording.
 
 ## Limits
 
