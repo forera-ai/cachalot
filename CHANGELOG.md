@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.64.10 (2026-10-12)
+
+HANDOFF "Start here (2026-10-12, 0.64.10)" and section 18.144; arm 7 of `docs/L4B-RAW-LAYER-RECORD.md`, prediction and discrimination rule written before the run. Measurement and tooling; nothing in `src/` changed.
+
+### Added
+- `benchmarks/token_trace_raw.py` takes `--dump` (a dumped Hermes request file: its first body supplies the 22k-token system prompt and 25 tools, the prompts become the 12 Hermes user turns) and `--max-seq-len`.
+
+### Measured
+- Decode prefetch on against off on the 22k Hermes context at a 42 GiB budget (the guard's largest; 24 recorded turns each, exact decode, 33.5 misses a token in both arms, the 22k prefix reused on every request): 139.8 against 144.4 ms a token, a gap of **4.62 ms (95 % +1.68 to +7.30)**, 17 of 24 turns slower with prefetch off. Between the short-prompt pair's 10.1 ms and the older ledger figure of about 1 ms; prefetch saves 14.3 ms of waiting but adds 5.1 ms to the router-eval window. Prefetch stays on.
+
 ## 0.64.9 (2026-10-12)
 
 HANDOFF "Start here (2026-10-12, 0.64.9)" and section 18.143; addendum 2 of `docs/L2-IN-SITU-PRICE-RECORD.md`, prediction and rule written before the run. Measurement and tooling; nothing in `src/` changed.

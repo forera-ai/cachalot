@@ -297,6 +297,8 @@ reproducible to ±0.3 %.
 
 **0.60.7 (2026-10-06): review fixes.** The run manifest no longer records credentials such as `CACHALOT_API_KEY` by value, and its Hermes Desktop check needs one process line. HANDOFF section 18.73.
 
+**0.64.10 (2026-10-12): decode prefetch on a long agent context.** On the 22k-token Hermes context, switching decode prefetch off costs about 4.6 ms a token (139.8 to 144.4, 95 % interval 1.7 to 7.3), less than the 10 ms on short prompts: it still saves about 14 ms of waiting but costs 5 ms in the router evaluation. Nothing in the runtime changed. HANDOFF section 18.144.
+
 **0.64.9 (2026-10-12): the cost of the sampled tracer, measured in a real decode.** Recording one token in four costs an average of about 0.27 ms a token (95 % -0.07 to +0.65, under 0.45 % of a token); the experiment's own noise is as large as the effect, so the number is a bound, not a certified price. Nothing in the runtime changed. HANDOFF section 18.143.
 
 **0.64.8 (2026-10-12): the "router sync" is GPU compute.** The 56-66 ms a token the tracer reports for the router evaluation is mostly the GPU work queued before it (about 47-50 ms wait-free, 1.1 ms for an ordinary layer), not a synchronization overhead, so there is no large sync saving to find; this corrects an earlier reading. Nothing in the runtime changed. HANDOFF section 18.142.

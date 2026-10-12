@@ -343,3 +343,65 @@ Two processes per pair, not alternated (drift bound 1-2 %, small against 10 ms);
 ## Decision
 
 No default changes (prefetch stays on). Ledger row DS-PRED-LAYER-46 refines DS-PRED-LAYER and flags DS-PRED-AB's 1 ms as workload-specific, not general.
+
+# Arm 7: the prefetch pair on the 22k-token Hermes context (settling the old 1 ms figure), opened 2026-10-12 before the run
+
+Hamed's go: "go, record the prefetch pair on the 22k Hermes context" (2026-10-12). Context: the system prompt and 25 tools of the first body in `benchmarks/results/hermes-live-0.61.1/requests.jsonl` (about 22k tokens); the 12 Hermes user prompts of `benchmarks/server_miss_budget_ab.py` (each turn is system + tools + one user message, so the 22k prefix is prefilled once and reused), cycled twice (24 recorded turns), 160 new tokens, greedy, exact decode, tracer `every=1` as in arms 1-6, `--max-seq-len 32768`. Prefetch on first, then off (`CACHALOT_PREDICT_TOPK=0`), under `guarded_run.sh`. Budget: **42 GiB, not 46**: after the earlier arms the guard saw 71.8 GiB available (budget + 29 needed), so 42 GiB (71 needed) is the largest accepted; the ledger's figure was at 48 GiB with 23.5 misses a token. Estimate: two arms of about 20 minutes each (model load 3, cold 22k prefill about 4, 4 warm turns, 24 turns of about 25 s); about 45 minutes in all. Output `benchmarks/results/l4b-raw-hermes22k-on/` and `-off/`. The bank is the internal verified bank in every arm so far (the ledger's figure was from the same drive era).
+
+## Baseline
+Short-prompt arms: gap on/off 15.7 ms at 34 GiB (43.0 misses) and 10.1 ms at 46 GiB (31.4 misses), 0.32-0.37 ms a miss. Ledger DS-PRED-AB: about 1 ms at 48 GiB, 23.5 misses a token, Hermes-shaped context. Budget curve (DS-BUDGET-CURVE, 22k context): 36 / 44 / 48 GiB gave 31.8 / 27.1 / 25.3 misses a token. Context cost (DS-FLOOR-CTX): +5.6 ms of floor at 25k.
+
+## Two hypotheses, to be told apart
+H1 (workload-independent): the gap is about 0.32-0.37 ms a miss, so about 9-11 ms at 28 misses. H2 (the old figure stands): the gap is 1-3 ms at the same misses because the 22k context's per-token time is dominated by something prefetch cannot hide (attention at depth), or because the old arm measured something else.
+
+## Prediction (written before the run), H1
+1. Misses a token with prefetch on at 42 GiB: 26-33 in both arms (equal to within 1).
+2. Decode with prefetch on 135-148 ms; off 145-160 ms (the short-prompt 46 GiB pair plus about 5 ms of context).
+3. The gap 6-12 ms, per miss 0.2-0.4 ms, and off slower in at least 18 of 24 turns.
+4. Hidden share with prefetch on 38-50 %; 0 dropped; the cold first turn prefills the 22k tokens once per arm and every recorded turn reuses at least 20,000 tokens.
+Registered discrimination: gap above 6 ms supports H1; gap below 3 ms supports H2; between is ambiguous (reported as such).
+
+## Falsifier
+Gap below 3 ms (H1 falsified, the old figure stands for this workload); gap above 15 ms or below 0; misses outside 22-38 (the budget axis behaves unlike the ledger's curve).
+
+## Limits
+Two arms in two processes, not alternated (drift 1-2 %, small against 6-12 ms, not against 1-3 ms); 42 GiB, not 48; one conversation (one dumped session), twelve prompts twice; the tracer's own +0.55 ms is inside both arms.
+
+## Arm 7 result (measured, 2026-10-12, runtime 0.64.9)
+
+The 22k-token Hermes context (system prompt and 25 tools of the first body of the dumped session, prefilled once per arm in 232 s, then reused: 27 of 28 requests in each arm reused at least 22,407 tokens), 24 recorded turns of 160 tokens at most (2,824 tokens, identical token counts per turn in both arms), 42 GiB, exact decode, 33.5 misses a token in both arms, 0 events dropped. Guard: pressure 1, swap 1,906 to 2,037 MB (+131 MB, under the 512 MB kill line), peak wired 73.2 GiB. Prefetch on first, then off, separate processes. Raw columns local in `benchmarks/results/l4b-raw-hermes22k-{on,off}/`.
+
+| per decode token | 22k Hermes, 42 GiB, prefetch on | prefetch off | 46 GiB short prompts: on | off |
+|---|---|---|---|---|
+| decode (server timing) | 139.8 ms | 144.4 ms | 131.8 | 141.9 |
+| gap (token-weighted, 95 % bootstrap over turns) | **4.62 ms (+1.68 to +7.30)** | | 10.06 (+7.01 to +12.91) | |
+| misses a token | 33.5 | 33.5 | 31.4 | 31.4 |
+| router-eval window | 67.4 | 62.3 | 59.5 | 56.1 |
+| blocked on experts | 43.0 | 57.3 | 45.7 | 62.2 |
+| read busy | 79.8 | 55.6 | 80.1 | 60.7 |
+| hidden share of read busy | 47.9 % | 0 % | 44.4 % | 0 % |
+| top-10 layers' share of blocked | 87.6 % | 64.9 % | 84.4 | 62.4 |
+| mean blocked, layers 0 / 1 / 2-39 | 2.61 / 1.71 / 1.02 | 2.06 / 1.80 / 1.41 | 2.73 / 2.00 / 1.08 | 2.16 / 2.22 / 1.52 |
+
+Off slower in 17 of 24 turns (per-turn ratio mean 1.027, range 0.88 to 1.15; per-turn gap sd 8.25 ms). Gap per miss 0.14 ms (short prompts 0.32).
+
+## Against the prediction
+
+1. Misses 33.5 against 26-33: **missed narrowly**; equal in both arms: held.
+2. Decode on 139.8 (135-148): held; off 144.4 (145-160): **missed narrowly**.
+3. Gap 4.6 ms against 6-12: **missed**; per miss 0.14 against 0.2-0.4: **missed**; off slower in 17 of 24 against at least 18: **missed narrowly**.
+4. Hidden share on 47.9 % (38-50), 0 dropped, reuse of the 22k prefix on every recorded turn: held.
+
+By the discrimination rule fixed beforehand (above 6 ms supports H1, below 3 ms supports H2, between is ambiguous) the result is **ambiguous**: 4.6 ms, with a 95 % interval of +1.7 to +7.3 that excludes both the ledger's 1 ms and the short-prompt pattern's 9-11 ms. Neither hypothesis holds as stated; the gap in this workload is real (the interval excludes zero) and smaller than proportional scaling from the short prompts would give.
+
+## Explanation (hypothesis)
+
+Prefetch still hides what it hid (blocked time falls 14.3 ms, against 16.5 ms in the 46 GiB short-prompt pair), but at a 22k context its price is larger: the router-eval window it adds is +5.1 ms (+3.4 ms with short prompts), because the predicted-set arrays are computed against a 22k attention context; and the remaining part of the token (attention at depth, which does not overlap with reads) is larger. So the net gap shrinks from about 10 ms to about 4.6 ms. This is consistent with the ledger's 1 ms figure being the same effect at a lower miss count and a faster drive era, but the two arms do not reproduce it (1.7 ms is its interval's low end). Not tested: the same pair at 48 GiB and 23.5 misses.
+
+## Limits
+
+42 GiB (the guard), not 48; one dumped conversation, twelve prompts twice, 160 tokens; separate processes, not alternated (the per-turn gap sd of 8.25 ms is above the drift bound of 1-2 %, so the interval is the honest width); the tracer (+0.55 ms) is inside both arms.
+
+## Decision
+
+No default change (prefetch stays on: the gap is positive and its interval excludes zero). The ledger's DS-PRED-AB is refined, not refuted: the prefetch gap depends on workload and context (about 10 ms on short prompts at 31 misses, about 4.6 ms on the 22k Hermes context at 33.5 misses). Ledger row DS-PRED-LAYER-HERMES22K.

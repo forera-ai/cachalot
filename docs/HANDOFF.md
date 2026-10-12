@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-12, 0.64.10): decode prefetch on and off on the 22k Hermes context: a 4.6 ms gap, between the short-prompt 10 ms and the old 1 ms
+>
+> Section 18.144, arm 7 of `docs/L4B-RAW-LAYER-RECORD.md` (prediction and discrimination rule written before the run). `benchmarks/token_trace_raw.py` gained `--dump` and `--max-seq-len`. Nothing in `src/` changed. **Measured** (the dumped Hermes session's 22k-token system prompt and 25 tools, 12 prompts twice, 160 tokens, 42 GiB because the guard needs budget + 29 GiB available and had 71.5, exact decode, 33.5 misses a token in both arms, 0 dropped, 27 of 28 requests reusing the 22,407-token prefix): prefetch on 139.8 ms a token, off 144.4, **gap 4.62 ms (95 % bootstrap over turns +1.68 to +7.30)**, 17 of 24 turns slower with it off; per miss 0.14 ms (short prompts 0.32). The interval excludes both the old ledger's 1 ms and the short-prompt pattern's 9-11 ms: by the rule fixed beforehand the result is ambiguous between H1 and H2 and the truth is in between. Prefetch saves 14.3 ms of waiting (short prompts 16.5) but adds +5.1 ms to the router-eval window (short prompts +3.4), so its net is smaller on a long context. Prefetch stays on. First job and open items: `docs/NEXT-SESSION-PROMPT.md` v193.
+>
 > ## Start here (2026-10-12, 0.64.9): the in-situ price of the 1-in-4 default: bounded below 0.65 ms a token, not certified
 >
 > Section 18.143, addendum 2 of `docs/L2-IN-SITU-PRICE-RECORD.md` (prediction and rule written before the run), new `benchmarks/token_trace_price_sampled.py` and `tests/test_token_trace_price_sampled.py`. Nothing in `src/` changed. **Measured** (30 prompt pairs, 34 GiB, exact decode, 39.2 misses a token, text identical 30 of 30, 0 dropped): the cost of a sampled token T = +1.10 ms (95 % -0.26 to +2.58), the average over all tokens T / 4 = **+0.274 ms (-0.065 to +0.645)**; the control (a second stamp-only tracer against the first, which cannot cost anything) reads +1.84 ms (-1.47 to +5.28), so the estimator's noise at this size is as large as the effect. **The registered rule (upper bound below 0.5 ms) is not met**, and nor is a bigger cost shown: the default is bounded (below about 0.65 ms, 0.45 % of a token, at 95 %), consistent with the derived 0.14 and with +0.55 / 4; certifying it would need about five times the pairs (90-100 minutes). The default stays as shipped. First job and open items: `docs/NEXT-SESSION-PROMPT.md` v192.
@@ -9074,6 +9078,32 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.144 Decode prefetch on and off on the 22k Hermes context (0.64.10)
+
+**Goal.** Hamed: "go, record the prefetch pair on the 22k Hermes context" (the open item of 18.141), then "go, analyse the pair when it finishes". Record: arm 7 of `docs/L4B-RAW-LAYER-RECORD.md`.
+
+**Baseline.** Short prompts: gap 15.7 ms at 34 GiB (43.0 misses), 10.1 ms at 46 GiB (31.4 misses), 0.32-0.37 ms a miss. Ledger DS-PRED-AB: about 1 ms at 48 GiB, 23.5 misses, a Hermes-shaped context.
+
+**Prediction (written first).** H1 (proportional): misses 26-33, decode 135-148 on and 145-160 off, gap 6-12 ms, 0.2-0.4 ms a miss, off slower in at least 18 of 24, hidden share 38-50 %. H2 (old figure): gap 1-3 ms. Rule: above 6 supports H1, below 3 supports H2, between ambiguous.
+
+**Method.** `token_trace_raw.py --dump benchmarks/results/hermes-live-0.61.1/requests.jsonl --max-seq-len 32768 --tokens 160 --budget-gib 42`, prefetch on then `CACHALOT_PREDICT_TOPK=0` (after `settle.sh`), 24 recorded turns each, under `guarded_run.sh`. The guard had refused 46 GiB (71.8 GiB available against 75); a stray `find` of mine had also tripped its one-runtime check until I killed it.
+
+**Result (measured).** On 139.8 ms, off 144.4; gap 4.62 ms (+1.68 to +7.30, bootstrap over turns), 17 of 24 turns slower with it off; 33.5 misses in both; router-eval window 67.4 against 62.3; blocked 43.0 against 57.3; read busy 79.8 against 55.6; hidden share 47.9 %; top-10 share 87.6 % against 64.9 %; layers 0 / 1 / 2-39 blocked 2.61 / 1.71 / 1.02 (on).
+
+**Against the prediction.** Hidden share, drops and reuse held; misses (33.5 against 26-33), decode off (144.4 against 145-160), gap (4.6 against 6-12), per-miss cost (0.14 against 0.2-0.4) and the turn count (17 against 18) all missed, mostly narrowly. The gap is ambiguous under the rule fixed beforehand.
+
+**Explanation (hypothesis).** Prefetch hides about the same wait on the long context but its predicted-set arrays cost more in the router eval (+5.1 ms against +3.4), and the share of the token that does not overlap with reads is larger, so the net is smaller. The old 1 ms figure is the low end of this interval's neighbourhood but not inside it.
+
+**Limits.** 42 GiB, not 48; one dumped conversation; separate processes, not alternated (per-turn gap sd 8.25 ms).
+
+**What shipped.** `--dump` and `--max-seq-len` in `token_trace_raw.py`, record arm 7, ledger row DS-PRED-LAYER-HERMES22K. No default, output or numerics change; no Lab brief.
+
+**Bottleneck after.** Unchanged.
+
+**Open.** The same pair at 48 GiB (needs the guard's 77 GiB, a reboot or a purge plus freed memory); an alternated design to shrink the interval; the budget-0 router-eval excess.
+
+**Kind.** Research (predicted with a rule fixed beforehand, measured, explained as hypothesis): most numeric predictions missed narrowly and the discrimination came out ambiguous, with a result between the two hypotheses.
 
 ### 18.143 The in-situ price of the 1-in-4 default (0.64.9)
 
