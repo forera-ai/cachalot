@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.64.11 (2026-10-12)
+
+HANDOFF "Start here (2026-10-12, 0.64.11)" and section 18.145; arms 8 and 8b of `docs/L4B-RAW-LAYER-RECORD.md`, predictions and falsifiers written before each run. Measurement and tooling; nothing in `src/` changed.
+
+### Added
+- `benchmarks/prefetch_alternated.py`: an alternated prefetch pair in one process (it flips `moe_layer_metal.PREDICT_TOPK` between turns), with a back-to-back design (void, kept for the lesson) and an interleaved one (the 12 Hermes prompts in four passes, a prompt's twins a pass apart), a position-matched gap and a bootstrap over prompts; `tests/test_prefetch_alternated.py` (4 tests).
+
+### Measured
+- Interleaved, 22k Hermes context, 42 GiB, 24 pairs, one process: prefetch on 134.2 ms a token, off 139.7; **gap +5.50 ms (95 % bootstrap over prompts +0.73 to +9.06)**, on faster in 18 of 24 pairs, order effect 3.8 ms. It agrees with the two-process pair (+4.62, +1.68 to +7.30); prefetch is worth about 5 ms a token (4 %) on this context, half its worth on short prompts, and the older 1 ms is not supported.
+- Back to back (void): the second run of a prompt inherits the first run's resident experts, an order effect of 34 ms and misses of 28.5 against 22.7; the gap (-3.1 ms, -14.2 to +6.0) says nothing.
+
 ## 0.64.10 (2026-10-12)
 
 HANDOFF "Start here (2026-10-12, 0.64.10)" and section 18.144; arm 7 of `docs/L4B-RAW-LAYER-RECORD.md`, prediction and discrimination rule written before the run. Measurement and tooling; nothing in `src/` changed.

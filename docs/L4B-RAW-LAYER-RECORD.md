@@ -405,3 +405,105 @@ Prefetch still hides what it hid (blocked time falls 14.3 ms, against 16.5 ms in
 ## Decision
 
 No default change (prefetch stays on: the gap is positive and its interval excludes zero). The ledger's DS-PRED-AB is refined, not refuted: the prefetch gap depends on workload and context (about 10 ms on short prompts at 31 misses, about 4.6 ms on the 22k Hermes context at 33.5 misses). Ledger row DS-PRED-LAYER-HERMES22K.
+
+# Arm 8: the alternated prefetch pair on the 22k Hermes context, opened 2026-10-12 before the run
+
+Hamed's go: "go, record the alternated prefetch pair" (2026-10-12), after the arm 7 estimate that an alternated design would narrow the interval. Estimate: model load 3 minutes, one cold 22k prefill about 4, 4 warm turns, then 24 prompt pairs of two turns of about 20 s: about 25-30 minutes in all, 42 GiB (the guard accepted it with 74.7 GiB available), exact decode, under `guarded_run.sh`. One process: `benchmarks/prefetch_alternated.py` flips `moe_layer_metal.PREDICT_TOPK` (6 on, 0 off; read at every MoE layer call) between the two runs of each prompt, the order alternating by prompt; tracer `every=1` on both sides as in arm 7. The 12 Hermes prompts are cycled twice (24 pairs), 160 tokens at most.
+
+## Baseline
+Arm 7 (22k Hermes, 42 GiB, separate processes, not alternated): on 139.8 ms, off 144.4, gap 4.62 ms (95 % bootstrap over turns +1.68 to +7.30), 17 of 24 turns slower with it off, per-turn gap sd 8.25 ms; blocked 43.0 against 57.3; router-eval window 67.4 against 62.3.
+
+## Prediction (written before the run)
+1. Position-matched gap (off minus on), token-weighted over 24 pairs: **+4.6 ms** with a planning interval +2.5 to +7.0 (arm 7's centre; an alternated pair removes between-process drift, so the centre should hold and the interval shrink).
+2. 95 % bootstrap half-width at most 2.0 ms (arm 7: 2.8).
+3. Prefetch on faster in at least 18 of 24 pairs; per-pair gap sd at most 5 ms.
+4. Order effect (gap of on-first pairs minus gap of off-first pairs) smaller than 3 ms in absolute value.
+5. The flip took effect: hidden share of read time about 48 % on and 0.0 % off; events about 277 on and 228 off; blocked about 43 on and 57 off; misses a token equal between the sides to within 1.5.
+6. Text identical in 24 of 24 pairs; 0 events dropped; the prefix reused on every pair turn.
+
+## Falsifier
+Gap interval including 0: prefetch brings nothing on this context. Gap above 8 ms: arm 7 understated it (drift). Hidden share of the off turns above 5 %: the flip did not take effect and the arm is void. Order effect above 6 ms: carryover of cache state between the two runs of a pair biases the design.
+
+## Limits
+Back-to-back runs of the same prompt share a cache: the second run starts with the first run's resident set and its in-flight speculative loads (prefetch on loads extra experts), so the pair is not two independent measurements; order alternation balances the average and the order effect is reported. 42 GiB, one dumped conversation, 12 prompts twice, the tracer's +0.55 ms inside both sides. The shipped path is one process serving prefetch on; flipping the constant is an instrument, not a supported switch.
+
+## Arm 8 result (measured, 2026-10-12): the back-to-back design is void
+
+`benchmarks/prefetch_alternated.py`, 24 prompt pairs, 42 GiB, 22k Hermes context, 48 turns (2,824 tokens a side), text identical 24 of 24, 0 events dropped, prefix reused on every turn (at least 22,407 tokens), pressure 1, swap flat, peak wired 69.5 GiB. Saved as `benchmarks/results/prefetch-alt/run-backtoback.json` (local).
+
+| | prefetch on | prefetch off |
+|---|---|---|
+| wall a token (stamp gaps) | 137.0 ms | 133.9 |
+| router-eval window | 70.4 | 63.3 |
+| blocked on experts | 38.4 | 46.4 |
+| read busy | 73.6 | 45.0 |
+| hidden share | 49.7 % | 0.0 % |
+| events a token | 259 | 204 |
+| misses a token | 28.5 | 22.7 |
+
+Position-matched gap (off minus on): **-3.09 ms (95 % bootstrap over pairs -14.18 to +6.01)**, on faster in 15 of 24 pairs, per-pair sd 31.7 ms. **Pairs with on first: -23.29 ms; pairs with off first: +11.08 ms**: an order effect of 34 ms.
+
+## Against the prediction
+
+The flip took effect (prediction 5, first half: hidden share 49.7 % on and 0.0 % off, events 259 and 204; text and drops held). Everything the design was for failed: the gap interval is 20 ms wide (predicted half-width at most 2.0; the arm 7 interval was 5.6 wide); **the order effect is 34 ms (predicted below 3; the falsifier's 6 ms fired)**; misses a token differ between the sides, 28.5 against 22.7 (predicted equal within 1.5). The centre (-3.1) says nothing: the interval spans zero and arm 7's +4.6.
+
+## Explanation
+
+The second run of the same prompt, started straight after the first, finds its experts already resident (the first run read them), so it takes far fewer misses and is much faster whichever side it is on (the side that ran second is faster by 11 to 23 ms). Order alternation balances the average but not the variance, and the carryover is larger than the effect. The back-to-back design cannot price a 5 ms effect. My prediction was written without the size of this carryover in mind; the design note in the record (a "limit": the second run starts with the first's resident set) named the mechanism but I underestimated it.
+
+## Decision
+
+Arm 8 is void as a gap measurement and kept as a lesson. The corrected design (arm 8b below) spreads the two runs of a prompt 12 turns apart, the way `server_miss_budget_ab.py` does (HANDOFF 18.59): the cache state seen by a prompt is then determined by the other prompts, not by its own twin.
+
+# Arm 8b: the corrected alternated pair (prompts interleaved, twins a pass apart), opened 2026-10-12 before the run
+
+The design of `server_miss_budget_ab.py` (HANDOFF 18.59) applied to prefetch: `--design interleave` runs the 12 Hermes prompts four times, as two (on, off) pairs per prompt. Pass 0 runs prefetch on for odd prompts and off for even ones; pass 1 swaps; pass 2 is pass 0 again; pass 3 is pass 1 again. A prompt's two runs of a pair are 12 turns apart, with ten or eleven different prompts between them, so a run no longer inherits its own twin's resident experts. Same setting as arm 7: 22k Hermes context, 42 GiB, exact decode, 160 tokens at most, tracer on every token, one process. Estimate: load 3 minutes, cold 22k prefill about 4, 4 warm turns, 48 turns of about 20 s (16 minutes): about 27 minutes. The interval is a bootstrap over the 12 prompts (whole prompts resampled; the four runs of a prompt are not independent).
+
+## Baseline
+Arm 7 (separate processes, not alternated): gap 4.62 ms (+1.68 to +7.30), per-turn gap sd 8.25 ms. Arm 8 (back-to-back, void): order effect 34 ms, per-pair sd 31.7 ms, misses 28.5 on against 22.7 off.
+
+## Prediction (written before the run)
+1. The flip works: hidden share about 48 % on and 0.0 % off; events about 277 on and 228 off.
+2. Position-matched gap (off minus on), token-weighted: **+4.6 ms**, planning interval +1.5 to +8.0 (arm 7's centre; the design removes between-process drift but keeps carryover from the preceding turn).
+3. Bootstrap half-width over the 12 prompts at most 3.5 ms (arm 7: 2.8 over turns, which is not comparable: prompts are the unit here).
+4. Order effect (gap of pairs whose on-run came first minus pairs whose off-run came first) under 5 ms in absolute value.
+5. Misses a token equal between the sides within 2.0; text identical in all 24 pairs; 0 events dropped; the 22k prefix reused on every turn.
+6. Prefetch on faster in at least 16 of 24 pairs.
+
+## Falsifier
+Gap interval including 0; gap above 9 ms; hidden share of the off turns above 5 % (flip void); misses differing by more than 3 or an order effect above 8 ms (carryover not removed, the design void again).
+
+## Limits
+Carryover from the previous turn remains (an on turn follows an off turn and the reverse, so each side has the same mix); 42 GiB, one conversation, 12 prompts, four runs each; the flip of the module constant is an instrument; the tracer's +0.55 ms is inside both sides.
+
+## Arm 8b result (measured, 2026-10-12, runtime 0.64.10)
+
+`benchmarks/prefetch_alternated.py --design interleave`, one process, 22k Hermes context, 42 GiB, exact decode, 48 turns (2,824 tokens a side), text identical in 24 of 24 pairs, 0 events dropped, the 22,407-token prefix reused on every turn, pressure 1, swap +7 MB, peak wired 68.4 GiB. Saved as `benchmarks/results/prefetch-alt/run-interleave.json` (local).
+
+| | prefetch on | prefetch off |
+|---|---|---|
+| wall a token (stamp gaps) | 134.2 ms | 139.7 |
+| router-eval window | 64.9 | 59.4 |
+| blocked on experts | 42.4 | 57.0 |
+| read busy | 77.0 | 55.5 |
+| hidden share | 46.7 % | 0.0 % |
+| events a token | 265 | 215 |
+| misses a token | 35.3 | 34.3 |
+
+Position-matched gap (off minus on), token-weighted over 24 pairs: **+5.50 ms (95 % bootstrap over the 12 prompts +0.73 to +9.06)**; server timing +5.49 (+0.74 to +9.02); on faster in 18 of 24 pairs; per-pair sd 11.4 ms. Pairs whose on-run came first +7.06 ms, off first +3.27 (order effect 3.8 ms). First block of pairs (passes 0, 1) +4.89, second block (passes 2, 3) +6.11. Per-prompt gap (mean of its two pairs): prompts 1-7 and 9-11 between +3.1 and +15.8 ms; prompt 0 -20.9 and prompt 8 -3.0.
+
+## Against the prediction
+
+Held: (1) the flip took effect (hidden share 46.7 % on and 0.0 % off; events 265 and 215, a little under the predicted 277 and 228); (2) the gap +5.50 ms inside the planning interval +1.5 to +8.0 around the centre +4.6; (4) the order effect 3.8 ms (under 5); (5) misses 35.3 against 34.3 (within 2.0), text identical, 0 dropped, prefix reused; (6) 18 of 24 pairs (at least 16). **Missed:** (3) the bootstrap half-width is 4.2 ms (predicted at most 3.5). No falsifier fired: the interval excludes zero, the gap is under 9 ms, the off turns' hidden share is 0.0 %, misses differ by 1.0 and the order effect is 3.8.
+
+## Explanation (hypothesis)
+
+The alternated design agrees with arm 7: decode prefetch is worth about 5 ms a token (about 4 %) on the 22k Hermes context at 42 GiB; the two estimates (+4.62, +1.68 to +7.30 across processes; +5.50, +0.73 to +9.06 alternated in one process) are consistent and the second is not narrower, because the unit that carries the variance is the prompt (per-prompt gaps run from +3 to +16 ms, with prompt 0 at -21 ms, a first-in-pass prompt that follows the warm turns; its sign flips the mean by about 2 ms). Prefetch saves 14.6 ms of waiting (57.0 to 42.4) and costs 5.5 ms in the router-eval window and part of the rest, netting about 5.5 ms. Compared with the ledger's older 1 ms, arm 7's interval excludes it and this interval (+0.73 to +9.06) does not; together they favour about 5 ms, not 1 ms.
+
+## Limits
+
+One conversation and 12 prompts (the interval is over prompts, 12 clusters); 42 GiB, not 48; carryover from the previous turn remains but is balanced by the alternation (order effect 3.8 ms); the flip of the module constant is an instrument; the tracer's +0.55 ms is inside both sides. Prompt 0 is post hoc interesting, not excluded here.
+
+## Decision
+
+No default change. The best statement of prefetch's value on the 22k Hermes context is about +5 ms a token (+0.7 to +9.1, alternated; +1.7 to +7.3, across processes), about half the short-prompt pair's 10 ms. Ledger row DS-PRED-LAYER-ALT. Open: the same alternated pair at 48 GiB; whether prompt 0's negative gap is a position-in-pass effect (a pass-0 first turn after the warm turns) or the prompt.

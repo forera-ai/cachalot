@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-12, 0.64.11): the alternated prefetch pair: prefetch is worth about 5.5 ms a token on the 22k Hermes context; the first design was void
+>
+> Section 18.145, arms 8 and 8b of `docs/L4B-RAW-LAYER-RECORD.md` (predictions and falsifiers written before each run), new `benchmarks/prefetch_alternated.py` and `tests/test_prefetch_alternated.py`. Nothing in `src/` changed. **Arm 8 (void):** running each prompt twice back to back gave a 34 ms order effect (the second run inherits the first's resident experts; misses 28.5 against 22.7), gap -3.1 ms (-14.2 to +6.0): useless. **Arm 8b (the corrected design, one process, `moe_layer_metal.PREDICT_TOPK` flipped per turn, the 12 prompts in four passes with the condition alternating by prompt and swapped between passes so a prompt's twins are 12 turns apart; 22k Hermes context, 42 GiB, misses a token 35.3 on and 34.3 off):** prefetch on 134.2 ms a token, off 139.7, **gap +5.50 ms (95 % bootstrap over the 12 prompts +0.73 to +9.06)**, on faster in 18 of 24 pairs, order effect 3.8 ms, hidden share 46.7 % against 0.0 %, blocked 42.4 against 57.0. Agrees with arm 7 (+4.62, +1.68 to +7.30 across processes); together: about 5 ms (4 %), half the short-prompt 10 ms; the old ledger 1 ms is excluded by arm 7 and not by 8b. All predictions held except the interval half-width (4.2 against 3.5). Prefetch stays on. First job and open items: `docs/NEXT-SESSION-PROMPT.md` v194.
+>
 > ## Start here (2026-10-12, 0.64.10): decode prefetch on and off on the 22k Hermes context: a 4.6 ms gap, between the short-prompt 10 ms and the old 1 ms
 >
 > Section 18.144, arm 7 of `docs/L4B-RAW-LAYER-RECORD.md` (prediction and discrimination rule written before the run). `benchmarks/token_trace_raw.py` gained `--dump` and `--max-seq-len`. Nothing in `src/` changed. **Measured** (the dumped Hermes session's 22k-token system prompt and 25 tools, 12 prompts twice, 160 tokens, 42 GiB because the guard needs budget + 29 GiB available and had 71.5, exact decode, 33.5 misses a token in both arms, 0 dropped, 27 of 28 requests reusing the 22,407-token prefix): prefetch on 139.8 ms a token, off 144.4, **gap 4.62 ms (95 % bootstrap over turns +1.68 to +7.30)**, 17 of 24 turns slower with it off; per miss 0.14 ms (short prompts 0.32). The interval excludes both the old ledger's 1 ms and the short-prompt pattern's 9-11 ms: by the rule fixed beforehand the result is ambiguous between H1 and H2 and the truth is in between. Prefetch saves 14.3 ms of waiting (short prompts 16.5) but adds +5.1 ms to the router-eval window (short prompts +3.4), so its net is smaller on a long context. Prefetch stays on. First job and open items: `docs/NEXT-SESSION-PROMPT.md` v193.
@@ -9078,6 +9082,36 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.145 The alternated prefetch pair (0.64.11)
+
+**Goal.** Hamed: "go, record the alternated prefetch pair" (the open item of 18.144). Record: arms 8 and 8b of `docs/L4B-RAW-LAYER-RECORD.md`.
+
+**Baseline.** Arm 7 (22k Hermes, 42 GiB, two processes): on 139.8, off 144.4 ms, gap 4.62 ms (+1.68 to +7.30), per-turn gap sd 8.25 ms.
+
+**Prediction, arm 8 (written first).** Gap +4.6 ms (planning +2.5 to +7.0), half-width at most 2.0, on faster in at least 18 of 24, order effect under 3 ms, misses equal within 1.5. Falsifier included an order effect above 6 ms (carryover).
+
+**Method, arm 8.** One process, `PREDICT_TOPK` flipped between the two back-to-back runs of each prompt, order alternating; 24 pairs. **Result:** the flip worked (hidden share 49.7 % on, 0.0 % off) but the order effect was 34 ms (on-first -23.3, off-first +11.1), misses 28.5 against 22.7, gap -3.09 ms (-14.18 to +6.01): void by the registered falsifier. The second run of a prompt inherits the first's resident experts; I had named the mechanism in the limits but not its size.
+
+**Prediction, arm 8b (written first).** Gap +4.6 ms (planning +1.5 to +8.0); half-width at most 3.5 over prompts; order effect under 5 ms; misses equal within 2.0; at least 16 of 24; hidden share about 48 % on and 0 % off. Falsifier: interval including 0, gap above 9, misses differing by more than 3, order effect above 8.
+
+**Method, arm 8b.** `--design interleave`: four passes over the 12 prompts, odd prompts on in pass 0 and even in pass 1, repeated; a prompt's pair members are 12 turns apart; bootstrap over the 12 prompts.
+
+**Result (measured).** On 134.2 ms, off 139.7; gap +5.50 ms (+0.73 to +9.06); server timing +5.49; on faster in 18 of 24; order effect 3.8 ms (on-first +7.06, off-first +3.27); misses 35.3 against 34.3; blocked 42.4 against 57.0; router-eval window 64.9 against 59.4; hidden 46.7 % against 0.0 %; events 265 against 215. Per-prompt gaps +3.1 to +15.8 ms except prompt 0 (-20.9) and prompt 8 (-3.0).
+
+**Against the prediction.** All held except the interval half-width (4.2 against 3.5). No falsifier fired.
+
+**Explanation (hypothesis).** The two designs agree: prefetch is worth about 5 ms a token on the 22k Hermes context at 42 GiB, half its worth on short prompts. The variance is between prompts, so more turns of the same 12 prompts would not narrow it much; more prompts or more conversations would.
+
+**Limits.** One conversation, 12 prompts, 42 GiB; the module-constant flip is an instrument; carryover from the previous turn is balanced by alternation, not removed.
+
+**What shipped.** `benchmarks/prefetch_alternated.py`, `tests/test_prefetch_alternated.py` (4 tests), record arms 8 and 8b, ledger row DS-PRED-LAYER-ALT. No default, output or numerics change; no Lab brief.
+
+**Bottleneck after.** Unchanged.
+
+**Open.** The alternated pair at 48 GiB or on a second conversation; whether prompt 0's -21 ms is a position-in-pass effect.
+
+**Kind.** Research (predicted, measured, explained as hypothesis): arm 8 void by its registered falsifier (the mechanism was named, its size underestimated); arm 8b held on all but the interval width.
 
 ### 18.144 Decode prefetch on and off on the 22k Hermes context (0.64.10)
 
