@@ -1,0 +1,14 @@
+[
+ "Explain what this error means: ModuleNotFoundError: No module named 'yaml', and how to fix it.",
+ "Create a small bash script that backs up my Documents folder to an external drive.",
+ "Refactor a function with three nested loops into something readable; show before and after.",
+ "Search the web for the latest stable Rust version and tell me what changed.",
+ "Write a C# class for a thread-safe LRU cache with a capacity limit.",
+ "Draft a commit message for a change that adds retry logic to an HTTP client.",
+ "Explain git rebase versus merge and when each is safer on a shared branch.",
+ "List the files in the current directory and tell me which look like source code.",
+ "Write a Python script that counts lines of code per file extension in a folder, then run it.",
+ "Read the README and summarise what the project does in five bullet points.",
+ "Find every TODO comment in the repository and group them by file.",
+ "Write a unit test for a function that parses ISO dates, and explain the edge cases."
+]

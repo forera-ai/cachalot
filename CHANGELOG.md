@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.64.17 (2026-10-14)
+
+HANDOFF "Start here (2026-10-14, 0.64.17)" and section 18.151; arm 11 of `docs/L4B-RAW-LAYER-RECORD.md`, prediction and falsifier written before the run. Measurement and one prompt file; nothing in `src/` changed.
+
+### Added
+- `benchmarks/prefetch_prompts_a_rot5.json`: the first prompt set (the built-in twelve) rotated by five.
+
+### Measured
+- The alternated prefetch pair on the first prompt set, rotated (22k Hermes system block and tools, 42 GiB, one process, 24 pairs, texts identical 24 of 24, 0 dropped): decode 140.5 ms with prefetch, 147.0 without, **gap +6.49 ms a token (95 % over prompts +2.75 to +10.76)**, on faster in 17 of 24, misses 35.4 / 35.3, hidden share 47.1 % / 0.0 %. Arm 8b (same prompts, unrotated, another process) read +5.50 at 35.3 misses; the two agree within 1 ms. Both prompt sets now have two runs: about +6.0 ms at 35 misses and +8.4 at 44.
+- The negative prompt 0 of arm 8b (-20.9 ms) reads +2.2 in slot 7 here: it reproduces in neither position, on either prompt set.
+
+### Closed
+- Nothing new. The prediction's order-effect bound (under 5 ms) missed: on-first +9.83, off-first +4.15 (5.7 ms apart, inside the pair noise at 12 pairs a side). Prefetch stays on; the default is unchanged.
+
 ## 0.64.16 (2026-10-13)
 
 HANDOFF "Start here (2026-10-13, 0.64.16)" and section 18.150; arm 10 of `docs/L4B-RAW-LAYER-RECORD.md`, prediction and falsifier written before the run. Measurement and one prompt file; nothing in `src/` changed.

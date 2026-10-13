@@ -555,3 +555,27 @@ On 146.3 ms, off 153.9; **gap +7.56 ms a token (95 % bootstrap over prompts +6.1
 ## Decision
 
 No default change; prefetch stays on. The position-in-pass question is closed (not an effect, within this noise). Ledger row DS-PRED-LAYER-ALT-C.
+
+# Arm 11: the first prompt set rotated, opened 2026-10-14 before the run
+
+Hamed's go: "42 GiB" on the open question of whether the arm 8b gap (+5.50 ms at 35.3 misses) reproduces and whether arm 8b's negative prompt 0 (-20.9) is a position effect. Design: arm 8b exactly (the built-in twelve prompts, 22k Hermes system block and tools, 42 GiB, `--design interleave`, one process, tracer on every token) with `benchmarks/prefetch_prompts_a_rot5.json`, the list rotated by five.
+
+**Baseline.** Arm 8b: gap +5.50 ms (+0.73 to +9.06), 18 of 24, order effect 3.8, 35.3 misses a token; arms 9 and 10 on the second set: +9.26 and +7.56 at 44.
+
+**Prediction (written first).** The gap follows the miss count (about 0.16 ms a miss): +4 to +8 ms at 33-37 misses; on faster in at least 17 of 24; order effect under 5 ms; identical text; hidden share 40-52 % on and 0 % off. Falsifier: gap above +9 or below +1 ms at 33-37 misses.
+
+## Arm 11 result (measured, 2026-10-14, runtime 0.64.16)
+
+Run under `guarded_run.sh` (first two launches refused: 69.8 and 69.7 GiB available of 71 needed; accepted at 72.2 after Hamed freed memory); 1,209 s, peak wired 70.5 GiB, peak swap 489 MB, pressure 1; output `benchmarks/results/prefetch-alt/run-a-rot5.json` (local). 24 pairs, 0 dropped, text identical in all 24.
+
+On 140.5 ms, off 147.0; **gap +6.49 ms a token (95 % bootstrap over prompts +2.75 to +10.76)**, unweighted +6.39, median +6.84, sd 8.65, on faster in 17 of 24; on-first +9.83, off-first +4.15; misses 35.4 on, 35.3 off; blocked 43.7 against 59.9; sync 68.0 against 62.3; busy 79.7 against 58.2; hidden share 47.1 % against 0.0 %. Per original prompt (mean of two pairs; the slot index is (prompt + 7) mod 12; arm 8b in brackets): 0 +2.2 (-20.9), 1 +13.5 (+6.6), 2 +2.2 (+5.9), 3 -3.1 (+4.3), 4 +12.2 (+9.1), 5 +4.0 (+8.5), 6 +15.1 (+8.5), 7 +3.9 (+12.4), 8 +0.9 (-3.0), 9 +3.0 (+7.9), 10 +22.7 (+15.8), 11 +0.2 (+3.1). Original prompt 0 sits in slot 7 and reads +2.2.
+
+**Against the prediction.** Held: gap inside +4 to +8, misses inside 33-37, 17 of 24, identity, hidden share, the falsifier did not fire. Missed: order effect 5.7 ms (9.83 against 4.15; the prediction said under 5), which at 12 pairs a side is inside the noise (pair sd 8.65).
+
+**Explanation (hypothesis).** The gap reproduces on the first set (+6.49 against +5.50, difference 0.99 ms, well inside the interval widths). Per-prompt gaps move between the two runs by more than the overall gap does (prompt 0 from -20.9 to +2.2, prompt 3 from +4.3 to -3.1), as arm 10 found on the second set: they are two-pair means and not properties of the prompts. At the level of prompt sets the gap rises with the miss count: first set about +6.0 at 35.4 misses (two runs), second set about +8.4 at 43.8 (two runs), about 0.29 ms per added miss across sets and 0.17-0.19 within each, which is a pattern over two points, not a fitted slope.
+
+**Limits.** One system block and tool set; 42 GiB; twelve prompts, two pairs each; one rotation; separate processes (drift sd 1.5 %, 18.148); the 20-minute run was shorter than the 60-70 minutes first estimated (arm 10 had taken about 30; I estimated before reading the footprint of earlier runs).
+
+## Decision
+
+No default change; prefetch stays on. Ledger row DS-PRED-LAYER-ALT-D.

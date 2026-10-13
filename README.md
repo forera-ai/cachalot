@@ -297,6 +297,8 @@ reproducible to ±0.3 %.
 
 **0.60.7 (2026-10-06): review fixes.** The run manifest no longer records credentials such as `CACHALOT_API_KEY` by value, and its Hermes Desktop check needs one process line. HANDOFF section 18.73.
 
+**0.64.17 (2026-10-14): the prefetch pair, first prompt set rotated.** Running the first twelve prompts in a different order (22k Hermes context, 42 GiB, one process, 24 pairs, identical text) gives decode 140.5 ms with decode prefetch and 147.0 without (gap +6.49 ms, 95 % +2.75 to +10.76, 17 of 24 pairs, 35 misses a token), agreeing with the unrotated run's +5.50. Across both prompt sets prefetch is worth about 6 ms a token at 35 misses and 8 ms at 44, and stays on. HANDOFF section 18.151.
+
 **0.64.16 (2026-10-13): the first-slot question closed.** Rotating the second prompt set so a different prompt opens the pass gives decode 146.3 ms with decode prefetch and 153.9 without (gap +7.56 ms, 95 % +6.13 to +9.37, 24 of 24 pairs, identical text); the prompt that read negative in the first slot reads +8.6 elsewhere, so the earlier negative was noise, not a position effect. Prefetch stays on. HANDOFF section 18.150.
 
 **0.64.15 (2026-10-13): the prefetch pair on a second prompt set.** The same alternated one-process comparison with twelve different prompts on the 22k Hermes context (42 GiB) gives decode 145.5 ms with decode prefetch and 154.8 without (gap +9.26 ms, 95 % +5.88 to +12.01, 22 of 24 pairs, identical text); the first prompt set gave +5.5 ms at 35 misses a token, this one has 44 misses and saves about 0.21 ms a miss. Prefetch stays on. HANDOFF section 18.149.
