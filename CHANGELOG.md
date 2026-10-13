@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.64.16 (2026-10-13)
+
+HANDOFF "Start here (2026-10-13, 0.64.16)" and section 18.150; arm 10 of `docs/L4B-RAW-LAYER-RECORD.md`, prediction and falsifier written before the run. Measurement and one prompt file; nothing in `src/` changed.
+
+### Added
+- `benchmarks/prefetch_prompts_b_rot5.json`: the second prompt set rotated by five, so a different prompt sits in the first pair slot.
+
+### Measured
+- The position-in-pass test (22k Hermes system block and tools, 42 GiB, one process, 24 pairs, texts identical 24 of 24, 0 dropped): decode 146.3 ms with prefetch, 153.9 without, **gap +7.56 ms a token (95 % over prompts +6.13 to +9.37)**, on faster in 24 of 24, order effect 1.2 ms, misses 43.0 / 44.1. The prompt that was negative in the first slot (-3.2 ms) reads +8.6 in slot 7, and the prompt now in slot 0 reads +8.7: the registered falsifier ("slot 0 above +8") fired by 0.7 ms.
+
+### Closed
+- Prompt 0's negative gap is not a first-slot effect and not a property of the prompt; it is most likely the noise of a two-pair mean (the per-prompt gap differs between the two runs with sd about 6.5 ms). Prefetch stays on; the default is unchanged.
+
 ## 0.64.15 (2026-10-13)
 
 HANDOFF "Start here (2026-10-13, 0.64.15)" and section 18.149; arm 9 of `docs/L4B-RAW-LAYER-RECORD.md`, prediction and falsifier written before the run. Measurement and tooling; nothing in `src/` changed.

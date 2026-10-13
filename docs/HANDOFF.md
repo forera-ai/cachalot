@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-13, 0.64.16): the position-in-pass test: prompt 0's negative gap does not reproduce in any slot; +7.56 ms a token on the rotated set; prefetch stays on
+>
+> Section 18.150, arm 10 of `docs/L4B-RAW-LAYER-RECORD.md` (prediction and falsifier written before the run), `benchmarks/prefetch_prompts_b_rot5.json`. Nothing in `src/` changed. **Measured:** the arm 9 comparison with the prompt list rotated by five (one process, 42 GiB, 22k Hermes block): decode 146.3 ms with prefetch, 153.9 without, **gap +7.56 ms (+6.13 to +9.37), 24 of 24 pairs, order effect 1.2 ms**, misses 43.0 / 44.1, text identical. The prompt that read -3.2 in slot 0 reads +8.6 in slot 7; the new slot-0 prompt reads +8.7. The registered falsifier (slot 0 above +8) fired by 0.7 ms: the first-slot effect is falsified, and prompt 0's negative is most likely two-pair noise (per-prompt gaps differ between runs with sd about 6.5 ms). **Needs Hamed:** nothing; the remaining jobs are the 48 GiB pair (memory) and a new agent session (a dump).
+>
 > ## Start here (2026-10-13, 0.64.15): the prefetch pair on a second prompt set: +9.26 ms a token at 44 misses (the first set: +5.5 at 35); prefetch stays on
 >
 > Section 18.149, arm 9 of `docs/L4B-RAW-LAYER-RECORD.md` (prediction and falsifier written before the run), `benchmarks/prefetch_alternated.py --prompts`, `benchmarks/prefetch_prompts_b.json`. Nothing in `src/` changed. **Measured:** the alternated one-process pair with twelve new user prompts on the same 22k Hermes system block and tools, 42 GiB: decode 145.5 ms with decode prefetch, 154.8 without, **gap +9.26 ms (+5.88 to +12.01), 22 of 24 pairs, order effect 4.1 ms**, 44.1 misses a token against arm 8b's 35.3, hidden share 44.7 %, text identical 24 of 24. The gap follows the miss count (about 0.21 ms a miss here, 0.16 there). The registered falsifier "gap above 9" fired by 0.26 ms; the other predictions held. Prompt 0 is negative again (as in arm 8b, with different prompts), which favours a position-in-pass effect. **Needs Hamed:** nothing; the next machine jobs are in the v198 prompt. Hamed closed VMware to get the guard's 71 GiB (first attempt refused at 67.2) and ran `sudo purge` once during the load.
@@ -9098,6 +9102,30 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.150 The position-in-pass test (0.64.16)
+
+**Goal.** v198 First job 1 (Hamed: "go"). Record: arm 10 of `docs/L4B-RAW-LAYER-RECORD.md`.
+
+**Baseline.** Arm 9: gap +9.26 ms, prompt 0 -3.2 (slot 0), prompt 5 +14.2, prompt 7 +8.4; arm 8b prompt 0 -20.9.
+
+**Prediction (written first).** Position effect: slot 0 (arm 9's prompt 5) below +4 ms; arm 9's prompt 0, now in slot 7, above +4; overall gap within 3 ms of +9.26; misses within 3 of 44.1; order effect under 5; identical text; flip holds. Falsifier: slot 0 above +8 or prompt 0 below +1 in slot 7.
+
+**Method.** `prefetch_alternated.py --prompts benchmarks/prefetch_prompts_b_rot5.json` (arm 9's list rotated by five), 42 GiB, `--design interleave`, tracer on every token, one process under `guarded_run.sh` (accepted at 71.5 of 71 GiB; about 30 minutes).
+
+**Result (measured).** On 146.3, off 153.9; gap +7.56 ms (+6.13 to +9.37), 24 of 24 pairs, on-first +8.32, off-first +7.13, misses 43.0 / 44.1, blocked 47.9 / 65.4, hidden 46.5 % / 0.0 %, 0 dropped, text identical 24 of 24. Per slot: +8.7, +6.4, +12.6, +17.5, +7.0, +7.2, +5.5, +8.6, +4.6, +6.2, +5.0, +12.9.
+
+**Against the prediction.** Held: overall gap (1.70 below arm 9), misses, order effect, identity, flip, prompt 0 above +4 in slot 7. Missed: slot 0 reads +8.7, and the falsifier fired by 0.7 ms.
+
+**Explanation (hypothesis).** The negative prompt 0 did not reproduce in either position. Per-prompt gaps move between arm 9 and arm 10 with sd about 6.5 ms (derived over twelve prompts), against a pair sd of 4.6-8.9 ms, so a two-pair mean can sit 5-10 ms off by noise alone. The four warm prompts also changed, which this arm cannot separate.
+
+**Limits.** One system block; 42 GiB; two pairs per prompt; one rotation; separate processes (drift sd 1.5 %).
+
+**What shipped.** `benchmarks/prefetch_prompts_b_rot5.json`, record arm 10, ledger row DS-PRED-LAYER-ALT-C. No default, output or numerics change; no Lab brief.
+
+**Bottleneck after.** Unchanged: expert reads on misses; prefetch is worth about 8 ms a token at 43-44 misses on this prompt set and stays on.
+
+**Open.** The pair at 48 GiB; a pair on a different agent session (a new dump). The position-in-pass question is closed.
 
 ### 18.149 The prefetch pair on a second prompt set (0.64.15)
 

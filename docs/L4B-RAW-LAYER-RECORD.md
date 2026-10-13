@@ -529,3 +529,29 @@ On 145.5 ms, off 154.8; **gap +9.26 ms a token (95 % bootstrap over prompts +5.8
 **Explanation (hypothesis).** This prompt set costs 44.1 misses a token against 35.3 in arm 8b, and prefetch saves about 0.21 ms per miss here against 0.16 there, so a gap of 9 follows from the miss count more than from a different prefetch mechanism: across the two prompt sets the gap tracks misses a token. Prompts 0 and 2 are slightly negative; prompt 0 was also the one negative prompt of arm 8b (-20.9) although the prompts are different, so a position effect (prompt 0 is the first pair turn, right after four prefetch-on warm turns) is now more likely than a property of that prompt. Not tested here.
 
 **Limits.** One system block and tool set (the second conversation is a second prompt set, not a second agent session); 42 GiB; the module-constant flip is an instrument; twelve prompts.
+
+# Arm 10: the position-in-pass test, opened 2026-10-13 before the run
+
+Hamed's go: "go" on v198 First job 1. Question: is prompt 0's negative gap (arm 8b -20.9 ms, arm 9 -3.2 ms, different texts) caused by the first pair slot (a pass-0 turn right after the warm turns) or by the prompt. Design: arm 9 exactly (22k Hermes system block and tools, 42 GiB, `--design interleave`, one process, tracer on every token) with `benchmarks/prefetch_prompts_b_rot5.json`, the arm 9 list rotated by 5, so slot 0 holds arm 9's prompt 5 (+14.2 ms there) and arm 9's prompt 0 sits in slot 7. The four warm prompts change too (arm 9's 5, 6, 7, 8).
+
+**Baseline.** Arm 9: gap +9.26 ms (+5.88 to +12.01), prompt 0 -3.2, prompt 5 +14.2, prompt 7 +8.4.
+
+**Prediction (written first), position effect.** Slot 0 (arm 9's prompt 5) has a gap below +4 ms (arm 9's value for it was +14.2); arm 9's prompt 0, now in slot 7, has a gap above +4 ms (planning +4 to +14); the overall gap stays within 3 ms of +9.26; misses within 3 of 44.1; order effect under 5 ms; text identical in each pair; flip holds (off hidden share under 2 %).
+
+**Falsifier.** Position effect is falsified if slot 0's gap exceeds +8 ms or arm 9's prompt 0 stays below +1 ms in slot 7. If both fall between, the result is ambiguous (one prompt each, noisy: the per-prompt sd of a mean of two pairs is large, so a single slot comparison is weak evidence; I will say so).
+
+## Arm 10 result (measured, 2026-10-13, runtime 0.64.15)
+
+Run: `benchmarks/prefetch_alternated.py --prompts benchmarks/prefetch_prompts_b_rot5.json`, 42 GiB, guard accepted at 71.5 GiB available (needed 71; swap 1.28 GiB stale, not growing); output `benchmarks/results/prefetch-alt/run-promptsb-rot5.json` (local). 48 turns, 24 pairs, 0 dropped events, text identical in all 24 pairs.
+
+On 146.3 ms, off 153.9; **gap +7.56 ms a token (95 % bootstrap over prompts +6.13 to +9.37)**, on faster in 24 of 24 pairs; pairs with on first +8.32, off first +7.13 (order effect 1.2 ms). Misses a token 43.0 on, 44.1 off; blocked 47.9 against 65.4; hidden share 46.5 % against 0.0 %. Per-slot gaps (mean of the two pairs; arm 9 prompt in brackets): slot 0 +8.7 (5), 1 +6.4 (6), 2 +12.6 (7), 3 +17.5 (8), 4 +7.0 (9), 5 +7.2 (10), 6 +5.5 (11), 7 +8.6 (0), 8 +4.6 (1), 9 +6.2 (2), 10 +5.0 (3), 11 +12.9 (4).
+
+**Against the prediction.** Held: overall gap within 3 ms of arm 9 (1.70 ms lower), misses within 3 (43.0 against 44.1), order effect under 5 (1.2), identical text, flip holds, and arm 9's prompt 0 in slot 7 reads +8.6 (above +4). Missed: slot 0 (arm 9's prompt 5) reads +8.7 against a predicted value below +4, and **the registered falsifier "slot 0 above +8" fired, by 0.7 ms.** Taken at face value the position effect is falsified: a different prompt in slot 0 is not negative, and prompt 0 outside slot 0 is not negative either.
+
+**Explanation (hypothesis).** The negative prompt 0 of arms 8b and 9 did not reproduce in either position; the per-prompt gap of one prompt moves a lot between runs (arm 9 to arm 10: prompt 0 -3.2 to +8.6, prompt 8 +22.0 to +17.5, prompt 5 +14.2 to +8.7, prompt 3 +13.0 to +5.0; the difference between the two runs has sd about 6.5 ms over twelve prompts, derived), because a prompt's mean rests on two pairs whose own sd is 4.6-8.9 ms. So the negative prompt 0 is most likely noise of a two-pair mean, not a property of the first slot or of the prompt. One caveat: the four warm prompts also changed, so this does not exclude an effect tied to a particular warm-up text; I do not have evidence for one.
+
+**Limits.** One system block and tool set; 42 GiB; twelve prompts, two pairs each; one rotation; arm 9 and arm 10 are separate processes (drift sd 1.5 %, 18.148). The overall gap here (+7.56) and in arm 9 (+9.26) agree within their intervals, which is the usable result: on this prompt set prefetch is worth about 8 ms a token at 43-44 misses.
+
+## Decision
+
+No default change; prefetch stays on. The position-in-pass question is closed (not an effect, within this noise). Ledger row DS-PRED-LAYER-ALT-C.

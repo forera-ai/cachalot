@@ -1,10 +1,11 @@
-# Next-session prompt — **v198**, written 2026-10-13
+# Next-session prompt — **v199**, written 2026-10-13
 
 **This is the file to paste.** `docs/NEXT-SESSION-PROMPT.md` is always current; superseded ones live in
 `docs/next-session-prompts/`.
 
 | version | written | produced by | what changed |
 |---|---|---|---|
+| **v199** | 2026-10-13 | Hamed: "go" on v198 First job 1 (the position-in-pass test) | **0.64.16, measurement and a prompt file, nothing in `src/`: the second prompt set rotated by five (one process, 42 GiB, 22k Hermes block): 146.3 vs 153.9 ms, gap +7.56 ms (+6.13 to +9.37), 24 of 24 pairs, order effect 1.2, misses 43.0 / 44.1. Prompt 0's negative gap (-3.2) does not reproduce in slot 7 (+8.6) and the new slot-0 prompt reads +8.7: registered falsifier (slot 0 above +8) fired by 0.7 ms; first-slot effect falsified, the negative is most likely two-pair noise (per-prompt sd between runs about 6.5 ms). Prefetch stays on.** §18.150 |
 | **v198** | 2026-10-13 | Hamed: "/ca read the handoff and session prompts and do the tasks", then chose "Prefetch pair, second conversation" from v197's list (item 2) | **0.64.15, measurement and a script option, nothing in `src/`: the alternated prefetch pair on a second set of twelve prompts (22k Hermes block, 42 GiB, one process): 145.5 vs 154.8 ms, gap +9.26 ms (+5.88 to +12.01), 22 of 24 pairs, order effect 4.1, 44.1 misses a token (first set: +5.5 at 35.3); the gap follows the miss count (~0.21 ms a miss here, 0.16 there). Registered falsifier "gap above 9" fired by 0.26 ms. Prompt 0 negative again: position effect likely. New `--prompts FILE`, `benchmarks/prefetch_prompts_b.json`.** §18.149 |
 | **v197** | 2026-10-13 | Hamed: "go, measure the drift by repeating one config" (v196 open item), after `sudo purge` | **0.64.14, measurement and a script, nothing in `src/`: five recordings of one exact configuration (34 GiB, prefetch on): decode 151.3-156.8 ms (range 5.5 ms = 3.6 %, sd 1.5 %), window 62.4-63.1 (range 0.7), floor 48.5-48.9, blocked 59.2-65.6 - the variation is on the drive-wait side, on a busy machine with a running VM. 18.147's "6 % drift" is withdrawn: the budget-0 pair's 5.9 % / 9.3 ms was budget 0's own nondeterminism. New `benchmarks/drift_repeat.sh`.** §18.148 |
 | **v196** | 2026-10-12 | Hamed: "go, record the kept-expert count test" (v195 open item) | **0.64.13, one tracer-only change (GET_END `b` = experts kept) and a measurement: budget 0 recorded again: decode 105.6 ms (first recording 112.2), router-eval window 56.8 ms (66.1; exact 63.1) - the "+3 ms budget-0 excess" did not reproduce and is withdrawn; the window after a reduced layer equals the one after a full layer (+0.004 ms). Two runs of one configuration differ by 9.3 ms in the window and 5.9 % in decode (floor and misses agree): the between-process drift bound is ~6 %, not 1-2 %. New `benchmarks/kept_experts.py`.** §18.147 |
@@ -159,6 +160,15 @@
 | v47 | 2026-09-25 | Hamed asked for the v44-v46 levers planned, built, measured and documented | **0.18.0: GLM prefill 60 to 90 tok/s, bit-identical (a store path that never evicts, plus the next layer read early), GLM's missing MLX buffer-cache cap added, GLM disk snapshots (a restart reuses the system block). DeepSeek: an `iostat` trace shows prefill is not read-bound on either drive; the lookahead A/B drowned in a 124-to-200 s drift across back-to-back prefills.** §17.1, §15.13 |
 | v46 | 2026-09-25 | Hamed asked for GLM-5.3-Flash on Cachalot | 0.17.0: GLM through `serve-glm.sh` / `chat-glm.sh`. §17 |
 | v45 | 2026-09-24 | same as v47, one day earlier | 0.16.0: disk snapshot store by last use; lookahead and local compression closed. §15.12 |
+
+## First jobs (v199): the position-in-pass question is closed; the rest are Hamed's pick
+
+Read HANDOFF sections 18.144-18.150 first. Everything in the v198 and v197 blocks below still applies (tools first, machine gate, estimate and confirm each long run, prediction and falsifier first, Hamed runs every `sudo`). **New lesson:** a per-prompt gap rests on two pairs and moves between runs with sd about 6.5 ms (arm 9 against arm 10), so never read a single prompt's sign as a property of the prompt or its slot; quote the overall interval over prompts, and the miss count beside it.
+
+1. **Autonomous items are exhausted.** Ask Hamed which machine job he wants.
+2. **The pair at 48 GiB** (guard needs 77 GiB available; reboot or heavy freeing). At 42 GiB the guard needed 71 and accepted 71.5 today with nothing else running.
+3. **A different agent session** (needs a new Hermes dump from Hamed) for a true second system block.
+4. **The previous lists (v198, v197 below), unchanged.** v198 item 1 is DONE (18.150).
 
 ## First jobs (v198): the prefetch pair holds on two prompt sets; the rest are Hamed's pick
 
