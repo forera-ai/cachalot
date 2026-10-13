@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.64.15 (2026-10-13)
+
+HANDOFF "Start here (2026-10-13, 0.64.15)" and section 18.149; arm 9 of `docs/L4B-RAW-LAYER-RECORD.md`, prediction and falsifier written before the run. Measurement and tooling; nothing in `src/` changed.
+
+### Added
+- `benchmarks/prefetch_alternated.py --prompts FILE` replaces the built-in twelve user prompts with a JSON list; `benchmarks/prefetch_prompts_b.json` is a second set of twelve.
+
+### Measured
+- The alternated prefetch pair on a second prompt set (22k Hermes system block and tools, 42 GiB, one process, 24 pairs, texts identical 24 of 24, 0 dropped): decode 145.5 ms with prefetch, 154.8 without; **gap +9.26 ms a token (95 % over prompts +5.88 to +12.01)**, on faster in 22 of 24, order effect 4.1 ms, 44.1 misses a token, hidden share 44.7 %. Arm 8b (the first prompt set) read +5.50 (+0.73 to +9.06) at 35.3 misses; the gap follows the miss count (about 0.21 ms a miss here, 0.16 there). The registered falsifier "gap above 9" fired by 0.26 ms; every other prediction held. Prefetch stays on.
 ## 0.64.14 (2026-10-13)
 
 HANDOFF "Start here (2026-10-13, 0.64.14)" and section 18.148; the record `docs/L4B-DRIFT-RECORD.md` was written with its prediction and falsifier before the runs. Measurement and tooling; nothing in `src/` changed.

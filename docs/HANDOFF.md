@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-13, 0.64.15): the prefetch pair on a second prompt set: +9.26 ms a token at 44 misses (the first set: +5.5 at 35); prefetch stays on
+>
+> Section 18.149, arm 9 of `docs/L4B-RAW-LAYER-RECORD.md` (prediction and falsifier written before the run), `benchmarks/prefetch_alternated.py --prompts`, `benchmarks/prefetch_prompts_b.json`. Nothing in `src/` changed. **Measured:** the alternated one-process pair with twelve new user prompts on the same 22k Hermes system block and tools, 42 GiB: decode 145.5 ms with decode prefetch, 154.8 without, **gap +9.26 ms (+5.88 to +12.01), 22 of 24 pairs, order effect 4.1 ms**, 44.1 misses a token against arm 8b's 35.3, hidden share 44.7 %, text identical 24 of 24. The gap follows the miss count (about 0.21 ms a miss here, 0.16 there). The registered falsifier "gap above 9" fired by 0.26 ms; the other predictions held. Prompt 0 is negative again (as in arm 8b, with different prompts), which favours a position-in-pass effect. **Needs Hamed:** nothing; the next machine jobs are in the v198 prompt. Hamed closed VMware to get the guard's 71 GiB (first attempt refused at 67.2) and ran `sudo purge` once during the load.
+>
 > ## Start here (2026-10-13, 0.64.14): the drift of one exact configuration: sd 1.5 %, range 3.6 % in decode, 0.7 ms in the window; 18.147's "6 %" withdrawn
 >
 > Section 18.148, record `docs/L4B-DRIFT-RECORD.md` (prediction and falsifier written before the runs), new `benchmarks/drift_repeat.sh`. Nothing in `src/` changed. **Measured:** arm 1's configuration (exact decode, prefetch on, 34 GiB, the 24 mixed turns) recorded three more times, 8.5 minutes each, plus the two earlier recordings: decode 151.6, 153.6, 156.8, 151.5, 151.3 ms a token (**range 5.5 ms = 3.6 %, sd 2.3 ms = 1.5 %**), misses 43.0 and the token counts identical in all five, router-eval window 62.4-63.1 (range 0.7), wait-free floor 48.5-48.9 (range 0.4), blocked time 59.2-65.6 (range 6.5): the variation is in how long the main thread waits on the drive, not in the GPU side. The machine was busy throughout (load 2.6-6.8, WindowServer, a running VM); the slowest run began with the VM resident size at its largest and a rising load. **Correction of 18.147:** the 5.9 % / 9.3 ms difference between the two budget-0 recordings is far outside this range for the window, and budget 0's text and drops differ run to run, so it is mostly budget 0's own nondeterminism, not machine drift; the "6 % drift" bound is withdrawn. For exact arms use sd 1.5 % / range 3.6 %: the prefetch-off penalty at 34 GiB (+10.4 %), the 46 GiB pair (+7.7 %) and the budget steps (+9.4 %, +7.4 %) exceed it and stand; arm 7's 3.3 % gap does not (the alternated 18.145 number stands). First job and open items: `docs/NEXT-SESSION-PROMPT.md` v197.
@@ -9094,6 +9098,32 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.149 The prefetch pair on a second prompt set (0.64.15)
+
+**Goal.** Hamed chose "Prefetch pair, second conversation" from the v197 list. Record: arm 9 of `docs/L4B-RAW-LAYER-RECORD.md`.
+
+**Baseline.** Arm 7 +4.62 ms (two processes), arm 8b +5.50 ms (+0.73 to +9.06), 35.3 misses a token.
+
+**Prediction (written first).** Gap +5.0 ms (planning +1.5 to +9.0), half-width at most 4.5, on faster in at least 16 of 24, order effect under 5 ms, misses equal within 2.0 and inside 25-45, hidden share 40-52 % on and 0 % off, identical text, agreement with 8b within 4 ms. Falsifier: interval includes 0, gap above 9 or below 1.5, misses differ by more than 3, order effect above 8, flip failure, a text difference.
+
+**Method.** The only other dump (`hermes-live-glm-0.61.12`) has a system block within six characters of the first and the same tools, so it would not be a second workload. `--prompts` was added and twelve new prompts written; everything else as arm 8b (interleave design, 42 GiB, 160 tokens, tracer on every token, one process, `guarded_run.sh`). The first launch was refused by the guard (67.2 GiB available of 71 needed; my own estimate had counted inactive pages the guard does not); after Hamed closed VMware it passed at 72.0.
+
+**Result (measured).** On 145.5, off 154.8; gap +9.26 ms (+5.88 to +12.01), 22 of 24 pairs, order effect 4.1 ms (on first +10.74, off first +6.64), misses 44.1 / 43.7, blocked 51.0 / 67.4, hidden share 44.7 % / 0.0 %, 0 dropped, text identical 24 of 24. Per-prompt means: -3.2, +10.8, -3.4, +13.0, +12.4, +14.2, +14.2, +8.4, +22.0, +6.2, +6.3, +13.2.
+
+**Against the prediction.** Half-width, pair count, order effect, misses, hidden share, identity and agreement with arm 8b (3.76 ms) held. The gap missed its planning interval and the falsifier "above 9" fired by 0.26 ms.
+
+**Explanation (hypothesis).** The prompt set has more misses a token (44.1 against 35.3) and prefetch saves about 0.21 ms a miss here against 0.16, so the gap follows the miss count across prompt sets; it is not a different prefetch mechanism. The one negative prompt of arm 8b was prompt 0, and prompt 0 is again negative with different text: a position effect (the first pair turn follows four prefetch-on warm turns) is more likely than a prompt property.
+
+**Limits.** One agent system block and tool set; 42 GiB; twelve prompts; a `sudo purge` during model load (the first off turn was not slow).
+
+**What shipped.** `--prompts FILE`, `benchmarks/prefetch_prompts_b.json`, record arm 9, ledger row DS-PRED-LAYER-ALT-B. No default, output or numerics change; no Lab brief.
+
+**Bottleneck after.** Unchanged: expert reads on misses. Prefetch is worth 4-6 % of a token on the 22k Hermes context and stays on.
+
+**Open.** Whether prompt 0's negative gap is a position effect (a pass with a different first prompt, or a prefetch-off warm-up); the pair at 48 GiB; a pair on a different agent session (a new dump).
+
+**Kind.** Research (predicted, measured, explained as hypothesis): most predictions held, the gap missed its planning interval and the registered upper falsifier fired narrowly.
 
 ### 18.148 The drift of one exact configuration (0.64.14)
 

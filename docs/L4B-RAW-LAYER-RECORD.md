@@ -507,3 +507,25 @@ One conversation and 12 prompts (the interval is over prompts, 12 clusters); 42 
 ## Decision
 
 No default change. The best statement of prefetch's value on the 22k Hermes context is about +5 ms a token (+0.7 to +9.1, alternated; +1.7 to +7.3, across processes), about half the short-prompt pair's 10 ms. Ledger row DS-PRED-LAYER-ALT. Open: the same alternated pair at 48 GiB; whether prompt 0's negative gap is a position-in-pass effect (a pass-0 first turn after the warm turns) or the prompt.
+
+# Arm 9: the alternated prefetch pair on a second prompt set, opened 2026-10-13 before the run
+
+Hamed's go: "Prefetch pair, second conversation", with twelve new user prompts and a `sudo purge` run by him first (2026-10-13). The only other dump (`hermes-live-glm-0.61.12`) has a system block within six characters of the first and the same 25 tools, so it would not be a second workload; instead `benchmarks/prefetch_alternated.py` gained `--prompts FILE`, and `benchmarks/prefetch_prompts_b.json` holds twelve prompts of different topics and lengths (git history, Go, dependency audit, a Java stack trace, SQL, JSON to YAML, cron, mutex versus semaphore, a TypeScript race, a database migration plan, a shell one-liner, pagination). Everything else is as arm 8b: the 22k Hermes system block and tools of `benchmarks/results/hermes-live-0.61.1/requests.jsonl`, `--design interleave` (four passes, a prompt's twins 12 turns apart), 42 GiB, exact decode, 160 tokens at most, tracer on every token, one process, under `guarded_run.sh`. Estimate: model load 3 minutes, cold 22k prefill about 4, 4 warm turns, 48 turns of about 20 s: about 27-30 minutes.
+
+**Baseline.** Arm 7 (two processes) +4.62 ms (+1.68 to +7.30); arm 8b (one process, the built-in prompts) +5.50 ms (+0.73 to +9.06), order effect 3.8 ms, 18 of 24 pairs, hidden share 46.7 % on and 0.0 % off, misses 35.3 against 34.3.
+
+**Prediction (written first).** Gap +5.0 ms (planning +1.5 to +9.0), half-width at most 4.5 over the twelve prompts, on faster in at least 16 of 24, order effect under 5 ms, misses a token equal within 2.0 and between 25 and 45, hidden share 40 to 52 % on and 0 % off, text identical in each pair. The prompt set differs, so I expect the per-prompt gaps to span a similar range (a few prompts near zero or negative). Agreement with arm 8b means the two gaps differ by less than 4 ms.
+
+**Falsifier.** The interval includes zero; the gap is above 9 or below 1.5; misses differ by more than 3; the order effect is above 8 ms; the flip fails (hidden share off above 2 %); a pair's texts differ.
+
+## Arm 9 result (measured, 2026-10-13, runtime 0.64.14)
+
+Run: `benchmarks/prefetch_alternated.py --prompts benchmarks/prefetch_prompts_b.json`, 42 GiB, guard accepted with 72.0 GiB available after Hamed closed VMware and other applications (the first attempt was refused at 67.2); output `benchmarks/results/prefetch-alt/run-promptsb.json` (local). Hamed also ran `sudo purge` while the model was loading, which empties the file cache; the first pair's off run (146.2 ms) was not slow, so no sign of an effect, but it is a disclosed disturbance. 48 turns, 5,584 pair tokens, 0 dropped events, text identical in all 24 pairs.
+
+On 145.5 ms, off 154.8; **gap +9.26 ms a token (95 % bootstrap over prompts +5.88 to +12.01)**, server timing +9.25 (+5.88 to +11.98); on faster in 22 of 24 pairs; median +10.61, sd 8.87. Order effect: on first +10.74, off first +6.64, difference 4.1 ms. Misses a token 44.1 on, 43.7 off. Blocked 51.0 on against 67.4 off; sync 65.9 against 62.4; read busy 89.5 against 65.6; hidden share 44.7 % against 0.0 %; events 273 against 215. Per-prompt gaps (mean of the two pairs): 0 -3.2, 1 +10.8, 2 -3.4, 3 +13.0, 4 +12.4, 5 +14.2, 6 +14.2, 7 +8.4, 8 +22.0, 9 +6.2, 10 +6.3, 11 +13.2.
+
+**Against the prediction.** Held: half-width 3.07 (at most 4.5), 22 of 24 (at least 16), order effect 4.1 (under 5), misses equal within 0.4 and inside 25-45 (44.1), hidden share 44.7 %, texts identical, agreement with arm 8b (the gaps differ by 3.76 ms, under 4). Missed: the gap +9.26 against +5.0 (planning +1.5 to +9.0), and the **registered falsifier "gap above 9" fired**, by 0.26 ms.
+
+**Explanation (hypothesis).** This prompt set costs 44.1 misses a token against 35.3 in arm 8b, and prefetch saves about 0.21 ms per miss here against 0.16 there, so a gap of 9 follows from the miss count more than from a different prefetch mechanism: across the two prompt sets the gap tracks misses a token. Prompts 0 and 2 are slightly negative; prompt 0 was also the one negative prompt of arm 8b (-20.9) although the prompts are different, so a position effect (prompt 0 is the first pair turn, right after four prefetch-on warm turns) is now more likely than a property of that prompt. Not tested here.
+
+**Limits.** One system block and tool set (the second conversation is a second prompt set, not a second agent session); 42 GiB; the module-constant flip is an instrument; twelve prompts.

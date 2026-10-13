@@ -31,7 +31,8 @@ from server_miss_budget_ab import USER as HERMES_USER  # noqa: E402
 ON, OFF = 6, 0
 
 
-def run(out: Path, dump: Path, tokens: int, pairs: int, warm: int, budget_gib: float, max_seq_len: int, design: str = "interleave") -> None:
+def run(out: Path, dump: Path, tokens: int, pairs: int, warm: int, budget_gib: float, max_seq_len: int, design: str = "interleave",
+        prompts: list[str] | None = None) -> None:
     import pareto
 
     pareto.serve_defaults()
@@ -41,6 +42,7 @@ def run(out: Path, dump: Path, tokens: int, pairs: int, warm: int, budget_gib: f
     from cachalot.model.generation import SamplingParams
     from cachalot.server.engine import ChatRequest, Engine
 
+    users = prompts or HERMES_USER
     body = json.loads(dump.read_text().splitlines()[0])["body"]
     system, tools = body["messages"][0], body["tools"]
     model = V41Model.from_pretrained(os.environ["CACHALOT_MODEL_PATH"], max_seq_len=max_seq_len,
@@ -71,22 +73,22 @@ def run(out: Path, dump: Path, tokens: int, pairs: int, warm: int, budget_gib: f
         out.write_text(json.dumps({"rows": rows}))
 
     for i in range(warm):
-        turn("on", HERMES_USER[i % len(HERMES_USER)], -1 - i, "warm")
+        turn("on", users[i % len(users)], -1 - i, "warm")
     if design == "backtoback":  # arm 8, void: the second run of a prompt inherits the first run's resident experts
         for i in range(pairs):
             order = ("on", "off") if i % 2 == 0 else ("off", "on")
             for c in order:
-                turn(c, HERMES_USER[i % len(HERMES_USER)], i, "pair")
+                turn(c, users[i % len(users)], i, "pair")
     else:
         # arm 8b: passes over all prompts with the condition alternating by prompt parity and swapped between passes, so a prompt's two
         # runs of a pair are a whole pass apart (server_miss_budget_ab.py, HANDOFF 18.59). Passes 0,1 make pair id i, passes 2,3 make
         # pair id 100 + i; every prompt runs on, off, off, on or off, on, on, off, so each side has the same mix of positions.
-        n = len(HERMES_USER)
+        n = len(users)
         for k in range(pairs // n):
             for sub in (0, 1):
                 for i in range(n):
                     on = (i % 2 == 1) if sub == 0 else (i % 2 == 0)
-                    turn("on" if on else "off", HERMES_USER[i], 100 * k + i, "pair")
+                    turn("on" if on else "off", users[i], 100 * k + i, "pair")
     mlm.PREDICT_TOPK = ON
     rt.set_token_trace(None)
     model.close()
@@ -173,6 +175,7 @@ def main() -> None:
     ap.add_argument("--pairs", type=int, default=24)
     ap.add_argument("--warm", type=int, default=4)
     ap.add_argument("--design", choices=("interleave", "backtoback"), default="interleave")
+    ap.add_argument("--prompts", type=Path, help="JSON list of user prompts replacing the built-in 12 (a second workload)")
     ap.add_argument("--max-seq-len", type=int, default=32768)
     a = ap.parse_args()
     sys.path.insert(0, str(REPO / "src"))
@@ -182,7 +185,8 @@ def main() -> None:
     if not a.out or not a.dump:
         ap.error("--out and --dump are required to run")
     a.out.parent.mkdir(parents=True, exist_ok=True)
-    run(a.out, a.dump, a.tokens, a.pairs, a.warm, a.budget_gib, a.max_seq_len, a.design)
+    run(a.out, a.dump, a.tokens, a.pairs, a.warm, a.budget_gib, a.max_seq_len, a.design,
+        json.loads(a.prompts.read_text()) if a.prompts else None)
 
 
 if __name__ == "__main__":

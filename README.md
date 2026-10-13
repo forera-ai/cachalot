@@ -297,6 +297,8 @@ reproducible to ±0.3 %.
 
 **0.60.7 (2026-10-06): review fixes.** The run manifest no longer records credentials such as `CACHALOT_API_KEY` by value, and its Hermes Desktop check needs one process line. HANDOFF section 18.73.
 
+**0.64.15 (2026-10-13): the prefetch pair on a second prompt set.** The same alternated one-process comparison with twelve different prompts on the 22k Hermes context (42 GiB) gives decode 145.5 ms with decode prefetch and 154.8 without (gap +9.26 ms, 95 % +5.88 to +12.01, 22 of 24 pairs, identical text); the first prompt set gave +5.5 ms at 35 misses a token, this one has 44 misses and saves about 0.21 ms a miss. Prefetch stays on. HANDOFF section 18.149.
+
 **0.64.14 (2026-10-13): how much one configuration drifts.** Five recordings of the same exact configuration give decode times of 151.3-156.8 ms a token (sd 1.5 %, range 3.6 %) and router-evaluation windows within 0.7 ms, on a busy machine; the variation is on the drive-wait side. The larger gap between two budget-0 recordings is budget 0's own nondeterminism (what it drops depends on timing), not machine drift. HANDOFF section 18.148.
 
 **0.64.13 (2026-10-12): the "budget-0 excess" was run-to-run variation.** Recording budget 0 a second time, with the tracer now counting the experts each layer keeps, gives a decode token of 105.6 ms (112.2 the first time) and a router-evaluation window 6 ms below the exact path (3 ms above it before); the window after a layer that dropped experts is no different from the window after a full one. Two runs of one configuration differ by about 6 % in decode, so single cross-process timing gaps below that size are not resolved. HANDOFF section 18.147.

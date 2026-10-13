@@ -1,0 +1,14 @@
+[
+ "Show me the git log for the last ten commits and say which ones touched the build configuration.",
+ "Write a Go function that merges overlapping time intervals, with a table-driven test.",
+ "Look at the package manifest and list every dependency that is more than two major versions behind.",
+ "Diagnose this stack trace: java.lang.NullPointerException at OrderService.applyDiscount(OrderService.java:88), and propose a fix.",
+ "Write a SQL query that returns the top five customers by revenue per quarter, and explain the window function you used.",
+ "Convert this nested JSON config into YAML and point out any keys that would be ambiguous in YAML.",
+ "Set up a cron entry that rotates logs weekly, keeps four archives, and emails me on failure.",
+ "Explain the difference between a mutex and a semaphore, then show a producer-consumer example in Python.",
+ "Review this TypeScript function that debounces an API call and tell me what race conditions remain.",
+ "Plan a migration from SQLite to PostgreSQL for a small app, listing the risky steps in order.",
+ "Write a shell one-liner that finds the ten largest files under the home directory and explain each flag.",
+ "Summarise the trade-offs between REST pagination by offset and by cursor for a feed that changes often."
+]

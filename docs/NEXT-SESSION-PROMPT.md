@@ -1,10 +1,11 @@
-# Next-session prompt — **v197**, written 2026-10-13
+# Next-session prompt — **v198**, written 2026-10-13
 
 **This is the file to paste.** `docs/NEXT-SESSION-PROMPT.md` is always current; superseded ones live in
 `docs/next-session-prompts/`.
 
 | version | written | produced by | what changed |
 |---|---|---|---|
+| **v198** | 2026-10-13 | Hamed: "/ca read the handoff and session prompts and do the tasks", then chose "Prefetch pair, second conversation" from v197's list (item 2) | **0.64.15, measurement and a script option, nothing in `src/`: the alternated prefetch pair on a second set of twelve prompts (22k Hermes block, 42 GiB, one process): 145.5 vs 154.8 ms, gap +9.26 ms (+5.88 to +12.01), 22 of 24 pairs, order effect 4.1, 44.1 misses a token (first set: +5.5 at 35.3); the gap follows the miss count (~0.21 ms a miss here, 0.16 there). Registered falsifier "gap above 9" fired by 0.26 ms. Prompt 0 negative again: position effect likely. New `--prompts FILE`, `benchmarks/prefetch_prompts_b.json`.** §18.149 |
 | **v197** | 2026-10-13 | Hamed: "go, measure the drift by repeating one config" (v196 open item), after `sudo purge` | **0.64.14, measurement and a script, nothing in `src/`: five recordings of one exact configuration (34 GiB, prefetch on): decode 151.3-156.8 ms (range 5.5 ms = 3.6 %, sd 1.5 %), window 62.4-63.1 (range 0.7), floor 48.5-48.9, blocked 59.2-65.6 - the variation is on the drive-wait side, on a busy machine with a running VM. 18.147's "6 % drift" is withdrawn: the budget-0 pair's 5.9 % / 9.3 ms was budget 0's own nondeterminism. New `benchmarks/drift_repeat.sh`.** §18.148 |
 | **v196** | 2026-10-12 | Hamed: "go, record the kept-expert count test" (v195 open item) | **0.64.13, one tracer-only change (GET_END `b` = experts kept) and a measurement: budget 0 recorded again: decode 105.6 ms (first recording 112.2), router-eval window 56.8 ms (66.1; exact 63.1) - the "+3 ms budget-0 excess" did not reproduce and is withdrawn; the window after a reduced layer equals the one after a full layer (+0.004 ms). Two runs of one configuration differ by 9.3 ms in the window and 5.9 % in decode (floor and misses agree): the between-process drift bound is ~6 %, not 1-2 %. New `benchmarks/kept_experts.py`.** §18.147 |
 | **v195** | 2026-10-12 | Hamed: "go, reconcile the budget-0 router-eval excess" (v194 open item) | **0.64.12, offline analysis, nothing in `src/`: budget 0's router-eval window is +3.01 ms a token above the exact arm with 20 fewer misses; reads in flight explain 23 % (the 30 % falsifier fired); it is a uniform +0.075 ms in all 40 layers with the median falling, same on equal-length turns, no position dependence, the rest of the token equal (29.8 vs 29.3 ms). Unexplained; candidate (the drop branch's variable expert count) untestable from the saved rows; 3 ms of 112 is not a lever. New `benchmarks/sync_excess.py`; record `docs/L4B-SYNC-EXCESS-RECORD.md`.** §18.146 |
@@ -158,6 +159,15 @@
 | v47 | 2026-09-25 | Hamed asked for the v44-v46 levers planned, built, measured and documented | **0.18.0: GLM prefill 60 to 90 tok/s, bit-identical (a store path that never evicts, plus the next layer read early), GLM's missing MLX buffer-cache cap added, GLM disk snapshots (a restart reuses the system block). DeepSeek: an `iostat` trace shows prefill is not read-bound on either drive; the lookahead A/B drowned in a 124-to-200 s drift across back-to-back prefills.** §17.1, §15.13 |
 | v46 | 2026-09-25 | Hamed asked for GLM-5.3-Flash on Cachalot | 0.17.0: GLM through `serve-glm.sh` / `chat-glm.sh`. §17 |
 | v45 | 2026-09-24 | same as v47, one day earlier | 0.16.0: disk snapshot store by last use; lookahead and local compression closed. §15.12 |
+
+## First jobs (v198): the prefetch pair holds on two prompt sets; the rest are Hamed's pick
+
+Read HANDOFF sections 18.144-18.149 first. Everything in the v197 block below still applies (tools first, machine gate, estimate and confirm each long run, prediction and falsifier first, Hamed runs every `sudo`). **New lessons:** (a) the guard's available memory excludes inactive pages (free + speculative + purgeable + reclaimable cache): after a `sudo purge` it read 67.2 GiB where `vm_stat` suggested 75; 42 GiB needs 71, and closing VMware and other applications got 72.0; run the guard's own preflight (or `benchmarks/guarded_run.sh` and read its first lines) before promising a budget; (b) a "second conversation" needs different user text, not another dump: the two saved Hermes dumps share the system block and tools to six characters; (c) across prompt sets the prefetch gap follows misses a token (35.3 -> +5.5 ms, 44.1 -> +9.3), so quote it with the miss count.
+
+1. **Position-in-pass effect (autonomous after Hamed's go, about 30 minutes):** prompt 0 is negative in both prompt sets (arm 8b -20.9, arm 9 -3.2 with different text). Test with a pass whose first pair turn is a different prompt (rotate the prompt order, `--prompts` with the list rotated by 5) and compare prompt 0's gap. Write the prediction first (position effect: the negative follows the first slot, not the prompt).
+2. **The pair at 48 GiB** (guard needs 77 GiB available; reboot or heavy freeing).
+3. **A different agent session** (needs a new Hermes dump from Hamed) for a true second system block.
+4. **The previous list (v197 below), unchanged.**
 
 ## First jobs (v197): seven raw-row arms exist (34 GiB on/off/budget 0; 28, 22 and 46 GiB on/off); the rest are Hamed's pick
 
