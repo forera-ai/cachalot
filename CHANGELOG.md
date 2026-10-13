@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.64.14 (2026-10-13)
+
+HANDOFF "Start here (2026-10-13, 0.64.14)" and section 18.148; the record `docs/L4B-DRIFT-RECORD.md` was written with its prediction and falsifier before the runs. Measurement and tooling; nothing in `src/` changed.
+
+### Added
+- `benchmarks/drift_repeat.sh`: repeats one recording configuration N times with settle steps and a machine-state file around each run.
+
+### Measured
+- Five recordings of one exact configuration (34 GiB, prefetch on, 24 mixed turns; three new, two earlier): decode 151.3-156.8 ms a token (**range 5.5 ms = 3.6 %, sd 1.5 %**), router-eval window 62.4-63.1 ms (range 0.7), wait-free floor 48.5-48.9, blocked time 59.2-65.6; misses 43.0 and token counts identical. The movement is on the drive-wait side, not the GPU side, on a busy machine (load 2.6-6.8, a running VM).
+
+### Corrected
+- 0.64.13's "6 % between-process drift" is withdrawn. For exact configurations the bound is sd 1.5 % (range 3.6 %); the 5.9 % difference between the two budget-0 recordings is mostly budget 0's own nondeterminism (what it drops depends on what is resident at that moment).
+
 ## 0.64.13 (2026-10-12)
 
 HANDOFF "Start here (2026-10-12, 0.64.13)" and section 18.147; addendum of `docs/L4B-SYNC-EXCESS-RECORD.md`, prediction and falsifier written before the run.

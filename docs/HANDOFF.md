@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-13, 0.64.14): the drift of one exact configuration: sd 1.5 %, range 3.6 % in decode, 0.7 ms in the window; 18.147's "6 %" withdrawn
+>
+> Section 18.148, record `docs/L4B-DRIFT-RECORD.md` (prediction and falsifier written before the runs), new `benchmarks/drift_repeat.sh`. Nothing in `src/` changed. **Measured:** arm 1's configuration (exact decode, prefetch on, 34 GiB, the 24 mixed turns) recorded three more times, 8.5 minutes each, plus the two earlier recordings: decode 151.6, 153.6, 156.8, 151.5, 151.3 ms a token (**range 5.5 ms = 3.6 %, sd 2.3 ms = 1.5 %**), misses 43.0 and the token counts identical in all five, router-eval window 62.4-63.1 (range 0.7), wait-free floor 48.5-48.9 (range 0.4), blocked time 59.2-65.6 (range 6.5): the variation is in how long the main thread waits on the drive, not in the GPU side. The machine was busy throughout (load 2.6-6.8, WindowServer, a running VM); the slowest run began with the VM resident size at its largest and a rising load. **Correction of 18.147:** the 5.9 % / 9.3 ms difference between the two budget-0 recordings is far outside this range for the window, and budget 0's text and drops differ run to run, so it is mostly budget 0's own nondeterminism, not machine drift; the "6 % drift" bound is withdrawn. For exact arms use sd 1.5 % / range 3.6 %: the prefetch-off penalty at 34 GiB (+10.4 %), the 46 GiB pair (+7.7 %) and the budget steps (+9.4 %, +7.4 %) exceed it and stand; arm 7's 3.3 % gap does not (the alternated 18.145 number stands). First job and open items: `docs/NEXT-SESSION-PROMPT.md` v197.
+>
 > ## Start here (2026-10-12, 0.64.13): the kept-expert test: the "budget-0 excess" was run-to-run variation; the between-process drift bound is about 6 %, not 1-2 %
 >
 > Section 18.147, addendum of `docs/L4B-SYNC-EXCESS-RECORD.md` (prediction and falsifier written before the run), new `benchmarks/kept_experts.py`. **One tracer-only change in `src/`:** GET_END's `b` is now the number of experts kept (GET_START's `b` the requested count); exact decode is unchanged (kept equals requested), nothing else, no numerics. **Measured:** budget 0, 34 GiB, prefetch on, again (kept 5.31 of 6, 44.3 % of layers reduced, 27.8 dropped a token): decode 105.6 ms (arm 3: 112.2), router-eval window 56.8 ms (arm 3: 66.1; exact arm: 63.1), so this run's window is 6.3 ms **below** the exact arm, not 3.0 above it; the window after a reduced layer equals the window after a full layer (+0.004 ms; 0 to 6 kept all within -0.13 to -0.16 ms of the exact layer mean). H-shape is falsified and the excess did not reproduce: two runs of one configuration differ by 9.3 ms in the window, 5.9 % in decode, 6.6 ms in the sum of medians, while the wait-free floor (47.8 vs 49.2) and the miss count (24.5 vs 24.2) agree. **Corrections:** 18.142/18.146's "budget-0 excess" is withdrawn as a property of budget 0; the between-process drift bound used since 0.64.3 (1-2 %) is too small, use about 6 % for decode between processes (so cross-process decode gaps under 6 %, such as the 28-34 and 22-28 GiB steps and arm 7's prefetch gap, are not resolved by one pair; misses, the budget-0 saving of 26-30 %, the prefetch-off penalty at 34 GiB and the wait-free floor are). Budget-0 text is not reproducible run to run (4 of 24 turns differ in length). First job and open items: `docs/NEXT-SESSION-PROMPT.md` v196.
@@ -9090,6 +9094,34 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.148 The drift of one exact configuration (0.64.14)
+
+**Goal.** Hamed: "go, measure the drift by repeating one config" (the open item of 18.147). Record: `docs/L4B-DRIFT-RECORD.md`.
+
+**Baseline.** Arm 1: decode 151.6 ms, 43.0 misses, window 63.1, floor 48.9. The void replicate: 153.6 ms. Budget 0 twice: 112.2 and 105.6 ms (5.9 %), windows 66.1 and 56.8 (9.3 ms), with different text. The series had assumed 1-2 % until 18.147, then 6 %.
+
+**Prediction (written first).** Text and misses identical; decode range 5-12 ms and sd 2-5; the new three within 145-160 ms; window range 3-9 ms, floor range under 2; the movement in the upper part of the window distribution with blocked time moving less than the window; state files lining up with the slow runs. Falsifier: range under 3 ms or over 15 ms; floor range over 3 ms.
+
+**Method.** `benchmarks/drift_repeat.sh 3 34`: three recordings of arm 1's configuration under `guarded_run.sh` with `settle.sh` between, and a state file around each (time, load, thermal notes, swap, screensaver, VMware, the busiest processes).
+
+**Result (measured).** Decode 151.6, 153.6, 156.8, 151.5, 151.3 ms (range 5.5 ms, sd 2.3); window 63.1, 62.8, 62.8, 62.4, 62.4; floor 48.9, 48.7, 48.8, 48.6, 48.5; blocked 59.2, 63.4, 65.6, 61.2, 61.4; busy 101.8, 105.6, 108.3, 103.1, 103.0; misses 43.0 and tokens 2,452 in all.
+
+**Against the prediction.** Misses, token counts, the decode range (low end) and sd, the three new values' band and the floor held; the window range (0.7 against 3-9) and the claim that blocked time moves less than the window missed; the state-file association is weak (the slowest run began with a rising load and the largest VM resident size).
+
+**Explanation (hypothesis).** In an exact configuration the run-to-run movement is in the drive-wait side (blocked, read busy), not the GPU side. The budget-0 variation of 18.147 is mostly budget 0's own nondeterminism.
+
+**Corrections.** 18.147's "6 %" drift bound and its attribution of the budget-0 difference to the machine are withdrawn; for exact configurations use sd 1.5 %, range 3.6 % (5.5 ms), window range 0.7 ms.
+
+**Limits.** Five samples over two days under a busy machine; text identity compared by token counts only; the cause of the slowest run is not isolated.
+
+**What shipped.** `benchmarks/drift_repeat.sh`, the record, ledger row DS-DRIFT. No source, default or numerics change; no Lab brief.
+
+**Bottleneck after.** Unchanged.
+
+**Open.** Whether budget 0's own variability (the drop pattern differing run to run) deserves a look: it affects any budget-0 A/B (it is a reason for the interleaved design); no lever.
+
+**Kind.** Research (predicted, measured, explained as hypothesis): most numeric predictions held, the window and blocked-time predictions missed, and a correction made two sections ago was itself corrected.
 
 ### 18.147 The kept-expert count test: the budget-0 excess was run-to-run variation (0.64.13)
 
