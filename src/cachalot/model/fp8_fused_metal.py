@@ -18,12 +18,21 @@ does with a pre-quantized activation. The E4M3 rounding matches mx.to_fp8
 
 from __future__ import annotations
 
+import os
 from functools import cache
 
 import mlx.core as mx
 
 from cachalot.model.fp8_gemv_metal import BLOCK_SIZE
 from cachalot.model.kernel_consts import u32
+
+# CACHALOT_FP8_GEMV_DECODE=1 decodes the E4M3 weight bytes of the decoded-activation GEMV arithmetically instead of through a
+# 256-entry constant table. Same floats, same summation order, so outputs are bit-identical; 0.65.0, default off.
+GEMV_HALF_DECODE = os.environ.get("CACHALOT_FP8_GEMV_DECODE", "0") != "0"
+
+# Threadgroup size per in_features, from benchmarks/micro_fp8_gemv_variants.py (docs/L4F-ATTN-FP8-GEMV-RECORD.md): 64 beat 256
+# for wo_b (K=8192) and wq_b (K=1280); other widths were measured only at 256.
+HALF_DECODE_THREADGROUP = {8192: 64, 1280: 64}
 
 E4M3_HEADER = r"""
 #include <metal_stdlib>
@@ -261,8 +270,19 @@ def _lanes_per_row(n_blocks: int) -> int:
     return 32
 
 
+E4M3_HALF_DECODE_HEADER = E4M3_TABLE_HEADER + r"""
+// E4M3 byte -> float without a table: the low seven bits shifted into a half's exponent and mantissa give 2^(e-15)(1+m/8)
+// (subnormals included), times 2^8 is 2^(e-7)(1+m/8); the sign goes to half bit 15. The NaN code (0x7F/0xFF) is 0.0 as in the table.
+inline float e4m3_half_decode(uint b) {
+    ushort h = ushort(((b & 0x7Fu) << 7) | ((b & 0x80u) << 8));
+    float v = float(as_type<half>(h)) * 256.0f;
+    return ((b & 0x7Fu) == 0x7Fu) ? 0.0f : v;
+}
+"""
+
+
 @cache
-def _gemv_v2_kernel(in_features: int, lanes_per_row: int):
+def _gemv_v2_kernel(in_features: int, lanes_per_row: int, half_decode: bool = False):
     """
     E4M3 GEMV with a pre-decoded fp32 activation.
 
@@ -274,6 +294,12 @@ def _gemv_v2_kernel(in_features: int, lanes_per_row: int):
     """
     scale_k = in_features // BLOCK_SIZE
     rows_per_sg = 32 // lanes_per_row
+    if half_decode:
+        dec = ["e4m3_half_decode(word & 0xFFu)", "e4m3_half_decode((word >> 8) & 0xFFu)",
+               "e4m3_half_decode((word >> 16) & 0xFFu)", "e4m3_half_decode((word >> 24) & 0xFFu)"]
+    else:
+        dec = ["e4m3_table[word & 0xFFu]", "e4m3_table[(word >> 8) & 0xFFu]",
+               "e4m3_table[(word >> 16) & 0xFFu]", "e4m3_table[(word >> 24) & 0xFFu]"]
     source = f"""
         uint global_tid = thread_position_in_grid.x;
         uint lane = thread_index_in_simdgroup;
@@ -297,10 +323,10 @@ def _gemv_v2_kernel(in_features: int, lanes_per_row: int):
             for (uint wi = 0; wi < 8; ++wi) {{
                 float4 a4 = av[wi];
                 uint word = words[wi];
-                block_acc += a4.x * e4m3_table[word & 0xFFu];
-                block_acc += a4.y * e4m3_table[(word >> 8) & 0xFFu];
-                block_acc += a4.z * e4m3_table[(word >> 16) & 0xFFu];
-                block_acc += a4.w * e4m3_table[(word >> 24) & 0xFFu];
+                block_acc += a4.x * {dec[0]};
+                block_acc += a4.y * {dec[1]};
+                block_acc += a4.z * {dec[2]};
+                block_acc += a4.w * {dec[3]};
             }}
             acc += block_acc * act_scale * weight_scale;
         }}
@@ -312,31 +338,41 @@ def _gemv_v2_kernel(in_features: int, lanes_per_row: int):
         }}
     """
     return mx.fast.metal_kernel(
-        name=f"fp8_gemv_v2_k{in_features}_l{lanes_per_row}",
+        name=f"fp8_gemv_v2_k{in_features}_l{lanes_per_row}" + ("_half" if half_decode else ""),
         input_names=["act", "act_scales", "weight", "weight_scales", "n_rows"],
         output_names=["out"],
         source=source,
-        header=E4M3_TABLE_HEADER,
+        header=E4M3_HALF_DECODE_HEADER if half_decode else E4M3_TABLE_HEADER,
     )
 
 
-def fp8_gemv_decoded(act: mx.array, act_scales: mx.array, weight: mx.array, weight_scales: mx.array) -> mx.array:
+def fp8_gemv_decoded(
+    act: mx.array,
+    act_scales: mx.array,
+    weight: mx.array,
+    weight_scales: mx.array,
+    half_decode: bool | None = None,
+) -> mx.array:
     """
     act: fp32 [K] decoded E4M3 values (from quantize_activation_fp8_fused),
     act_scales fp32 [K/32], weight uint8 [N, K], weight_scales uint8 [ceil(N/32), K/32]
     -> fp32 [N]. Same math as fp8_gemv_metal.fp8_gemv_quantized, different lane mapping.
+    half_decode None follows CACHALOT_FP8_GEMV_DECODE; both decodes give the same bits.
     """
+    if half_decode is None:
+        half_decode = GEMV_HALF_DECODE
     n, k = weight.shape
     if k % BLOCK_SIZE != 0 or act.size != k:
         raise ValueError(f"bad shapes: weight {weight.shape}, act {act.shape}")
     lanes = _lanes_per_row(k // BLOCK_SIZE)
     rows_per_sg = 32 // lanes
     n_sg = (n + rows_per_sg - 1) // rows_per_sg
-    return _gemv_v2_kernel(k, lanes)(
+    tg = HALF_DECODE_THREADGROUP.get(k, 256) if half_decode else 256
+    return _gemv_v2_kernel(k, lanes, half_decode)(
         inputs=[act, act_scales, weight, weight_scales, u32(n)],
         template=[],
         grid=(n_sg * 32, 1, 1),
-        threadgroup=(256, 1, 1),
+        threadgroup=(tg, 1, 1),
         output_shapes=[(n,)],
         output_dtypes=[mx.float32],
     )[0]

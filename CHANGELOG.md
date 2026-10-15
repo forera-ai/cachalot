@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.65.0 (2026-10-15)
+
+HANDOFF "Start here (2026-10-15, 0.65.0)" and section 18.153; record `docs/L4F-ATTN-FP8-GEMV-RECORD.md` (prediction, falsifier and stop rule written before the run).
+
+### Added
+- **`CACHALOT_FP8_GEMV_DECODE=1`** (default **off**): the decoded-activation FP8 GEMV (`fp8_gemv_decoded`, used by every `fp8_linear`) decodes the E4M3 weight bytes arithmetically (a half-precision bit trick, NaN code kept at 0.0) instead of through the 256-entry constant table, and runs `wo_b` (K=8192) and `wq_b` (K=1280) at threadgroup 64. Same floats in the same summation order, so outputs are bit-identical to the table path over all 256 weight codes; no numerics tag change (`NUMERICS_VERSION` unchanged, no re-prefill after upgrading, and with the knob off nothing moves).
+- `benchmarks/micro_fp8_gemv_variants.py`: splits `fp8_linear` into quantize, GEMV and sum arms and times GEMV variants after a bit-identity check.
+- `tests/test_fp8_gemv_half_decode.py` (8 tests): bit-identity over all 256 codes at five shapes (8, 16 and 32 lanes per row), each code decoded, the call inside `mx.compile` with no `mx.eval`, the knob.
+
+### Measured
+- Two processes (A / B, random buffers, 40 layers chained): the shipped GEMV takes 0.1107 / 0.1117 ms for `wo_b` and 0.0937 / 0.0931 for `wq_b`; the half decode at threadgroup 64 takes 0.0775 / 0.0784 and 0.0801 / 0.0792. **Saving 0.047 ms a layer in both processes** (0.041-0.042 at the shipped threadgroup 256): about 1.6-1.9 ms of the 80 ms floor, an upper bound that is below end-to-end drift. The new kernel runs 6-10 % faster than `mx.sum` over the same bytes. The quantize kernel and cast cost only 0.002-0.005 ms of `fp8_linear` in the chain.
+- Not measured: a server or token-level A/B (needs Hamed's go). Threadgroups other than 256 are priced only for K=8192 and K=1280.
+
+### Closed
+- The table lookup is the limiter of the FP8 GEMV, not the quantize launch or the cast (step 3 of L4(f)). The `half-nonan` variant (no NaN guard) is not bit-identical on random bytes and is dropped.
+
 ## 0.64.18 (2026-10-15)
 
 HANDOFF "Start here (2026-10-15, 0.64.18)" and section 18.152; record `docs/L4F-FLOOR-ROOFLINE-RECORD.md` (prediction and falsifier written before the analysis and before the machine step). Instruments, a calculator constant and measurement; nothing in the runtime changed.

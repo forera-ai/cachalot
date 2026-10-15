@@ -258,6 +258,7 @@ stops being amortized. It is off in the shipped configuration. See `docs/HANDOFF
 | `prefix_cache_bytes` | 1.5 GiB | Memory for prefix-cache snapshots (~5 MB + ~3 KB per token each; `prefix_cache_entries`, 64, is only a ceiling). Evicted by tier: earlier turns already contained in a later snapshot first, then chunk snapshots inside a system block, then each conversation's latest state, system blocks last. |
 | `--default-max-tokens` | 8192 (`serve.sh`) | New tokens for a request that sends no `max_tokens`, shortened to what fits in `max_seq_len`. At 2,000, agent context summaries and long tool calls were cut off. |
 | `max_seq_len` | 32768 | Sequence capacity for KV and compressed caches (a few hundred MB; CSA2 keeps KV tiny). |
+| `CACHALOT_FP8_GEMV_DECODE` | 0 | `1` decodes the FP8 GEMV's E4M3 weight bytes arithmetically instead of through a 256-entry table (and runs `wo_b`/`wq_b` at threadgroup 64). Bit-identical output; 0.047 ms a layer faster on those two projections in a microbenchmark. Off until the default is decided. |
 | `CACHALOT_DARWIN_ROLE` | 1 | `serve` and `chat` ask macOS to schedule them like the focused app (Darwin role UI_FOCAL). With the display on, window compositing sometimes doubles the non-read part of a decode token; this won every such pair measured by 6-40 % and is a null otherwise. `0` leaves the default role. |
 | `MLX_METAL_FAST_SYNCH` | 1 (`serve`, `chat`) | MLX waits on a shared-memory counter instead of an `MTLSharedEvent` for GPU completion. Bit-identical output; +8 to +25 % decode when window compositing slows the machine, a null otherwise. `0` restores MLX's default. |
 | `CACHALOT_VISION_ABLATE` | empty | Debug only: `delims`, `engram_mask` and/or `bias_vl` undo one of the vision fixes, for `benchmarks/vision_ablation.sh`. Answers are not the shipped model's while set. |
@@ -296,6 +297,8 @@ token (5.90 tok/s)** at an 83.5 % hit rate, reading 627 MiB per token, drive bus
 reproducible to ±0.3 %.
 
 **0.60.7 (2026-10-06): review fixes.** The run manifest no longer records credentials such as `CACHALOT_API_KEY` by value, and its Hermes Desktop check needs one process line. HANDOFF section 18.73.
+
+**0.65.0 (2026-10-15): a faster FP8 GEMV behind a knob.** `CACHALOT_FP8_GEMV_DECODE=1` (default off) decodes the E4M3 weights arithmetically instead of by table lookup: bit-identical outputs, `wo_b` and `wq_b` 0.047 ms a layer faster in two processes (shipped 0.1107 and 0.0937 ms a layer, 0.0775 and 0.0801 with the knob), about 1.6-1.9 ms of the 80 ms floor at most (microbenchmark; token-level A/B not run). HANDOFF section 18.153.
 
 **0.64.18 (2026-10-15): the DeepSeek floor roofline.** A token reads 11.94 GB (the runtime reads `wo_a` as bf16; the earlier 7.5 GB left out the shared experts, head and compressors). The five attention projections take 0.38 ms a layer (two processes, 0.6 % apart) at 20-77 % of the chip's 819 GB/s, so about 20-25 ms of the 80 ms all-resident floor is bandwidth-bound and doubling memory bandwidth would save 9.8-12.5 ms (derived); the other 55-60 ms is CPU graph building, GPU idle and kernel dequantization and launch cost. `benchmarks/floor_roofline.py`, `benchmarks/micro_attn_projection_roofline.py`; no runtime change. HANDOFF section 18.152.
 

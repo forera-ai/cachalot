@@ -1,10 +1,11 @@
-# Next-session prompt — **v201**, written 2026-10-15
+# Next-session prompt — **v202**, written 2026-10-15
 
 **This is the file to paste.** `docs/NEXT-SESSION-PROMPT.md` is always current; superseded ones live in
 `docs/next-session-prompts/`.
 
 | version | written | produced by | what changed |
 |---|---|---|---|
+| **v202** | 2026-10-15 | Hamed: "Go" on the FP8 GEMV pricing, then "Yes ... build the half-decode GEMV behind CACHALOT_FP8_GEMV_DECODE (default off) ... release it as 0.65.0" (v201 First job 1) | **0.65.0: `CACHALOT_FP8_GEMV_DECODE=1` (default off) decodes the FP8 GEMV's E4M3 weights arithmetically instead of by table: bit-identical (all 256 codes, inside `mx.compile`), `wo_b` + `wq_b` 0.047 ms a layer faster in two processes (0.1107 to 0.0775 and 0.0937 to 0.0801 ms), at most 1.6-1.9 ms of the 80 ms floor (microbenchmark, no server A/B). Stop rule met; saving prediction missed high. New `micro_fp8_gemv_variants.py`, `tests/test_fp8_gemv_half_decode.py`.** §18.153 |
 | **v201** | 2026-10-15 | Hamed: "check again for the memory gate" (48 GiB pair still refused: 49 of 77 GiB available, also after `sudo purge`), "any other unfinished lever?", then "do the floor roofline (L4(f))" and "go" on both steps | **0.64.18, instruments, a calculator constant and measurement, nothing in the runtime: a token reads 11.94 GB (the runtime reads `wo_a` as bf16; the ledger's 7.5 GB was stale); the five attention projections take 0.380 / 0.378 ms a layer (two processes), 20-77 % of 819 GB/s; 19.6-25.1 ms of the floor is bandwidth-bound, so doubling memory bandwidth saves 9.8-12.5 ms of the 80 ms floor (centre 11.4, derived); the 51-78 ms range of `whatif.py` is withdrawn. Prediction: rates held, the `mx.sum` 85 % ceiling falsified. New `floor_roofline.py`, `micro_attn_projection_roofline.py`.** §18.152 |
 | **v200** | 2026-10-14 | Hamed: "/ca read the handoff and session prompts and do the tasks", then "go" and "42 GiB" (v199 First job 1 had no autonomous item; 48 GiB was not possible) | **0.64.17, measurement and a prompt file, nothing in `src/`: the first prompt set rotated by five (one process, 42 GiB, 22k Hermes block): 140.5 vs 147.0 ms, gap +6.49 ms (+2.75 to +10.76), 17 of 24 pairs, misses 35.4 / 35.3; arm 8b's +5.50 reproduces, prompt 0's -20.9 reads +2.2; both sets now double-run: about +6 ms at 35 misses, +8 at 44. Prefetch stays on.** §18.151 |
 | **v199** | 2026-10-13 | Hamed: "go" on v198 First job 1 (the position-in-pass test) | **0.64.16, measurement and a prompt file, nothing in `src/`: the second prompt set rotated by five (one process, 42 GiB, 22k Hermes block): 146.3 vs 153.9 ms, gap +7.56 ms (+6.13 to +9.37), 24 of 24 pairs, order effect 1.2, misses 43.0 / 44.1. Prompt 0's negative gap (-3.2) does not reproduce in slot 7 (+8.6) and the new slot-0 prompt reads +8.7: registered falsifier (slot 0 above +8) fired by 0.7 ms; first-slot effect falsified, the negative is most likely two-pair noise (per-prompt sd between runs about 6.5 ms). Prefetch stays on.** §18.150 |
@@ -162,6 +163,14 @@
 | v47 | 2026-09-25 | Hamed asked for the v44-v46 levers planned, built, measured and documented | **0.18.0: GLM prefill 60 to 90 tok/s, bit-identical (a store path that never evicts, plus the next layer read early), GLM's missing MLX buffer-cache cap added, GLM disk snapshots (a restart reuses the system block). DeepSeek: an `iostat` trace shows prefill is not read-bound on either drive; the lookahead A/B drowned in a 124-to-200 s drift across back-to-back prefills.** §17.1, §15.13 |
 | v46 | 2026-09-25 | Hamed asked for GLM-5.3-Flash on Cachalot | 0.17.0: GLM through `serve-glm.sh` / `chat-glm.sh`. §17 |
 | v45 | 2026-09-24 | same as v47, one day earlier | 0.16.0: disk snapshot store by last use; lookahead and local compression closed. §15.12 |
+
+## First jobs (v202): the FP8 GEMV knob exists and is off; the default is Hamed's call
+
+Read HANDOFF section 18.153 and `docs/L4F-ATTN-FP8-GEMV-RECORD.md` first. Everything in the v201 block below still applies. **New in 0.65.0:** `CACHALOT_FP8_GEMV_DECODE=1` (default off, bit-identical); `HALF_DECODE_THREADGROUP` in `fp8_fused_metal.py` holds the per-width threadgroup (only K=8192 and K=1280 priced at 64). **New lesson:** a "ceiling" taken from a plain `mx.sum` over the same bytes is not a ceiling; the table-free GEMV ran 6-10 % above it. **New.** Never turn the default on without Hamed.
+
+1. **Ask Hamed whether to turn `CACHALOT_FP8_GEMV_DECODE` on by default** (bit-identical, microbenchmark saving 1.6-1.9 ms of 80; a server pair is below drift, so the case rests on bit-identity). Estimate any run first.
+2. **The same decode for the other table users:** `wq_a`/`wkv` (K=5120), shared-expert and indexer GEMVs; price each width's threadgroup with `micro_fp8_gemv_variants.py` (add the shapes), written prediction and stop rule first.
+3. **The previous lists (v201 and older below), unchanged** (the v201 item 1 is done).
 
 ## First jobs (v201): the floor's bandwidth share is a number; the rest are Hamed's pick
 

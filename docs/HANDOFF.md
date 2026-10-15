@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-15, 0.65.0): a faster FP8 GEMV behind `CACHALOT_FP8_GEMV_DECODE` (default off): bit-identical, `wo_b` + `wq_b` 0.047 ms a layer faster, at most 1.6-1.9 ms of the 80 ms floor
+>
+> Section 18.153, record `docs/L4F-ATTN-FP8-GEMV-RECORD.md` (prediction, falsifier and stop rule written before the run), `benchmarks/micro_fp8_gemv_variants.py`, `tests/test_fp8_gemv_half_decode.py`, `src/cachalot/model/fp8_fused_metal.py`. **Shipped:** the knob, default off; arithmetic half-precision E4M3 decode in `_gemv_v2_kernel`, threadgroup 64 for K=8192 and K=1280; outputs bit-identical to the table path over all 256 codes, inside `mx.compile`; no numerics tag. **Measured (two processes):** shipped GEMV `wo_b` 0.1107 / 0.1117 ms, `wq_b` 0.0937 / 0.0931; half decode at tg64 0.0775 / 0.0784 and 0.0801 / 0.0792: **0.047 ms a layer in both**, 6-10 % faster than `mx.sum`. **Stop rule (0.020) met.** **Predictions:** shipped-GEMV times held (wo_b 1 % high), the saving was missed high (0.041-0.047 against 0.013-0.035), threadgroup sensitivity missed (tg64 beats 256 by 2-5 %). **Needs Hamed:** turn the default on? (a token-level pair is below drift, 1.2 ms; ask for an estimate before any server run). **Open:** the same decode for the other table users (shared-expert, indexer, `wq_a`/`wkv` at other widths). First job and open items: `docs/NEXT-SESSION-PROMPT.md` v202.
+
 > ## Start here (2026-10-15, 0.64.18): the DeepSeek floor roofline: doubling memory bandwidth would save about 11 ms of the 80 ms floor (derived); a token reads 11.94 GB, not 7.5
 >
 > Section 18.152, record `docs/L4F-FLOOR-ROOFLINE-RECORD.md` (prediction and falsifier written before the analysis and again before the machine step), new `benchmarks/floor_roofline.py`, `benchmarks/micro_attn_projection_roofline.py`, `tests/test_floor_roofline.py`; `whatif.py` and LEDGER WI-FLOOR-BW updated. Nothing in the runtime changed. **Measured:** bytes a token from the checkpoint headers are 11.94 GB (the runtime reads `wo_a` as bf16, 67 MB a layer); the five attention projections take 0.380 and 0.378 ms a layer in two processes (71 % of the 0.53 ms attention row; `wq_a` 20-23 %, `wkv` 11.5 %, `wq_b` 50 %, `wo_b` 44.6 %, `wo_a` 77 % of 819 GB/s; `mx.sum` only 59 % at 42 MB). Bandwidth-bound time of the floor is 19.6-25.1 ms (centre 22.8) of the 49.9 ms of GPU rows, so **doubling bandwidth saves 9.8-12.5 ms of the 80 ms floor (centre 11.4, 14 %)**, derived; the other 55-60 ms is CPU graph building, GPU idle and kernel dequantization and launch cost. **Predictions:** rates and layer time held, the `mx.sum` 85 % ceiling was falsified (my misreading of the project's own table), whole-floor bounds mostly missed on a stale 7.5 GB. **Open:** the FP8 projections run at 76-92 % of a plain sum over the same bytes (`wo_b` 0.115 ms against 0.087): at most about 1.8 ms a token, being priced in a separate session. First job and open items: `docs/NEXT-SESSION-PROMPT.md` v201.
@@ -9110,6 +9114,32 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.153 A faster FP8 GEMV behind a knob (0.65.0)
+
+**Goal.** Hamed (via the parent session): price a faster FP8 GEMV for `wo_b` and `wq_b` (the L4(f) follow-up, 18.152 open item), build it only if the stop rule is met, then "Yes ... build the half-decode GEMV behind CACHALOT_FP8_GEMV_DECODE (default off) ... release it as 0.65.0. Ask me before turning the default on." Record: `docs/L4F-ATTN-FP8-GEMV-RECORD.md`.
+
+**Baseline.** Step 2 (18.152): `wo_b` 0.115 ms, `wq_b` 0.104 ms a layer against 0.087 for `mx.sum` over the same bytes; arithmetic ceiling 0.045 ms a layer (1.8 ms a token).
+
+**Prediction (written first).** Shipped GEMV alone 0.100-0.110 ms (`wo_b`) and 0.090-0.100 (`wq_b`); the half decode saves 0.013-0.035 ms a layer combined; no threadgroup size moves the best variant by more than 3 %; the NaN-guarded decode is within 2 % of the unguarded. Stop rule: build only if a bit-identical variant saves at least 0.020 ms a layer, reproduced in two processes within 5 %.
+
+**Method.** `benchmarks/micro_fp8_gemv_variants.py`: random buffers, 40 distinct layers chained, best of 9; arms full, quantize only, shipped GEMV, sum, table control and half-decode variants at threadgroups 64/128/256/512, each compared bit for bit with the shipped GEMV first. Two processes A then B (B started after `settle.sh` timed out at 603 s: pressure 1, no runtime alive, "quiet" never reached; the gate was not passed).
+
+**Result (measured).** See the table in the record. Shipped GEMV `wo_b` 0.1107 / 0.1117 ms, `wq_b` 0.0937 / 0.0931; half decode tg64 0.0775 / 0.0784 and 0.0801 / 0.0792; tg256 0.0811 / 0.0821 and 0.0822 / 0.0808. Saving **0.047 ms a layer** at tg64 (0.041-0.042 at tg256), A and B equal. The quantize kernel and cast are 0.002-0.005 ms of `fp8_linear` in the chain.
+
+**Against the prediction.** `wq_b` GEMV time held; `wo_b` 1 % above the range (inside the falsifier band). Saving missed high (0.041-0.047 against 0.013-0.035; the 0.045 falsifier ceiling crossed only at tg64, which says the step 2 ceiling was too low). Threadgroup sensitivity missed (2-5 %). The NaN-guard prediction was untestable: the unguarded variant is not bit-identical on random bytes.
+
+**Explanation (hypothesis).** The 256-entry `constant float` table serializes across a simdgroup when the lanes' bytes differ; the arithmetic decode removes it and the kernel reaches 62-66 % of 819 GB/s, above `mx.sum` at this size. Not tested directly (no counter).
+
+**Limits.** Random weights and one activation per shape; a microbenchmark upper bound, not a token measurement; 1.6-1.9 ms is below the end-to-end drift (sd 1.5 % = 1.2 ms), so a server A/B cannot prove it; threadgroups other than 256 priced only for K=8192 and K=1280.
+
+**What shipped.** `CACHALOT_FP8_GEMV_DECODE` (default off) in `fp8_fused_metal.py` (`GEMV_HALF_DECODE`, `HALF_DECODE_THREADGROUP`, `fp8_gemv_decoded(..., half_decode=None)`); `tests/test_fp8_gemv_half_decode.py` (8 tests: all 256 codes at five shapes, per-code decode, inside `mx.compile`, knob); `micro_fp8_gemv_variants.py`; record; Lab brief `docs/lab/briefs/2026-10-15-runtime-0.65.0.md`. Outputs bit-identical, so no `NUMERICS_VERSION` change. Full suite 647 passed before the docs.
+
+**Bottleneck after.** Unchanged with the knob off. With it on, the FP8 projections reach 62-66 % of 819 GB/s.
+
+**Open.** Turn the default on (Hamed's decision); the same decode for the other table users (`_gemv_v2` for `wq_a`/`wkv`/shared experts at their own widths, `e4m3_table` in other kernels); a server pair only with Hamed's go and an estimate.
+
+**Kind.** Engineering with a research front half (predicted, measured twice, explained as hypothesis): stop rule met, saving prediction missed high.
 
 ### 18.152 The DeepSeek floor roofline (0.64.18)
 
