@@ -594,7 +594,7 @@ Hamed's go after freeing memory ("memory should be freed. all apps closed ... th
 
 **Arm 12 result (measured, 2026-10-15, after a reboot, sysctl 88064, `sudo purge`, guard accepted at 77.9 of 77 GiB).** The status paragraph above ("not run") is superseded. 24 pairs, text identical 24 of 24, 0 events dropped. Gap (off - on) **+5.34 ms a token** (95 % over prompts +2.40 to +8.25), unweighted +4.94, median +4.65, sd 6.22; on faster in 19 of 24; on-first +6.19, off-first +4.74 (order effect 1.45 ms). On: wall 125.5, sync 60.9, blocked 37.0, busy 69.1, hidden share 48.4 %; off: wall 130.8, blocked 50.4, hidden 0.0 %; misses 30.5 a token on both sides.
 
-**Against the prediction.** All held: gap +4 to +7 (centre 5.5), misses 27-33, at least 16 pairs, order effect under 5, identity, hidden share 40-50 % on and 0 off; the falsifier (above +8.5 or below +1.5) did not fire. Per miss the gap is 0.175 ms, between the 0.16 and 0.21 of arms 9-11, so the per-miss cost does not rise with budget. A 4.4 ms wall difference to arm 11's 140.5 ms (on) is 10 ms faster at 48 GiB with 5 fewer misses.
+**Against the prediction.** All held: gap +4 to +7 (centre 5.5), misses 27-33, at least 16 pairs, order effect under 5, identity, hidden share 40-50 % on and 0 off; the falsifier (above +8.5 or below +1.5) did not fire. Per miss the gap is 0.175 ms, between the 0.16 and 0.21 of arms 9-11, so the per-miss cost does not rise with budget. Against arm 11's 140.5 ms (on, 42 GiB, 35.4 misses) this run's 125.5 ms is 15 ms faster with 4.9 fewer misses (different process and day, so a context number, not a controlled comparison).
 
 **Limits.** One system block and tool set, one process, first prompt set rotated by five; a root `powermetrics` was not running during this run.
 
