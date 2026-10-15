@@ -298,6 +298,8 @@ reproducible to ±0.3 %.
 
 **0.60.7 (2026-10-06): review fixes.** The run manifest no longer records credentials such as `CACHALOT_API_KEY` by value, and its Hermes Desktop check needs one process line. HANDOFF section 18.73.
 
+**0.65.2 (2026-10-15): the routed-expert dequantization priced and closed.** A 2-bit GEMV with the dequantization arithmetic removed is only 1-7 % faster than with it and still slower than MLX's `quantized_matmul`, so the experts' 41 % of their streaming ceiling is launch granularity and slot layout, not arithmetic. Measurement only; nothing in `src/`. HANDOFF section 18.155.
+
 **0.65.1 (2026-10-15): the FP8 knob priced on the other shapes.** The arithmetic E4M3 decode behind `CACHALOT_FP8_GEMV_DECODE` (still off by default, bit-identical) also takes the fused `wq_a`+`wkv`, the shared experts and the indexer GEMVs down by 0.004-0.012 ms a launch: 1.42 ms a token beside the 1.9 ms of `wo_b` and `wq_b`, about 3.3 ms of the 80 ms floor in the microbenchmark (an upper bound; no server A/B). Threadgroup sizes for K=5120 and K=2304 added. HANDOFF section 18.154.
 
 **0.65.0 (2026-10-15): a faster FP8 GEMV behind a knob.** `CACHALOT_FP8_GEMV_DECODE=1` (default off) decodes the E4M3 weights arithmetically instead of by table lookup: bit-identical outputs, `wo_b` and `wq_b` 0.047 ms a layer faster in two processes (shipped 0.1107 and 0.0937 ms a layer, 0.0775 and 0.0801 with the knob), about 1.6-1.9 ms of the 80 ms floor at most (microbenchmark; token-level A/B not run). HANDOFF section 18.153.

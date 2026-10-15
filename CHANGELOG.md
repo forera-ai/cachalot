@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.65.2 (2026-10-15)
+
+HANDOFF "Start here (2026-10-15, 0.65.2)" and section 18.155; record `docs/L4F-EXPERT-DEQUANT-RECORD.md` (prediction and stop rule written before the run). Measurement only; nothing in `src/`, no default, output or numerics tag changed.
+
+### Added
+- `benchmarks/micro_expert_dequant.py`: a 2-bit group-128 GEMV with and without the dequantization arithmetic against `mx.quantized_matmul`, on the real routed-expert shapes with 240 distinct matrices.
+
+### Measured
+- Two processes, ms a launch: `mx.quantized_matmul` 0.0160-0.0162 (w1) and 0.0185-0.0191 (w2); a custom GEMV with dequantization 0.0208 and 0.0218; the same kernel with the arithmetic removed 0.0191 and 0.0213. Removing the dequantization buys 5-7 % (w1) and 1-3 % (w2) and the kernel still loses to MLX's by 12-20 %.
+
+### Closed
+- The 2-bit routed-expert dequantization as a lever: stop rule met (the no-arithmetic kernel is not 10 % faster than the shipped one). The experts' 41 % of their streaming ceiling is launch granularity and the non-contiguous slot layout, not arithmetic.
+
 ## 0.65.1 (2026-10-15)
 
 HANDOFF "Start here (2026-10-15, 0.65.1)" and section 18.154; step 4 of `docs/L4F-ATTN-FP8-GEMV-RECORD.md` (prediction and falsifier written before the run). Measurement, one constant of a default-off knob, tests; no default, output or numerics tag changed.

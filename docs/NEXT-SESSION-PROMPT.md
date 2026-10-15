@@ -1,10 +1,11 @@
-# Next-session prompt — **v203**, written 2026-10-15
+# Next-session prompt — **v204**, written 2026-10-15
 
 **This is the file to paste.** `docs/NEXT-SESSION-PROMPT.md` is always current; superseded ones live in
 `docs/next-session-prompts/`.
 
 | version | written | produced by | what changed |
 |---|---|---|---|
+| **v204** | 2026-10-15 | Hamed: "/ca read the handoff and session prompts and do the tasks" (v203 First job 2, the only autonomous item) | **0.65.2, measurement only, nothing in `src/`: the 2-bit routed-expert dequantization is not the limiter. A custom GEMV with the arithmetic removed is 5-7 % (w1) and 1-3 % (w2) faster than with it, and still 12-20 % slower than `mx.quantized_matmul` (two processes, 240 distinct matrices a shape); stop rule met, lever closed. New `micro_expert_dequant.py`, `docs/L4F-EXPERT-DEQUANT-RECORD.md`.** §18.155 |
 | **v203** | 2026-10-15 | Hamed: "no A/B test, go for any other open subjects" (v202 item 2) | **0.65.1, measurement and one constant of a default-off knob: the arithmetic E4M3 decode also takes the fused qkv (-0.0065 to -0.0079 ms a launch), shared `w1`/`w3` (-0.010 to -0.012), shared `w2` (-0.005 at threadgroup 128) and the indexer (-0.0035 to -0.0039): 1.42 ms a token, about 3.3 ms of the 80 ms floor with `wo_b` and `wq_b` (microbenchmark upper bound, no server A/B); `HALF_DECODE_THREADGROUP` gains K=5120: 64 and K=2304: 128. Knob still off.** §18.154 |
 | **v202** | 2026-10-15 | Hamed: "Go" on the FP8 GEMV pricing, then "Yes ... build the half-decode GEMV behind CACHALOT_FP8_GEMV_DECODE (default off) ... release it as 0.65.0" (v201 First job 1) | **0.65.0: `CACHALOT_FP8_GEMV_DECODE=1` (default off) decodes the FP8 GEMV's E4M3 weights arithmetically instead of by table: bit-identical (all 256 codes, inside `mx.compile`), `wo_b` + `wq_b` 0.047 ms a layer faster in two processes (0.1107 to 0.0775 and 0.0937 to 0.0801 ms), at most 1.6-1.9 ms of the 80 ms floor (microbenchmark, no server A/B). Stop rule met; saving prediction missed high. New `micro_fp8_gemv_variants.py`, `tests/test_fp8_gemv_half_decode.py`.** §18.153 |
 | **v201** | 2026-10-15 | Hamed: "check again for the memory gate" (48 GiB pair still refused: 49 of 77 GiB available, also after `sudo purge`), "any other unfinished lever?", then "do the floor roofline (L4(f))" and "go" on both steps | **0.64.18, instruments, a calculator constant and measurement, nothing in the runtime: a token reads 11.94 GB (the runtime reads `wo_a` as bf16; the ledger's 7.5 GB was stale); the five attention projections take 0.380 / 0.378 ms a layer (two processes), 20-77 % of 819 GB/s; 19.6-25.1 ms of the floor is bandwidth-bound, so doubling memory bandwidth saves 9.8-12.5 ms of the 80 ms floor (centre 11.4, derived); the 51-78 ms range of `whatif.py` is withdrawn. Prediction: rates held, the `mx.sum` 85 % ceiling falsified. New `floor_roofline.py`, `micro_attn_projection_roofline.py`.** §18.152 |
@@ -164,6 +165,16 @@
 | v47 | 2026-09-25 | Hamed asked for the v44-v46 levers planned, built, measured and documented | **0.18.0: GLM prefill 60 to 90 tok/s, bit-identical (a store path that never evicts, plus the next layer read early), GLM's missing MLX buffer-cache cap added, GLM disk snapshots (a restart reuses the system block). DeepSeek: an `iostat` trace shows prefill is not read-bound on either drive; the lookahead A/B drowned in a 124-to-200 s drift across back-to-back prefills.** §17.1, §15.13 |
 | v46 | 2026-09-25 | Hamed asked for GLM-5.3-Flash on Cachalot | 0.17.0: GLM through `serve-glm.sh` / `chat-glm.sh`. §17 |
 | v45 | 2026-09-24 | same as v47, one day earlier | 0.16.0: disk snapshot store by last use; lookahead and local compression closed. §15.12 |
+
+## First jobs (v204): the routed-expert dequantization is closed; everything left needs Hamed or memory
+
+Read HANDOFF section 18.155 and `docs/L4F-EXPERT-DEQUANT-RECORD.md` first. Everything in the v203 block below still applies, including: no server A/B of the FP8 knob, and never turn `CACHALOT_FP8_GEMV_DECODE` on by default without Hamed. **New:** `iogpu.wired_limit_mb` reads 0 after the 2026-10-15 reboot (Hamed re-applies `sudo sysctl iogpu.wired_limit_mb=88064`; only big-model runs need it). **New lesson:** `mx.sum` over the same bytes reads slower (16 %) than the shipped 2-bit `quantized_matmul` (25 %) at 3 MiB a launch: it is a reading reference, never a ceiling. `settle.sh` defaults to a 36 GiB budget and timed out at 603 s on a 4 GiB micro arm: pass `--budget-gib 4`.
+
+1. **Ask Hamed** (unchanged): the `CACHALOT_FP8_GEMV_DECODE` default; `sudo sysctl iogpu.wired_limit_mb=88064`.
+2. **No autonomous lever is left in the kernels.** The routed experts' remaining gap is launch granularity and the non-contiguous LRU slot layout (gather screened 20-25 %, never shipped for that reason); a slot-contiguity design would be a new, larger experiment: price it on paper first (written prediction, stop rule) and ask Hamed before building.
+3. **Needing memory** (reboot-level state): the 48 GiB prefetch pair, the energy meter's cost (`meter_ab.sh`), a resident GLM energy arm.
+4. **Needing Hamed:** the `kernel_power.py` bf16 control (`sudo powermetrics`), a new Hermes dump, L3's quantization sweep (banks).
+5. **The previous lists (v203 and older below), unchanged** (v203 item 2 is done).
 
 ## First jobs (v203): the FP8 knob is priced on every shape; the default and the machine jobs are Hamed's
 
@@ -354,6 +365,8 @@ check `pgrep -f Flurry.appex` before each arm instead.
 ## Jobs 4-7 — the rest of the slow-window trigger and MLX buffer knobs; vision on Desktop-sized screenshots; prefill KL; 54 GiB collapse, Objective-C corpus. Unchanged from v46.
 
 ## What is closed, so nobody spends a session there
+
+- **2-bit routed-expert dequantization as a kernel lever (0.65.2, §18.155):** removing all of the arithmetic from a hand GEMV buys 1-7 % and still loses to `mx.quantized_matmul`; the launch is limited by size and access shape.
 
 - **New. Skipping DeepSeek's decode prediction on layers whose predicted experts are resident** (§18.78): saves ~0; `prefetch_decode` already skips resident keys, and the ~5 ms of an all-resident token is unused loads of non-resident guesses (§9.18). **GLM prefetch off on the X10Pro** (§18.78): -4.4 %, inside drift from one pair; only a swapped-pair `TF_ALTERNATE` run could settle it, and GLM is the lowest priority.
 - **New. Batched decode for DeepSeek** (§18.72, `batch_union.py`): concurrent streams share few experts and misses a token rise with B (24.9 to 30.5 at B = 4); the aggregate 1.27-1.42x at B = 4 is the 70 ms floor spread over lanes, each user ~2x slower. Not built; reopen only for many concurrent agents. **Budget 1 as a default** (§18.72): -2.7 % a token, not worth a setting.

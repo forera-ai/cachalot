@@ -25,6 +25,11 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-15, 0.65.2): the 2-bit routed-expert dequantization is not the limiter: removing it all makes a launch only 1-7 % faster; lever closed
+>
+> Section 18.155, `docs/L4F-EXPERT-DEQUANT-RECORD.md` (prediction and stop rule written before the run), `benchmarks/micro_expert_dequant.py`. **Measured** (random packed buffers, 240 distinct matrices a shape, two processes, ms a launch): shipped `mx.quantized_matmul` 0.0160-0.0162 (w1 2304x5120) and 0.0185-0.0191 (w2); a custom GEMV with the real dequantization 0.0208 and 0.0218-0.0233; the same kernel with the arithmetic removed 0.0191-0.0194 and 0.0213-0.0217, so removing the dequantization buys 5-7 % (w1) and 1-3 % (w2), and even then loses to MLX's kernel by 12-20 %. Stop rule met; the dequant lever is closed. **Nothing in `src/` changed; no default, output or numerics tag.** The routed experts' 41 % of their streaming ceiling is launch granularity and slot layout (the concat/gather screens, 20-25 %), not arithmetic. **Open:** Hamed's call on `CACHALOT_FP8_GEMV_DECODE` default; the memory and sudo jobs of the v204 prompt. `iogpu.wired_limit_mb` reads 0 after a reboot (Hamed re-applies it).
+
+
 > ## Start here (2026-10-15, 0.65.1): the FP8 half-decode GEMV priced on the other shapes: 1.42 ms a token more (about 3.3 ms of 80 in all); threadgroups for K=5120 and 2304 added; still default off
 >
 > Section 18.154, step 4 of `docs/L4F-ATTN-FP8-GEMV-RECORD.md` (prediction and falsifier written before the run), `micro_fp8_gemv_variants.py --shapes rest`. **Measured** (random buffers, 40 layers, two processes): `half` stays bit-identical on every shape and saves, a launch, 0.0065-0.0079 ms (fused qkv, 40 a token), 0.010-0.012 (shared `w1`/`w3`, 80), 0.005 (shared `w2`, 40, only at threadgroup 128; at 256 it was -0.007 / +0.003), 0.0035-0.0039 (indexer, 8): **1.42 ms a token**, 3.3 ms with `wo_b` and `wq_b` (4.1 % of 80), an upper bound below drift. **Shipped:** `HALF_DECODE_THREADGROUP` K=5120: 64, K=2304: 128; knob still off; one test case added. **Predictions held** (additional 0.8-2.1 ms); shared `w2` at 256 missed. Hamed ruled out a server A/B. First job and open items: `docs/NEXT-SESSION-PROMPT.md` v203.
@@ -9118,6 +9123,32 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.155 The 2-bit routed-expert dequantization priced: not the limiter (0.65.2)
+
+**Goal.** Hamed: "/ca read the handoff and session prompts and do the tasks". The only autonomous item of v203 was First job 2: price the dequantization of the 2-bit routed-expert kernel, which 18.152 and 18.154 left as the unexplained part of the routed experts' 41 % of their streaming ceiling. The other jobs need Hamed (FP8 default, `sudo`, a dump) or memory (the 48 GiB pair, the meter A/B; the sysctl also reads 0 after a reboot).
+
+**Baseline.** 0.65.1: 18 `mx.quantized_matmul` launches a layer, 0.252 ms a layer (10.1 ms of the token) against a 0.104 ms size-matched ceiling (4.2 ms). Record: `docs/L4F-EXPERT-DEQUANT-RECORD.md`.
+
+**Prediction (written first).** A custom GEMV with the dequantization removed (`nodq`) is 5-20 % faster than the same kernel with it (`dq`); `dq` lands within -15 % to +40 % of `qmm`; so a dequant-only lever is worth at most about 1.2 ms of the 80 ms floor. Stop rule: close if `nodq` is under 10 % faster than `qmm` in both processes; build a bit-identical port only if it is 30 % faster.
+
+**Method.** `micro_expert_dequant.py`: w1 (2304x5120) and w2 (5120x2304), 2-bit group 128, random packed buffers, 240 distinct matrices chained in one `mx.eval`, best of 9, two processes under `guarded_run.sh --budget-gib 4` (the second without `settle.sh`, which timed out at 603 s waiting for 65 GiB available).
+
+**Result (measured).** See the table in the record. `qmm` 0.0160-0.0162 / 0.0185-0.0191 ms; `dq` (best threadgroup) 0.0208 / 0.0218; `nodq` 0.0191 / 0.0213. `dq` matches `qmm` to 2.4e-3 to 4.4e-3 relative; `sum` over the same bytes reads slower (0.025) than `qmm`, so it is not a ceiling.
+
+**Against the prediction.** P2 held on w1 (5-7 %), under it on w2 (1-3 %); P1 missed narrowly (`dq` 12-31 % slower than `qmm`, inside the window); P3 held in direction (a dequant-only lever is at most 0.1-0.4 ms if MLX's own share is similar, unmeasured); stop rule met, lever closed.
+
+**Explanation (hypothesis).** At 3 MiB a launch the kernel is limited by launch size and memory-access shape; MLX's `qmv` beats a naive kernel with the same loads by 20-30 %, which points at its load pattern.
+
+**Limits.** A naive hand kernel, not a port of MLX's `qmv`; MLX's own dequant share is inferred, not measured; random buffers with a bf16 sum around each launch; no server or token-level measurement.
+
+**What shipped.** `benchmarks/micro_expert_dequant.py` and the record. Nothing in `src/`.
+
+**Bottleneck after.** Unchanged: expert reads on misses; of the all-resident floor the routed-expert launches are limited by launch granularity and non-contiguous LRU slots (gather screened 20-25 %), not by dequantization.
+
+**Open / needs Hamed.** `CACHALOT_FP8_GEMV_DECODE` default (bit-identical, microbenchmark 3.3 ms of 80); re-apply `sudo sysctl iogpu.wired_limit_mb=88064`; a reboot-level memory state for the 48 GiB prefetch pair and `meter_ab.sh`; his `sudo powermetrics` for the `kernel_power.py` bf16 control.
+
+**Kind.** Research (predicted, measured twice, explained as hypothesis).
 
 ### 18.154 The FP8 half-decode GEMV on the other shapes (0.65.1)
 
