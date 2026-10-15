@@ -54,3 +54,26 @@ Speed unchanged. Energy: the instruments are verified; what is open is only a cl
 ## 9. Kind
 
 Research (predicted, measured): the tail-fix predictions held; the cost question was not answered because the arm's design failed its own precondition (my error, recorded), and the drift check, designed for this, caught it.
+
+## Addendum E3j (2026-10-16, runtime 0.66.2): the corrected cost design
+
+Written before the run, Hamed's go ("go for energy-meter A/B e3h-sampler"). Section 6 of this record named the fix; this is it.
+
+**Baseline.** The meter-on minus meter-off cost is unmeasured (E3h was void: 160-token replies missed 10.9 experts a token, arm 4 ran 15 ms hot).
+
+**Intervention.** `benchmarks/meter_ab2.sh`: six fresh-server arms in the order **off, on, on, off, off, on** (a linear drift cancels), 120-token replies (all-resident, 0.0 misses a token), 60 s of load an arm, then `benchmarks/meter_ab_analyze.py` (tag `e3j`). Estimate: about 3 minutes an arm, **about 20 minutes** in all; the sampler `-n 1500` covers it. Memory is free after the reboot (guard 80 GiB available, sysctl 88064).
+
+**Prediction.** Pooled on minus off **+0.1 ms (-1.2 to +1.2)** a token (three arms each); each of the four A/A drift checks under 3 ms; each arm's median 79-83 ms; resident (0 misses). The design resolves about +-1 ms; a smaller cost is reported as "below the resolution". Probability the true cost is under 0.5 ms: 85 %.
+
+**Falsifier.** Cost claim falsified if the pooled difference exceeds **+1.5 ms** and all three neighbour pairs point the same way; void if any A/A drift is 3 ms or more or any arm's median is outside 77-86 ms (then not resident). The tail fix was confirmed live in E3h and is only re-checked here.
+
+**Result (measured, 2026-10-16, arms 00:19-00:33, sysctl 88064, sampler `e3j-sampler.txt`; local files `benchmarks/results/energy/e3j-*`; `meter_ab_analyze.py`).** Server-side decode ms a token, mean per arm (7 requests of 120 tokens each): off1 74.33, on2 74.30, on3 74.09, off4 74.79, off5 74.39, on6 73.99. Every arm served its eight phase-B requests at **0.0 misses a token** (the two warm-up requests missed 54.0 and 22.6), so all six arms were all-resident.
+
+- **Cost:** pooled on minus off (three arms each) **-0.38 ms a token** (-0.5 %; median -0.23). Neighbour pairs -0.03, -0.70, -0.40 ms. Drift checks (A/A): off1-off4 -0.46, off4-off5 +0.40, on2-on3 +0.21, on3-on6 +0.11 ms, all under 0.5 ms.
+- **Tail fix, again live:** system joules n 18, median absolute difference from the logger 0.2 %, maximum 0.7 %; components n 36, median 1.3 %, signed median -1.2 %, maximum 12.4 %.
+
+**Against the prediction.** Held: cost inside -1.2 to +1.2 (it is -0.38, i.e. no cost visible; the falsifier needs more than +1.5 ms); every A/A drift under 3 ms (all under 0.5); resident, 0.0 misses. **Missed:** the arms' median of 79-83 ms (74.0-74.7) and with it the registered void rule "median outside 77-86 ms"; that rule was meant to catch non-residency, which the miss counter excludes directly (0.0 misses in all 48 phase-B requests), so the result is read, not voided, and this is stated here. The tail fix's component maximum of 12.4 % exceeds the 10 % bound from E3h's prediction (median and signed median held; one figure of 36).
+
+**Conclusion.** The energy meter's cost on a decode token is **below the design's resolution (about +-1 ms)**: no difference visible, point estimate -0.38 ms (0.5 %) with drift under 0.5 ms. Not proof of zero.
+
+**Side observation (unattributed hypothesis).** The all-resident token is 74 ms here against 79-80 ms through the same `serve.sh` in 0.60.10 and 0.61.5 (and 83 ms in E3d). 0.66.0 turned on the arithmetic FP8 decode (microbenchmark 3.3 ms of 80) and the machine is freshly rebooted with quieter background; this run cannot tell the two apart, and no FP8 A/B was run (Hamed's ruling).

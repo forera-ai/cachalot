@@ -298,6 +298,8 @@ reproducible to ±0.3 %.
 
 **0.60.7 (2026-10-06): review fixes.** The run manifest no longer records credentials such as `CACHALOT_API_KEY` by value, and its Hermes Desktop check needs one process line. HANDOFF section 18.73.
 
+**0.66.3 (2026-10-16): the energy meter's cost.** Six resident server arms (meter on and off, ABBAAB): -0.38 ms a decode token, below the design's resolution of about 1 ms; the meter's joules match an independent logger to 0.2 % (system) and 1.3 % (components). HANDOFF section 18.159.
+
 **0.66.2 (2026-10-15): the bf16 control.** Dense bf16 GEMVs at decode's bytes and cadence leave a +4.0 W gap in the component power fit against +5.3 W for the quantized kernels; the weight format explains only 1-2 W of decode's ~11 W, so the gap is the fit under-reporting sustained GPU streaming load. HANDOFF section 18.158.
 
 **0.66.1 (2026-10-15): the prefetch pair at 48 GiB.** Decode prefetch saves 5.34 ms a token (125.5 against 130.8 ms, 30.5 misses, 19 of 24 pairs) on the 22k Hermes context; every prediction held, prefetch stays on. HANDOFF section 18.157.

@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-16, 0.66.3): the energy meter's cost on a decode token is below the design's resolution: -0.38 ms (ABBAAB, six resident arms)
+>
+> Section 18.159, addendum E3j of `docs/E3H-METER-RERUN-RECORD.md` (prediction and falsifier written before the run), new `benchmarks/meter_ab2.sh`, `meter_ab_analyze.py` rewritten for six arms. Nothing in `src/` changed. **Measured** (six fresh-server arms off, on, on, off, off, on; 120-token replies, 0.0 misses a token in all 48 phase-B requests): decode 74.33 / 74.30 / 74.09 / 74.79 / 74.39 / 73.99 ms; on minus off **-0.38 ms** (neighbour pairs -0.03, -0.70, -0.40), all A/A drifts under 0.5 ms. Cost not visible at about +-1 ms; the meter can stay available. Tail fix again live (system median 0.2 %, components 1.3 %). Missed: the arm median (74 ms against 79-83; registered void rule fired on its letter, residency verified by the miss counter instead). **Side observation:** the all-resident token is 74 ms, 5-6 ms under the 79-80 of earlier sessions (0.66.0 FP8 default or a quieter machine; unattributed). **Open:** a resident GLM energy arm; a new Hermes dump.
+
 > ## Start here (2026-10-15, 0.66.2): the bf16 control: the decode power gap is not mainly the quantized format; E3f's attribution is weakened
 >
 > Section 18.158, record `docs/E3I-BF16-CONTROL-RECORD.md` (prediction and falsifier written before the run). Nothing in `src/` changed. **Measured** (no model, two passes, Hamed's sampler): at decode's bytes and cadence the fit error is +4.0 W for dense bf16 (BF-80, 10 % of PSTR) against +5.3 W for the quantized kernels (TOK-80); at full rate bf16 +13.8 W against FP8 +13.6 W. By the registered rule the headline is unresolved (between +4 and +6.5 W); the supporting numbers say the format explains only about 1-2 W, so the gap is the fit under-reporting sustained GPU streaming load. TOK-80 read +5.3 against E3f's +9.0 (a quieter machine: idle PSTR 23.8 against 31-34 W). **Open:** a fit recalibrated on high-GPU-utilization bf16 loads; the energy-meter A/B; a resident GLM energy arm; a new Hermes dump.
@@ -9150,6 +9154,32 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.159 The energy meter's cost on a decode token (0.66.3)
+
+**Goal.** Hamed: "go for energy-meter A/B e3h-sampler". Corrected design of the void E3h arms (addendum E3j).
+
+**Baseline.** Cost unmeasured (E3h void: not resident, drift 15 ms).
+
+**Prediction (written first).** On minus off +0.1 ms (-1.2 to +1.2); A/A drifts under 3 ms; arm medians 79-83 ms; resident. Falsifier: above +1.5 ms with all pairs the same way.
+
+**Method.** `meter_ab2.sh`: six arms ABBAAB, 120-token replies, 60 s of load, Hamed's root sampler; about 13.5 minutes of arms in all.
+
+**Result (measured).** -0.38 ms (-0.5 %), pairs -0.03/-0.70/-0.40, drifts under 0.5 ms, 0.0 misses; tail fix system 0.2 %, components 1.3 % median.
+
+**Against the prediction.** Held except the arm median (74 against 79-83) and one component figure at 12.4 % (bound 10 %).
+
+**Explanation (hypothesis).** The meter's work (two clock reads a request, one thread tick a second) is far below what the design resolves.
+
+**Limits.** Resolution about +-1 ms; one machine state; not a proof of zero.
+
+**What shipped.** The script, the analysis, the record; nothing in `src/`, no default change.
+
+**Bottleneck after.** Unchanged.
+
+**Open.** Resident GLM energy arm; why the floor reads 74 ms (FP8 default or machine state).
+
+**Kind.** Research (predicted, measured, explained as hypothesis).
 
 ### 18.158 The bf16 control (0.66.2)
 

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.66.3 (2026-10-16)
+
+HANDOFF "Start here (2026-10-16, 0.66.3)" and section 18.159; addendum E3j of `docs/E3H-METER-RERUN-RECORD.md`. Measurement and instruments; nothing in `src/`.
+
+### Added
+- `benchmarks/meter_ab2.sh` (six resident arms, off/on/on/off/off/on); `benchmarks/meter_ab_analyze.py` reads them.
+
+### Measured
+- The energy meter (`CACHALOT_ENERGY=1`) costs -0.38 ms a decode token (-0.5 %), below the design's resolution of about +-1 ms; A/A drifts under 0.5 ms; 0.0 misses. The component tail fix holds live again. The all-resident token read 74 ms in these arms (79-80 in earlier sessions; cause not separated).
+
 ## 0.66.2 (2026-10-15)
 
 HANDOFF "Start here (2026-10-15, 0.66.2)" and section 18.158; record `docs/E3I-BF16-CONTROL-RECORD.md`. Measurement only; nothing in `src/`.

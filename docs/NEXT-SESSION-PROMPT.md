@@ -1,10 +1,11 @@
-# Next-session prompt — **v207**, written 2026-10-15
+# Next-session prompt — **v208**, written 2026-10-16
 
 **This is the file to paste.** `docs/NEXT-SESSION-PROMPT.md` is always current; superseded ones live in
 `docs/next-session-prompts/`.
 
 | version | written | produced by | what changed |
 |---|---|---|---|
+| **v208** | 2026-10-16 | Hamed: "go for energy-meter A/B e3h-sampler" (v207 First job 1) | **0.66.3, measurement only: the meter's cost is -0.38 ms a decode token on six resident arms (ABBAAB), below the design's resolution; tail fix holds live. Side observation: the all-resident token read 74 ms (was 79-80). Nothing in `src/`.** §18.159 |
 | **v207** | 2026-10-15 | Hamed: "Sampler is running ... Start the bf16 control run." (v206 First job 1) | **0.66.2, measurement only: the bf16 control: BF-80 +4.0 W, TOK-80 +5.3, BF +13.8 against FP8 +13.6; the format explains 1-2 W of decode's ~11 W; headline unresolved by the rule, E3f's attribution weakened. Nothing in `src/`.** §18.158 |
 | **v206** | 2026-10-15 | Hamed: "provide the GPU budget increase and check the memory and start the A/B test" (v203 First job 3) | **0.66.1: the prefetch pair at 48 GiB: gap +5.34 ms a token (+2.40 to +8.25), 30.5 misses, 19 of 24 pairs, all predictions held; prefetch stays on. `kernel_power.py` gains the bf16 control (BF, BF-80), prediction written, not run.** §18.157 |
 | **v205** | 2026-10-15 | Hamed: "Turn CACHALOT_FP8_GEMV_DECODE on by default (bit-identical), release it." (v204 First job 1) | **0.66.0: `CACHALOT_FP8_GEMV_DECODE` defaults to on (`0` restores the table); bit-identical, no numerics tag; microbenchmark bound about 3.3 ms of 80, no server A/B. Lab brief written.** §18.156 |
@@ -168,6 +169,12 @@
 | v47 | 2026-09-25 | Hamed asked for the v44-v46 levers planned, built, measured and documented | **0.18.0: GLM prefill 60 to 90 tok/s, bit-identical (a store path that never evicts, plus the next layer read early), GLM's missing MLX buffer-cache cap added, GLM disk snapshots (a restart reuses the system block). DeepSeek: an `iostat` trace shows prefill is not read-bound on either drive; the lookahead A/B drowned in a 124-to-200 s drift across back-to-back prefills.** §17.1, §15.13 |
 | v46 | 2026-09-25 | Hamed asked for GLM-5.3-Flash on Cachalot | 0.17.0: GLM through `serve-glm.sh` / `chat-glm.sh`. §17 |
 | v45 | 2026-09-24 | same as v47, one day earlier | 0.16.0: disk snapshot store by last use; lookahead and local compression closed. §15.12 |
+
+## First jobs (v208): the meter A/B is done; what is left needs a model server or Hamed
+
+1. A resident GLM energy arm (memory is free after a reboot and `sudo purge`); Hamed runs the sampler.
+2. Decide whether the 74 ms floor is the 0.66.0 FP8 default or machine state: only a `CACHALOT_FP8_GEMV_DECODE=0` pair would tell, and Hamed ruled out a server A/B of that knob: ask before proposing it.
+3. A new Hermes dump; L3's quantization sweep; optional fit recalibration (§18.158). Everything in the v207 block below applies (item 1 there is done).
 
 ## First jobs (v207): the bf16 control is done; what is left is memory-bound or needs Hamed
 
