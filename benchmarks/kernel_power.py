@@ -32,7 +32,7 @@ COLS, GROUP, LAYERS = 4096, 128, 43
 FP8_MIB, Q2_MIB = 8, 3
 FP8_PER_LAYER = 15  # 43 x 15 x 8 MiB = 5.04 GiB, the trunk's ~5.14 GB a token
 Q2_PER_LAYER = 19   # 43 x 19 x 3 MiB = 2.39 GiB, the routed experts' ~2.39 GB a token
-STEPS = ["idle", "TOK", "TOK-80", "TOK-NS", "FP8", "Q2"]
+STEPS = ["idle", "TOK", "TOK-80", "TOK-NS", "FP8", "Q2", "BF", "BF-80"]
 TOKEN_MS = 80.0  # TOK-80 pads each token to the real decode cadence (about 94 GB/s of weights), the GPU idling in between as it does in decode
 
 
@@ -59,19 +59,42 @@ def build(mx):
             lq.append((w, sc, bi))
         fp8.append(lf)
         q2.append(lq)
+    # bf16 control (docs/E3I-BF16-CONTROL-RECORD.md): dense bf16 matrices with the same bytes per launch and per token as the FP8 and 2-bit
+    # buffers above (8 MiB and 3 MiB launches, 15 and 19 a layer), read as GEMVs, so only the weight format differs.
+    bf = []
+    for _ in range(LAYERS):
+        lb = []
+        for n_launch, mib in ((FP8_PER_LAYER, FP8_MIB), (Q2_PER_LAYER, Q2_MIB)):
+            for _ in range(n_launch):
+                w = mx.random.normal((mib * 2**20 // (2 * COLS), COLS)).astype(mx.bfloat16)
+                mx.eval(w)
+                lb.append(w)
+        bf.append(lb)
+    f_bf = lambda w: w @ vec  # noqa: E731
+    bb = sum(w.nbytes for l in bf for w in l)
     f_fp8 = lambda t: fp8_linear_quantized(qx, *t)  # noqa: E731
     f_q2 = lambda t: mx.quantized_matmul(x2, *t, transpose=True, group_size=GROUP, bits=2)  # noqa: E731
     nb = lambda ls: sum(a.nbytes for l in ls for t in l for a in t)  # noqa: E731
-    return fp8, q2, f_fp8, f_q2, nb(fp8), nb(q2)
+    return fp8, q2, f_fp8, f_q2, nb(fp8), nb(q2), bf, f_bf, bb
 
 
 def run_step(name, seconds, mx, pool, state):
-    fp8, q2, f_fp8, f_q2, b8, bq = pool
+    fp8, q2, f_fp8, f_q2, b8, bq, bf, f_bf, bb = pool
     if name == "idle":
         time.sleep(seconds)
         return
     end = time.time() + seconds
     while time.time() < end:
+        if name in ("BF", "BF-80"):
+            tok0 = time.time()
+            for i in range(LAYERS):
+                mx.eval([f_bf(w) for w in bf[i]])
+            state["bytes"] += bb
+            if name == "BF-80":
+                rest = TOKEN_MS / 1000 - (time.time() - tok0)
+                if rest > 0:
+                    time.sleep(rest)
+            continue
         if name == "TOK-NS":
             mx.eval([f_fp8(t) for l in fp8 for t in l] + [f_q2(t) for l in q2 for t in l])
             state["bytes"] += b8 + bq
@@ -113,6 +136,7 @@ def analyze(rows, hdr, skip=5.0):
     print("\nmean per condition:")
     for k, v in out.items():
         print(f"  {k:<8} fit error {st.mean(x[0] for x in v):+5.1f} W  ({', '.join(f'{x[0]:+.1f}' for x in v)})  rate {st.mean(x[1] for x in v):6.1f} GB/s  PSTR {st.mean(x[2] for x in v):5.1f} W")
+    print("\nbf16 control: the E1b fit was calibrated on bf16 loads; BF-80 is the format control for TOK-80 (same bytes, same cadence)")
     print("\ndecode for comparison (E3d server / E3e in-process): fit error +10.9 / +11.5 W, about 94 GB/s of weights, PSTR 71-73 W")
 
 
@@ -131,7 +155,7 @@ def main() -> int:
     mx.set_cache_limit(0)
     t0 = time.time()
     pool = build(mx)
-    print(f"buffers built in {time.time() - t0:.0f} s: fp8 {pool[4] / 2**30:.2f} GiB, q2 {pool[5] / 2**30:.2f} GiB per token", flush=True)
+    print(f"buffers built in {time.time() - t0:.0f} s: fp8 {pool[4] / 2**30:.2f} GiB, q2 {pool[5] / 2**30:.2f} GiB per token, bf16 control {pool[8] / 2**30:.2f} GiB", flush=True)
     probe = ps.IOReport("Energy Model")
     j0 = dc.joules_by_component(probe)
     time.sleep(2.0)
@@ -143,7 +167,7 @@ def main() -> int:
     state = {"step": "warmup", "bytes": 0}
     lg = dc.Logger(state, hdr_path)
     lg.start()
-    for s in ("TOK", "FP8", "Q2"):
+    for s in ("TOK", "FP8", "Q2", "BF"):
         run_step(s, 3.0, mx, pool, state)  # compile and settle each kernel
     seconds = 8.0 if a.no_check else a.step_seconds
     plan = [("A", STEPS), ("B", list(reversed(STEPS)))]

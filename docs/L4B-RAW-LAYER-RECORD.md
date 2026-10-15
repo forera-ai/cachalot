@@ -591,3 +591,11 @@ Hamed's go after freeing memory ("memory should be freed. all apps closed ... th
 **Prediction.** Misses fall with the budget (about 1.3 a GiB near 42): 27-33 a token. The gap follows the miss count (0.16-0.21 ms a miss in arms 9-11): +4 to +7 ms, centre +5.5. On faster in at least 16 of 24 pairs; order effect under 5 ms; text identical 24 of 24; hidden share on 40-50 %, off 0 %. **Falsifier:** gap above +8.5 or below +1.5 ms. Note this extends the 42 GiB prediction downward in misses; if the gap per miss is higher than 0.21 here, the per-miss cost rises with budget.
 
 **Arm 12 status (2026-10-15): not run.** The guard refused 48 GiB twice (61.4 of 77 GiB available) with the sysctl at 88064, all of Hamed's applications closed and `sudo purge` run: free memory rose to 57 GiB but the system's own processes (about 26 GiB resident: WindowServer, Spotlight, media analysis, widgets) keep available memory at 61.4 GiB, which fits a budget of about 32 GiB, not 42 or 48. The prediction above stands for a later run after a reboot.
+
+**Arm 12 result (measured, 2026-10-15, after a reboot, sysctl 88064, `sudo purge`, guard accepted at 77.9 of 77 GiB).** The status paragraph above ("not run") is superseded. 24 pairs, text identical 24 of 24, 0 events dropped. Gap (off - on) **+5.34 ms a token** (95 % over prompts +2.40 to +8.25), unweighted +4.94, median +4.65, sd 6.22; on faster in 19 of 24; on-first +6.19, off-first +4.74 (order effect 1.45 ms). On: wall 125.5, sync 60.9, blocked 37.0, busy 69.1, hidden share 48.4 %; off: wall 130.8, blocked 50.4, hidden 0.0 %; misses 30.5 a token on both sides.
+
+**Against the prediction.** All held: gap +4 to +7 (centre 5.5), misses 27-33, at least 16 pairs, order effect under 5, identity, hidden share 40-50 % on and 0 off; the falsifier (above +8.5 or below +1.5) did not fire. Per miss the gap is 0.175 ms, between the 0.16 and 0.21 of arms 9-11, so the per-miss cost does not rise with budget. A 4.4 ms wall difference to arm 11's 140.5 ms (on) is 10 ms faster at 48 GiB with 5 fewer misses.
+
+**Limits.** One system block and tool set, one process, first prompt set rotated by five; a root `powermetrics` was not running during this run.
+
+**Decision.** No default change; prefetch stays on. Gap by budget (22k Hermes context): +6.5 at 42 GiB / 35 misses, +5.3 at 48 / 30.5.

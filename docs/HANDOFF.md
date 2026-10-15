@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-15, 0.66.1): the prefetch pair at 48 GiB: +5.34 ms a token at 30.5 misses; every prediction held; prefetch stays on
+>
+> Section 18.157, arm 12 of `docs/L4B-RAW-LAYER-RECORD.md` (prediction and falsifier written before the run). Nothing in `src/` changed. **Measured** (22k Hermes context, first prompt set rotated, one process, 48 GiB, 24 pairs, text identical): on 125.5 ms, off 130.8, gap +5.34 (+2.40 to +8.25), on faster in 19 of 24, misses 30.5 both sides, hidden share 48.4 % on, 0 off, order effect 1.45 ms. 0.175 ms a miss. The 48 GiB question of v196-v203 is closed. Also committed: the bf16 control arm of `kernel_power.py` (steps BF, BF-80; prediction in `docs/E3I-BF16-CONTROL-RECORD.md`), **not run yet** (needs Hamed's file-writing `powermetrics`). Memory lesson: after a reboot with all applications closed, the guard read 61-65 GiB until the machine had been up a while and `sudo purge` ran; it then read 77.9.
+
 > ## Start here (2026-10-15, 0.66.0): `CACHALOT_FP8_GEMV_DECODE` is on by default (Hamed's call, bit-identical)
 >
 > Section 18.156. Hamed answered v204's question: turn it on. One constant changed in `fp8_fused_metal.py` (`"0"` to `"1"`; `0` restores the table). Bit-identity is covered by `tests/test_fp8_gemv_half_decode.py` (all 256 codes, five shapes, inside `mx.compile`); no numerics tag, no snapshot effect; saving is a microbenchmark bound (about 3.3 ms of 80), no server A/B by Hamed's ruling. Lab brief written. **Open:** `sudo sysctl iogpu.wired_limit_mb=88064` (reads 0 after reboot); memory-bound and `sudo` jobs of the v204 prompt.
@@ -9142,6 +9146,32 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.157 The prefetch pair at 48 GiB (0.66.1)
+
+**Goal.** Hamed: "provide the GPU budget increase and check the memory and start the A/B test" (v203 First job 3, the 48 GiB pair).
+
+**Baseline.** Arm 11: gap +6.49 ms at 42 GiB, 35 misses.
+
+**Prediction (written first).** Gap +4 to +7 ms (centre 5.5), misses 27-33, on faster in at least 16 of 24, order effect under 5 ms, hidden share 40-50 % on and 0 off; falsifier above +8.5 or below +1.5 ms.
+
+**Method.** `prefetch_alternated.py --design interleave --prompts benchmarks/prefetch_prompts_a_rot5.json --budget-gib 48`, tracer on every token, under `guarded_run.sh`, sysctl 88064.
+
+**Result (measured).** Gap +5.34 ms (+2.40 to +8.25), 19 of 24, on 125.5 / off 130.8 ms, misses 30.5, hidden 48.4 % / 0 %, order effect 1.45, text identical 24 of 24, 0 dropped.
+
+**Against the prediction.** All held; falsifier did not fire.
+
+**Explanation (hypothesis).** The gap follows the miss count at about 0.175 ms a miss, the same per-miss value as at 42 GiB, so the larger budget helps through fewer misses, not a different per-miss cost.
+
+**Limits.** One prompt set and system block, one process.
+
+**What shipped.** The record arm and `kernel_power.py` BF/BF-80 steps; no default, output or numerics change.
+
+**Bottleneck after.** Unchanged: expert reads on misses; prefetch worth about 5 ms at 30 misses and stays on.
+
+**Open.** The bf16 control run (Hamed's sampler); the energy-meter A/B; a new Hermes dump.
+
+**Kind.** Research (predicted, measured, explained as hypothesis).
 
 ### 18.155 The 2-bit routed-expert dequantization priced: not the limiter (0.65.2)
 

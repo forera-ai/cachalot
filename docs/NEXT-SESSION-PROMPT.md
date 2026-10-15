@@ -1,10 +1,11 @@
-# Next-session prompt — **v205**, written 2026-10-15
+# Next-session prompt — **v206**, written 2026-10-15
 
 **This is the file to paste.** `docs/NEXT-SESSION-PROMPT.md` is always current; superseded ones live in
 `docs/next-session-prompts/`.
 
 | version | written | produced by | what changed |
 |---|---|---|---|
+| **v206** | 2026-10-15 | Hamed: "provide the GPU budget increase and check the memory and start the A/B test" (v203 First job 3) | **0.66.1: the prefetch pair at 48 GiB: gap +5.34 ms a token (+2.40 to +8.25), 30.5 misses, 19 of 24 pairs, all predictions held; prefetch stays on. `kernel_power.py` gains the bf16 control (BF, BF-80), prediction written, not run.** §18.157 |
 | **v205** | 2026-10-15 | Hamed: "Turn CACHALOT_FP8_GEMV_DECODE on by default (bit-identical), release it." (v204 First job 1) | **0.66.0: `CACHALOT_FP8_GEMV_DECODE` defaults to on (`0` restores the table); bit-identical, no numerics tag; microbenchmark bound about 3.3 ms of 80, no server A/B. Lab brief written.** §18.156 |
 | **v204** | 2026-10-15 | Hamed: "/ca read the handoff and session prompts and do the tasks" (v203 First job 2, the only autonomous item) | **0.65.2, measurement only, nothing in `src/`: the 2-bit routed-expert dequantization is not the limiter. A custom GEMV with the arithmetic removed is 5-7 % (w1) and 1-3 % (w2) faster than with it, and still 12-20 % slower than `mx.quantized_matmul` (two processes, 240 distinct matrices a shape); stop rule met, lever closed. New `micro_expert_dequant.py`, `docs/L4F-EXPERT-DEQUANT-RECORD.md`.** §18.155 |
 | **v203** | 2026-10-15 | Hamed: "no A/B test, go for any other open subjects" (v202 item 2) | **0.65.1, measurement and one constant of a default-off knob: the arithmetic E4M3 decode also takes the fused qkv (-0.0065 to -0.0079 ms a launch), shared `w1`/`w3` (-0.010 to -0.012), shared `w2` (-0.005 at threadgroup 128) and the indexer (-0.0035 to -0.0039): 1.42 ms a token, about 3.3 ms of the 80 ms floor with `wo_b` and `wq_b` (microbenchmark upper bound, no server A/B); `HALF_DECODE_THREADGROUP` gains K=5120: 64 and K=2304: 128. Knob still off.** §18.154 |
@@ -166,6 +167,11 @@
 | v47 | 2026-09-25 | Hamed asked for the v44-v46 levers planned, built, measured and documented | **0.18.0: GLM prefill 60 to 90 tok/s, bit-identical (a store path that never evicts, plus the next layer read early), GLM's missing MLX buffer-cache cap added, GLM disk snapshots (a restart reuses the system block). DeepSeek: an `iostat` trace shows prefill is not read-bound on either drive; the lookahead A/B drowned in a 124-to-200 s drift across back-to-back prefills.** §17.1, §15.13 |
 | v46 | 2026-09-25 | Hamed asked for GLM-5.3-Flash on Cachalot | 0.17.0: GLM through `serve-glm.sh` / `chat-glm.sh`. §17 |
 | v45 | 2026-09-24 | same as v47, one day earlier | 0.16.0: disk snapshot store by last use; lookahead and local compression closed. §15.12 |
+
+## First jobs (v206): the 48 GiB pair is done; the bf16 control needs Hamed's sampler
+
+1. **bf16 control run** (about 11 minutes, no model): Hamed runs `sudo powermetrics --samplers cpu_power,gpu_power,ane_power -i 1000 -n 900 -o benchmarks/results/energy/e3i-sampler.txt`, then `PYTHONPATH=src ~/venvs/deepseek-v41/bin/python benchmarks/kernel_power.py --tag e3i > benchmarks/results/energy/e3i-run.log 2>&1`; analyse against `docs/E3I-BF16-CONTROL-RECORD.md`.
+2. Energy meter A/B (`meter_ab.sh`, memory now available after `sudo purge`), a resident GLM energy arm, a new Hermes dump. Everything in the v205 block below still applies (item 48 GiB pair: done).
 
 ## First jobs (v205): the FP8 decode is on; what is left needs Hamed or memory
 

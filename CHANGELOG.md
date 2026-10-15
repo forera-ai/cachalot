@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.66.1 (2026-10-15)
+
+HANDOFF "Start here (2026-10-15, 0.66.1)" and section 18.157; arm 12 of `docs/L4B-RAW-LAYER-RECORD.md`. Measurement and an instrument; no default, output or numerics tag changed.
+
+### Added
+- `benchmarks/kernel_power.py`: bf16 control steps `BF` and `BF-80` (same bytes a token as the quantized kernels, dense bf16 GEMVs); prediction in `docs/E3I-BF16-CONTROL-RECORD.md`, not run yet.
+
+### Measured
+- Decode prefetch on against off at 48 GiB (22k Hermes context, 24 pairs, one process): 125.5 against 130.8 ms a token, gap +5.34 ms (+2.40 to +8.25), 19 of 24 pairs, 30.5 misses, text identical. All pre-registered predictions held. Prefetch stays on.
+
 ## 0.66.0 (2026-10-15)
 
 HANDOFF "Start here (2026-10-15, 0.66.0)" and section 18.156; Lab brief `docs/lab/briefs/2026-10-15-runtime-0.66.0.md`.

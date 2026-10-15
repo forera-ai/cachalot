@@ -298,6 +298,8 @@ reproducible to ±0.3 %.
 
 **0.60.7 (2026-10-06): review fixes.** The run manifest no longer records credentials such as `CACHALOT_API_KEY` by value, and its Hermes Desktop check needs one process line. HANDOFF section 18.73.
 
+**0.66.1 (2026-10-15): the prefetch pair at 48 GiB.** Decode prefetch saves 5.34 ms a token (125.5 against 130.8 ms, 30.5 misses, 19 of 24 pairs) on the 22k Hermes context; every prediction held, prefetch stays on. HANDOFF section 18.157.
+
 **0.66.0 (2026-10-15): the FP8 arithmetic decode is on by default.** `CACHALOT_FP8_GEMV_DECODE` now defaults to on (`0` restores the table lookup): bit-identical outputs, no numerics tag, no snapshot re-prefill; microbenchmark saving about 3.3 ms of the 80 ms floor, below end-to-end drift, so the case rests on bit-identity. Hamed's decision. HANDOFF section 18.156.
 
 **0.65.2 (2026-10-15): the routed-expert dequantization priced and closed.** A 2-bit GEMV with the dequantization arithmetic removed is only 1-7 % faster than with it and still slower than MLX's `quantized_matmul`, so the experts' 41 % of their streaming ceiling is launch granularity and slot layout, not arithmetic. Measurement only; nothing in `src/`. HANDOFF section 18.155.
