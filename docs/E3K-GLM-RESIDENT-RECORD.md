@@ -34,3 +34,25 @@ cd /Users/hamedprooshani/Projects/deepseek-v41-mac && sudo powermetrics --sample
 ```bash
 cd /Users/hamedprooshani/Projects/deepseek-v41-mac && E_TAG=e3k-glm E_FULL=1 CACHALOT_ENERGY=1 CACHALOT_GLM_DECODE_MISS_BUDGET=off E_SERVE=./serve-glm.sh E_SERVE_ARGS="--expert-budget-gib 46" E_MODEL=glm-5.3-flash E_MAX_TOKENS=48 E_A=60 E_B=120 E_C=-1 E_D=60 ./benchmarks/energy_arms.sh > benchmarks/results/energy/e3k-glm-run.log 2>&1
 ```
+
+## 5. Result (measured; 2026-10-16, run 00:36-00:44, `./serve-glm.sh --expert-budget-gib 46` with `CACHALOT_GLM_DECODE_MISS_BUDGET=off`, sampler `e3k-sampler.txt`, a second root sampler (E3j's) still finishing beside it; files `benchmarks/results/energy/e3k-glm-*`, local; `energy_e3.py`)
+
+**The arm was not resident: void as a resident arm by its own falsifier.** The three phase-B requests (48 tokens, identical text each time) each missed **84.2 experts a token** (hit rate 75 %, read 43.4 ms a token in the server's line), not 5 or fewer; 1.32 s a token (0.76 tok/s), 35.1 W (sd 3.5) system power, GPU 0.5 W, 0.91 GB/s from the drive. Phase B: **46.45 J a token** (meter figures 46.1-46.5 J, 35.0-35.3 W); fit error +2.0 W (5.7 % of PSTR); idle phases A and D -2.6 and -2.3 W (within +-3).
+
+**Against the prediction.** Resident (at most 2 misses a token, 75 %): **missed**, falsifier (more than 5) fired. Seconds a token 0.10 (0.07-0.16): missed (1.32). Energy 6 J (3.5-11): missed (46.45). PSTR 55 W: missed (35.1); GPU at least 5 W: missed (0.5). H-streaming (error 8-18 % of PSTR) and H-activity (error +3 to +8 W): **not tested**, the phase was read-bound again (error 5.7 % / +2.0 W). Idle phases within +-3 W: held. Meter against logger: not re-scored here.
+
+## 6. Explanation (hypothesis)
+
+The three passes missed exactly the same number of experts (84.2, 84.2, 84.2) with identical text, so the misses are not a sampling effect: the same prompt asks for the same experts each pass and still misses a fixed 84 a token. That is what a cyclic access over a set larger than the expert cache looks like under LRU (each pass evicts what the next pass needs first): 48 tokens x 43 layers x 8 experts is 16,500 expert uses, and the distinct experts of a 48-token reply plus the prefill's are more than the 46 GiB cache (about 3,400 expert slots) holds. With the budget off the token is 1.32 s, against 0.97 s with the shipped budget 2 (E3g): the 26-27 % saving of the budget, here measured in energy as well (36.4 against 46.45 J a token). A resident GLM arm therefore needs a reply short enough to fit (about 12 tokens would touch a quarter of the experts), a different design from DeepSeek's 48-token arms.
+
+## 7. Limits
+
+One run, three phase-B requests, same prompt; the cache-fit explanation is derived from the miss counts and not tested.
+
+## 8. Bottleneck after
+
+Unchanged for speed. Energy: GLM's token is 36-47 J at 35 W, waiting on the drive in every configuration measured; GLM's resident token (the GPU-bound share) remains unmeasured.
+
+## 9. Kind
+
+Research (predicted, measured, explained as hypothesis): the registered resident precondition failed and the arm is void as designed; the by-product (budget 2 against off, 36.4 against 46.45 J a token) is an observation, not a scored claim.

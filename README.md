@@ -298,6 +298,8 @@ reproducible to ±0.3 %.
 
 **0.60.7 (2026-10-06): review fixes.** The run manifest no longer records credentials such as `CACHALOT_API_KEY` by value, and its Hermes Desktop check needs one process line. HANDOFF section 18.73.
 
+**0.66.4 (2026-10-16): the resident GLM energy arm.** With the decode miss budget off GLM is not resident on a 48-token reply (84 misses a token every pass): 1.32 s and 46.45 J a token at 35 W against 0.97 s and 36.4 J with the shipped budget 2. The resident arm needs a shorter reply. HANDOFF section 18.160.
+
 **0.66.3 (2026-10-16): the energy meter's cost.** Six resident server arms (meter on and off, ABBAAB): -0.38 ms a decode token, below the design's resolution of about 1 ms; the meter's joules match an independent logger to 0.2 % (system) and 1.3 % (components). HANDOFF section 18.159.
 
 **0.66.2 (2026-10-15): the bf16 control.** Dense bf16 GEMVs at decode's bytes and cadence leave a +4.0 W gap in the component power fit against +5.3 W for the quantized kernels; the weight format explains only 1-2 W of decode's ~11 W, so the gap is the fit under-reporting sustained GPU streaming load. HANDOFF section 18.158.

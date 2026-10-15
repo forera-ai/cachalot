@@ -1,10 +1,11 @@
-# Next-session prompt — **v208**, written 2026-10-16
+# Next-session prompt — **v209**, written 2026-10-16
 
 **This is the file to paste.** `docs/NEXT-SESSION-PROMPT.md` is always current; superseded ones live in
 `docs/next-session-prompts/`.
 
 | version | written | produced by | what changed |
 |---|---|---|---|
+| **v209** | 2026-10-16 | Hamed: "go for it" (v208 First job 1, the resident GLM energy arm) | **0.66.4, measurement only: the arm was not resident (84.2 misses a token, 1.32 s, 35.1 W, 46.45 J at budget off) and is void by its registered falsifier; budget 2 is 36.4 J. Nothing in `src/`.** §18.160 |
 | **v208** | 2026-10-16 | Hamed: "go for energy-meter A/B e3h-sampler" (v207 First job 1) | **0.66.3, measurement only: the meter's cost is -0.38 ms a decode token on six resident arms (ABBAAB), below the design's resolution; tail fix holds live. Side observation: the all-resident token read 74 ms (was 79-80). Nothing in `src/`.** §18.159 |
 | **v207** | 2026-10-15 | Hamed: "Sampler is running ... Start the bf16 control run." (v206 First job 1) | **0.66.2, measurement only: the bf16 control: BF-80 +4.0 W, TOK-80 +5.3, BF +13.8 against FP8 +13.6; the format explains 1-2 W of decode's ~11 W; headline unresolved by the rule, E3f's attribution weakened. Nothing in `src/`.** §18.158 |
 | **v206** | 2026-10-15 | Hamed: "provide the GPU budget increase and check the memory and start the A/B test" (v203 First job 3) | **0.66.1: the prefetch pair at 48 GiB: gap +5.34 ms a token (+2.40 to +8.25), 30.5 misses, 19 of 24 pairs, all predictions held; prefetch stays on. `kernel_power.py` gains the bf16 control (BF, BF-80), prediction written, not run.** §18.157 |
@@ -169,6 +170,11 @@
 | v47 | 2026-09-25 | Hamed asked for the v44-v46 levers planned, built, measured and documented | **0.18.0: GLM prefill 60 to 90 tok/s, bit-identical (a store path that never evicts, plus the next layer read early), GLM's missing MLX buffer-cache cap added, GLM disk snapshots (a restart reuses the system block). DeepSeek: an `iostat` trace shows prefill is not read-bound on either drive; the lookahead A/B drowned in a 124-to-200 s drift across back-to-back prefills.** §17.1, §15.13 |
 | v46 | 2026-09-25 | Hamed asked for GLM-5.3-Flash on Cachalot | 0.17.0: GLM through `serve-glm.sh` / `chat-glm.sh`. §17 |
 | v45 | 2026-09-24 | same as v47, one day earlier | 0.16.0: disk snapshot store by last use; lookahead and local compression closed. §15.12 |
+
+## First jobs (v209): the GLM arm needs a shorter reply
+
+1. A resident GLM energy arm with `E_MAX_TOKENS=12` (prediction first: at most 5 misses a token, then the fit-error shares); about 10 minutes, Hamed runs the sampler.
+2. The 74 ms floor attribution (ask Hamed first), a new Hermes dump, L3's quantization sweep. Everything in the v208 block below applies (item 1 there is done as far as it can be).
 
 ## First jobs (v208): the meter A/B is done; what is left needs a model server or Hamed
 

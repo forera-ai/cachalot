@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-16, 0.66.4): the resident GLM energy arm was not resident: void by its own falsifier; GLM budget off costs 46.45 J a token against 36.4 with budget 2
+>
+> Section 18.160, record `docs/E3K-GLM-RESIDENT-RECORD.md` (prediction and falsifier written before the run). Nothing in `src/` changed. **Measured** (`serve-glm.sh --expert-budget-gib 46`, `CACHALOT_GLM_DECODE_MISS_BUDGET=off`, 48-token repeated prompt): 84.2 misses a token in each of three identical passes (hit 75 %), 1.32 s a token, 35.1 W, 46.45 J a token, fit error +2.0 W (5.7 %), GPU 0.5 W. Registered resident precondition (at most 5 misses) failed, so the H-streaming / H-activity tests did not run; seconds, energy and power predictions missed. Hypothesis: the 48-token reply's distinct experts exceed the 46 GiB cache and LRU cycles. A resident GLM arm needs a reply of about 12 tokens (a new design with a new prediction). **Open:** that rerun (about 10 minutes, Hamed's sampler); a new Hermes dump; the 74 ms floor attribution.
+
 > ## Start here (2026-10-16, 0.66.3): the energy meter's cost on a decode token is below the design's resolution: -0.38 ms (ABBAAB, six resident arms)
 >
 > Section 18.159, addendum E3j of `docs/E3H-METER-RERUN-RECORD.md` (prediction and falsifier written before the run), new `benchmarks/meter_ab2.sh`, `meter_ab_analyze.py` rewritten for six arms. Nothing in `src/` changed. **Measured** (six fresh-server arms off, on, on, off, off, on; 120-token replies, 0.0 misses a token in all 48 phase-B requests): decode 74.33 / 74.30 / 74.09 / 74.79 / 74.39 / 73.99 ms; on minus off **-0.38 ms** (neighbour pairs -0.03, -0.70, -0.40), all A/A drifts under 0.5 ms. Cost not visible at about +-1 ms; the meter can stay available. Tail fix again live (system median 0.2 %, components 1.3 %). Missed: the arm median (74 ms against 79-83; registered void rule fired on its letter, residency verified by the miss counter instead). **Side observation:** the all-resident token is 74 ms, 5-6 ms under the 79-80 of earlier sessions (0.66.0 FP8 default or a quieter machine; unattributed). **Open:** a resident GLM energy arm; a new Hermes dump.
@@ -9154,6 +9158,30 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.160 The resident GLM energy arm: not resident (0.66.4)
+
+**Goal.** Hamed: "go for it" on the open item "a resident GLM energy arm". Record `docs/E3K-GLM-RESIDENT-RECORD.md`.
+
+**Baseline.** E3g phase B read-bound (36.4 J a token, miss budget 2).
+
+**Prediction (written first).** At most 2 misses a token; 0.10 s a token; 6 J (3.5-11); PSTR 55 W; fit error 8-18 % of PSTR. Falsifier: over 5 misses voids the arm as resident.
+
+**Result (measured).** 84.2 misses a token (three identical passes), 1.32 s, 35.1 W, 46.45 J, fit error +2.0 W.
+
+**Against the prediction.** Resident missed and the falsifier fired; the dependent predictions missed; the hypotheses were not tested.
+
+**Explanation (hypothesis).** The reply's expert set exceeds the 46 GiB cache; cyclic LRU eviction. Budget off 1.32 s / 46.45 J against budget 2 0.97 s / 36.4 J (E3g).
+
+**Limits.** One run; the cache-fit reading is not tested.
+
+**What shipped.** The record; nothing in `src/`.
+
+**Bottleneck after.** Unchanged: GLM waits on the X10Pro.
+
+**Open.** A 12-token resident rerun with a new prediction.
+
+**Kind.** Research (predicted, measured, explained as hypothesis); void as a resident arm.
 
 ### 18.159 The energy meter's cost on a decode token (0.66.3)
 

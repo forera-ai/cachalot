@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.66.4 (2026-10-16)
+
+HANDOFF "Start here (2026-10-16, 0.66.4)" and section 18.160; record `docs/E3K-GLM-RESIDENT-RECORD.md`. Measurement only; nothing in `src/`.
+
+### Measured
+- GLM with the decode miss budget off (46 GiB, 48-token repeated prompt) is not resident: 84.2 misses a token in every pass, 1.32 s a token, 35.1 W, 46.45 J a token (the shipped budget 2: 0.97 s, 36.4 J). The registered resident arm is void by its falsifier; a shorter reply is needed.
+
 ## 0.66.3 (2026-10-16)
 
 HANDOFF "Start here (2026-10-16, 0.66.3)" and section 18.159; addendum E3j of `docs/E3H-METER-RERUN-RECORD.md`. Measurement and instruments; nothing in `src/`.
