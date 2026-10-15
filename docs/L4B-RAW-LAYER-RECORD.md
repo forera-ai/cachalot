@@ -579,3 +579,15 @@ On 140.5 ms, off 147.0; **gap +6.49 ms a token (95 % bootstrap over prompts +2.7
 ## Decision
 
 No default change; prefetch stays on. Ledger row DS-PRED-LAYER-ALT-D.
+
+## Arm 12: the alternated prefetch pair at 48 GiB (0.66.0, 2026-10-15)
+
+Hamed's go after freeing memory ("memory should be freed. all apps closed ... the gpu memory budget applied", then "yes" to the estimate). Written before the run.
+
+**Baseline.** Arm 11 (first prompt set rotated by five, 42 GiB): on 140.5, off 147.0 ms, gap +6.49 ms (+2.75 to +10.76), 35.4 misses a token, 17 of 24 pairs. Arm 6 (46 GiB, short prompts): gap +10.1 ms at 31.4 misses.
+
+**Method.** `prefetch_alternated.py --prompts benchmarks/prefetch_prompts_a_rot5.json --design interleave --budget-gib 48`, 22k Hermes context, one process under `guarded_run.sh`, exact decode, tracer on every token; about 30 minutes. A root `powermetrics` of Hamed's was still printing to his terminal during the run (about 1 Hz, same on both sides of every pair).
+
+**Prediction.** Misses fall with the budget (about 1.3 a GiB near 42): 27-33 a token. The gap follows the miss count (0.16-0.21 ms a miss in arms 9-11): +4 to +7 ms, centre +5.5. On faster in at least 16 of 24 pairs; order effect under 5 ms; text identical 24 of 24; hidden share on 40-50 %, off 0 %. **Falsifier:** gap above +8.5 or below +1.5 ms. Note this extends the 42 GiB prediction downward in misses; if the gap per miss is higher than 0.21 here, the per-miss cost rises with budget.
+
+**Arm 12 status (2026-10-15): not run.** The guard refused 48 GiB twice (61.4 of 77 GiB available) with the sysctl at 88064, all of Hamed's applications closed and `sudo purge` run: free memory rose to 57 GiB but the system's own processes (about 26 GiB resident: WindowServer, Spotlight, media analysis, widgets) keep available memory at 61.4 GiB, which fits a budget of about 32 GiB, not 42 or 48. The prediction above stands for a later run after a reboot.
