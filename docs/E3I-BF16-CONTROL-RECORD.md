@@ -31,3 +31,30 @@ cd /Users/hamedprooshani/Projects/deepseek-v41-mac && sudo powermetrics --sample
 ```bash
 cd /Users/hamedprooshani/Projects/deepseek-v41-mac && PYTHONPATH=src ~/venvs/deepseek-v41/bin/python benchmarks/kernel_power.py --tag e3i > benchmarks/results/energy/e3i-run.log 2>&1
 ```
+
+## 5. Result (measured; 2026-10-15, run 23:48-23:58, after a reboot, no model loaded, sampler `e3i-sampler.txt`; `benchmarks/results/energy/e3f-e3i.jsonl`, local)
+
+Per condition, mean of the two passes (A then B in opposite order): rate GB/s, PSTR W, fit error W (error / PSTR): idle 0.0, 23.8, -2.0; **BF-80 95.6, 40.0, +4.0 (3.9, 4.0; 10.0 %)**; TOK-80 93.7, 46.4, +5.3 (4.4, 6.1; 11.4 %); BF 283.2, 87.2, +13.8 (15.9 %); FP8 264.2, 105.4, +13.6 (12.9 %); Q2 122.4, 76.7, +10.4 (13.6 %); TOK 273.7, 114.5, +16.4 (14.3 %); TOK-NS 491.5, 162.7, +24.7 (15.2 %). Fans 995 RPM at the start, 2,109 at the end. Decode for comparison: +10.9 / +11.5 W at PSTR 71-73 W.
+
+## 6. Against the prediction
+
+- BF-80 point prediction +3 W (-1 to +8): **held** (+4.0). Rate 95.6 GB/s (94-96): met. Idle -2.0 and within +-3: met. Sampler running: met. Fans near 1,000: met.
+- H-format (BF-80 below +4 W and below 7 % of PSTR) vs H-not-format (at or above +6.5): BF-80 is +3.9 / +4.0 W and 10.0 % of PSTR, between the thresholds, so by the registered rule the headline is **unresolved**. H-format's two conditions both fail narrowly (+4.0 is not below +4, 10 % is not below 7 %); H-not-format's +6.5 is not reached.
+- BF +5 W (-1 to +12): **missed** (+13.8).
+- All other conditions repeat E3f within 3 W: **missed for TOK-80** (+5.3 against +9.0; PSTR 46.4 against 60.8 W; idle also lower, 23.8 against 31-34 W, a cooler or quieter machine after the reboot); held for TOK (+16.4 against +17.1), TOK-NS (+24.7 against +24.5), FP8 (+13.6 against +14.9) and Q2 (+10.4 against +11.8).
+
+## 7. Explanation (hypothesis, not tested further)
+
+At equal bytes and cadence the quantized kernels draw only about **1.3 W** more fit error than bf16 (TOK-80 +5.3 against BF-80 +4.0), and at high rate bf16 (BF, 283 GB/s, +13.8 W) matches the FP8 trunk kernel (264 GB/s, +13.6 W). So most of the gap that E3f attributed to "the model's quantized kernels" appears with dense bf16 GEMVs as well. The better reading is that the E1b component fit under-reports sustained GPU streaming load in general, by about 10-15 % of PSTR, and that the weight format contributes at most a small part (about 1-2 W of decode's ~11 W). E3f's statement that the quantized kernels explain about 80 % of the unexplained power is therefore **weakened to "sustained GPU streaming at decode's cadence"**; what E3f showed (it is the GPU work, not the drive, prefetch, server or pattern) stands.
+
+## 8. Limits
+
+Two passes, one session; the machine state differs from E3f's (PSTR lower at the same bytes), so the E3f-to-E3i comparison of TOK-80 is itself not controlled; the bf16 GEMV is `w @ x` through MLX's own kernel, not a hand-written one, and its GPU utilisation at 80 ms is lower than the quantized kernels' (3.5 against 7 W GPU), the confound named in the prediction.
+
+## 9. Bottleneck after
+
+Speed: unchanged (nothing shipped). Energy: the decode gap is a property of sustained GPU load in the fit, not of the quantized format; a fit calibrated on high-GPU-utilization bf16 loads, not just on idle-to-moderate ones, is the open fix.
+
+## 10. Kind
+
+Research (predicted, measured, explained as hypothesis): the headline is unresolved by the rule, one point prediction held, two missed; the supporting comparison (BF against FP8) points against H-format.

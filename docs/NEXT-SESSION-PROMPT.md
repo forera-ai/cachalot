@@ -1,10 +1,11 @@
-# Next-session prompt — **v206**, written 2026-10-15
+# Next-session prompt — **v207**, written 2026-10-15
 
 **This is the file to paste.** `docs/NEXT-SESSION-PROMPT.md` is always current; superseded ones live in
 `docs/next-session-prompts/`.
 
 | version | written | produced by | what changed |
 |---|---|---|---|
+| **v207** | 2026-10-15 | Hamed: "Sampler is running ... Start the bf16 control run." (v206 First job 1) | **0.66.2, measurement only: the bf16 control: BF-80 +4.0 W, TOK-80 +5.3, BF +13.8 against FP8 +13.6; the format explains 1-2 W of decode's ~11 W; headline unresolved by the rule, E3f's attribution weakened. Nothing in `src/`.** §18.158 |
 | **v206** | 2026-10-15 | Hamed: "provide the GPU budget increase and check the memory and start the A/B test" (v203 First job 3) | **0.66.1: the prefetch pair at 48 GiB: gap +5.34 ms a token (+2.40 to +8.25), 30.5 misses, 19 of 24 pairs, all predictions held; prefetch stays on. `kernel_power.py` gains the bf16 control (BF, BF-80), prediction written, not run.** §18.157 |
 | **v205** | 2026-10-15 | Hamed: "Turn CACHALOT_FP8_GEMV_DECODE on by default (bit-identical), release it." (v204 First job 1) | **0.66.0: `CACHALOT_FP8_GEMV_DECODE` defaults to on (`0` restores the table); bit-identical, no numerics tag; microbenchmark bound about 3.3 ms of 80, no server A/B. Lab brief written.** §18.156 |
 | **v204** | 2026-10-15 | Hamed: "/ca read the handoff and session prompts and do the tasks" (v203 First job 2, the only autonomous item) | **0.65.2, measurement only, nothing in `src/`: the 2-bit routed-expert dequantization is not the limiter. A custom GEMV with the arithmetic removed is 5-7 % (w1) and 1-3 % (w2) faster than with it, and still 12-20 % slower than `mx.quantized_matmul` (two processes, 240 distinct matrices a shape); stop rule met, lever closed. New `micro_expert_dequant.py`, `docs/L4F-EXPERT-DEQUANT-RECORD.md`.** §18.155 |
@@ -167,6 +168,11 @@
 | v47 | 2026-09-25 | Hamed asked for the v44-v46 levers planned, built, measured and documented | **0.18.0: GLM prefill 60 to 90 tok/s, bit-identical (a store path that never evicts, plus the next layer read early), GLM's missing MLX buffer-cache cap added, GLM disk snapshots (a restart reuses the system block). DeepSeek: an `iostat` trace shows prefill is not read-bound on either drive; the lookahead A/B drowned in a 124-to-200 s drift across back-to-back prefills.** §17.1, §15.13 |
 | v46 | 2026-09-25 | Hamed asked for GLM-5.3-Flash on Cachalot | 0.17.0: GLM through `serve-glm.sh` / `chat-glm.sh`. §17 |
 | v45 | 2026-09-24 | same as v47, one day earlier | 0.16.0: disk snapshot store by last use; lookahead and local compression closed. §15.12 |
+
+## First jobs (v207): the bf16 control is done; what is left is memory-bound or needs Hamed
+
+1. Energy meter A/B (`meter_ab.sh`; needs his sampler `e3h-sampler.txt`, about 25 minutes) and a resident GLM energy arm: memory is available after a reboot and `sudo purge`.
+2. Optional: recalibrate the component fit on high-GPU-utilization bf16 loads (the open item of §18.158). A new Hermes dump; L3's quantization sweep. Everything in the v206 block below applies (item 1 there is done).
 
 ## First jobs (v206): the 48 GiB pair is done; the bf16 control needs Hamed's sampler
 

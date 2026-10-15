@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-15, 0.66.2): the bf16 control: the decode power gap is not mainly the quantized format; E3f's attribution is weakened
+>
+> Section 18.158, record `docs/E3I-BF16-CONTROL-RECORD.md` (prediction and falsifier written before the run). Nothing in `src/` changed. **Measured** (no model, two passes, Hamed's sampler): at decode's bytes and cadence the fit error is +4.0 W for dense bf16 (BF-80, 10 % of PSTR) against +5.3 W for the quantized kernels (TOK-80); at full rate bf16 +13.8 W against FP8 +13.6 W. By the registered rule the headline is unresolved (between +4 and +6.5 W); the supporting numbers say the format explains only about 1-2 W, so the gap is the fit under-reporting sustained GPU streaming load. TOK-80 read +5.3 against E3f's +9.0 (a quieter machine: idle PSTR 23.8 against 31-34 W). **Open:** a fit recalibrated on high-GPU-utilization bf16 loads; the energy-meter A/B; a resident GLM energy arm; a new Hermes dump.
+
 > ## Start here (2026-10-15, 0.66.1): the prefetch pair at 48 GiB: +5.34 ms a token at 30.5 misses; every prediction held; prefetch stays on
 >
 > Section 18.157, arm 12 of `docs/L4B-RAW-LAYER-RECORD.md` (prediction and falsifier written before the run). Nothing in `src/` changed. **Measured** (22k Hermes context, first prompt set rotated, one process, 48 GiB, 24 pairs, text identical): on 125.5 ms, off 130.8, gap +5.34 (+2.40 to +8.25), on faster in 19 of 24, misses 30.5 both sides, hidden share 48.4 % on, 0 off, order effect 1.45 ms. 0.175 ms a miss. The 48 GiB question of v196-v203 is closed. Also committed: the bf16 control arm of `kernel_power.py` (steps BF, BF-80; prediction in `docs/E3I-BF16-CONTROL-RECORD.md`), **not run yet** (needs Hamed's file-writing `powermetrics`). Memory lesson: after a reboot with all applications closed, the guard read 61-65 GiB until the machine had been up a while and `sudo purge` ran; it then read 77.9.
@@ -9146,6 +9150,30 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.158 The bf16 control (0.66.2)
+
+**Goal.** Hamed: "Build the bf16 control arm in kernel_power.py (prediction first), then give me the powermetrics command", then ran the sampler. Record `docs/E3I-BF16-CONTROL-RECORD.md`.
+
+**Baseline.** E3f (18.128): quantized kernels at decode's cadence draw +9.0 W above the E1b fit; "no bf16 control".
+
+**Prediction (written first).** BF-80 +3 W (-1 to +8); H-format if below +4 W and 7 % of PSTR, H-not-format if at or above +6.5 W; others repeat E3f within 3 W.
+
+**Result (measured).** BF-80 +4.0 W (10 % of PSTR), TOK-80 +5.3, BF +13.8, FP8 +13.6, Q2 +10.4, TOK +16.4, TOK-NS +24.7, idle -2.0.
+
+**Against the prediction.** Point prediction held; headline unresolved by the rule (between thresholds); BF missed; TOK-80 differs from E3f by 3.7 W (quieter machine).
+
+**Explanation (hypothesis).** The format accounts for 1-2 W of decode's ~11 W; the fit under-reports sustained GPU streaming load in general.
+
+**Limits.** Two passes; machine state differs from E3f; MLX's own bf16 GEMV has lower GPU utilisation at 80 ms.
+
+**What shipped.** The result and record; nothing in `src/`.
+
+**Bottleneck after.** Speed unchanged; energy model: the open item is the fit, not the kernels.
+
+**Open / needs Hamed.** Meter A/B and GLM energy arm (memory is free now); a new Hermes dump.
+
+**Kind.** Research (predicted, measured, explained as hypothesis).
 
 ### 18.157 The prefetch pair at 48 GiB (0.66.1)
 

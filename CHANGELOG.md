@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.66.2 (2026-10-15)
+
+HANDOFF "Start here (2026-10-15, 0.66.2)" and section 18.158; record `docs/E3I-BF16-CONTROL-RECORD.md`. Measurement only; nothing in `src/`.
+
+### Measured
+- bf16 control for the component fit's decode power gap (no model, two passes): at decode's bytes and cadence the fit error is +4.0 W for dense bf16 against +5.3 W for the quantized kernels, and at full rate +13.8 W against +13.6 W, so the weight format explains about 1-2 W of the ~11 W. The registered headline is unresolved; E3f's "the quantized kernels explain the gap" is weakened to sustained GPU streaming load.
+
 ## 0.66.1 (2026-10-15)
 
 HANDOFF "Start here (2026-10-15, 0.66.1)" and section 18.157; arm 12 of `docs/L4B-RAW-LAYER-RECORD.md`. Measurement and an instrument; no default, output or numerics tag changed.
