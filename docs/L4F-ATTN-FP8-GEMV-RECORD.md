@@ -78,3 +78,30 @@ Every `half` variant is bit-identical to the shipped GEMV (all outputs equal as 
 Random buffers, one activation per shape, 40 layers; not the model in the server. The saving is a microbenchmark upper bound; 1.6-1.9 ms is below the end-to-end drift (sd 1.5 % = 1.2 ms), so the token effect cannot be proven by an A/B and rests on bit-identity plus this measurement. The same table decode is used by every other FP8 GEMV of the runtime (`wq_a`, `wkv`, shared experts, indexer): the same change is likely to help them too, unpriced. The expert FP8 path that goes through other kernels is not covered.
 
 If Hamed approves: build `_gemv_v2_kernel` with the guarded half decode behind `CACHALOT_FP8_GEMV_DECODE` (default off until he decides), threadgroup 64 or 128 priced per shape, a trace-shaped test (GEMV in an `mx.compile`d function, no `mx.eval`), a bit-identity test over all 256 codes and both lane counts, version bump with CHANGELOG and README. Nothing in `src/` has been touched.
+
+## Step 4: the other FP8 GEMVs of the token (prediction written before the run, 2026-10-15; Hamed: "no A/B test, go for any other open subjects")
+
+**Question.** `CACHALOT_FP8_GEMV_DECODE` (0.65.0) applies to every `fp8_linear`, but only `wo_b` and `wq_b` were priced (0.041-0.047 ms a layer, 1.6-1.9 ms a token). What do the other FP8 GEMV shapes of a decode token gain? Shapes: the fused `wq_a`+`wkv` (1792 x 5120, 40 layers), the shared expert `w1`/`w3` (2304 x 5120) and `w2` (5120 x 2304) (40 layers, three launches), the indexer `wq_b` (4096 x 1280, 8 layers).
+
+**Method.** `micro_fp8_gemv_variants.py --shapes rest` (new option; the default stays the two attention shapes): the same arms and bit-identity check, 40 distinct layers, best of 9, two processes A then B under `guarded_run.sh --budget-gib 4`. Saving a layer = shipped GEMV minus the best bit-identical `half` variant, summed per token with the launch counts above. Random buffers, no model, no server, no A/B.
+
+**Prediction.** Saving a layer: fused qkv 0.002-0.008 ms; each shared-expert projection 0.006-0.014 ms; indexer `wq_b` 0.002-0.005 ms. A token: qkv 0.08-0.32 ms, shared experts (3 x 40 launches) 0.72-1.7 ms, indexer 0.02-0.04 ms, **additional 0.8-2.1 ms**, so with `wo_b` and `wq_b` 2.7-4.0 ms of 80 (3.4-5 %). `half` is bit-identical on every shape.
+
+**Falsifier.** The additional token saving is below 0.4 ms or above 3.0 ms; or any `half` variant is not bit-identical on these shapes.
+
+### Result (step 4, measured 2026-10-15, processes A then B, `settle.sh` between; raw `benchmarks/results/l4f/fp8-rest-A.json`, `-B.json`)
+
+`half` is bit-identical to the shipped GEMV on every shape (`half-nonan` is not, as before). Saving a layer against the shipped GEMV (A / B, ms):
+
+| shape (launches a token) | shipped | tg64 | tg128 | tg256 | tg512 |
+|---|---|---|---|---|---|
+| fused qkv, K=5120 (40) | 0.0349 / 0.0350 | 0.0065 / 0.0079 | 0.0047 / 0.0073 | 0.0058 / 0.0069 | 0.0064 / 0.0058 |
+| shared w1/w3, K=5120 (80) | 0.0444 / 0.0439 | 0.0100 / 0.0122 | 0.0089 / 0.0110 | 0.0091 / 0.0100 | 0.0060 / 0.0091 |
+| shared w2, K=2304 (40) | 0.0380 / 0.0381 | -0.0063 / 0.0054 | 0.0049 / 0.0056 | -0.0070 / 0.0033 | -0.0016 / -0.0010 |
+| indexer wq_b, K=1280 (8) | 0.0255 / 0.0266 | 0.0039 / 0.0035 | 0.0034 / 0.0038 | 0.0020 / 0.0026 | -0.0010 / -0.0004 |
+
+Best consistent threadgroup: 64 for K=5120 and K=1280, 128 for K=2304 (256 is not reliably faster than the table there: -0.007 in A, +0.003 in B). Token total at those settings: qkv 0.29 ms, shared w1/w3 0.89, shared w2 0.21, indexer 0.03 = **1.42 ms additional**; with `wo_b` and `wq_b` (0.047 ms x 40 = 1.9 ms) about **3.3 ms of the 80 ms floor (4.1 %)**, a microbenchmark upper bound, below end-to-end drift.
+
+**Against the prediction.** Held: additional 1.42 ms (0.8-2.1), fused qkv 0.0065-0.0079 (0.002-0.008, at the top edge), shared w1/w3 0.010-0.012 (0.006-0.014), indexer 0.0035-0.0039 (0.002-0.005), bit-identity on every shape; the falsifier (below 0.4 or above 3.0 ms; non-identical) did not fire. Missed: shared w2 at the default threadgroup 256 (not reliably positive; predicted 0.006-0.014); at 128 it gains 0.005, just under the range.
+
+**Shipped (0.65.1).** `HALF_DECODE_THREADGROUP` gains K=5120: 64 and K=2304: 128 (the knob is still default OFF; outputs bit-identical, tests extended with K=2304). The per-token effect remains unproven by a server A/B (Hamed: no A/B test).

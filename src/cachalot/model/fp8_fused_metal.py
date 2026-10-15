@@ -31,8 +31,9 @@ from cachalot.model.kernel_consts import u32
 GEMV_HALF_DECODE = os.environ.get("CACHALOT_FP8_GEMV_DECODE", "0") != "0"
 
 # Threadgroup size per in_features, from benchmarks/micro_fp8_gemv_variants.py (docs/L4F-ATTN-FP8-GEMV-RECORD.md): 64 beat 256
-# for wo_b (K=8192) and wq_b (K=1280); other widths were measured only at 256.
-HALF_DECODE_THREADGROUP = {8192: 64, 1280: 64}
+# for wo_b (K=8192) and wq_b (K=1280); 0.65.1 added K=5120 (fused wq_a+wkv, shared w1/w3: 64) and K=2304 (shared w2: 128, where 256
+# was not reliably faster than the table). Other widths stay at 256.
+HALF_DECODE_THREADGROUP = {8192: 64, 1280: 64, 5120: 64, 2304: 128}  # 0.65.1: K=5120 and 2304 added (docs/L4F-ATTN-FP8-GEMV-RECORD.md step 4)
 
 E4M3_HEADER = r"""
 #include <metal_stdlib>

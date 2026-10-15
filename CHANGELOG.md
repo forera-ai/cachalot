@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.65.1 (2026-10-15)
+
+HANDOFF "Start here (2026-10-15, 0.65.1)" and section 18.154; step 4 of `docs/L4F-ATTN-FP8-GEMV-RECORD.md` (prediction and falsifier written before the run). Measurement, one constant of a default-off knob, tests; no default, output or numerics tag changed.
+
+### Changed
+- `HALF_DECODE_THREADGROUP` (`fp8_fused_metal.py`, used only with `CACHALOT_FP8_GEMV_DECODE=1`, default off): K=5120 (fused `wq_a`+`wkv`, shared-expert `w1`/`w3`) now 64 and K=2304 (shared `w2`) 128; 256 stays for other widths. Outputs are bit-identical to the table decode for any threadgroup, so no numerics tag change.
+- `benchmarks/micro_fp8_gemv_variants.py` gains `--shapes attn|rest|all`; `tests/test_fp8_gemv_half_decode.py` gains a K=2304 case.
+
+### Measured
+- The other FP8 GEMVs of a decode token, `half` decode against the shipped GEMV (random buffers, 40 layers, two processes, bit-identical on every shape): fused qkv -0.0065 to -0.0079 ms a layer, shared `w1`/`w3` -0.010 to -0.012, shared `w2` -0.005 (at threadgroup 128; at 256 it is not reliably faster), indexer `wq_b` -0.0035 to -0.0039. At the chosen threadgroups that is **1.42 ms a token** beside the 1.9 ms of `wo_b` and `wq_b`: about 3.3 ms of the 80 ms floor (4.1 %), a microbenchmark upper bound. No server A/B (Hamed's decision); the effect is below end-to-end drift (sd 1.2 ms).
+
 ## 0.65.0 (2026-10-15)
 
 HANDOFF "Start here (2026-10-15, 0.65.0)" and section 18.153; record `docs/L4F-ATTN-FP8-GEMV-RECORD.md` (prediction, falsifier and stop rule written before the run).

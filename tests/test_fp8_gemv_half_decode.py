@@ -37,8 +37,8 @@ def _act(k: int):
 
 
 # K=1280 -> 40 blocks -> 8 lanes per row; K=5120 -> 160 blocks -> 32; K=8192 -> 256 -> 32; K=96 -> 3 blocks -> 32 (fallback);
-# K=64 -> 2 blocks -> 32; K=512 -> 16 blocks -> 16 lanes
-@pytest.mark.parametrize("rows,k", [(512, 1280), (257, 5120), (320, 8192), (96, 512), (70, 96)])
+# K=64 -> 2 blocks -> 32; K=512 -> 16 blocks -> 16 lanes; K=2304 -> 72 blocks -> 8 lanes (shared w2, threadgroup 128)
+@pytest.mark.parametrize("rows,k", [(512, 1280), (257, 5120), (320, 8192), (96, 512), (70, 96), (257, 2304)])
 def test_half_decode_bit_identical_over_all_codes(rows, k):
     w, s = _all_codes_weight(rows, k)
     qd, qs = _act(k)

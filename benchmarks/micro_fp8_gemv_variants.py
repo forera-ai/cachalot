@@ -151,10 +151,14 @@ def main() -> None:
     ap.add_argument("--layers", type=int, default=40)
     ap.add_argument("--reps", type=int, default=9)
     ap.add_argument("--json", default="")
+    ap.add_argument("--shapes", choices=("attn", "rest", "all"), default="attn",
+                    help="attn: wo_b and wq_b (step 3); rest: the other FP8 GEMVs of a decode token (step 4); all: both")
     args = ap.parse_args()
     L = args.layers
 
-    shapes = {"wo_b": (5120, 8192), "wq_b": (32768, 1280)}
+    attn_shapes = {"wo_b": (5120, 8192), "wq_b": (32768, 1280)}
+    rest_shapes = {"qkv_fused": (1792, 5120), "shared_w13": (2304, 5120), "shared_w2": (5120, 2304), "indexer_wq_b": (4096, 1280)}
+    shapes = {"attn": attn_shapes, "rest": rest_shapes, "all": {**attn_shapes, **rest_shapes}}[args.shapes]
     rows = []
 
     def report(shape, arm, nbytes, best, med, note=""):

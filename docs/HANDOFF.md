@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-15, 0.65.1): the FP8 half-decode GEMV priced on the other shapes: 1.42 ms a token more (about 3.3 ms of 80 in all); threadgroups for K=5120 and 2304 added; still default off
+>
+> Section 18.154, step 4 of `docs/L4F-ATTN-FP8-GEMV-RECORD.md` (prediction and falsifier written before the run), `micro_fp8_gemv_variants.py --shapes rest`. **Measured** (random buffers, 40 layers, two processes): `half` stays bit-identical on every shape and saves, a launch, 0.0065-0.0079 ms (fused qkv, 40 a token), 0.010-0.012 (shared `w1`/`w3`, 80), 0.005 (shared `w2`, 40, only at threadgroup 128; at 256 it was -0.007 / +0.003), 0.0035-0.0039 (indexer, 8): **1.42 ms a token**, 3.3 ms with `wo_b` and `wq_b` (4.1 % of 80), an upper bound below drift. **Shipped:** `HALF_DECODE_THREADGROUP` K=5120: 64, K=2304: 128; knob still off; one test case added. **Predictions held** (additional 0.8-2.1 ms); shared `w2` at 256 missed. Hamed ruled out a server A/B. First job and open items: `docs/NEXT-SESSION-PROMPT.md` v203.
+
 > ## Start here (2026-10-15, 0.65.0): a faster FP8 GEMV behind `CACHALOT_FP8_GEMV_DECODE` (default off): bit-identical, `wo_b` + `wq_b` 0.047 ms a layer faster, at most 1.6-1.9 ms of the 80 ms floor
 >
 > Section 18.153, record `docs/L4F-ATTN-FP8-GEMV-RECORD.md` (prediction, falsifier and stop rule written before the run), `benchmarks/micro_fp8_gemv_variants.py`, `tests/test_fp8_gemv_half_decode.py`, `src/cachalot/model/fp8_fused_metal.py`. **Shipped:** the knob, default off; arithmetic half-precision E4M3 decode in `_gemv_v2_kernel`, threadgroup 64 for K=8192 and K=1280; outputs bit-identical to the table path over all 256 codes, inside `mx.compile`; no numerics tag. **Measured (two processes):** shipped GEMV `wo_b` 0.1107 / 0.1117 ms, `wq_b` 0.0937 / 0.0931; half decode at tg64 0.0775 / 0.0784 and 0.0801 / 0.0792: **0.047 ms a layer in both**, 6-10 % faster than `mx.sum`. **Stop rule (0.020) met.** **Predictions:** shipped-GEMV times held (wo_b 1 % high), the saving was missed high (0.041-0.047 against 0.013-0.035), threadgroup sensitivity missed (tg64 beats 256 by 2-5 %). **Needs Hamed:** turn the default on? (a token-level pair is below drift, 1.2 ms; ask for an estimate before any server run). **Open:** the same decode for the other table users (shared-expert, indexer, `wq_a`/`wkv` at other widths). First job and open items: `docs/NEXT-SESSION-PROMPT.md` v202.
@@ -9114,6 +9118,32 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.154 The FP8 half-decode GEMV on the other shapes (0.65.1)
+
+**Goal.** Hamed: "no A/B test, go for any other open subjects". Open subject taken: v202 item 2, the same decode on the other FP8 GEMVs of a token. Record: step 4 of `docs/L4F-ATTN-FP8-GEMV-RECORD.md`. The other open items need Hamed or memory: the 48 GiB pair (guard 47 of 77 GiB), the meter cost and the GLM resident arm (a model server: the guard needs 63+ GiB), the `kernel_power.py` bf16 control (his `sudo powermetrics`), the L3 quantization sweep (banks).
+
+**Baseline.** 0.65.0: `wo_b` + `wq_b` 0.041-0.047 ms a layer; the knob applies to every `fp8_linear`.
+
+**Prediction (written first).** Fused qkv 0.002-0.008 ms a layer, shared projections 0.006-0.014, indexer 0.002-0.005: additional 0.8-2.1 ms a token. Falsifier: below 0.4 or above 3.0 ms, or any variant not bit-identical.
+
+**Method.** `micro_fp8_gemv_variants.py --shapes rest` (new option), random buffers, 40 distinct layers chained, best of 9, processes A then B with `settle.sh` between, under `guarded_run.sh --budget-gib 4`; a few seconds each.
+
+**Result (measured).** See the table in the record: bit-identical on every shape; best consistent threadgroup 64 for K=5120 and K=1280, 128 for K=2304; additional 1.42 ms a token, 3.3 ms in all (4.1 % of 80), a microbenchmark upper bound.
+
+**Against the prediction.** Held, including the falsifier. Missed: shared `w2` at the default threadgroup 256 (noisy, not reliably positive); at 128 it gains 0.005 ms, just under the predicted range. Fused qkv sat at the top edge.
+
+**Explanation (hypothesis).** The constant-table lookup limits every FP8 GEMV in proportion to the bytes it decodes; the narrow shapes (K=2304, 1280) are occupancy- and latency-bound so the threadgroup size matters as much as the decode.
+
+**Limits.** Random buffers and a bf16 sum around each launch; the 80 ms floor also holds CPU graph building and GPU idle, and 1.4-3.3 ms is below the end-to-end drift (sd 1.2 ms), so the token effect rests on bit-identity plus this measurement. No server A/B, as Hamed decided. `wq_a` and `wkv` run fused in the shipped path, so the fused shape was priced, not the two alone.
+
+**What shipped.** `HALF_DECODE_THREADGROUP` {8192: 64, 1280: 64, 5120: 64, 2304: 128}; `--shapes` option; one test case; record step 4. Default OFF; no numerics tag; no Lab brief (the knob and its default are unchanged).
+
+**Bottleneck after.** Unchanged: expert reads on misses; of the all-resident floor the FP8 table decode accounted for about 3.3 ms of kernel time, the rest is CPU graph building, GPU idle, the 2-bit expert kernels (41 % of their ceiling) and bandwidth.
+
+**Open.** Whether to turn `CACHALOT_FP8_GEMV_DECODE` on by default (Hamed's call); the 2-bit routed-expert kernel at 41 % of its streaming ceiling (4.2 ms of bandwidth-bound time against 10.1 ms measured; `micro_expert_roofline.py` and `micro_affine_expert_fusion.py` explored fusion before, not the decode); the other items above.
+
+**Kind.** Research (predicted, measured, explained as hypothesis): the additional token saving was predicted inside its range; one shape missed at the default threadgroup.
 
 ### 18.153 A faster FP8 GEMV behind a knob (0.65.0)
 
