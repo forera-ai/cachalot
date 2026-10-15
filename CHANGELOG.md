@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.66.0 (2026-10-15)
+
+HANDOFF "Start here (2026-10-15, 0.66.0)" and section 18.156; Lab brief `docs/lab/briefs/2026-10-15-runtime-0.66.0.md`.
+
+### Changed
+- **`CACHALOT_FP8_GEMV_DECODE` defaults to on** (Hamed's decision, 2026-10-15; `0` restores the table lookup). The arithmetic E4M3 decode is bit-identical to the table (all 256 codes, inside `mx.compile`), so outputs, snapshots and the numerics tag are unchanged. Microbenchmark saving about 3.3 ms of the 80 ms floor (upper bound; no server A/B, below drift).
+
 ## 0.65.2 (2026-10-15)
 
 HANDOFF "Start here (2026-10-15, 0.65.2)" and section 18.155; record `docs/L4F-EXPERT-DEQUANT-RECORD.md` (prediction and stop rule written before the run). Measurement only; nothing in `src/`, no default, output or numerics tag changed.

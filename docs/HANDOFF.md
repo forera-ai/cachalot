@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-15, 0.66.0): `CACHALOT_FP8_GEMV_DECODE` is on by default (Hamed's call, bit-identical)
+>
+> Section 18.156. Hamed answered v204's question: turn it on. One constant changed in `fp8_fused_metal.py` (`"0"` to `"1"`; `0` restores the table). Bit-identity is covered by `tests/test_fp8_gemv_half_decode.py` (all 256 codes, five shapes, inside `mx.compile`); no numerics tag, no snapshot effect; saving is a microbenchmark bound (about 3.3 ms of 80), no server A/B by Hamed's ruling. Lab brief written. **Open:** `sudo sysctl iogpu.wired_limit_mb=88064` (reads 0 after reboot); memory-bound and `sudo` jobs of the v204 prompt.
+
 > ## Start here (2026-10-15, 0.65.2): the 2-bit routed-expert dequantization is not the limiter: removing it all makes a launch only 1-7 % faster; lever closed
 >
 > Section 18.155, `docs/L4F-EXPERT-DEQUANT-RECORD.md` (prediction and stop rule written before the run), `benchmarks/micro_expert_dequant.py`. **Measured** (random packed buffers, 240 distinct matrices a shape, two processes, ms a launch): shipped `mx.quantized_matmul` 0.0160-0.0162 (w1 2304x5120) and 0.0185-0.0191 (w2); a custom GEMV with the real dequantization 0.0208 and 0.0218-0.0233; the same kernel with the arithmetic removed 0.0191-0.0194 and 0.0213-0.0217, so removing the dequantization buys 5-7 % (w1) and 1-3 % (w2), and even then loses to MLX's kernel by 12-20 %. Stop rule met; the dequant lever is closed. **Nothing in `src/` changed; no default, output or numerics tag.** The routed experts' 41 % of their streaming ceiling is launch granularity and slot layout (the concat/gather screens, 20-25 %), not arithmetic. **Open:** Hamed's call on `CACHALOT_FP8_GEMV_DECODE` default; the memory and sudo jobs of the v204 prompt. `iogpu.wired_limit_mb` reads 0 after a reboot (Hamed re-applies it).
@@ -9123,6 +9127,21 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.156 `CACHALOT_FP8_GEMV_DECODE` on by default (0.66.0)
+
+**Goal.** Hamed: "Turn CACHALOT_FP8_GEMV_DECODE on by default (bit-identical), release it." (v204 First job 1.)
+
+**Baseline.** 0.65.2: knob off; microbenchmark saving 1.9 ms (`wo_b`, `wq_b`) + 1.42 ms (other shapes) of the 80 ms floor, below end-to-end drift (sd 1.2 ms).
+
+**Intervention.** Default `"0"` to `"1"` in `fp8_fused_metal.py`; test renamed to `test_knob_default_on_and_follows_env`; README, CHANGELOG, Lab brief. Output-changing: no (bit-identical, 18.153), so Hamed's rule about output-changing defaults is not engaged; he decided anyway.
+
+**Verification.** Full test suite and `git diff --check` before the commit; no model run (no server A/B, by his ruling).
+
+**Bottleneck after.** Unchanged: expert reads on misses; of the all-resident floor, CPU graph building, GPU idle, and routed-expert launch granularity.
+
+**Kind.** Engineering (a default on a prior research result).
+
 
 ### 18.155 The 2-bit routed-expert dequantization priced: not the limiter (0.65.2)
 

@@ -258,7 +258,7 @@ stops being amortized. It is off in the shipped configuration. See `docs/HANDOFF
 | `prefix_cache_bytes` | 1.5 GiB | Memory for prefix-cache snapshots (~5 MB + ~3 KB per token each; `prefix_cache_entries`, 64, is only a ceiling). Evicted by tier: earlier turns already contained in a later snapshot first, then chunk snapshots inside a system block, then each conversation's latest state, system blocks last. |
 | `--default-max-tokens` | 8192 (`serve.sh`) | New tokens for a request that sends no `max_tokens`, shortened to what fits in `max_seq_len`. At 2,000, agent context summaries and long tool calls were cut off. |
 | `max_seq_len` | 32768 | Sequence capacity for KV and compressed caches (a few hundred MB; CSA2 keeps KV tiny). |
-| `CACHALOT_FP8_GEMV_DECODE` | 0 | `1` decodes the FP8 GEMV's E4M3 weight bytes arithmetically instead of through a 256-entry table (and runs `wo_b`/`wq_b` at threadgroup 64). Bit-identical output; 0.047 ms a layer faster on those two projections in a microbenchmark. Off until the default is decided. |
+| `CACHALOT_FP8_GEMV_DECODE` | 1 | On by default since 0.66.0 (`0` restores the table lookup): decodes the FP8 GEMV's E4M3 weight bytes arithmetically instead of through a 256-entry table (and runs `wo_b`/`wq_b` at threadgroup 64). Bit-identical output; 0.047 ms a layer faster on those two projections in a microbenchmark. Hamed turned it on 2026-10-15 on bit-identity; the token effect is below drift (no server A/B). |
 | `CACHALOT_DARWIN_ROLE` | 1 | `serve` and `chat` ask macOS to schedule them like the focused app (Darwin role UI_FOCAL). With the display on, window compositing sometimes doubles the non-read part of a decode token; this won every such pair measured by 6-40 % and is a null otherwise. `0` leaves the default role. |
 | `MLX_METAL_FAST_SYNCH` | 1 (`serve`, `chat`) | MLX waits on a shared-memory counter instead of an `MTLSharedEvent` for GPU completion. Bit-identical output; +8 to +25 % decode when window compositing slows the machine, a null otherwise. `0` restores MLX's default. |
 | `CACHALOT_VISION_ABLATE` | empty | Debug only: `delims`, `engram_mask` and/or `bias_vl` undo one of the vision fixes, for `benchmarks/vision_ablation.sh`. Answers are not the shipped model's while set. |
@@ -297,6 +297,8 @@ token (5.90 tok/s)** at an 83.5 % hit rate, reading 627 MiB per token, drive bus
 reproducible to ±0.3 %.
 
 **0.60.7 (2026-10-06): review fixes.** The run manifest no longer records credentials such as `CACHALOT_API_KEY` by value, and its Hermes Desktop check needs one process line. HANDOFF section 18.73.
+
+**0.66.0 (2026-10-15): the FP8 arithmetic decode is on by default.** `CACHALOT_FP8_GEMV_DECODE` now defaults to on (`0` restores the table lookup): bit-identical outputs, no numerics tag, no snapshot re-prefill; microbenchmark saving about 3.3 ms of the 80 ms floor, below end-to-end drift, so the case rests on bit-identity. Hamed's decision. HANDOFF section 18.156.
 
 **0.65.2 (2026-10-15): the routed-expert dequantization priced and closed.** A 2-bit GEMV with the dequantization arithmetic removed is only 1-7 % faster than with it and still slower than MLX's `quantized_matmul`, so the experts' 41 % of their streaming ceiling is launch granularity and slot layout, not arithmetic. Measurement only; nothing in `src/`. HANDOFF section 18.155.
 

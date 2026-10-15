@@ -1,10 +1,11 @@
-# Next-session prompt — **v204**, written 2026-10-15
+# Next-session prompt — **v205**, written 2026-10-15
 
 **This is the file to paste.** `docs/NEXT-SESSION-PROMPT.md` is always current; superseded ones live in
 `docs/next-session-prompts/`.
 
 | version | written | produced by | what changed |
 |---|---|---|---|
+| **v205** | 2026-10-15 | Hamed: "Turn CACHALOT_FP8_GEMV_DECODE on by default (bit-identical), release it." (v204 First job 1) | **0.66.0: `CACHALOT_FP8_GEMV_DECODE` defaults to on (`0` restores the table); bit-identical, no numerics tag; microbenchmark bound about 3.3 ms of 80, no server A/B. Lab brief written.** §18.156 |
 | **v204** | 2026-10-15 | Hamed: "/ca read the handoff and session prompts and do the tasks" (v203 First job 2, the only autonomous item) | **0.65.2, measurement only, nothing in `src/`: the 2-bit routed-expert dequantization is not the limiter. A custom GEMV with the arithmetic removed is 5-7 % (w1) and 1-3 % (w2) faster than with it, and still 12-20 % slower than `mx.quantized_matmul` (two processes, 240 distinct matrices a shape); stop rule met, lever closed. New `micro_expert_dequant.py`, `docs/L4F-EXPERT-DEQUANT-RECORD.md`.** §18.155 |
 | **v203** | 2026-10-15 | Hamed: "no A/B test, go for any other open subjects" (v202 item 2) | **0.65.1, measurement and one constant of a default-off knob: the arithmetic E4M3 decode also takes the fused qkv (-0.0065 to -0.0079 ms a launch), shared `w1`/`w3` (-0.010 to -0.012), shared `w2` (-0.005 at threadgroup 128) and the indexer (-0.0035 to -0.0039): 1.42 ms a token, about 3.3 ms of the 80 ms floor with `wo_b` and `wq_b` (microbenchmark upper bound, no server A/B); `HALF_DECODE_THREADGROUP` gains K=5120: 64 and K=2304: 128. Knob still off.** §18.154 |
 | **v202** | 2026-10-15 | Hamed: "Go" on the FP8 GEMV pricing, then "Yes ... build the half-decode GEMV behind CACHALOT_FP8_GEMV_DECODE (default off) ... release it as 0.65.0" (v201 First job 1) | **0.65.0: `CACHALOT_FP8_GEMV_DECODE=1` (default off) decodes the FP8 GEMV's E4M3 weights arithmetically instead of by table: bit-identical (all 256 codes, inside `mx.compile`), `wo_b` + `wq_b` 0.047 ms a layer faster in two processes (0.1107 to 0.0775 and 0.0937 to 0.0801 ms), at most 1.6-1.9 ms of the 80 ms floor (microbenchmark, no server A/B). Stop rule met; saving prediction missed high. New `micro_fp8_gemv_variants.py`, `tests/test_fp8_gemv_half_decode.py`.** §18.153 |
@@ -165,6 +166,10 @@
 | v47 | 2026-09-25 | Hamed asked for the v44-v46 levers planned, built, measured and documented | **0.18.0: GLM prefill 60 to 90 tok/s, bit-identical (a store path that never evicts, plus the next layer read early), GLM's missing MLX buffer-cache cap added, GLM disk snapshots (a restart reuses the system block). DeepSeek: an `iostat` trace shows prefill is not read-bound on either drive; the lookahead A/B drowned in a 124-to-200 s drift across back-to-back prefills.** §17.1, §15.13 |
 | v46 | 2026-09-25 | Hamed asked for GLM-5.3-Flash on Cachalot | 0.17.0: GLM through `serve-glm.sh` / `chat-glm.sh`. §17 |
 | v45 | 2026-09-24 | same as v47, one day earlier | 0.16.0: disk snapshot store by last use; lookahead and local compression closed. §15.12 |
+
+## First jobs (v205): the FP8 decode is on; what is left needs Hamed or memory
+
+Everything in the v204 block below applies except item 1's FP8 question (answered: on). The knob is on by default; `CACHALOT_FP8_GEMV_DECODE=0` is the old path for any A/B.
 
 ## First jobs (v204): the routed-expert dequantization is closed; everything left needs Hamed or memory
 

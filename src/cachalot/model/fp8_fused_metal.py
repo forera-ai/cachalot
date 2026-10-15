@@ -26,9 +26,9 @@ import mlx.core as mx
 from cachalot.model.fp8_gemv_metal import BLOCK_SIZE
 from cachalot.model.kernel_consts import u32
 
-# CACHALOT_FP8_GEMV_DECODE=1 decodes the E4M3 weight bytes of the decoded-activation GEMV arithmetically instead of through a
-# 256-entry constant table. Same floats, same summation order, so outputs are bit-identical; 0.65.0, default off.
-GEMV_HALF_DECODE = os.environ.get("CACHALOT_FP8_GEMV_DECODE", "0") != "0"
+# CACHALOT_FP8_GEMV_DECODE (default on since 0.66.0; `0` restores the table) decodes the E4M3 weight bytes of the decoded-activation GEMV arithmetically instead of through a
+# 256-entry constant table. Same floats, same summation order, so outputs are bit-identical; 0.65.0, on by default in 0.66.0.
+GEMV_HALF_DECODE = os.environ.get("CACHALOT_FP8_GEMV_DECODE", "1") != "0"
 
 # Threadgroup size per in_features, from benchmarks/micro_fp8_gemv_variants.py (docs/L4F-ATTN-FP8-GEMV-RECORD.md): 64 beat 256
 # for wo_b (K=8192) and wq_b (K=1280); 0.65.1 added K=5120 (fused wq_a+wkv, shared w1/w3: 64) and K=2304 (shared w2: 128, where 256

@@ -81,8 +81,8 @@ def test_half_decode_inside_mx_compile():
     assert bool(mx.all(_bits(ref) == _bits(got)).item())
 
 
-def test_knob_default_off_and_follows_env(monkeypatch):
-    assert ffm.GEMV_HALF_DECODE is False or ffm.os.environ.get("CACHALOT_FP8_GEMV_DECODE", "0") != "0"
+def test_knob_default_on_and_follows_env(monkeypatch):
+    assert ffm.GEMV_HALF_DECODE is (ffm.os.environ.get("CACHALOT_FP8_GEMV_DECODE", "1") != "0")
     w, s = _all_codes_weight(64, 1280)
     qd, qs = _act(1280)
     ref = fp8_gemv_decoded(qd, qs, w, s, half_decode=False)
