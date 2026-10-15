@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.64.18 (2026-10-15)
+
+HANDOFF "Start here (2026-10-15, 0.64.18)" and section 18.152; record `docs/L4F-FLOOR-ROOFLINE-RECORD.md` (prediction and falsifier written before the analysis and before the machine step). Instruments, a calculator constant and measurement; nothing in the runtime changed.
+
+### Added
+- `benchmarks/floor_roofline.py` (+ `tests/test_floor_roofline.py`): splits the DeepSeek all-resident floor's GPU rows into a bandwidth-bound part and a remainder from header-sized bytes and the LEDGER kernel rate tables; `--measured` takes the step 2 runs.
+- `benchmarks/micro_attn_projection_roofline.py`: the five attention projections (`wq_a`, `wkv`, `wq_b`, `wo_b` through `fp8_linear`, `wo_a` as the bf16 grouped matmul) at their real shapes over 40 distinct layers, with an `mx.sum` ceiling over the same bytes.
+
+### Changed
+- `benchmarks/whatif.py`: the "GPU memory bandwidth xN" row now uses the derived 19.6-25.1 ms bandwidth-bound floor time (centre 22.8) instead of the 51-78 ms range. LEDGER row WI-FLOOR-BW updated.
+
+### Measured
+- A token reads **11.94 GB** (attention projections 6.4 GB, routed experts 2.39, shared experts 1.42, head 1.32, the rest 0.4), not the 7.5 GB the ledger carried: the runtime reads `wo_a` as bf16 (67 MB a layer) though the checkpoint stores FP8, and the old figure omitted the shared experts, head and compressors.
+- The five attention projections take 0.380 and 0.378 ms a layer in two processes (0.6 % apart), 71 % of the 0.53 ms reuse-attention row: `wq_a` 20-23 % of 819 GB/s, `wkv` 11.5 %, `wq_b` 50 %, `wo_b` 44.6 %, `wo_a` bf16 77 %. `mx.sum` reaches only 59 % at 42 MB and 66-67 % at 67 MB.
+- **Doubling GPU memory bandwidth would save 9.8-12.5 ms of the 80 ms floor (centre 11.4, 14 %)**, derived; 19.6-25.1 ms of the GPU rows are bandwidth-bound, about 55-60 ms of the token is not (CPU graph building, GPU idle, dequantization and launch cost).
+
+### Closed
+- The 51-78 ms floor range of `whatif.py` (withdrawn). Prediction results: the rate and layer-time predictions held, the `mx.sum` ceiling prediction (85 %) was falsified, the whole-floor bounds mostly missed because they rested on the stale 7.5 GB and that ceiling; no falsifier fired.
+
 ## 0.64.17 (2026-10-14)
 
 HANDOFF "Start here (2026-10-14, 0.64.17)" and section 18.151; arm 11 of `docs/L4B-RAW-LAYER-RECORD.md`, prediction and falsifier written before the run. Measurement and one prompt file; nothing in `src/` changed.

@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-15, 0.64.18): the DeepSeek floor roofline: doubling memory bandwidth would save about 11 ms of the 80 ms floor (derived); a token reads 11.94 GB, not 7.5
+>
+> Section 18.152, record `docs/L4F-FLOOR-ROOFLINE-RECORD.md` (prediction and falsifier written before the analysis and again before the machine step), new `benchmarks/floor_roofline.py`, `benchmarks/micro_attn_projection_roofline.py`, `tests/test_floor_roofline.py`; `whatif.py` and LEDGER WI-FLOOR-BW updated. Nothing in the runtime changed. **Measured:** bytes a token from the checkpoint headers are 11.94 GB (the runtime reads `wo_a` as bf16, 67 MB a layer); the five attention projections take 0.380 and 0.378 ms a layer in two processes (71 % of the 0.53 ms attention row; `wq_a` 20-23 %, `wkv` 11.5 %, `wq_b` 50 %, `wo_b` 44.6 %, `wo_a` 77 % of 819 GB/s; `mx.sum` only 59 % at 42 MB). Bandwidth-bound time of the floor is 19.6-25.1 ms (centre 22.8) of the 49.9 ms of GPU rows, so **doubling bandwidth saves 9.8-12.5 ms of the 80 ms floor (centre 11.4, 14 %)**, derived; the other 55-60 ms is CPU graph building, GPU idle and kernel dequantization and launch cost. **Predictions:** rates and layer time held, the `mx.sum` 85 % ceiling was falsified (my misreading of the project's own table), whole-floor bounds mostly missed on a stale 7.5 GB. **Open:** the FP8 projections run at 76-92 % of a plain sum over the same bytes (`wo_b` 0.115 ms against 0.087): at most about 1.8 ms a token, being priced in a separate session. First job and open items: `docs/NEXT-SESSION-PROMPT.md` v201.
+
 > ## Start here (2026-10-14, 0.64.17): the prefetch pair on the first prompt set, rotated: +6.49 ms a token at 35 misses, agreeing with arm 8b; prefetch stays on
 >
 > Section 18.151, arm 11 of `docs/L4B-RAW-LAYER-RECORD.md` (prediction and falsifier written before the run), `benchmarks/prefetch_prompts_a_rot5.json`. Nothing in `src/` changed. **Measured:** the first twelve prompts rotated by five (one process, 42 GiB, 22k Hermes block): decode 140.5 ms with prefetch, 147.0 without, **gap +6.49 ms (+2.75 to +10.76), 17 of 24 pairs**, misses 35.4 / 35.3, text identical 24 of 24; arm 8b read +5.50 at 35.3. Prediction (+4 to +8, 17+ of 24, misses 33-37) held except the order effect (5.7 ms against under 5, inside the noise). Prompt 0's -20.9 in arm 8b reads +2.2. Across both prompt sets: about +6 ms at 35 misses, +8 at 44. **Needs Hamed:** nothing; remaining jobs are the 48 GiB pair (memory: the guard refused 42 GiB twice at 69.7-69.8 of 71 before it passed at 72.2) and a new agent session (a dump).
@@ -9106,6 +9110,32 @@ GLM/MiniMax (snapshot directory and warm set, `/stats`, `/clear`, unknown slash 
 line moved). 3. M1b, a Hermes Desktop session on 0.29.0 (Hamed). 4. The Thunderbolt drive (Hamed), then a
 `MIRROR_FRACTION` sweep. 5. M18, a decayed warming ranking (price on a trace first). 6. Prefill's bias rebuild in one
 launch per expert instead of three (small; prefill is read-bound). 7. M12.
+
+### 18.152 The DeepSeek floor roofline (0.64.18)
+
+**Goal.** Hamed: "check for other unfinished levers", then "do the floor roofline (L4(f)): estimate, written prediction and falsifier first, then wait for my go", then "go" on the offline part and on step 2. Record: `docs/L4F-FLOOR-ROOFLINE-RECORD.md`. `whatif.py` answered "double GPU memory bandwidth" with a 51-78 ms range because the bandwidth-bound share of the floor's 52.2 ms of GPU kernel time had never been measured (LEDGER WI-FLOOR-BW).
+
+**Baseline.** In-process all-resident token 75.4 ms, server floor 79-80 ms; chained GPU rows 52.2 ms; bytes a token about 7.5 GB (DS-BYTES-TOKEN); size-matched kernel rates from MC-READ-SIZE-Q.
+
+**Prediction (written first).** Bandwidth-bound sum 11-15 ms, saving 5.5-7.5 ms at 2x; the routed and shared expert rows at 41-45 % of their own ceiling; at 22k context the share rises by at most 3 points. Step 2: projections 0.36-0.46 ms a layer, `mx.sum` at least 85 % of peak on buffers of 30 MB or more, whole-floor bandwidth-bound 15-17 (low), 20.8 (centre), 24-28 ms (high). Falsifiers in the record.
+
+**Method.** Offline: per-row bytes from the safetensors headers of layers 0, 2, 5 and 25 and the config, divided by the LEDGER rate tables (log-linear in launch size), capped by the row's measured time (`floor_roofline.py`, 8 tests). Machine: `micro_attn_projection_roofline.py`, random buffers, 40 distinct layers chained per arm, best of 9, `mx.sum` ceiling over the same bytes, two processes under `guarded_run.sh --budget-gib 4` with `settle.sh` between (a few seconds each; the 48 GiB memory shortfall did not apply).
+
+**Result (derived and measured).** 11.94 GB a token. Offline table estimate: 20.8 ms bandwidth-bound, saving 10.4 ms. Measured projections (A / B): `wq_a` 0.0392 / 0.0345 ms, `wkv` 0.0276 / 0.0279, `wq_b` 0.1036 / 0.1022, `wo_b` 0.1154 / 0.1144, `wo_a` bf16 0.1066 / 0.1056, all five 0.3798 / 0.3776 (422-424 GB/s). Bounds on the floor's bandwidth-bound time: 19.6 (all bytes at the best rate reached), 22.8 (projections at the `mx.sum` rate), 25.1 ms (projections' measured time): **doubling bandwidth saves 9.8-12.5 ms of 80 (centre 11.4)**. At 22k context the KV and indexer bytes add 0.06 GB (derived).
+
+**Against the prediction.** Held: expert rows at 41 % and 50 % of ceiling, context term, projection rates (`wo_b` 44.6 % against 45-60 %: missed by 0.4 points), 0.378-0.380 ms a layer, the high bound. Missed: the offline sum (20.8 against 11-15) and the saving (10.4 against 5.5-7.5), both resting on the stale 7.5 GB; the low and centre bounds. **Falsified:** `mx.sum` at 85 % of peak (it reaches 59-67 % at 42-67 MB; the project's table says 93 % only from 128 MiB, which I misapplied). The byte-reconciliation clause fired against the stale 7.5 GB reference and was judged to have caught a stale ledger figure. No registered falsifier fired.
+
+**Explanation (hypothesis).** The floor is about a quarter to a third bandwidth-bound; the rest is CPU graph building (18 ms), GPU idle between the 44 syncs, and quantized-kernel dequantization and launch cost (the routed and shared expert kernels run at 41-50 % of what a streaming kernel gets at their size). The FP8 projections run at 76-92 % of a plain sum, so a better FP8 GEMV could gain on `wo_b` (0.115 against 0.087 ms) and `wq_b` (0.104 against 0.087): at most about 1.8 ms a token.
+
+**Limits.** Derived from kernel rates on random buffers, not from changing the hardware (no clock or cache effect); source and index-only attention rows assume they contain the compressor and indexer; the 22k column has no measured row times; `whatif.py`'s floor stays 78 ms.
+
+**What shipped.** `benchmarks/floor_roofline.py`, `benchmarks/micro_attn_projection_roofline.py`, `tests/test_floor_roofline.py`, `whatif.py` constant `DS_BW_BOUND_MS`, LEDGER WI-FLOOR-BW, the record. No default, output or numerics change; no Lab brief. Raw runs in `benchmarks/results/l4f/` (local).
+
+**Bottleneck after.** Unchanged: expert reads on misses; of the all-resident floor about 20-25 ms is bandwidth-bound, with kernel inefficiency and CPU/idle time the larger share.
+
+**Open.** A faster FP8 GEMV for `wo_b` and `wq_b` (priced at most 1.8 ms a token; a separate session was started for the pricing, check its record before repeating); the 48 GiB prefetch pair (memory: the guard read 49 of 77 GiB on 2026-10-15 even after `sudo purge`, a reboot is the realistic route); a new agent session (a dump).
+
+**Kind.** Research (predicted, measured offline and on the machine, explained as hypothesis): rate and layer-time predictions held, the ceiling prediction was falsified, the whole-floor numbers missed on a stale input; the floor's bandwidth range is now a number.
 
 ### 18.151 The prefetch pair on the first prompt set, rotated (0.64.17)
 

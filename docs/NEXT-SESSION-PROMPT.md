@@ -1,10 +1,11 @@
-# Next-session prompt — **v200**, written 2026-10-14
+# Next-session prompt — **v201**, written 2026-10-15
 
 **This is the file to paste.** `docs/NEXT-SESSION-PROMPT.md` is always current; superseded ones live in
 `docs/next-session-prompts/`.
 
 | version | written | produced by | what changed |
 |---|---|---|---|
+| **v201** | 2026-10-15 | Hamed: "check again for the memory gate" (48 GiB pair still refused: 49 of 77 GiB available, also after `sudo purge`), "any other unfinished lever?", then "do the floor roofline (L4(f))" and "go" on both steps | **0.64.18, instruments, a calculator constant and measurement, nothing in the runtime: a token reads 11.94 GB (the runtime reads `wo_a` as bf16; the ledger's 7.5 GB was stale); the five attention projections take 0.380 / 0.378 ms a layer (two processes), 20-77 % of 819 GB/s; 19.6-25.1 ms of the floor is bandwidth-bound, so doubling memory bandwidth saves 9.8-12.5 ms of the 80 ms floor (centre 11.4, derived); the 51-78 ms range of `whatif.py` is withdrawn. Prediction: rates held, the `mx.sum` 85 % ceiling falsified. New `floor_roofline.py`, `micro_attn_projection_roofline.py`.** §18.152 |
 | **v200** | 2026-10-14 | Hamed: "/ca read the handoff and session prompts and do the tasks", then "go" and "42 GiB" (v199 First job 1 had no autonomous item; 48 GiB was not possible) | **0.64.17, measurement and a prompt file, nothing in `src/`: the first prompt set rotated by five (one process, 42 GiB, 22k Hermes block): 140.5 vs 147.0 ms, gap +6.49 ms (+2.75 to +10.76), 17 of 24 pairs, misses 35.4 / 35.3; arm 8b's +5.50 reproduces, prompt 0's -20.9 reads +2.2; both sets now double-run: about +6 ms at 35 misses, +8 at 44. Prefetch stays on.** §18.151 |
 | **v199** | 2026-10-13 | Hamed: "go" on v198 First job 1 (the position-in-pass test) | **0.64.16, measurement and a prompt file, nothing in `src/`: the second prompt set rotated by five (one process, 42 GiB, 22k Hermes block): 146.3 vs 153.9 ms, gap +7.56 ms (+6.13 to +9.37), 24 of 24 pairs, order effect 1.2, misses 43.0 / 44.1. Prompt 0's negative gap (-3.2) does not reproduce in slot 7 (+8.6) and the new slot-0 prompt reads +8.7: registered falsifier (slot 0 above +8) fired by 0.7 ms; first-slot effect falsified, the negative is most likely two-pair noise (per-prompt sd between runs about 6.5 ms). Prefetch stays on.** §18.150 |
 | **v198** | 2026-10-13 | Hamed: "/ca read the handoff and session prompts and do the tasks", then chose "Prefetch pair, second conversation" from v197's list (item 2) | **0.64.15, measurement and a script option, nothing in `src/`: the alternated prefetch pair on a second set of twelve prompts (22k Hermes block, 42 GiB, one process): 145.5 vs 154.8 ms, gap +9.26 ms (+5.88 to +12.01), 22 of 24 pairs, order effect 4.1, 44.1 misses a token (first set: +5.5 at 35.3); the gap follows the miss count (~0.21 ms a miss here, 0.16 there). Registered falsifier "gap above 9" fired by 0.26 ms. Prompt 0 negative again: position effect likely. New `--prompts FILE`, `benchmarks/prefetch_prompts_b.json`.** §18.149 |
@@ -161,6 +162,16 @@
 | v47 | 2026-09-25 | Hamed asked for the v44-v46 levers planned, built, measured and documented | **0.18.0: GLM prefill 60 to 90 tok/s, bit-identical (a store path that never evicts, plus the next layer read early), GLM's missing MLX buffer-cache cap added, GLM disk snapshots (a restart reuses the system block). DeepSeek: an `iostat` trace shows prefill is not read-bound on either drive; the lookahead A/B drowned in a 124-to-200 s drift across back-to-back prefills.** §17.1, §15.13 |
 | v46 | 2026-09-25 | Hamed asked for GLM-5.3-Flash on Cachalot | 0.17.0: GLM through `serve-glm.sh` / `chat-glm.sh`. §17 |
 | v45 | 2026-09-24 | same as v47, one day earlier | 0.16.0: disk snapshot store by last use; lookahead and local compression closed. §15.12 |
+
+## First jobs (v201): the floor's bandwidth share is a number; the rest are Hamed's pick
+
+Read HANDOFF sections 18.151-18.152 and `docs/L4F-FLOOR-ROOFLINE-RECORD.md` first. Everything in the v200, v199, v198 and v197 blocks below still applies (tools first, machine gate, estimate and confirm each long run, prediction and falsifier first, Hamed runs every `sudo`). **New lessons:** (a) the project's own rate table says `mx.sum` reaches 63 % of 819 GB/s at 8 MiB and 93 % only from 128 MiB: check LEDGER MC-READ-SIZE before assuming a ceiling; (b) the ledger's bytes a token (7.5 GB) was stale, the header-derived figure is 11.94 GB: derive bytes from the tensor headers, not from an earlier note; (c) the guard read 49 of 77 GiB available on 2026-10-15 and a `sudo purge` changed nothing: for the 48 GiB pair a reboot is the realistic route.
+
+1. **A faster FP8 GEMV for `wo_b` and `wq_b`** (priced at most 1.8 ms a token: `wo_b` 0.115 ms against 0.087 for a plain sum, `wq_b` 0.104 against 0.087). A separate session was started on 2026-10-15 to price it; read its record before repeating. Needs a written prediction and a stop rule; bit-identical outputs; no `mx.eval` inside a compiled trace.
+2. **The pair at 48 GiB** (guard needs 77 GiB available; reboot).
+3. **A different agent session** (needs a new Hermes dump from Hamed) for a true second system block.
+4. **Optional measurements from the open list:** the energy meter's cost on a token (`meter_ab.sh`, `E_MAX_TOKENS=120`), a resident GLM energy arm, the bf16 control in `kernel_power.py`, L3's quantization sweep.
+5. **The previous lists (v200 and older below), unchanged.**
 
 ## First jobs (v200): the prefetch gap is measured twice on two prompt sets; the rest are Hamed's pick
 

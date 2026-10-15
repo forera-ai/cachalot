@@ -49,8 +49,11 @@ MM_TOKEN_SPLIT = (23.0, 115.6)  # misses, ms at 68 GiB (0.38.0)
 
 # ---- the DeepSeek floor split (LEDGER DS-FLOOR-SPLIT-0609) --------------------------------------------------------------
 DS_FLOOR_GPU_SHARE = 52.2 / 75.4  # chained GPU kernel time over the in-process token
-# bandwidth-bound share of those kernels is not measured: kernels stream at 29-45 % of 819 GB/s (MC-READ-SIZE); range, not point
-BW_BOUND_SHARE_RANGE = (0.0, 1.0)
+# L4(f), 0.64.18 (docs/L4F-FLOOR-ROOFLINE-RECORD.md): bandwidth-bound time of the floor's GPU rows, ms at 17 positions. Derived from header-sized
+# bytes and kernel rates, with the five attention projections measured (micro_attn_projection_roofline.py): low = all projection bytes at the
+# best rate reached (77 % of 819 GB/s), centre = projections at the mx.sum rate over the same bytes, high = the projections' measured time.
+DS_BW_BOUND_MS = (19.6, 22.8, 25.1)
+BW_BOUND_SHARE_RANGE = (DS_BW_BOUND_MS[0] / 49.9, DS_BW_BOUND_MS[2] / 49.9)  # of the 49.9 ms of parsed GPU rows; kept for old callers
 
 
 def glm_token(reads: float, storage_x: float = 1.0, floor_x: float = 1.0) -> float:
@@ -133,10 +136,11 @@ def scenarios(model: str, storage_x: float | None, floor_x: float | None) -> lis
                          deepseek_token(DS_INTERNAL_GBPS, misses), "live misses from 18.52; the cliff above 48 GiB is not modelled"))
         rows.append(("every expert resident (0 misses)", DS_FLOOR_MS, "DS-FLOOR-SRV 79-80 ms measured; not reachable at 142 GiB of experts on 96 GiB of memory"))
         if floor_x:
-            lo = DS_FLOOR_MS * (1 - DS_FLOOR_GPU_SHARE * BW_BOUND_SHARE_RANGE[1] * (1 - 1 / floor_x))
-            rows.append((f"GPU memory bandwidth x{floor_x:g} (range)", lo,
-                         f"range {lo:.0f}-{DS_FLOOR_MS:.0f} ms: from 'all GPU kernels are bandwidth-bound' to 'none are' (the floor is 27 % GPU idle between 44 syncs, "
-                         "kernels at 29-45 % of peak); a hypothesis to test with L4(f)"))
+            cut = 1 - 1 / floor_x
+            lo, mid, hi = (DS_FLOOR_MS - b * cut for b in reversed(DS_BW_BOUND_MS))
+            rows.append((f"GPU memory bandwidth x{floor_x:g}", mid,
+                         f"{lo:.0f}-{hi:.0f} ms (derived, L4(f)): {DS_BW_BOUND_MS[0]:.0f}-{DS_BW_BOUND_MS[2]:.0f} ms of the floor is bandwidth-bound; the CPU "
+                         "graph building (18 ms) and GPU idle between 44 syncs do not move; rates measured on random buffers"))
     else:
         base = minimax_token(23.0)
         rows.append(("baseline: 23 misses, 68 GiB, both drives", base, "measured 115.6 (0.38.0), 8-ish tok/s live today"))
