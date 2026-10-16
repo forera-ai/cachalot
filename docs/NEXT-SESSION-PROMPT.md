@@ -1,10 +1,11 @@
-# Next-session prompt — **v210**, written 2026-10-16
+# Next-session prompt — **v211**, written 2026-10-16
 
 **This is the file to paste.** `docs/NEXT-SESSION-PROMPT.md` is always current; superseded ones live in
 `docs/next-session-prompts/`.
 
 | version | written | produced by | what changed |
 |---|---|---|---|
+| **v211** | 2026-10-16 | Hamed: "Plan the L3 quantization sweep (banks)", then "Yes, run steps A and B" (v210 First job 1 option) | **0.66.6, measurement only: the expert-bank bit width as a curve. At 48 GiB a 3-bit g128 bank would miss 38.1 experts a token against 25.0 and read 2.2 times the bytes (token +20 % to +40 % internal, derived); y-err against FP4 0.399 (3-bit) and 0.185 (4-bit) against 0.710 (2-bit). Bytes and quality ratios predicted, misses and token time missed. Nothing in `src/`; no live arm.** §18.162 |
 | **v210** | 2026-10-16 | Hamed: "Yes, rerun the GLM resident arm with E_MAX_TOKENS=12" (v209 First job 1) | **0.66.5, measurement only: a resident GLM token is 63 ms and 4.96 J at 75.8 W (0.0 misses, 153 requests); the fit is 15.4 % of PSTR short, the same share as DeepSeek; H-activity falsified, seconds and power predictions missed. Nothing in `src/`.** §18.161 |
 | **v209** | 2026-10-16 | Hamed: "go for it" (v208 First job 1, the resident GLM energy arm) | **0.66.4, measurement only: the arm was not resident (84.2 misses a token, 1.32 s, 35.1 W, 46.45 J at budget off) and is void by its registered falsifier; budget 2 is 36.4 J. Nothing in `src/`.** §18.160 |
 | **v208** | 2026-10-16 | Hamed: "go for energy-meter A/B e3h-sampler" (v207 First job 1) | **0.66.3, measurement only: the meter's cost is -0.38 ms a decode token on six resident arms (ABBAAB), below the design's resolution; tail fix holds live. Side observation: the all-resident token read 74 ms (was 79-80). Nothing in `src/`.** §18.159 |
@@ -171,6 +172,13 @@
 | v47 | 2026-09-25 | Hamed asked for the v44-v46 levers planned, built, measured and documented | **0.18.0: GLM prefill 60 to 90 tok/s, bit-identical (a store path that never evicts, plus the next layer read early), GLM's missing MLX buffer-cache cap added, GLM disk snapshots (a restart reuses the system block). DeepSeek: an `iostat` trace shows prefill is not read-bound on either drive; the lookahead A/B drowned in a 124-to-200 s drift across back-to-back prefills.** §17.1, §15.13 |
 | v46 | 2026-09-25 | Hamed asked for GLM-5.3-Flash on Cachalot | 0.17.0: GLM through `serve-glm.sh` / `chat-glm.sh`. §17 |
 | v45 | 2026-09-24 | same as v47, one day earlier | 0.16.0: disk snapshot store by last use; lookahead and local compression closed. §15.12 |
+
+## First jobs (v211): the quantization curve is drawn offline; what is left needs Hamed
+
+Read HANDOFF section 18.162 and `docs/L3-QUANT-SWEEP-RECORD.md` first.
+
+1. Nothing autonomous is queued. Ask Hamed: step C of the sweep (a live 3-bit arm; needs a place for a 205 GiB bank: delete the internal 2-bit bank, which reverses the 2026-10-03 move, or run on the X10Pro where the arm measures the 1 GB/s drive; X10Pro free space was not verified); a better 2-bit fit as an output-changing bank swap (searched, activation-weighted: y-err 0.60 against 0.71 at the same bytes; `build_affine_bank.py` rebuilds in under an hour from internal reads, longer over USB); a new Hermes dump; whether a `CACHALOT_FP8_GEMV_DECODE=0` pair may settle the 74 ms floor; a MiniMax resident energy arm.
+2. Everything in the v210 block below applies.
 
 ## First jobs (v210): the energy lane's open arms are done
 
@@ -401,6 +409,8 @@ check `pgrep -f Flurry.appex` before each arm instead.
 ## Jobs 4-7 — the rest of the slow-window trigger and MLX buffer knobs; vision on Desktop-sized screenshots; prefill KL; 54 GiB collapse, Objective-C corpus. Unchanged from v46.
 
 ## What is closed, so nobody spends a session there
+
+- **A bank wider than 2-bit g128 as a speed or default lever on the internal drive (0.66.6, §18.162):** 3-bit reads 2.2 times the bytes a token at 48 GiB (38.1 misses against 25.0, derived +20 % to +40 % token) for 44 % less output error; 4-bit 3.7 times. The September live record found no usable code gain from 3-bit. Reopen only if the drive or the budget changes; the live arm is step C.
 
 - **2-bit routed-expert dequantization as a kernel lever (0.65.2, §18.155):** removing all of the arithmetic from a hand GEMV buys 1-7 % and still loses to `mx.quantized_matmul`; the launch is limited by size and access shape.
 

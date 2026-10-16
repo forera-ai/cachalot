@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-16, 0.66.6): the expert-bank bit width as a curve: 3-bit costs 2.2 times the bytes a token for 44 % less output error
+>
+> Section 18.162, record `docs/L3-QUANT-SWEEP-RECORD.md` (plan and predictions written before the runs). Nothing in `src/` changed; nothing written to the drives. **Derived** (`cache_sim.py` on the 22k Hermes trace, 48 GiB): misses a token 25.0 / 38.1 / 49.5 and bytes 249 / 548 / 931 MB for 2 / 3 / 4-bit g128 (expert 9.95 / 14.38 / 18.80 MB); internal-drive token +20 % / +38 % at the simulator's constant miss cost, about +40 % / +88 % with the read share of a miss scaled by size. **Measured** (`expert_requant_error.py`, 22 s): y-err 0.710 / 0.399 / 0.185 against FP4. Held: bytes ratio 2.20, error ratios 0.561 and 0.260; missed: misses (38.1 against 33-38), token time (assumed a size-independent miss cost). The live 3-bit arm needs a place for a 205 GiB bank (internal disk 134 GiB free, X10Pro 1 GB/s): Hamed's call. **Open:** step C, a new Hermes dump, the 74 ms floor attribution (ask first), a MiniMax resident energy arm.
+
 > ## Start here (2026-10-16, 0.66.5): a resident GLM token is 63 ms and 4.96 J at 75.8 W; the component fit is 15.4 % short, the same share as DeepSeek
 >
 > Section 18.161, addendum E3l of `docs/E3K-GLM-RESIDENT-RECORD.md` (prediction and falsifier written before the run). Nothing in `src/` changed. **Measured** (`serve-glm.sh --expert-budget-gib 46`, miss budget off, 12-token repeated prompt, 153 requests after two warm-ups): **0.0 misses a token**, 63 ms a token (15-16 tok/s), PSTR 75.8 W, GPU 16.5 W, fit error **+11.7 W = 15.4 % of PSTR**, **4.96 J a token** (read-bound GLM: 36-47 J). Held: resident, energy, GPU, H-streaming; missed: seconds a token (0.063 against 0.08-0.35), power (75.8 against 38-70); falsified: H-activity (+3 to +8 W). The 48-token arm's cache-fit explanation is supported. The fit-error share is now 15 % on two architectures; it follows sustained GPU streaming, not the model. **Open:** a new Hermes dump; the 74 ms floor attribution (ask first); L3 quantization sweep.
@@ -9162,6 +9166,32 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.162 The expert-bank bit width as a curve (0.66.6)
+
+**Goal.** Hamed: "Plan the L3 quantization sweep (banks). Write the prediction and stop rule first and give me the time estimate before running anything", then "Yes, run steps A and B ... nothing on the drives written". Record `docs/L3-QUANT-SWEEP-RECORD.md`.
+
+**Baseline.** 2-bit g128 bank at 48 GiB, W1: 118.6 ms a token, 23.5 misses (recorded, `ST-BW-CURVE`); simulator 25.0 misses on the 22k Hermes trace. September 2026 built, gated and deleted 2-bit g64, 3-bit g64/g128 and a searched 3-bit bank (HANDOFF §7.5, §9.0): quantized banks were not meaningfully different on code. Those constants predate the current drive, budget and prefetch.
+
+**Prediction (written first).** 3-bit at 48 GiB: 33-38 misses, bytes ratio 1.8-2.4, internal token +10 to +25 % (falsifier under +6 % or over +30 %), y-err ratios 0.40-0.60 (3-bit) and 0.18-0.32 (4-bit), no format above 2-bit pays.
+
+**Method.** Step A: `cache_sim.py` with `--expert-bytes` 9,953,280 / 14,376,960 / 18,800,640 on `benchmarks/results/routing-trace-deepseek-long/trace.npz`, budgets 25-48 GiB. Step B: `expert_requant_error.py --experts-per-layer 2 --probes 8 --candidates 2/128,3/128,4/128`, 40 layers, 22.1 s. Step C not run.
+
+**Result.** Misses a token 25.0 / 38.1 / 49.5 (hit 89.6 / 84.1 / 79.4 %), bytes 249 / 548 / 931 MB. Internal token with the simulator's constant 2.0 ms a miss: 130 / 156 / 179 ms; with the read share (about 1.5 of 2.0 ms) scaled by size, about 130 / 182 / 245 ms (derived). y-err 0.7104 / 0.3988 / 0.1846; w-err 0.4457 / 0.2401 / 0.1074; searched 2-bit fit 0.5955 (2/128) and 0.5447 (2/64).
+
+**Against the prediction.** Held: bytes ratio (2.20), error ratios (0.561, 0.260). Missed: misses (38.1, narrowly high, and on a different workload than the baseline of the prediction); token time (+20 % bound, +40 % scaled; falsifier over +30 % fires on the scaled estimate, because the cost of a miss was taken as size-independent). Not tested: the X10Pro token (derived 640-1,060 ms against the 2-bit 335 in the simulator).
+
+**Explanation (hypothesis).** A bit adds 4.4 MB an expert; at a fixed byte budget that shrinks the cache (3-bit holds 0.69 times the experts, the equal of a 33 GiB 2-bit budget) and enlarges every miss, so 1.52 times the misses at 1.45 times the size give 2.2 times the bytes. The quality axis is roughly 2^-bits.
+
+**Limits.** Derived speed, not a live arm; one routing trace; the miss-cost scaling is arithmetic on recorded constants; the quality screen is output error against FP4, not code compiles (the September finding that 3-bit did not improve code is recorded, not re-measured); two experts a layer.
+
+**What shipped.** The record only; nothing in `src/` or `benchmarks/`.
+
+**Bottleneck after.** Unchanged: the expert drive and cache capacity price every bit. The cheaper quality lever is a better 2-bit fit (searched, activation-weighted; no extra bytes, 0.60 against 0.71), an output-changing bank swap and Hamed's call.
+
+**Open.** Step C (where a 205 GiB 3-bit bank lives; X10Pro free space unverified); the closure of the quantization axis on the live path; a Hermes dump; the 74 ms floor attribution (ask first).
+
+**Kind.** Research (predicted, measured offline and by screen, explained as hypothesis): the quality predictions held, the cost predictions missed on a wrong assumption.
 
 ### 18.161 The resident GLM energy arm, 12 tokens (0.66.5)
 

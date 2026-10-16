@@ -1,8 +1,8 @@
 # Experiment index (charter section 7.2 and section 10)
 
-Written 2026-10-09 against runtime 0.65.1; regenerate with `benchmarks/experiment_index.py`. The charter asks for "a file of experiment records whose predictions were written before the build". The records themselves live in `docs/HANDOFF.md` section 18 (each with Baseline, Prediction, Method, Result, Explanation, Limits, Kind); this file is the index: where each record is, whether it carries a written prediction, and what kind of result it is, as its own **Kind** line says. It does not restate results. Sections before 18.75 predate the record format and are not listed; sections without a **Kind** line are listed as unlabelled and have no claim made for them here.
+Written 2026-10-09 against runtime 0.66.6; regenerate with `benchmarks/experiment_index.py`. The charter asks for "a file of experiment records whose predictions were written before the build". The records themselves live in `docs/HANDOFF.md` section 18 (each with Baseline, Prediction, Method, Result, Explanation, Limits, Kind); this file is the index: where each record is, whether it carries a written prediction, and what kind of result it is, as its own **Kind** line says. It does not restate results. Sections before 18.75 predate the record format and are not listed; sections without a **Kind** line are listed as unlabelled and have no claim made for them here.
 
-Counts of the 80 sections listed (18.75-18.154): 39 research, 14 unlabelled, 13 measurement, 12 engineering, 1 planning, 1 pricing.
+Counts of the 88 sections listed (18.75-18.162): 46 research, 14 unlabelled, 13 engineering, 13 measurement, 1 planning, 1 pricing.
 
 Research means predicted, measured and explained (charter section 8.1 rule 6); a falsified prediction is still research and is marked so in its Kind line. Engineering means it works without a written prediction, or an instrument was built.
 
@@ -10,6 +10,14 @@ Research means predicted, measured and explained (charter section 8.1 rule 6); a
 
 | section | title | prediction written | kind (as recorded) |
 |---|---|:---:|---|
+| §18.162 | The expert-bank bit width as a curve (0.66.6) | yes | Research (predicted, measured offline and by screen, explained as hypothesis): the quality predictions held, the cost predictions missed on a wrong assumption. |
+| §18.161 | The resident GLM energy arm, 12 tokens (0.66.5) | yes | Research (predicted, measured, explained as hypothesis). |
+| §18.160 | The resident GLM energy arm: not resident (0.66.4) | yes | Research (predicted, measured, explained as hypothesis); void as a resident arm. |
+| §18.159 | The energy meter's cost on a decode token (0.66.3) | yes | Research (predicted, measured, explained as hypothesis). |
+| §18.158 | The bf16 control (0.66.2) | yes | Research (predicted, measured, explained as hypothesis). |
+| §18.157 | The prefetch pair at 48 GiB (0.66.1) | yes | Research (predicted, measured, explained as hypothesis). |
+| §18.156 | `CACHALOT_FP8_GEMV_DECODE` on by default (0.66.0) | no | Engineering (a default on a prior research result). |
+| §18.155 | The 2-bit routed-expert dequantization priced: not the limiter (0.65.2) | yes | Research (predicted, measured twice, explained as hypothesis). |
 | §18.154 | The FP8 half-decode GEMV on the other shapes (0.65.1) | yes | Research (predicted, measured, explained as hypothesis): the additional token saving was predicted inside its range; one shape missed at the default threadgroup. |
 | §18.153 | A faster FP8 GEMV behind a knob (0.65.0) | yes | Engineering with a research front half (predicted, measured twice, explained as hypothesis): stop rule met, saving prediction missed high. |
 | §18.152 | The DeepSeek floor roofline (0.64.18) | yes | Research (predicted, measured offline and on the machine, explained as hypothesis): rate and layer-time predictions held, the ceiling prediction was falsified, the whole-floor numbers missed on a stale input; the floor's bandwidth range is now a number. |

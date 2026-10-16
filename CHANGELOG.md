@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.66.6 (2026-10-16)
+
+HANDOFF "Start here (2026-10-16, 0.66.6)" and section 18.162; record `docs/L3-QUANT-SWEEP-RECORD.md`. Measurement only (offline and a 22-second screen); nothing in `src/`.
+
+### Measured
+- The expert-bank bit width as a curve (charter L3 item 5). At the shipped 48 GiB budget on the 22k Hermes routing trace (`cache_sim.py`, LRU, 2,028 decode tokens) a 3-bit g128 bank (14.38 MB an expert) gives 38.1 misses a token against the 2-bit bank's 25.0 and reads 2.20 times the bytes (548 against 249 MB); a 4-bit bank (18.80 MB, the size of the FP4 expert) gives 49.5 misses and 931 MB. Derived token on the internal drive: +20 % (3-bit) and +38 % (4-bit) with the simulator's constant 2.0 ms a miss, about +40 % and +88 % when the read share of a miss scales with size.
+- Output error against the FP4 experts (`expert_requant_error.py`, 80 experts, 8 probes): y-err 0.7104 (2-bit g128), 0.3988 (3-bit), 0.1846 (4-bit); ratios 0.561 and 0.260 as predicted. The searched 2-bit fit scores 0.5955 at the same bytes.
+- Predictions: bytes ratio and the quality ratios held; the miss count missed narrowly high (38.1 against 33-38) and the token time missed high (I took the miss cost as size-independent). The live 3-bit arm was not run: the 205 GiB bank fits neither the internal disk nor a fair 1 GB/s X10Pro run.
+
 ## 0.66.5 (2026-10-16)
 
 HANDOFF "Start here (2026-10-16, 0.66.5)" and section 18.161; addendum E3l of `docs/E3K-GLM-RESIDENT-RECORD.md`. Measurement only; nothing in `src/`.
