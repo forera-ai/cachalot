@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-16, 0.66.5): a resident GLM token is 63 ms and 4.96 J at 75.8 W; the component fit is 15.4 % short, the same share as DeepSeek
+>
+> Section 18.161, addendum E3l of `docs/E3K-GLM-RESIDENT-RECORD.md` (prediction and falsifier written before the run). Nothing in `src/` changed. **Measured** (`serve-glm.sh --expert-budget-gib 46`, miss budget off, 12-token repeated prompt, 153 requests after two warm-ups): **0.0 misses a token**, 63 ms a token (15-16 tok/s), PSTR 75.8 W, GPU 16.5 W, fit error **+11.7 W = 15.4 % of PSTR**, **4.96 J a token** (read-bound GLM: 36-47 J). Held: resident, energy, GPU, H-streaming; missed: seconds a token (0.063 against 0.08-0.35), power (75.8 against 38-70); falsified: H-activity (+3 to +8 W). The 48-token arm's cache-fit explanation is supported. The fit-error share is now 15 % on two architectures; it follows sustained GPU streaming, not the model. **Open:** a new Hermes dump; the 74 ms floor attribution (ask first); L3 quantization sweep.
+
 > ## Start here (2026-10-16, 0.66.4): the resident GLM energy arm was not resident: void by its own falsifier; GLM budget off costs 46.45 J a token against 36.4 with budget 2
 >
 > Section 18.160, record `docs/E3K-GLM-RESIDENT-RECORD.md` (prediction and falsifier written before the run). Nothing in `src/` changed. **Measured** (`serve-glm.sh --expert-budget-gib 46`, `CACHALOT_GLM_DECODE_MISS_BUDGET=off`, 48-token repeated prompt): 84.2 misses a token in each of three identical passes (hit 75 %), 1.32 s a token, 35.1 W, 46.45 J a token, fit error +2.0 W (5.7 %), GPU 0.5 W. Registered resident precondition (at most 5 misses) failed, so the H-streaming / H-activity tests did not run; seconds, energy and power predictions missed. Hypothesis: the 48-token reply's distinct experts exceed the 46 GiB cache and LRU cycles. A resident GLM arm needs a reply of about 12 tokens (a new design with a new prediction). **Open:** that rerun (about 10 minutes, Hamed's sampler); a new Hermes dump; the 74 ms floor attribution.
@@ -9158,6 +9162,30 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.161 The resident GLM energy arm, 12 tokens (0.66.5)
+
+**Goal.** Hamed: "Yes, rerun the GLM resident arm with E_MAX_TOKENS=12". Addendum E3l.
+
+**Baseline.** The 48-token arm (18.160) was not resident.
+
+**Prediction (written first).** At most 5 misses a token (60 %); 0.12 s a token, 50 W, 6 J; fit error 8-18 % of PSTR (+3 to +8 W).
+
+**Result (measured).** 0.0 misses, 63 ms a token, 75.8 W, 4.96 J, fit error +11.7 W (15.4 %), GPU 16.5 W.
+
+**Against the prediction.** Resident, energy, GPU, share held; seconds and power missed; the +3 to +8 W band falsified.
+
+**Explanation (hypothesis).** The fit's shortfall follows sustained GPU streaming (15 % of PSTR on DeepSeek decode, bf16 and quantized kernels, and GLM); the 48-token reply exceeded the cache.
+
+**Limits.** One run; windows under 1 s per request; the share is one point of a 10-16 % range.
+
+**What shipped.** The record; nothing in `src/`.
+
+**Bottleneck after.** Unchanged: expert reads on misses; energy is the drive wait.
+
+**Open.** Hermes dump; floor attribution; L3 sweep.
+
+**Kind.** Research (predicted, measured, explained as hypothesis).
 
 ### 18.160 The resident GLM energy arm: not resident (0.66.4)
 

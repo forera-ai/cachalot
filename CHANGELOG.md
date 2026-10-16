@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.66.5 (2026-10-16)
+
+HANDOFF "Start here (2026-10-16, 0.66.5)" and section 18.161; addendum E3l of `docs/E3K-GLM-RESIDENT-RECORD.md`. Measurement only; nothing in `src/`.
+
+### Measured
+- A resident GLM-5.3-Flash token (46 GiB, decode miss budget off, 12-token repeated prompt, 153 requests, 0.0 misses): 63 ms (15-16 tok/s), system power 75.8 W, 4.96 J a token (read-bound GLM: 36-47 J); the component power fit is 15.4 % of PSTR short, the same share as DeepSeek's decode. The 48-token arm's non-residency was the cache size.
+
 ## 0.66.4 (2026-10-16)
 
 HANDOFF "Start here (2026-10-16, 0.66.4)" and section 18.160; record `docs/E3K-GLM-RESIDENT-RECORD.md`. Measurement only; nothing in `src/`.

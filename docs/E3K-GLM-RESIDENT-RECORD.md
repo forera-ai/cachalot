@@ -80,3 +80,23 @@ cd /Users/hamedprooshani/Projects/deepseek-v41-mac && sudo powermetrics --sample
 ```bash
 cd /Users/hamedprooshani/Projects/deepseek-v41-mac && E_TAG=e3l-glm E_FULL=1 CACHALOT_ENERGY=1 CACHALOT_GLM_DECODE_MISS_BUDGET=off E_SERVE=./serve-glm.sh E_SERVE_ARGS="--expert-budget-gib 46" E_MODEL=glm-5.3-flash E_MAX_TOKENS=12 E_A=60 E_B=120 E_C=-1 E_D=60 ./benchmarks/energy_arms.sh > benchmarks/results/energy/e3l-glm-run.log 2>&1
 ```
+
+**Result (measured; 2026-10-16, run 08:05-08:11, sampler `e3l-sampler.txt`; files `benchmarks/results/energy/e3l-glm-*`, local; `energy_e3.py`).** The arm was **resident**: after the two warm-up requests (84.5 and 127.1 misses a token, 13 and 21 s of decode) every one of the 153 phase-B requests of 12 tokens missed **0.0 experts a token** (hit 100 %), decode 0.74-0.82 s a request (**about 63 ms a token, 15-16 tok/s**; 65 ms a token over the whole phase including gaps), 1,836 tokens in 120 s. Phase B: PSTR **75.8 W** (sd 4.4), fit 64.2 W, **error +11.7 W = 15.4 % of PSTR**, IOReport cpu 5.3 / gpu 16.5 / dram 9.9 / dcs+amcc 14.7 W, drive 0.00 GB/s, **system energy 4.96 J a token** (package only 1.42 J). Idle phases A and D: -2.3 and -1.7 W. The meter's first requests ramp from 2.0 to 5.2 J (its 1 Hz sampler warming; windows under 1 s, not scored).
+
+**Against the prediction.** Held: resident (at most 5 misses; 0.0), GPU at least 4 W (16.5), energy 6 J (3.5-15; 4.96), H-streaming (error 8-18 % of PSTR; 15.4 %), idle phases within +-3 W. Missed: seconds a token 0.12 (0.08-0.35; 0.063, below the range), system power 50 W (38-70; 75.8, above). **Falsified:** H-activity (error +3 to +8 W; +11.7 W). The cache-fit hypothesis of the first part is supported: 12 tokens fit, 48 did not.
+
+## 6b. Explanation (hypothesis)
+
+A resident GLM-5.3-Flash token is 63 ms and 5 J at 76 W, faster and no more costly than DeepSeek's resident token (74-80 ms; 6-7 J), and the component fit under-reports it by **15.4 % of PSTR**, the same share as DeepSeek's decode (15.3 / 15.7 %) and as every sustained GPU streaming load of E3f and E3i (13-16 %). That is a second architecture, a different quantization and a different kernel mix at the same share: the share follows sustained GPU streaming activity, not the model or the format (E3i's reading), and the watts follow PSTR (+11.7 W here at 75.8 W against +10.9 W at 71 W). The first part's read-bound figures (9.3 % and 5.7 %, GPU 0.5 W) fit the same rule from the other side: the share falls when the GPU is idle. GLM's resident token is 7-9 times cheaper than its read-bound token (4.96 against 36-47 J), so for energy the drive wait is the cost.
+
+## 7b. Limits
+
+Phase-B requests are 12-token replies of one repeated prompt (decode windows under 1 s, so the meter-against-logger comparison was not scored on them); one run; PSTR 75.8 W is higher than the E3i bf16-at-cadence runs (40 W) because the GPU is busier here (16.5 W); the share is one point on a curve whose other points are 10-16 %.
+
+## 8b. Bottleneck after
+
+Speed unchanged. Energy: GLM resident 4.96 J a token at 15-16 tok/s; the energy of a GLM token is set by the drive wait, as DeepSeek's is.
+
+## 9b. Kind
+
+Research (predicted, measured, explained as hypothesis): the resident precondition held this time, H-streaming held and H-activity was falsified, two numeric predictions (seconds, power) missed.
