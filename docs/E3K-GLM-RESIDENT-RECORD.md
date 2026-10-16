@@ -56,3 +56,27 @@ Unchanged for speed. Energy: GLM's token is 36-47 J at 35 W, waiting on the driv
 ## 9. Kind
 
 Research (predicted, measured, explained as hypothesis): the registered resident precondition failed and the arm is void as designed; the by-product (budget 2 against off, 36.4 against 46.45 J a token) is an observation, not a scored claim.
+
+## Addendum E3l (2026-10-16, runtime 0.66.4): the resident arm with a 12-token reply
+
+Written before the run. Hamed: "Yes, rerun the GLM resident arm with E_MAX_TOKENS=12".
+
+**Baseline.** The 48-token arm above was void: 84.2 misses a token in each of three identical passes, 1.32 s and 46.45 J a token at 35.1 W, hypothesised cause the reply's distinct experts exceeding the 46 GiB cache under cyclic LRU.
+
+**Intervention.** Same server and flags (`./serve-glm.sh --expert-budget-gib 46`, `CACHALOT_GLM_DECODE_MISS_BUDGET=off`, `CACHALOT_ENERGY=1`), `E_MAX_TOKENS=12`, `E_A=60 E_B=120 E_C=-1 E_D=60`; phase B then holds many short requests (each about 1.5-20 s of decode, so the meter's per-request windows are mostly under 10 s and are not scored; the phase figures come from the logger's PSTR over the phase). About 12 minutes.
+
+**Prediction.**
+- Resident: phase B at most **5 misses a token** after the warm-up (a quarter of the experts of the 48-token reply; the cache-fit hypothesis predicts it). Probability 60 %. Misses falling over the first requests of the phase and then flat is expected.
+- Seconds a token **0.12 s (0.08 to 0.35)** if resident; system power **50 W (38 to 70)**, GPU at least **4 W**; energy **6 J (3.5 to 15)** a token.
+- Fit error over PSTR: **8 to 18 %** if resident (H-streaming), in watts **+3 to +8 W** (H-activity), the same numbers as in the first part of this record; not scored if the arm is not resident.
+- Idle phases within +-3 W.
+
+**Falsifier.** More than **5 misses a token** in phase B: void as resident and the cache-fit hypothesis is falsified for 12 tokens as well (then a 4-token reply or a larger budget would be the next design, Hamed's call). A resident phase with the error outside 5-25 % of PSTR falsifies H-streaming; outside +3 to +8 W falsifies H-activity.
+
+```bash
+cd /Users/hamedprooshani/Projects/deepseek-v41-mac && sudo powermetrics --samplers cpu_power,gpu_power,ane_power -i 1000 -n 1000 -o benchmarks/results/energy/e3l-sampler.txt
+```
+
+```bash
+cd /Users/hamedprooshani/Projects/deepseek-v41-mac && E_TAG=e3l-glm E_FULL=1 CACHALOT_ENERGY=1 CACHALOT_GLM_DECODE_MISS_BUDGET=off E_SERVE=./serve-glm.sh E_SERVE_ARGS="--expert-budget-gib 46" E_MODEL=glm-5.3-flash E_MAX_TOKENS=12 E_A=60 E_B=120 E_C=-1 E_D=60 ./benchmarks/energy_arms.sh > benchmarks/results/energy/e3l-glm-run.log 2>&1
+```
