@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-16, 0.66.7): the 3-bit expert bank run live: +33 % a token on the internal drive, +86 % on the X10Pro
+>
+> Section 18.163, record `docs/L3-QUANT-SWEEP-RECORD.md` sections 8 and 9 (predictions written before the arms). Nothing in `src/` changed. **Measured** (W1, exact, 48 GiB, one fresh server an arm): 3-bit g128 on the internal drive 164.8 ms a mixed token (34.4 misses, 907 MB a token); 2-bit on the X10Pro 401.6 ms (25.7 misses, 440 MB); 3-bit on the X10Pro 747.7 ms (34.3 misses, 883 MB). A miss costs 2.47 ms with the 3-bit bank against 1.73 (1.43 times for 1.445 times the bytes). **Derived:** the 3-bit bank is +33 % against the expected internal 2-bit token (124 ms; the internal 2-bit bank was deleted for the arm, so not paired) and +86 % on the paired X10Pro arms. Held: misses, internal token, bytes ratio (2.0-2.06); missed: the X10Pro 3-bit token (747.7 against 800-1,050), floors (89-95 on the X10Pro). No format above 2-bit g128 pays on cost; the 3-bit bank is not a candidate default. The 2-bit bank is back on the internal drive (bytes verified). **Open:** code-validity gate on 3-bit (September's finding not re-run), a better 2-bit fit as a bank swap (Hamed's call), a Hermes dump, the 74 ms floor attribution (ask first), a MiniMax resident energy arm.
+>
 > ## Start here (2026-10-16, 0.66.6): the expert-bank bit width as a curve: 3-bit costs 2.2 times the bytes a token for 44 % less output error
 >
 > Section 18.162, record `docs/L3-QUANT-SWEEP-RECORD.md` (plan and predictions written before the runs). Nothing in `src/` changed; nothing written to the drives. **Derived** (`cache_sim.py` on the 22k Hermes trace, 48 GiB): misses a token 25.0 / 38.1 / 49.5 and bytes 249 / 548 / 931 MB for 2 / 3 / 4-bit g128 (expert 9.95 / 14.38 / 18.80 MB); internal-drive token +20 % / +38 % at the simulator's constant miss cost, about +40 % / +88 % with the read share of a miss scaled by size. **Measured** (`expert_requant_error.py`, 22 s): y-err 0.710 / 0.399 / 0.185 against FP4. Held: bytes ratio 2.20, error ratios 0.561 and 0.260; missed: misses (38.1 against 33-38), token time (assumed a size-independent miss cost). The live 3-bit arm needs a place for a 205 GiB bank (internal disk 134 GiB free, X10Pro 1 GB/s): Hamed's call. **Open:** step C, a new Hermes dump, the 74 ms floor attribution (ask first), a MiniMax resident energy arm.
@@ -9166,6 +9170,32 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.163 The 3-bit expert bank run live (0.66.7)
+
+**Goal.** Hamed: "delete 2-bit bank and open space in internal drive for 3-bit arm. then create it and do your follow up A/B tests on that arm", then (arm C) "you may write the 3-bit bank to the X10Pro (206 GiB) for the paired test". Step C of the L3 quantization sweep, `docs/L3-QUANT-SWEEP-RECORD.md` sections 8 and 9.
+
+**Baseline.** 2-bit g128 at 48 GiB, W1: 118.6 ms a token, 23.5 misses (recorded 0.61.0, floor 78 ms, before the FP8 default); on the X10Pro 390.1 ms (18.77). Step A and B of 18.162: 3-bit predicted at 38.1 misses on the 22k trace, token +20 % (constant miss cost) to +40 % (size-scaled).
+
+**Prediction (written first, section 8 of the record).** Arm A (3-bit, internal): misses 32-40, floor 72-80 ms, mixed token 150-185 ms (centre 170; falsifier under 135 or over 200), bytes 2.0-2.4 times the 2-bit arm. Arm B (2-bit, X10Pro): misses 22-25, mixed 330-410 ms. Earlier prediction 4: 3-bit on the X10Pro 800-1,050 ms.
+
+**Method.** The internal 2-bit bank (142 GiB) was deleted after its names and sizes matched the X10Pro copy and two shards compared byte for byte. A 3-bit g128 bank with the same (`mlx`) fit as the shipped 2-bit bank was built with `build_affine_bank.py` (205.7 GiB, 7 minutes; the plan's 1.5-2 hours was wrong, the FP4 source reads sequentially fast). Arms A (3-bit internal), B (2-bit X10Pro), then the 3-bit bank copied to the X10Pro (6 minutes, sizes matched) and arm C (3-bit X10Pro): the HANDOFF 18.76/18.77 method (`driver.py`: warm-up, floor x3, 12 mixed prompts, floor x2, greedy, 120 tokens; fresh `serve.sh` under `guarded_run.sh --budget-gib 48 --force`, exact decode, no snapshots, manifest, `settle.sh`). The quiet gate delayed the start by 50 minutes while Hermes Desktop was open. Afterwards both 3-bit banks were deleted and the 2-bit bank copied back to the internal drive and verified.
+
+**Result (measured).** Mixed token 164.8 / 401.6 / 747.7 ms (A / B / C); misses a token 34.4 / 25.7 / 34.3; MB read a token 907 / 440 / 883; all-resident repeats 79.5-82.2 / 89-95 / 88; predicted loads used 32 / 35 / 33 %.
+
+**Against the prediction.** Held: A misses, A token, bytes ratio (2.06 and 2.00), B token (at its top, +3 % against the recorded 390.1). Missed: A floor (79.5-82.2 against 72-80), B misses (25.7 against 22-25), B floor (89-95), the X10Pro 3-bit token (747.7 against 800-1,050; ratio 1.86 against 2.15). No falsifier fired on the arm A token.
+
+**Explanation (hypothesis).** The 3-bit cache misses 1.34 times as often (not the simulator's 1.52) and each miss reads 1.445 times the bytes, so a token reads 2.0 times the bytes; a miss costs 2.47 ms against 1.73 (derived), so the cost of a miss follows the expert's bytes. The penalty is +33 % on the internal drive (reads partly hidden) and +86 % on the 1 GB/s drive (reads fill the token, effective 1.10-1.18 GB/s).
+
+**Limits.** One run an arm; the internal 2-bit comparison is derived (124 ms from today's floor, misses and 1.73 ms), not run, because its bank was deleted for the arm; page cache of the bank copy may flatter arm C; quality not re-measured at code level.
+
+**What shipped.** The record and the raw rows; version, notes and prompt only. Nothing in `src/`. The 3-bit banks are deleted; the internal 2-bit bank is restored and verified.
+
+**Bottleneck after.** Unchanged: the expert drive and the cache capacity price each bit; going from 2 to 3 bits costs +33 % a token on the internal drive (derived) and +86 % on the USB drive.
+
+**Open.** A code-validity gate on the 3-bit bank (`code_validity.py`; September's result is the only code evidence), the better 2-bit fit as a bank swap (output-changing; Hamed's call), a Hermes dump, the 74 ms floor attribution (ask first), a MiniMax resident energy arm.
+
+**Kind.** Research (predicted, measured, explained as hypothesis): the internal-drive predictions held, the X10Pro 3-bit token missed low.
 
 ### 18.162 The expert-bank bit width as a curve (0.66.6)
 

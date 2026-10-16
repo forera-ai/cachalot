@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.66.7 (2026-10-16)
+
+HANDOFF "Start here (2026-10-16, 0.66.7)" and section 18.163; record `docs/L3-QUANT-SWEEP-RECORD.md` sections 8 and 9. Measurement only; nothing in `src/`.
+
+### Measured
+- The 3-bit expert bank run live (charter L3 item 5, step C), W1, exact, 48 GiB, one fresh server an arm: 3-bit g128 on the internal drive 164.8 ms a mixed token (34.4 misses, 907 MB a token); 2-bit on the X10Pro 401.6 ms (25.7 misses, 440 MB); 3-bit on the X10Pro 747.7 ms (34.3 misses, 883 MB). A miss costs 2.47 ms with the 3-bit bank against 1.73 (derived), so a miss follows the expert's bytes. The 3-bit bank is +86 % on the paired X10Pro arms and about +33 % on the internal drive against a derived 124 ms 2-bit token (the internal 2-bit bank was deleted for the arm, so that pair is not run).
+- Predictions: the internal-drive token, misses and bytes ratio held; the X10Pro 3-bit token missed low (747.7 against 800-1,050) because the 3-bit cache missed 1.34 times as often, not the simulator's 1.52.
+
+### Changed
+- None in the runtime. The internal 2-bit bank was deleted (Hamed's yes) to host the 3-bit bank, then restored from the X10Pro copy and verified byte for byte on three shards; both 3-bit banks are deleted.
+
+### Closed
+- No expert-bank format above 2-bit g128 pays on cost on this machine; the 3-bit bank is not a candidate default.
+
 ## 0.66.6 (2026-10-16)
 
 HANDOFF "Start here (2026-10-16, 0.66.6)" and section 18.162; record `docs/L3-QUANT-SWEEP-RECORD.md`. Measurement only (offline and a 22-second screen); nothing in `src/`.

@@ -298,6 +298,8 @@ reproducible to ±0.3 %.
 
 **0.60.7 (2026-10-06): review fixes.** The run manifest no longer records credentials such as `CACHALOT_API_KEY` by value, and its Hermes Desktop check needs one process line. HANDOFF section 18.73.
 
+**0.66.7 (2026-10-16): the 3-bit expert bank run live.** A 3-bit g128 bank costs 164.8 ms a mixed token on the internal drive (34.4 misses, 907 MB a token) and 747.7 ms on the X10Pro against 401.6 ms for the 2-bit bank (paired, +86 %); a miss follows the expert's bytes (2.47 against 1.73 ms). No bank above 2-bit pays on this machine; nothing built. HANDOFF section 18.163.
+
 **0.66.6 (2026-10-16): the expert-bank bit width as a curve.** At 48 GiB a 3-bit bank would miss 38.1 experts a token against the 2-bit bank's 25.0 and read 2.2 times the bytes (token +20 % to +40 % on the internal drive, derived); output error against FP4 falls to 0.56 (3-bit) and 0.26 (4-bit) of the 2-bit bank's. No bank above 2-bit g128 pays on this machine; nothing built. HANDOFF section 18.162.
 
 **0.66.5 (2026-10-16): a resident GLM token.** With its experts resident (12-token replies, miss budget off) GLM-5.3-Flash decodes at 63 ms a token (15-16 tok/s) for 4.96 J at 75.8 W, against 36-47 J read-bound; the component power fit is 15 % short, the same share as on DeepSeek. HANDOFF section 18.161.

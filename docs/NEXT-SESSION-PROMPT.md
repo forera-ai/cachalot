@@ -1,10 +1,11 @@
-# Next-session prompt — **v211**, written 2026-10-16
+# Next-session prompt — **v212**, written 2026-10-16
 
 **This is the file to paste.** `docs/NEXT-SESSION-PROMPT.md` is always current; superseded ones live in
 `docs/next-session-prompts/`.
 
 | version | written | produced by | what changed |
 |---|---|---|---|
+| **v212** | 2026-10-16 | Hamed: "delete 2-bit bank and open space in internal drive for 3-bit arm. then create it and do your follow up A/B tests on that arm", then "also arm C" (v211 First job 1, step C) | **0.66.7, measurement only: the 3-bit g128 expert bank run live. Internal drive 164.8 ms a mixed token (34.4 misses, 907 MB); X10Pro 3-bit 747.7 against 2-bit 401.6 ms (paired, +86 %); a miss costs 2.47 ms against 1.73 (follows the expert's bytes); internal +33 % against a derived 2-bit token. Internal arm, misses and bytes predictions held; the X10Pro 3-bit token missed low. The 3-bit banks are deleted, the internal 2-bit bank restored and verified. Nothing in `src/`.** §18.163 |
 | **v211** | 2026-10-16 | Hamed: "Plan the L3 quantization sweep (banks)", then "Yes, run steps A and B" (v210 First job 1 option) | **0.66.6, measurement only: the expert-bank bit width as a curve. At 48 GiB a 3-bit g128 bank would miss 38.1 experts a token against 25.0 and read 2.2 times the bytes (token +20 % to +40 % internal, derived); y-err against FP4 0.399 (3-bit) and 0.185 (4-bit) against 0.710 (2-bit). Bytes and quality ratios predicted, misses and token time missed. Nothing in `src/`; no live arm.** §18.162 |
 | **v210** | 2026-10-16 | Hamed: "Yes, rerun the GLM resident arm with E_MAX_TOKENS=12" (v209 First job 1) | **0.66.5, measurement only: a resident GLM token is 63 ms and 4.96 J at 75.8 W (0.0 misses, 153 requests); the fit is 15.4 % of PSTR short, the same share as DeepSeek; H-activity falsified, seconds and power predictions missed. Nothing in `src/`.** §18.161 |
 | **v209** | 2026-10-16 | Hamed: "go for it" (v208 First job 1, the resident GLM energy arm) | **0.66.4, measurement only: the arm was not resident (84.2 misses a token, 1.32 s, 35.1 W, 46.45 J at budget off) and is void by its registered falsifier; budget 2 is 36.4 J. Nothing in `src/`.** §18.160 |
@@ -172,6 +173,14 @@
 | v47 | 2026-09-25 | Hamed asked for the v44-v46 levers planned, built, measured and documented | **0.18.0: GLM prefill 60 to 90 tok/s, bit-identical (a store path that never evicts, plus the next layer read early), GLM's missing MLX buffer-cache cap added, GLM disk snapshots (a restart reuses the system block). DeepSeek: an `iostat` trace shows prefill is not read-bound on either drive; the lookahead A/B drowned in a 124-to-200 s drift across back-to-back prefills.** §17.1, §15.13 |
 | v46 | 2026-09-25 | Hamed asked for GLM-5.3-Flash on Cachalot | 0.17.0: GLM through `serve-glm.sh` / `chat-glm.sh`. §17 |
 | v45 | 2026-09-24 | same as v47, one day earlier | 0.16.0: disk snapshot store by last use; lookahead and local compression closed. §15.12 |
+
+## First jobs (v212): the 3-bit bank is measured; what is left needs Hamed
+
+Read HANDOFF section 18.163 and `docs/L3-QUANT-SWEEP-RECORD.md` sections 8 and 9 first. The internal 2-bit bank is back (`~/DeepSeek-V4.1-Flash-q2g128`, marker present, bytes verified); both 3-bit banks are gone. Rebuilding a 3-bit bank takes 7 minutes with `build_affine_bank.py --bits 3 --group 128 --fit mlx` (205.7 GiB; needs the internal 2-bit bank deleted first, so ask).
+
+1. Nothing autonomous is queued. Ask Hamed: a code-validity gate on the 3-bit bank (`code_validity.py`; the only open item on this axis, needs the bank rebuilt and the 2-bit bank removed again); a better 2-bit fit as an output-changing bank swap (searched, activation-weighted: y-err 0.60 against 0.71 at the same bytes; `build_affine_bank.py` rebuilds in minutes from the X10Pro FP4 source); a new Hermes dump; whether a `CACHALOT_FP8_GEMV_DECODE=0` pair may settle the 74 ms floor; a MiniMax resident energy arm.
+2. New rule (measured): a quiet gate that waits on load can be held by Hamed's open apps (Hermes Desktop kept load near 4.4 for 50 minutes); check `ps` for Hermes Helper before promising a start time.
+3. Everything in the v211 block below applies.
 
 ## First jobs (v211): the quantization curve is drawn offline; what is left needs Hamed
 
