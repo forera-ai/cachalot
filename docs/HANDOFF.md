@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-17, 0.66.10): the NVIDIA CUDA research plan, documentation only
+>
+> Section 18.166. Planned work only: `docs/CUDA-RESEARCH-PLAN.md` (programme N0a, N0b, N1 to N5, nine proposed hypotheses with falsifiers, the cuda-manifest v1 schema, redaction, comparability rules R1 to R10, cost and teardown rules, decisions D1 to D8), `docs/RESEARCH-DIRECTION.md` section 14, `docs/LEDGER.md` section 9 (rows **proposed**), README pointers. Nothing in `src/` except the version string; no instance was provisioned, no credit redeemed, no software installed, no benchmark run. **Needs Hamed:** D1 to D8 in the plan (first: whether N0a, the offline policy table on the existing routing traces, starts now; it needs no credits and no GPU). The first job and the closed list of the v213 prompt are unchanged.
+>
 > ## Start here (2026-10-17, 0.66.9): CloudRift acknowledged in the README, documentation only
 >
 > Section 18.165. README only (plus the version string and CHANGELOG): a one-line acknowledgement under the project identity, a `Research support` subsection and a `Support the research` paragraph, thanking CloudRift for GPU-compute credits that support the planned NVIDIA CUDA research. No grant amount, code, balance or account detail is published. The shipped runtime is still Apple Silicon, MLX and Metal. `https://www.forera.ai/#support` is not deployed (the site's anchors are thesis, research, methodology, projects, contact), so the link is `mailto:info@forera.ai`, and there is no `.github/FUNDING.yml`. **Needs Hamed:** once the site has a `#support` section, switch the README link to it and add `FUNDING.yml` (`custom: ["https://www.forera.ai/#support"]`).
@@ -9178,6 +9182,26 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.166 The NVIDIA CUDA research plan (0.66.10)
+
+**Goal.** Hamed's `/ca` task: an evidence-driven CUDA research roadmap for the CloudRift credits, documentation only.
+
+**What was read first.** README, `docs/RESEARCH-DIRECTION.md` (the whole charter), `docs/LEDGER.md`, `docs/NEXT-SESSION-PROMPT.md` (top rows), `docs/ARCHITECTURE-COMPARISON.md`, `benchmarks/run_manifest.py` and `benchmarks/cache_sim.py` (headers and arguments), the `metrics/` module list, the tests list, the skill's MEASUREMENT.md and RELEASE.md. The Cachalot Lab repository was not opened (the plan proposes no Lab change).
+
+**What changed.** New `docs/CUDA-RESEARCH-PLAN.md`; `docs/RESEARCH-DIRECTION.md` section 14 plus two one-line pointers (C11 row, the portability bullet of 8.2); `docs/LEDGER.md` section 9; README roadmap paragraph and research-support pointer; version 0.66.10; CHANGELOG; this section; prompt v215. Nothing else.
+
+**Decisions made inside the plan (reviewable).** (1) The lane keeps the charter's no-speculative-portability rule and operationalizes it: only data formats are shared (routing traces, run manifest, scorecard JSON lines, W1 to W7), CUDA code is standalone under a proposed `benchmarks/cuda/`, and a shared interface needs two working implementations first. (2) N0a (offline policy tables at VRAM-sized resident fractions from the existing traces, no GPU) comes before any instance, because it can falsify CUDA-H5, H6 and H9 for free. (3) Two kinds of arm per device, common and native, so that the RTX 5090 and the V100 are compared only on equivalent semantics (V100 has no fp8 and no native bf16, to be verified). (4) Replay and live claims are separate stages. (5) Currency, balance, prices and identifiers are never in the repository; GPU-hours are the public unit. (6) Evidence labels extend the manifest tags: measured, derived, predicted, hypothesis, unavailable.
+
+**Not done, on purpose.** No instance, credit redemption, remote install, download or benchmark; no CUDA claim; no change to `src/`, defaults, the server or tests; Lab untouched.
+
+**Assumptions to check.** The RTX 5090 (Seoul) and V100 (Texas) availability, and that A100 and H100 are unavailable, are as Hamed reported on 2026-10-17 and were not verified. Vendor figures in the plan (PCIe generations, expected compute capabilities, data-type support, toolkit support for Volta) are from general knowledge, are labelled derived or "expected", and are verified in N0b, not here.
+
+**Needs Hamed.** D1 to D8 in section 17 of the plan. Commit and push of this change are his call (it publishes the plan).
+
+**Kind.** Planning (nothing measured; the plan's hypotheses are proposed and carry falsifiers, and their intervals are written before each phase's run). **No default changed.**
+
+**Open.** Everything in the plan. Next autonomous step: N0a item 2 (the offline resident-fraction table), when the Mac is idle.
 
 ### 18.165 CloudRift acknowledged in the README (0.66.9)
 

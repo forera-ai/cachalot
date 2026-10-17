@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.66.10 (2026-10-17)
+
+HANDOFF "Start here (2026-10-17, 0.66.10)" and section 18.166. Documentation only; nothing in `src/` except the version string. Planned work only: no CUDA code, no instance, no CUDA measurement exists.
+
+### Added
+- `docs/CUDA-RESEARCH-PLAN.md`: the NVIDIA CUDA research programme (phases N0a/N0b, N1 to N5), nine proposed hypotheses with falsifiers, the `cuda-manifest` v1 schema, redaction and publication rules, comparability rules for the Apple M3 Ultra, RTX 5090 and V100, cost and teardown discipline, a profiler and overhead strategy, and the owner decisions D1 to D8. GPU access is potential: availability, instance types and credit expiry are provider facts that can change.
+- `docs/LEDGER.md` section 9: the plan's questions and hypotheses registered as **proposed** (not measured); no existing row is altered.
+- `docs/RESEARCH-DIRECTION.md` section 14: how the CUDA lane realizes C11 and relates to C1 to C11, L0 to L7, the evidence schema, energy and predictive modelling, and how it reconciles the "no speculative portability layers" rule (shared data formats only, standalone benchmarks, a rule of two before any shared interface).
+
+### Changed
+- README: the research roadmap and the research-support subsection point to the plan with its status (planned; no CUDA backend ships and no CUDA result exists). The sponsor wording is unchanged and still states no amount.
+
 ## 0.66.9 (2026-10-17)
 
 HANDOFF "Start here (2026-10-17, 0.66.9)" and section 18.165. Documentation only; nothing in `src/` except the version string.

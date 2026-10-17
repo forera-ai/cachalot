@@ -40,7 +40,7 @@ The twenty sections of the prompt reduce to eleven commitments. Each is stated h
 | C8 | Be reproducible and honest. Record the configuration of every serious claim. Keep measured fact, derived result, hypothesis, prediction and speculation apart. Keep measurement separate from policy. | 12, 15, 16, 18 |
 | C9 | Measure on representative workloads, not on one benchmark. A lever is judged on a fixed set of workload classes (section 7.1), and a win on one class that harms another is not a default. | 14 |
 | C10 | Price resources, not only components. Express results as the value of a resource unit (milliseconds a token per GiB of fast memory, per GB/s of storage, per joule) so that the question "which improvement reduces total system cost" can eventually be answered. | mission, 7, 19 |
-| C11 | The Mac is a laboratory for transferable concepts, never a stand-in for a datacenter GPU. Keep platform-neutral what is already neutral (manifest, scorecard, traces, the cost model) and build no speculative portability layers. | 4, 17 |
+| C11 | The Mac is a laboratory for transferable concepts, never a stand-in for a datacenter GPU. Keep platform-neutral what is already neutral (manifest, scorecard, traces, the cost model) and build no speculative portability layers. Section 14 applies this rule to the NVIDIA CUDA lane. | 4, 17 |
 
 Sections 19 and 20 (the long-term questions and the vision) become the lab's standing question list, in section 6 of this file, and its definition of success: Cachalot can say why it is this fast, what prevents it from being faster, what resource would improve it, by about how much, at what cost, what bottleneck appears next, and that a predicted improvement, once built, measured what the model said.
 
@@ -328,7 +328,7 @@ The new direction adds rules. It removes none. Where it meets an existing rule, 
 - **No sleeping the Mac or display; no `pmset displaysleepnow`.** Power sampling is done with the display state recorded in the manifest, not changed.
 - **Never edit his Hermes config; never delete models, banks, snapshots or `docs/translations/` without his explicit yes; no destructive git on uncommitted work; never edit `src/` while a sweep runs.**
 - **Release discipline** (`RELEASE.md`): a semantic bump in `pyproject.toml` and `src/cachalot/__init__.py`, CHANGELOG, README, HANDOFF, the prompt, a Lab brief for any new `/v1/stats` field or knob, memory, skill. A measurement-only session is a patch release.
-- **No premature abstraction and no portability sacrifice** (prompt section 17): where a boundary exists (reader, store, tracer, Pareto arm), keep it; do not add platform layers.
+- **No premature abstraction and no portability sacrifice** (prompt section 17): where a boundary exists (reader, store, tracer, Pareto arm), keep it; do not add platform layers. The CUDA lane (section 14) keeps this: standalone benchmarks, shared data formats only, a rule of two before any shared interface.
 
 ### 8.3 Tension worth stating
 
@@ -450,3 +450,52 @@ Hamed ruled that the energy numbers must include the two things Cachalot is buil
 ### 13.7 Update 2026-10-10 (0.62.31): L5b step E0 done
 
 The inventory found that DRAM energy is available as a measured IOReport counter while a root `powermetrics` samples beside it, and that nothing measures the SSD. E1 (DRAM calibration), E2 (SSD differential) and E3 follow; see `docs/POWER-ACCOUNTING-PLAN.md` section 8 and HANDOFF 18.118.
+
+## 14. The NVIDIA CUDA lane (planned 2026-10-17, runtime 0.66.10)
+
+Added when Forera received GPU-compute credits from CloudRift for NVIDIA CUDA research (acknowledged in the README). The programme is `docs/CUDA-RESEARCH-PLAN.md`; this section says how it fits the charter. **Status: planned. No CUDA code exists, no instance has been provisioned, no CUDA measurement has been made.** Everything the plan states about a GPU is a hypothesis, a derived sizing from vendor specifications, or a recorded Mac figure used as a baseline. Nothing in sections 1 to 13 is withdrawn.
+
+### 14.1 Why it is a concrete realization of C11, not an exception
+
+C11 says the Mac is a laboratory for transferable concepts and that Cachalot builds no speculative portability layers. A transferable concept is only established when it is tested on a second platform. The CUDA lane is that test, and it is deliberately small: a discrete GPU (RTX 5090 or V100 with 32 GB, potential access, availability not guaranteed) has a different hierarchy (VRAM, PCIe, host RAM, local or network storage) and answers the question the Mac cannot: which of the findings are properties of the workload (expert size, locality, working set) and which are properties of unified memory and an SSD.
+
+The portability rule is kept, and made operational:
+- shared across platforms is **data**: the routing-trace format, the policy definitions as specified in `cache_sim.py`, the run-manifest and scorecard JSON lines, the workload classes W1 to W7;
+- the CUDA code is standalone benchmarks (`benchmarks/cuda/`, proposed) that do not import the runtime;
+- a shared interface is allowed only under a **rule of two**: two working implementations, a demonstrated duplication, and no measured cost, decided at the plan's N5 gate. This reconciles the earlier "no speculative portability layers" wording: that wording forbids abstraction ahead of evidence, and the lane's whole purpose is to produce the evidence first.
+
+### 14.2 Where it sits among the tracks
+
+| charter item | CUDA lane relationship | planned, not measured |
+|---|---|---|
+| C1 preserve what exists | no change to `src/`, defaults, server, tests; Apple Silicon remains the only shipped platform | |
+| C2 anatomy of a token | N3 rebuilds the resource-time against critical-path-time split on a second platform with CUDA events | yes |
+| C3 instrument before optimizing | the plan is the written prediction and falsifier set (rule 8.1.1) for the lane | yes |
+| C4 curves, not points | N1 copy and GEMV curves by size; N2 hit-rate and working-set curves by resident fraction | yes |
+| C5 predictive model | N2 tests whether `cache_sim.py` and `whatif.py` transfer: the hit-rate curve should (CUDA-H5), the cost per miss should not | yes |
+| C6 data movement and energy | bytes per token across VRAM, host and storage tiers; energy only where like scopes exist (NVML board power against a Mac component, never against whole-system `PSTR`) | yes; energy may be `unavailable` |
+| C7 architecture as variable | N2 uses the three Cachalot expert shapes and an open MoE; findings stated in expert size, top-k, working set | yes |
+| C8 reproducible and honest | cuda-manifest schema, five evidence labels (measured, derived, predicted, hypothesis, unavailable), redaction, negative-result publication | yes |
+| C9 representative workloads | trace-driven stages use W1 to W6 traces; W7 (concurrency) is the lane's N3 | yes |
+| C10 price resources | value of a unit of fast memory per tier (ms a token per GiB of VRAM) | yes |
+| C11 Mac is a lab | this section | |
+| L0 manifest and scorecard | extended with a `platform` field and the cuda-manifest v1 schema; the helper is not changed until the first CUDA row | specification only |
+| L1 constants ledger | proposed rows in `docs/LEDGER.md` section 9, status **proposed**; no existing row altered | |
+| L2 token trace | the plan's critical-path reconstruction (events, union of intervals) reuses the L2 definitions of section 4.4 | yes |
+| L3 sweeps | N1, N2 and N3 are sweeps (size, resident fraction, queue depth, grouping) | yes |
+| L4 predictive model | CUDA-H9 (value of fast memory by tier) feeds L4(g); the Mac-only floor roofline L4(f) has a CUDA counterpart in N1's measured device peak | yes |
+| L5 energy | GPU board power via NVML where the instance exposes it; not comparable to the Mac's system power (plan rule R8) | yes; likely partial |
+| L6 architecture comparison | N4 extends `docs/ARCHITECTURE-COMPARISON.md` across platforms under the plan's equivalence classes | yes |
+| L7 seam map | no new seams in the runtime | |
+
+### 14.3 What is measured, what is planned
+
+Measured and shipped: the Mac runtime and the ledger it cites (sections 3 and 13). Planned: everything in `docs/CUDA-RESEARCH-PLAN.md`. The plan's baseline figures (DS-MISS-48, DS-FLOOR-SRV, the 41 to 47 % hidden read share, and so on) are recorded Mac values in their stated regimes, not reproduced for it. If a CUDA measurement later contradicts a Mac conclusion, the ledger records the contradiction with its regime; it does not average the platforms.
+
+### 14.4 Priorities
+
+The lane changes no priority. Hamed's order (Hermes, vision, speed) and the model order stand. N0a (offline preparation on the Mac with existing traces, no credits) is autonomous and runs when the machine is idle; spending an instance session needs his yes and a time cap (plan section 17, D1 to D8). The lane uses no Mac runtime time except the optional N4 re-measurements of stale ledger rows, which follow the one-runtime rule. A conflict between a CUDA session and a Hermes, vision or Mac speed task is escalated to him, not resolved by this document.
+
+### 14.5 Resource and disclosure policy (summary)
+
+Credits are potential access: availability, instance types and expiry are provider facts that change. The only public wording is "GPU-compute credits provided by CloudRift for NVIDIA CUDA research", linked to the provider. No code, amount, balance, price, account, address or identifier is committed or published; cost tracking is a private local file; results are published as sanitized summaries (plan sections 2 and 12).

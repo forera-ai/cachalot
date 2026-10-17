@@ -1,8 +1,8 @@
 # Experiment index (charter section 7.2 and section 10)
 
-Written 2026-10-09 against runtime 0.66.8; regenerate with `benchmarks/experiment_index.py`. The charter asks for "a file of experiment records whose predictions were written before the build". The records themselves live in `docs/HANDOFF.md` section 18 (each with Baseline, Prediction, Method, Result, Explanation, Limits, Kind); this file is the index: where each record is, whether it carries a written prediction, and what kind of result it is, as its own **Kind** line says. It does not restate results. Sections before 18.75 predate the record format and are not listed; sections without a **Kind** line are listed as unlabelled and have no claim made for them here.
+Written 2026-10-09 against runtime 0.66.10; regenerate with `benchmarks/experiment_index.py`. The charter asks for "a file of experiment records whose predictions were written before the build". The records themselves live in `docs/HANDOFF.md` section 18 (each with Baseline, Prediction, Method, Result, Explanation, Limits, Kind); this file is the index: where each record is, whether it carries a written prediction, and what kind of result it is, as its own **Kind** line says. It does not restate results. Sections before 18.75 predate the record format and are not listed; sections without a **Kind** line are listed as unlabelled and have no claim made for them here.
 
-Counts of the 90 sections listed (18.75-18.164): 48 research, 14 unlabelled, 13 engineering, 13 measurement, 1 planning, 1 pricing.
+Counts of the 92 sections listed (18.75-18.166): 48 research, 15 unlabelled, 13 engineering, 13 measurement, 2 planning, 1 pricing.
 
 Research means predicted, measured and explained (charter section 8.1 rule 6); a falsified prediction is still research and is marked so in its Kind line. Engineering means it works without a written prediction, or an instrument was built.
 
@@ -10,6 +10,8 @@ Research means predicted, measured and explained (charter section 8.1 rule 6); a
 
 | section | title | prediction written | kind (as recorded) |
 |---|---|:---:|---|
+| §18.166 | The NVIDIA CUDA research plan (0.66.10) | no | Planning (nothing measured; the plan's hypotheses are proposed and carry falsifiers, and their intervals are written before each phase's run). **No default changed.** |
+| §18.165 | CloudRift acknowledged in the README (0.66.9) | no | not labelled |
 | §18.164 | A better 2-bit fit on the NLL gate (0.66.8) | yes | Research (predicted, measured, explained as hypothesis); the first attempt was an engineering miss on the time estimate. |
 | §18.163 | The 3-bit expert bank run live (0.66.7) | yes | Research (predicted, measured, explained as hypothesis): the internal-drive predictions held, the X10Pro 3-bit token missed low. |
 | §18.162 | The expert-bank bit width as a curve (0.66.6) | yes | Research (predicted, measured offline and by screen, explained as hypothesis): the quality predictions held, the cost predictions missed on a wrong assumption. |
