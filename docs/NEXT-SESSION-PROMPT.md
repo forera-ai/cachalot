@@ -1,10 +1,11 @@
-# Next-session prompt — **v212**, written 2026-10-16
+# Next-session prompt — **v213**, written 2026-10-17
 
 **This is the file to paste.** `docs/NEXT-SESSION-PROMPT.md` is always current; superseded ones live in
 `docs/next-session-prompts/`.
 
 | version | written | produced by | what changed |
 |---|---|---|---|
+| **v213** | 2026-10-17 | Hamed: "/ca read the handoff and session prompts and do the tasks", then chose "Better 2-bit fit" (v212 First job 1), "Profile first", "64 tokens" | **0.66.8, measurement only: an activation-weighted `wide-lsq` 2-bit fit screens -13.3 % output error against the shipped `search` fit, but the 64-token NLL gate is a null (paired median +0.0007 nats, better on 35 of 64, sign p 0.53); the 160-token attempt was killed at its cap (the gate refits on every miss of its 8 GiB cache, 429 ms a fit). The lever closes. Nothing in `src/`.** §18.164 |
 | **v212** | 2026-10-16 | Hamed: "delete 2-bit bank and open space in internal drive for 3-bit arm. then create it and do your follow up A/B tests on that arm", then "also arm C" (v211 First job 1, step C) | **0.66.7, measurement only: the 3-bit g128 expert bank run live. Internal drive 164.8 ms a mixed token (34.4 misses, 907 MB); X10Pro 3-bit 747.7 against 2-bit 401.6 ms (paired, +86 %); a miss costs 2.47 ms against 1.73 (follows the expert's bytes); internal +33 % against a derived 2-bit token. Internal arm, misses and bytes predictions held; the X10Pro 3-bit token missed low. The 3-bit banks are deleted, the internal 2-bit bank restored and verified. Nothing in `src/`.** §18.163 |
 | **v211** | 2026-10-16 | Hamed: "Plan the L3 quantization sweep (banks)", then "Yes, run steps A and B" (v210 First job 1 option) | **0.66.6, measurement only: the expert-bank bit width as a curve. At 48 GiB a 3-bit g128 bank would miss 38.1 experts a token against 25.0 and read 2.2 times the bytes (token +20 % to +40 % internal, derived); y-err against FP4 0.399 (3-bit) and 0.185 (4-bit) against 0.710 (2-bit). Bytes and quality ratios predicted, misses and token time missed. Nothing in `src/`; no live arm.** §18.162 |
 | **v210** | 2026-10-16 | Hamed: "Yes, rerun the GLM resident arm with E_MAX_TOKENS=12" (v209 First job 1) | **0.66.5, measurement only: a resident GLM token is 63 ms and 4.96 J at 75.8 W (0.0 misses, 153 requests); the fit is 15.4 % of PSTR short, the same share as DeepSeek; H-activity falsified, seconds and power predictions missed. Nothing in `src/`.** §18.161 |
@@ -173,6 +174,14 @@
 | v47 | 2026-09-25 | Hamed asked for the v44-v46 levers planned, built, measured and documented | **0.18.0: GLM prefill 60 to 90 tok/s, bit-identical (a store path that never evicts, plus the next layer read early), GLM's missing MLX buffer-cache cap added, GLM disk snapshots (a restart reuses the system block). DeepSeek: an `iostat` trace shows prefill is not read-bound on either drive; the lookahead A/B drowned in a 124-to-200 s drift across back-to-back prefills.** §17.1, §15.13 |
 | v46 | 2026-09-25 | Hamed asked for GLM-5.3-Flash on Cachalot | 0.17.0: GLM through `serve-glm.sh` / `chat-glm.sh`. §17 |
 | v45 | 2026-09-24 | same as v47, one day earlier | 0.16.0: disk snapshot store by last use; lookahead and local compression closed. §15.12 |
+
+## First jobs (v213): the better 2-bit fit is a null; what is left needs Hamed
+
+Read HANDOFF section 18.164 and `docs/L3-2BIT-FIT-RECORD.md` first. No bank was built or deleted; the internal 2-bit bank is untouched.
+
+1. Nothing autonomous is queued. Ask Hamed: a code-validity gate on a built weighted `wide-lsq` 2-bit bank or on the 3-bit bank (`code_validity.py`; about two hours to build, and the internal 2-bit bank must be removed again, so ask); a new Hermes dump; whether a `CACHALOT_FP8_GEMV_DECODE=0` pair may settle the 74 ms floor; a MiniMax resident energy arm.
+2. New rule (measured): the `nll_expert_precision.py --experts requant` gate refits an expert on every miss of its 8 GiB packed cache (about 800 experts at 2 bits), so a fit costing 0.43 s (`wide-lsq` weighted) makes 160 tokens a two-hour-plus run. Price the fit count first (64 tokens made 6,697 fits, 53 minutes) or raise the cache; the script prints nothing between its start line and the result, so a killed run leaves no trace of progress.
+3. Everything in the v212 block below applies.
 
 ## First jobs (v212): the 3-bit bank is measured; what is left needs Hamed
 

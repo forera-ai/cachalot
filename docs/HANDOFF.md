@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-17, 0.66.8): a better 2-bit fit is a null on the NLL gate
+>
+> Section 18.164, record `docs/L3-2BIT-FIT-RECORD.md` (prediction and falsifier written before the run). Nothing in `src/` changed; no bank built or deleted. **Measured:** screen (24 experts, 2-bit g128): output error against the shipped `search` fit -10.1 % (`wide-lsq`) and -13.3 % (weighted `wide-lsq`). NLL gate, 64 tokens, 6,697 fits at 457 ms, 53 minutes: paired median +0.0007 nats, better on 35 of 64 (sign p 0.53), mean +0.215 (SE 0.19, a few tokens). The first 160-token attempt was killed at its 7,200 s cap with no result: the gate's 8 GiB packed cache holds about 800 experts and every miss refits (429 ms weighted against 109 ms for `search`); my 60 to 90 minute estimate ignored that. **Closed:** the better 2-bit fit as a bank swap (a third null, with HANDOFF 9.0 and 9.3). **Open:** a `code_validity.py` run on a built weighted bank (about two hours, Hamed's call), a 3-bit code-validity gate, a Hermes dump, the 74 ms floor attribution (ask first), a MiniMax resident energy arm.
+>
 > ## Start here (2026-10-16, 0.66.7): the 3-bit expert bank run live: +33 % a token on the internal drive, +86 % on the X10Pro
 >
 > Section 18.163, record `docs/L3-QUANT-SWEEP-RECORD.md` sections 8 and 9 (predictions written before the arms). Nothing in `src/` changed. **Measured** (W1, exact, 48 GiB, one fresh server an arm): 3-bit g128 on the internal drive 164.8 ms a mixed token (34.4 misses, 907 MB a token); 2-bit on the X10Pro 401.6 ms (25.7 misses, 440 MB); 3-bit on the X10Pro 747.7 ms (34.3 misses, 883 MB). A miss costs 2.47 ms with the 3-bit bank against 1.73 (1.43 times for 1.445 times the bytes). **Derived:** the 3-bit bank is +33 % against the expected internal 2-bit token (124 ms; the internal 2-bit bank was deleted for the arm, so not paired) and +86 % on the paired X10Pro arms. Held: misses, internal token, bytes ratio (2.0-2.06); missed: the X10Pro 3-bit token (747.7 against 800-1,050), floors (89-95 on the X10Pro). No format above 2-bit g128 pays on cost; the 3-bit bank is not a candidate default. The 2-bit bank is back on the internal drive (bytes verified). **Open:** code-validity gate on 3-bit (September's finding not re-run), a better 2-bit fit as a bank swap (Hamed's call), a Hermes dump, the 74 ms floor attribution (ask first), a MiniMax resident energy arm.
@@ -9170,6 +9174,32 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.164 A better 2-bit fit on the NLL gate (0.66.8)
+
+**Goal.** Hamed chose "Better 2-bit fit" from the open items of v212, then "Yes ... write the prediction and falsifier first", "Go" on the 160-token arm, "Profile first", and "Run wide-lsq plus importance on 64 tokens". Record `docs/L3-2BIT-FIT-RECORD.md`.
+
+**Baseline.** The shipped internal bank is 2-bit g128 with the `search` fit. Saved arms on the same 160 tokens (48 prefill): fp4 mean NLL 2.3004, `search` 2.3234, `mlx` 17.55.
+
+**Prediction (written first, section 3 of the record).** Weighted `wide-lsq` against `search`, paired: median within +-0.01 nats, better on 45 to 55 % of tokens, mean within +-0.05, mean NLL 2.28 to 2.36 (160 tokens). Falsifier: median at least 0.01 better and better on at least 60 % (sign p below 0.01), or the mirror image worse.
+
+**Method.** Screen: `quant_fit_screen.py --bits 2 --experts 24 --probes 8 --groups 128` with code probes and prose weighting. Gate: `nll_expert_precision.py --experts requant --requant-fit wide-lsq --requant-importance activations_moe_input.npz`, under `guarded_run.sh --budget-gib 24 --max-seconds 7200`; first at 160 tokens, then at 64. Profile: `wide-lsq` per-expert fit times on 3 experts after one warm. Found while writing the record: HANDOFF 9.3 had already built and gated the unweighted `wide-lsq` bank (null) and listed the weighted 2-bit fit as untried.
+
+**Result (measured).** Screen y-err against `search`: -10.1 % / -13.3 % (unweighted / weighted `wide-lsq`), `mlx` +19.6 %. The 160-token arm was killed at 7,200 s (exit 4), no result. Per-expert fit: `mlx` 0.7 ms, `search` 109, `wide-lsq` 388, weighted 429 ms. The 64-token arm: 3,169 s, 6,697 fits at 457 ms (44 % of 15,360 uses). Paired on 64 tokens, `search` minus weighted: mean +0.215 (SE 0.192), median +0.0007, weighted better on 35 of 64, sign p 0.53; weighted minus fp4 mean -0.273 (SE 0.177), median -0.0006; mean NLL fp4 1.977, `search` 1.919, weighted 1.704; top-1 39 / 37 / 42 of 64.
+
+**Against the prediction.** Held: median, share better. Missed: the mean's width (the SE was taken from 160-token runs; on 64 tokens it is 0.19). The mean-NLL range applied to the 160-token run and is not testable. The falsifier did not fire. My time estimate for the first attempt was wrong.
+
+**Explanation (hypothesis).** The gate's packed cache holds about 800 experts and the gate refits on every miss; 160 tokens needs about 16,000 fits at 429 ms, about two hours; the token means are dominated by a few tokens, as in HANDOFF 9.3.1.
+
+**Limits.** 64 tokens of README text, one text, no code test; a null here excludes a large effect, not a small one; the weighting was fitted on prose.
+
+**What shipped.** The record only; nothing in `src/` or `benchmarks/`.
+
+**Bottleneck after.** Unchanged (expert drive and cache capacity).
+
+**Open.** `code_validity.py` on a built weighted bank (needs about two hours and the internal 2-bit bank handled; Hamed's call), a 3-bit code-validity gate, a Hermes dump, the 74 ms floor attribution (ask first), a MiniMax resident energy arm.
+
+**Kind.** Research (predicted, measured, explained as hypothesis); the first attempt was an engineering miss on the time estimate.
 
 ### 18.163 The 3-bit expert bank run live (0.66.7)
 

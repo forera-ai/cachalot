@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.66.8 (2026-10-17)
+
+HANDOFF "Start here (2026-10-17, 0.66.8)" and section 18.164; record `docs/L3-2BIT-FIT-RECORD.md`. Measurement only; nothing in `src/`.
+
+### Measured
+- A better 2-bit routed-expert fit (activation-weighted `wide-lsq`, weighting fitted on prose, scored on code probes), the open item of 0.66.6/0.66.7. Screen (`quant_fit_screen.py`, 24 experts, 64 probes, 2-bit g128, 34.5 s): output error against the shipped `search` fit -10.1 % (`wide-lsq`) and -13.3 % (`wide-lsq` weighted), same bytes. NLL gate (`nll_expert_precision.py --experts requant`, 64 tokens, 53 minutes, 6,697 fits at 457 ms): paired against the saved `search` arm the median is +0.0007 nats, better on 35 of 64 tokens (sign p 0.53), mean +0.215 with a paired SE of 0.19 (driven by a few tokens; the weighted arm's mean falls below fp4's own). The null prediction held on median and sign share, missed on the mean's width; the falsifier did not fire.
+- The first attempt (160 tokens) was killed by its 7,200 s cap with no result: the gate refits an expert on every miss of its 8 GiB packed cache (about 800 experts), and a weighted `wide-lsq` fit costs 429 ms against `search`'s 109 ms. My 60 to 90 minute estimate ignored the cache misses.
+
+### Closed
+- The better 2-bit fit as a bank swap: no evidence supports a 142 GiB rebuild (this null, the unweighted `wide-lsq` bank's null in HANDOFF section 9.3, and the 3-bit weighted bank's null on code in section 9.0). Re-open only with a `code_validity.py` run on a built bank, Hamed's call.
+
 ## 0.66.7 (2026-10-16)
 
 HANDOFF "Start here (2026-10-16, 0.66.7)" and section 18.163; record `docs/L3-QUANT-SWEEP-RECORD.md` sections 8 and 9. Measurement only; nothing in `src/`.
