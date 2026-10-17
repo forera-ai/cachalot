@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.66.9 (2026-10-17)
+
+HANDOFF "Start here (2026-10-17, 0.66.9)" and section 18.165. Documentation only; nothing in `src/` except the version string.
+
+### Changed
+- README: a one-line acknowledgement under the project identity, a `Research support` subsection and a `Support the research` paragraph, thanking [CloudRift](https://www.cloudrift.ai/) for GPU-compute credits that support Cachalot's planned NVIDIA CUDA research. The shipped runtime is unchanged (Apple Silicon, MLX, Metal); no CUDA backend ships and no CUDA result exists. The support link is a `mailto:` because `https://www.forera.ai/#support` was not deployed when checked, so no `.github/FUNDING.yml` was added.
+
 ## 0.66.8 (2026-10-17)
 
 HANDOFF "Start here (2026-10-17, 0.66.8)" and section 18.164; record `docs/L3-2BIT-FIT-RECORD.md`. Measurement only; nothing in `src/`.

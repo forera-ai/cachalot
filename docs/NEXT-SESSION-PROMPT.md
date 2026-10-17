@@ -1,10 +1,11 @@
-# Next-session prompt — **v213**, written 2026-10-17
+# Next-session prompt — **v214**, written 2026-10-17
 
 **This is the file to paste.** `docs/NEXT-SESSION-PROMPT.md` is always current; superseded ones live in
 `docs/next-session-prompts/`.
 
 | version | written | produced by | what changed |
 |---|---|---|---|
+| **v214** | 2026-10-17 | Hamed: `/ca` task "Cachalot sponsorship acknowledgement (documentation only)" | **0.66.9, documentation only: README thanks CloudRift for GPU-compute credits supporting the planned NVIDIA CUDA research; mailto support link because forera.ai has no `#support` anchor yet, no `FUNDING.yml`. Nothing in `src/` but the version string. First job and closed list unchanged from v213.** §18.165 |
 | **v213** | 2026-10-17 | Hamed: "/ca read the handoff and session prompts and do the tasks", then chose "Better 2-bit fit" (v212 First job 1), "Profile first", "64 tokens" | **0.66.8, measurement only: an activation-weighted `wide-lsq` 2-bit fit screens -13.3 % output error against the shipped `search` fit, but the 64-token NLL gate is a null (paired median +0.0007 nats, better on 35 of 64, sign p 0.53); the 160-token attempt was killed at its cap (the gate refits on every miss of its 8 GiB cache, 429 ms a fit). The lever closes. Nothing in `src/`.** §18.164 |
 | **v212** | 2026-10-16 | Hamed: "delete 2-bit bank and open space in internal drive for 3-bit arm. then create it and do your follow up A/B tests on that arm", then "also arm C" (v211 First job 1, step C) | **0.66.7, measurement only: the 3-bit g128 expert bank run live. Internal drive 164.8 ms a mixed token (34.4 misses, 907 MB); X10Pro 3-bit 747.7 against 2-bit 401.6 ms (paired, +86 %); a miss costs 2.47 ms against 1.73 (follows the expert's bytes); internal +33 % against a derived 2-bit token. Internal arm, misses and bytes predictions held; the X10Pro 3-bit token missed low. The 3-bit banks are deleted, the internal 2-bit bank restored and verified. Nothing in `src/`.** §18.163 |
 | **v211** | 2026-10-16 | Hamed: "Plan the L3 quantization sweep (banks)", then "Yes, run steps A and B" (v210 First job 1 option) | **0.66.6, measurement only: the expert-bank bit width as a curve. At 48 GiB a 3-bit g128 bank would miss 38.1 experts a token against 25.0 and read 2.2 times the bytes (token +20 % to +40 % internal, derived); y-err against FP4 0.399 (3-bit) and 0.185 (4-bit) against 0.710 (2-bit). Bytes and quality ratios predicted, misses and token time missed. Nothing in `src/`; no live arm.** §18.162 |

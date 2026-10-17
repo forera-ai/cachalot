@@ -12,6 +12,8 @@
 
 Maintained by [forera-ai](https://github.com/forera-ai).
 
+Planned NVIDIA CUDA research is supported by GPU-compute credits from [CloudRift](https://www.cloudrift.ai/).
+
 *A cachalot is a sperm whale: it dives deeper than anything else its size and comes back up with what it went for. This runtime does the same with a 475 GB checkpoint on a 96 GB machine.*
 
 </div>
@@ -1057,3 +1059,16 @@ DeepSeek under their [MIT model license](https://huggingface.co/deepseek-ai/Deep
 - [DeepSeek](https://www.deepseek.com/) for releasing V4.1 Flash with a complete reference implementation and
   protocol code, which made exact reimplementation possible.
 - [Apple MLX](https://github.com/ml-explore/mlx) for a lazy array framework with first-class custom Metal kernels.
+- [CloudRift](https://www.cloudrift.ai/) for GPU-compute credits that support Cachalot's planned NVIDIA CUDA research (see below).
+
+### Research support
+
+Cachalot's planned NVIDIA CUDA research is supported by GPU-compute credits from [CloudRift](https://www.cloudrift.ai/).
+We thank CloudRift for supporting independent experiments in GPU memory movement, expert caching, execution scheduling,
+and cross-architecture inference efficiency. The support is compute credits only. The shipped runtime is Apple
+Silicon, MLX and Metal: no CUDA inference backend ships today, and this README reports no CUDA measurements.
+
+### Support the research
+
+Cachalot is independent research. If you can offer GPU compute, hardware access, research collaboration or
+sponsorship, write to [info@forera.ai](mailto:info@forera.ai?subject=Cachalot%20research%20sponsorship).

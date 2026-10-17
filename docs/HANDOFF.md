@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-17, 0.66.9): CloudRift acknowledged in the README, documentation only
+>
+> Section 18.165. README only (plus the version string and CHANGELOG): a one-line acknowledgement under the project identity, a `Research support` subsection and a `Support the research` paragraph, thanking CloudRift for GPU-compute credits that support the planned NVIDIA CUDA research. No grant amount, code, balance or account detail is published. The shipped runtime is still Apple Silicon, MLX and Metal. `https://www.forera.ai/#support` is not deployed (the site's anchors are thesis, research, methodology, projects, contact), so the link is `mailto:info@forera.ai`, and there is no `.github/FUNDING.yml`. **Needs Hamed:** once the site has a `#support` section, switch the README link to it and add `FUNDING.yml` (`custom: ["https://www.forera.ai/#support"]`).
+>
 > ## Start here (2026-10-17, 0.66.8): a better 2-bit fit is a null on the NLL gate
 >
 > Section 18.164, record `docs/L3-2BIT-FIT-RECORD.md` (prediction and falsifier written before the run). Nothing in `src/` changed; no bank built or deleted. **Measured:** screen (24 experts, 2-bit g128): output error against the shipped `search` fit -10.1 % (`wide-lsq`) and -13.3 % (weighted `wide-lsq`). NLL gate, 64 tokens, 6,697 fits at 457 ms, 53 minutes: paired median +0.0007 nats, better on 35 of 64 (sign p 0.53), mean +0.215 (SE 0.19, a few tokens). The first 160-token attempt was killed at its 7,200 s cap with no result: the gate's 8 GiB packed cache holds about 800 experts and every miss refits (429 ms weighted against 109 ms for `search`); my 60 to 90 minute estimate ignored that. **Closed:** the better 2-bit fit as a bank swap (a third null, with HANDOFF 9.0 and 9.3). **Open:** a `code_validity.py` run on a built weighted bank (about two hours, Hamed's call), a 3-bit code-validity gate, a Hermes dump, the 74 ms floor attribution (ask first), a MiniMax resident energy arm.
@@ -9174,6 +9178,18 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.165 CloudRift acknowledged in the README (0.66.9)
+
+**Goal.** Hamed's task: a restrained acknowledgement of CloudRift as the first external sponsor of Cachalot's planned NVIDIA CUDA research (GPU-compute credits), documentation only.
+
+**What changed.** README: one line under the project identity; an acknowledgements bullet; `### Research support` and `### Support the research` under Acknowledgements. CHANGELOG 0.66.9; version string in `pyproject.toml` and `src/cachalot/__init__.py`. Nothing else in `src/`, no dependency change, the platform badge is untouched (it is truthful: macOS, Apple Silicon).
+
+**Wording rules kept.** Compute credits only; "planned" CUDA research in the present tense; no claim that any CUDA test has run; no grant amount, promotional code, balance or account details; no suggestion that CloudRift sponsors other Forera projects, invests in Forera or endorses a result; no tax-deductibility or legal-status claim. The CUDA roadmap is a separate task and is not duplicated here.
+
+**Link check.** `https://www.forera.ai/` fetched 2026-10-17: anchors thesis, research, methodology, projects, contact; no `#support`. Contact route: `mailto:info@forera.ai`. So the README uses the mailto and `.github/FUNDING.yml` was not created.
+
+**Open / needs Hamed.** Deploy a `#support` section, then switch the link and add `FUNDING.yml`. Push is Hamed's call (it publishes the sponsor line).
 
 ### 18.164 A better 2-bit fit on the NLL gate (0.66.8)
 
