@@ -27,7 +27,7 @@ The first block below is new; the blocks after it still hold.
 
 > ## Start here (2026-10-18, 0.66.16): the first GPU session (RTX 5090) is done; pinned copies cost 0.35 ms at the DeepSeek expert size, H9 falsified, H7 failed
 >
-> Section 18.172, results `docs/CUDA-S1-RESULTS.md` (manifests and rows in `docs/cuda-results/s1-rtx5090-2026-10-18/`). Measurement only. One RTX 5090 VM, PCIe 5.0 x16, 23.5 GiB host RAM; all gates held; pinned H2D 52 GB/s at 64 MiB but 28.4 GB/s (350 us) at 9.95 MB; pageable 24 GB/s; pinned D2H 55 GB/s; device copy 1,517 GB/s; router-style sync 7.5 us a layer; batched expert matmuls 2.4 times faster than a loop; compute slows 21 to 26 % while copies run (predicted under 5 %, L2-eviction hypothesis untested). Predictions scored: inventory and gates held, H1 and H2 failed at the record size, H7 failed, H9 as stated falsified (derived), launch and sync came in lower than predicted. **Needs Hamed:** confirm the instance shows terminated in the console and fill the hours in `~/cachalot-private/cuda-cost-log.md`; delete the saved `cachalot-ssh` key from the provider profile; rotate the API key pasted into the first chat. The V100 session (D3) is not scheduled; the smallest next experiment is in section 7 of the results.
+> Section 18.172, results `docs/CUDA-S1-RESULTS.md` (manifests and rows in `docs/cuda-results/s1-rtx5090-2026-10-18/`). Measurement only. One RTX 5090 VM, PCIe 5.0 x16, 23.5 GiB host RAM; all gates held; pinned H2D 52 GB/s at 64 MiB but 28.4 GB/s (350 us) at 9.95 MB; pageable 24 GB/s; pinned D2H 55 GB/s; device copy 1,517 GB/s; router-style sync 7.5 us a layer; batched expert matmuls 2.4 times faster than a loop; compute slows 21 to 26 % while copies run (predicted under 5 %, L2-eviction hypothesis untested). Predictions scored: inventory and gates held, H1 and H2 failed at the record size, H7 failed, H9 as stated falsified (derived), launch and sync came in lower than predicted. The instance is terminated and S1 billed 0.36 GPU-hours (21 min 22 s, from the billing page; the private cost log is filled). **Needs Hamed:** delete the saved `cachalot-ssh` key from the provider profile; rotate the API key pasted into the first chat. The V100 session (D3) is not scheduled; the smallest next experiment is in section 7 of the results.
 >
 > ## Start here (2026-10-18, 0.66.15): CUDA session S1 is prepared; the next step is yours (provision the RTX 5090 and follow the runbook)
 >
@@ -9217,7 +9217,7 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **One analysis error caught.** My first quick summary mislabelled four columns (pageable D2H read as pinned H2D) and suggested a pinned-memory anomaly; the second analysis, which indexed by name, showed it was a labelling slip, not a measurement. The results document uses the second.
 
-**Open / needs Hamed.** Confirm termination and log the hours; delete the saved provider key; rotate the API key. The L2 hypothesis for the compute slowdown, batched copies, a second day, and the V100 are the next experiments; predictions first, in a new record.
+**Open / needs Hamed.** (Termination confirmed; 0.36 GPU-hours billed and logged privately.) Delete the saved provider key; rotate the API key. The L2 hypothesis for the compute slowdown, batched copies, a second day, and the V100 are the next experiments; predictions first, in a new record.
 
 **Kind.** Measurement (GPU microbenchmarks only). No default changed.
 
