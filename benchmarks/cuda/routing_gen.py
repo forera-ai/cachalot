@@ -81,7 +81,7 @@ def to_arrays(spec: RoutingSpec, prefill_tokens: int = 0):
     """
     import numpy as np
 
-    from cachalot.metrics.routing_trace import PHASE_DECODE, PHASE_PREFILL
+    PHASE_PREFILL, PHASE_DECODE = 0, 1          # the recorded trace's phase ids; no import from src/cachalot (the GPU host has none)
 
     rows = list(generate(spec))
     phase = np.array([PHASE_PREFILL if t < prefill_tokens else PHASE_DECODE for t, _, _ in rows], dtype=np.uint8)

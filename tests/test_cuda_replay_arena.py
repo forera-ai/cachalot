@@ -2,6 +2,7 @@
 import sys
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -141,3 +142,34 @@ def test_recorded_trace_event_hash_equals_the_simulator_at_17_percent_on_a_prefi
     nl = ra.trace_layer_count(arrays)
     slots = ra.slots_for(17)
     assert ra.bookkeeping_pass(arrays, slots, nl, 60)["hash"] == ra.reference_pass(arrays, slots, nl, 60)["hash"]
+
+
+def test_generator_arrays_need_no_cachalot_import():
+    import builtins
+
+    real_import = builtins.__import__
+
+    def no_cachalot(name, *a, **k):
+        if name.startswith("cachalot"):
+            raise ImportError("the GPU host has no cachalot package")
+        return real_import(name, *a, **k)
+
+    builtins.__import__ = no_cachalot
+    try:
+        arrays = rg.to_arrays(rg.RoutingSpec(layers=3, experts=12, topk=2, tokens=10), prefill_tokens=3)
+    finally:
+        builtins.__import__ = real_import
+    assert set(np.unique(arrays["phase"]).tolist()) == {0, 1}
+
+
+def test_qualify_sources_returns_one_time_per_record_and_rows_carry_it():
+    arrays = small_arrays(tokens=30)
+    arena = ra.TorchArena(11, 2048, rehearsal_cpu=True)
+    q = arena.qualify_sources(iters=3)
+    assert len(q) == ra.SOURCE_RECORDS and all(x >= 0 for x in q)
+    res = ra.run_cell(arrays, 11, 4, arena, readback_every=50)
+    res["source_ms"] = q
+    rows = ra.cell_rows("r", {"id": "t"}, res, True, [1.0], [1.0], 0.0)
+    import manifest as mf
+    assert {"source_copy_ms_min", "source_copy_ms_median", "source_copy_ms_max", "source_records_slow_share"} <= {r["field"] for r in rows}
+    assert all(mf.validate_row(r) == [] for r in rows)

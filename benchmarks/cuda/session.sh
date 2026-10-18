@@ -23,7 +23,7 @@ REGION="${CUDA_REGION:-unspecified}"             # coarse only: a country or con
 die() { echo "STOP: $*" >&2; exit 1; }
 
 latest_run() {  # $1 = profile name; prints the newest run directory for it, or nothing
-  ls -d "$RESULTS"/*-"$1"-* 2>/dev/null | sort | tail -1 || true
+  ls -d "$RESULTS"/*Z-"$1"-* 2>/dev/null | sort | tail -1 || true
 }
 
 note() { echo "${SESSION_TAG:-S1} $1; freeze=$( [ -f "$ROOT/pip-freeze.txt" ] && shasum -a 256 "$ROOT/pip-freeze.txt" 2>/dev/null | cut -c1-16 || sha256sum "$ROOT/pip-freeze.txt" 2>/dev/null | cut -c1-16 || echo none )"; }

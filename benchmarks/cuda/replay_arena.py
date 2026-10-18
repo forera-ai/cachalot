@@ -412,6 +412,23 @@ class TorchArena:
         return {"arena_bytes": self.slots * self.nbytes, "reserved_bytes": int(t.memory_reserved(self.dev_name)),
                 "allocated_bytes": int(t.memory_allocated(self.dev_name))}
 
+    def qualify_sources(self, iters: int = 15) -> list[float]:
+        """EXPLORATORY (not a registered cell): the isolated copy time of every source record into slot 0, event ms, p50 each.
+        S1, S2 and the N2 smoke run showed that the H2D rate of a 9.95 MB pinned buffer depends on the buffer (about 0.18 ms or
+        about 0.35 ms, stable per buffer), so the replay's cost per miss is a mixture; this table decomposes it."""
+        out = []
+        for rec in self.sources:
+            ts = []
+            for i in range(iters + 3):
+                self.ev_a.record(self.stream)
+                self._slot(0).copy_(rec, non_blocking=not self.rehearsal)
+                self.ev_b.record(self.stream)
+                self.ev_b.synchronize()
+                if i >= 3:
+                    ts.append(self.ev_a.elapsed_time(self.ev_b))
+            out.append(sorted(ts)[len(ts) // 2])
+        return out
+
     def control(self, iters: int = 30) -> list[float]:
         """Isolated copies of one record into slot 0, host ms each (the start and end drift bracket)."""
         out = []
@@ -546,6 +563,14 @@ def cell_rows(run_id: str, cell: dict, res: dict, hash_ok: bool, control_start: 
         c0, c1 = sorted(control_start)[len(control_start) // 2], sorted(control_end)[len(control_end) // 2]
         rows.append(mf.row(run_id, arm, "control_drift", abs(c1 / c0 - 1.0), "fraction", "derived",
                            source="isolated one-record copy p50 at the end / at the start - 1"))
+    q = res.get("source_ms")
+    if q:
+        qs = sorted(q)
+        rows.append(mf.row(run_id, arm, "source_copy_ms_min", qs[0], "ms", "measured", source="exploratory source qualification, cuda events"))
+        rows.append(mf.row(run_id, arm, "source_copy_ms_median", qs[len(qs) // 2], "ms", "measured", source="exploratory source qualification, cuda events"))
+        rows.append(mf.row(run_id, arm, "source_copy_ms_max", qs[-1], "ms", "measured", source="exploratory source qualification, cuda events"))
+        rows.append(mf.row(run_id, arm, "source_records_slow_share", sum(1 for x in qs if x >= 1.5 * qs[0]) / len(qs), "fraction",
+                           "derived", source="records at or above 1.5 x the fastest record's copy time"))
     rows.append(mf.row(run_id, arm, "event_hash_equals_expected", 1 if hash_ok else 0, "bool", "measured", source="gate (a)"))
     rows.append(mf.row(run_id, arm, "readback_failures", res["readback_failures"], "count", "measured", source="gate (b)",
                        n=res["readbacks"]))
@@ -645,7 +670,9 @@ def cmd_run(args) -> int:
             arena = TorchArena(slots, RECORD_BYTES)
             cap = suite.Deadline(min(HARD_CELL_SECONDS, max(1.0, dl.remaining())))
             c0 = arena.control()
+            q0 = arena.qualify_sources()
             res = run_cell(arrays, slots, nl, arena, max_decode_tokens=c["tokens"], deadline=cap)
+            res["source_ms"] = q0
             c1 = arena.control()
             again = bookkeeping_pass(arrays, slots, nl, c["tokens"])
             same = again["hash"] == first["hash"] and (res["truncated"] or res["chain"] == first["chain"])
@@ -660,6 +687,7 @@ def cmd_run(args) -> int:
                     if bw > suite.PCIE_SANITY_GB_S:
                         gates["sanity"] = False
             raw[c["id"]] = {k: res[k] for k in ("token_misses", "token_host_ms", "token_event_ms", "token_book_ms")}
+            raw[c["id"]]["source_ms"] = q0
             del arena
         except Exception as exc:                                    # a failed cell is recorded, never hidden
             failures.append({"cell": c["id"], "error": f"{type(exc).__name__}: {str(exc)[:200]}"})
