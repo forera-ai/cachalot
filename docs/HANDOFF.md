@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-18, 0.66.21): the N2 stage 1 design record is written, predictions committed first; the harness is not built
+>
+> Section 18.177, record `docs/CUDA-N2S1-EXPERIMENT-RECORD.md` (12 predictions for the 5090 and the V100, committed b1974e2). Stage 1 = a real slot arena and real pinned H2D copies of dummy 9.95 MB records driven by the recorded DeepSeek trace (and the seeded generator), measuring exposed demand-fetch copy time a token; it cannot say anything about hidden copies, prefetch, compute or real routing beyond the trace. New offline baseline `benchmarks/cuda/layer_miss_profile.py`: at 17 % resident a token misses 51.85 experts in 28.35 layers (1.83 a missing layer; 41 % of misses in layers raising three or more; 67 % at 8 %), consistent with the N0a totals. A 25 or 34 % arena does not fit a 32 GB card, so stage 1 covers 8, 12 and 17 %. Next, Mac only: build `replay_arena.py` (arena, independent LRU bookkeeping, event-hash equality with the simulator, CPU rehearsal), then a GPU smoke of the stream code before any number counts. **Needs Hamed:** a go to build the harness; later a card choice and a go for GPU time; housekeeping from S2 and V1 (log hours, delete the ssh configs, known_hosts and key).
+>
 > ## Start here (2026-10-18, 0.66.20): CUDA session V1 (V100) ran; an expert copy over PCIe 3 costs 0.84 ms (0.35 on the 5090), batching buys nothing there, H9 restated
 >
 > Section 18.176, results `docs/CUDA-V1-RESULTS.md` (manifests and rows in `docs/cuda-results/v1-v100-2026-10-18/`). Tesla V100-SXM3 32 GB, PCIe 3.0 x16, KVM, 83.5 GiB RAM, torch 2.7.1+cu126 (the arch gate passed). Smoke, baseline and the S2 profile three times, 74 s of GPU time, all gates true. Pinned H2D flat 11.4 to 11.9 GB/s from 3 MiB (expert copy 0.84 ms); pageable 4.3 to 5.2; D2D 883 GB/s; launch 6.9 us; router chain 20 us a layer; timer overhead 16.4 us. Batched and queued copies cost the same per expert (0.84 ms). Compute under copies about 0 % (reused matrix) and 9 to 12 % (large weights); the V100 L2 is 6 MiB so it cannot test the L2 hypothesis. H9 restated (derived): a resident GiB is worth about the same on this card as on the Mac (cost ratio 2.4 offset by the steeper small-fraction curve). Predictions: 12 of 17 held in whole or part (P3 is scored by outcome); P5, P7, P8 and P11 missed, with P5 and P11 firing their falsifiers. **Needs Hamed:** log V1's billed hours; terminate was his step; delete the S2 and V1 ssh configs, known_hosts and the key file; the S1 follow-ups; whether N2 stage 1 (replay with a real slot arena on a GPU) is next.
@@ -9222,6 +9226,18 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.177 N2 stage 1 designed (0.66.21)
+
+**Goal.** Hamed: "write the N2 stage 1 design record with predictions on the Mac." Predictions committed first (b1974e2); the harness waits for his go.
+
+**What was written.** The record: scope and non-claims, the recorded baseline (copy costs from S1, S2 and V1; Mac miss cost; the new layer-miss profile), the VRAM limit (8, 12, 17 % only), the host-tier emulation (64 distinct pinned records, indexed modulo 64), the harness design (arena, independent LRU, event-hash equality gate checked on the Mac before GPU time, sampled read-back, determinism, sanity), the cells, and twelve predictions with falsifiers for both cards, including the replay test of the restated CUDA-H9 (extra ms a token per GiB between 8 and 17 %: 0.8 to 1.2 on the 5090, 2.0 to 2.9 on the V100).
+
+**Built.** `benchmarks/cuda/layer_miss_profile.py` and a three-case test; run on the DeepSeek long trace at 8, 17 and 34 % (totals 90.84, 51.85, 24.78 misses a token, equal to N0a). One defect on the way: `load_trace` returns a tuple (arrays, segments); fixed in the script.
+
+**Not done.** No harness, no GPU. The predictions were written after seeing the layer-miss profile (a baseline, recorded in the record) and the S1, S2 and V1 copy costs, but before any stage 1 code.
+
+**Kind.** Planning and an offline instrument. No default changed, nothing measured on a GPU.
 
 ### 18.176 CUDA session V1: the V100 contrast (0.66.20)
 

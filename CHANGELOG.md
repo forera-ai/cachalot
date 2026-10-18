@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.66.21 (2026-10-18)
+
+HANDOFF "Start here (2026-10-18, 0.66.21)" and section 18.177; record `docs/CUDA-N2S1-EXPERIMENT-RECORD.md` (committed first, b1974e2). Instruments, tests and documents only; nothing in `src/` except the version string. No GPU, no instance used.
+
+### Added
+- CUDA lane N2 stage 1 designed on the Mac: a real fixed-size slot arena with real pinned host-to-device copies of expert-sized dummy records, driven by the recorded DeepSeek routing trace and by the seeded generator; twelve predictions with falsifiers for both cards (event-for-event equality with the Mac simulator, exposed copy time a token at 8, 12 and 17 % resident, per-miss cost, layer-size dependence, ms per GiB between 8 and 17 % as the replay test of the restated CUDA-H9, allocator overhead, completion). The harness itself is not built yet.
+- `benchmarks/cuda/layer_miss_profile.py` (and a test): how many misses a decode layer raises at once, replayed through the runtime's `Store` model. On `routing-trace-deepseek-long` at 17 % resident a token misses 51.85 experts in 28.35 layers, 1.83 a missing layer (41 % of misses in layers raising three or more; 67 % at 8 %); totals equal the N0a table.
+
+### Not done, on purpose
+- No harness, no GPU measurement. 25 and 34 % resident arenas (35.6 and 48.4 GiB) do not fit a 32 GB card, so stage 1 covers 8, 12 and 17 %.
+
 ## 0.66.20 (2026-10-18)
 
 HANDOFF "Start here (2026-10-18, 0.66.20)" and section 18.176; results `docs/CUDA-V1-RESULTS.md` with sanitized manifests and rows in `docs/cuda-results/v1-v100-2026-10-18/`. Measurement only; nothing in `src/` except the version string. The V100 contrast session (plan decision D3).
