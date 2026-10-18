@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-18, 0.66.11): the CUDA N0/N1 scaffold exists, never run on a GPU
+>
+> Section 18.167. `benchmarks/cuda/` (doctor, bounded microbenchmark suite, `cuda-manifest` v1 with a redaction gate, README) and 35 Mac tests. Nothing in `src/` except the version string; no instance was provisioned, no credit used, no key read, nothing installed, no CUDA number exists. The torch cells have never executed. **Needs Hamed:** (1) rotate the CloudRift API key pasted into the chat that started this session; (2) the plan's D1 to D5 before any metered session (cap, instance order, installs); (3) say when to provision. The first job and the closed list of the v213 prompt are unchanged.
+>
 > ## Start here (2026-10-17, 0.66.10): the NVIDIA CUDA research plan, documentation only
 >
 > Section 18.166. Planned work only: `docs/CUDA-RESEARCH-PLAN.md` (programme N0a, N0b, N1 to N5, nine proposed hypotheses with falsifiers, the cuda-manifest v1 schema, redaction, comparability rules R1 to R10, cost and teardown rules, decisions D1 to D8), `docs/RESEARCH-DIRECTION.md` section 14, `docs/LEDGER.md` section 9 (rows **proposed**), README pointers. Nothing in `src/` except the version string; no instance was provisioned, no credit redeemed, no software installed, no benchmark run. **Needs Hamed:** D1 to D8 in the plan (first: whether N0a, the offline policy table on the existing routing traces, starts now; it needs no credits and no GPU). The first job and the closed list of the v213 prompt are unchanged.
@@ -9182,6 +9186,22 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.167 The CUDA N0/N1 scaffold (0.66.11)
+
+**Goal.** Hamed's `/ca` task "Start Cachalot CUDA Track N0/N1 safely": the minimal reproducible scaffold and a safe path to the first baselines, without porting the runtime and without spending GPU time.
+
+**What was read first.** `docs/CUDA-RESEARCH-PLAN.md` (whole), `benchmarks/run_manifest.py`, `CONTRIBUTING.md`, `pyproject.toml`, `tests/conftest.py`, `.gitignore`, the skill's RELEASE.md and SESSION-PROTOCOL.md. The plan existed and is committed (0.66.10), so the task's "stop if the plan is missing" gate did not fire.
+
+**Decisions.** (1) Layout `benchmarks/cuda/`, not `research/cuda/`: the plan section 8 already fixes it, and the repository keeps its instruments under `benchmarks/`. (2) The scaffold imports nothing from `src/cachalot/` and nothing imports it; `pyproject.toml` is untouched, so torch stays an operator-installed dependency on the GPU host only. (3) The standard-library core (`manifest.py`, planning, statistics, the runner) is separated from the torch cells by one method, `bench.execute(cell, deadline, limits)`, so the Mac tests drive the real runner with a scripted bench; this is a test seam inside the lane, not a portability layer (charter rule of two unchanged). (4) Credentials: the CloudRift API key and the SSH key path in the task text were not used, read or written; the repository was scanned for the key and the public key text and holds neither. The test fixtures contain only synthetic strings.
+
+**What was verified.** `ruff check` on the new files: clean (the repository has 839 pre-existing errors elsewhere, unchanged: the same count with these files stashed). `pytest -q`: 683 passed. 35 of them are new. `cuda_bench.py plan --profile smoke` prints 26 cells and an upper-bound estimate of 10.1 s under a 45 s cap; `run --execute` on this Mac exits 3 with `SKIP: ... torch reports no CUDA device`; a cap above the hard ceiling exits 2. `doctor` on this Mac yields a valid, redaction-clean machine manifest.
+
+**What was not verified.** Every torch cell. This machine has no CUDA device, so `TorchBench` (copy, launch, device bandwidth, matmul, overlap) has been reviewed by reading and never run; expect a first-run defect or two. The expert-like shape 4096 x 2880 is derived from the 9.95 MB record at 2.25 bit per weight, not read from the model config. Toolchain targeting of the Blackwell and Volta parts is the plan's N0b gate, untested.
+
+**Open, and needs Hamed.** Provisioning is his: the plan's D1 to D5 (cap, instance order, installs, model) and the private cost file (D2). The pasted API key should be rotated. Smallest next experiment: N0a item 2, the offline resident-fraction policy table on the existing routing traces (no GPU, no credits); after it, the doctor plus the 45 s smoke profile on the first approved instance, then inspect before any baseline.
+
+**Kind.** Instruments and tests. No default changed, no measurement.
 
 ### 18.166 The NVIDIA CUDA research plan (0.66.10)
 

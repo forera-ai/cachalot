@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.66.11 (2026-10-18)
+
+HANDOFF "Start here (2026-10-18, 0.66.11)" and section 18.167. Instruments and tests only; nothing in `src/` except the version string. Never run on a GPU: no instance, no CUDA measurement, no credential used.
+
+### Added
+- `benchmarks/cuda/`: the isolated scaffold for phases N0b and N1 of `docs/CUDA-RESEARCH-PLAN.md`. `cuda_bench.py` (commands `doctor`, `plan`, `run`, `validate`), `doctor.py` (non-secret environment probe with pure parsers for `nvidia-smi`, `nvcc`, `lscpu`, `/proc/meminfo`), `suite.py` (bounded plan, statistics, runner and the torch cells: H2D and D2H copy pageable and pinned by size including the three expert record sizes, device-to-device bandwidth, launch and sync cost including a 40-layer router-read chain, fp16 GEMV and GEMM at an expert-like shape with loop against batched launches, copy and compute overlap, a control cell at both ends), `manifest.py` (schema `cuda-manifest` v1, content-addressed ids, result rows, an environment allow-list and a redaction gate that refuses addresses, UUIDs, e-mails, home paths and token- or key-shaped strings), and `README.md` (setup, commands, caps, artifacts, field definitions, teardown checklist, troubleshooting, unsupported cases).
+- Caps: a hard wall-clock limit checked before every cell and iteration (default 45 s smoke, 300 s baseline, ceiling 900), an iteration cap (ceiling 1,000), an allocation cap per cell (ceiling 4,096 MiB), a dry run by default, and an explicit `--execute` for the GPU host. The tool never provisions or stops an instance and never reads provider credentials.
+- Correctness and sanity gates: a failed copy checksum or matmul reference produces no timing row; rates beyond physical bounds fail the sanity gate; a cell whose timer overhead exceeds 10 % of its median is reported unavailable.
+- `tests/test_cuda_manifest.py`, `tests/test_cuda_suite.py` and `tests/fixtures/cuda/`: 35 Mac tests on recorded synthetic `nvidia-smi` output and a scripted bench. CUDA absence is an informative skip (exit 3), never an import error; torch is imported lazily.
+
+### Not done, on purpose
+- The torch cells (`TorchBench`) have never executed: this machine has no CUDA device. They are reviewed, not tested; the first GPU session is also their first test.
+- No 2-bit dequantizing kernel, bf16 or fp8 kernel, CUDA graphs, Nsight counters, power sampling, or phases N2 to N5. No claim that Cachalot runs on NVIDIA hardware.
+
 ## 0.66.10 (2026-10-17)
 
 HANDOFF "Start here (2026-10-17, 0.66.10)" and section 18.166. Documentation only; nothing in `src/` except the version string. Planned work only: no CUDA code, no instance, no CUDA measurement exists.

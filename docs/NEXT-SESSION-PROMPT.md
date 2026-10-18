@@ -1,10 +1,11 @@
-# Next-session prompt — **v215**, written 2026-10-17
+# Next-session prompt — **v216**, written 2026-10-18
 
 **This is the file to paste.** `docs/NEXT-SESSION-PROMPT.md` is always current; superseded ones live in
 `docs/next-session-prompts/`.
 
 | version | written | produced by | what changed |
 |---|---|---|---|
+| **v216** | 2026-10-18 | Hamed: `/ca` task "Start Cachalot CUDA Track N0/N1 safely", then "do the full 0.66.11 release routine" | **0.66.11, instruments and tests: `benchmarks/cuda/` (doctor, bounded N1 microbenchmark suite, `cuda-manifest` v1 and a redaction gate, README) and 35 Mac tests; torch cells reviewed but never run (no GPU); no instance, credit or key used; nothing in `src/` but the version string. Needs Hamed: rotate the pasted CloudRift key, plan D1 to D5, when to provision. First job and closed list unchanged from v213.** §18.167 |
 | **v215** | 2026-10-17 | Hamed: `/ca` task "Evidence-driven NVIDIA CUDA research roadmap for Cachalot" | **0.66.10, documentation only: `docs/CUDA-RESEARCH-PLAN.md` (planned CUDA lane N0a to N5, nine proposed hypotheses, manifest, comparability rules, cost discipline), charter section 14, ledger section 9 (proposed rows), README pointers. No instance, no CUDA code, no measurement; nothing in `src/` but the version string. New optional autonomous job: N0a, the offline resident-fraction policy table (plan section 6); decisions D1 to D8 are Hamed's. First job and closed list unchanged from v213.** §18.166 |
 | **v214** | 2026-10-17 | Hamed: `/ca` task "Cachalot sponsorship acknowledgement (documentation only)" | **0.66.9, documentation only: README thanks CloudRift for GPU-compute credits supporting the planned NVIDIA CUDA research; mailto support link because forera.ai has no `#support` anchor yet, no `FUNDING.yml`. Nothing in `src/` but the version string. First job and closed list unchanged from v213.** §18.165 |
 | **v213** | 2026-10-17 | Hamed: "/ca read the handoff and session prompts and do the tasks", then chose "Better 2-bit fit" (v212 First job 1), "Profile first", "64 tokens" | **0.66.8, measurement only: an activation-weighted `wide-lsq` 2-bit fit screens -13.3 % output error against the shipped `search` fit, but the 64-token NLL gate is a null (paired median +0.0007 nats, better on 35 of 64, sign p 0.53); the 160-token attempt was killed at its cap (the gate refits on every miss of its 8 GiB cache, 429 ms a fit). The lever closes. Nothing in `src/`.** §18.164 |
@@ -176,6 +177,10 @@
 | v47 | 2026-09-25 | Hamed asked for the v44-v46 levers planned, built, measured and documented | **0.18.0: GLM prefill 60 to 90 tok/s, bit-identical (a store path that never evicts, plus the next layer read early), GLM's missing MLX buffer-cache cap added, GLM disk snapshots (a restart reuses the system block). DeepSeek: an `iostat` trace shows prefill is not read-bound on either drive; the lookahead A/B drowned in a 124-to-200 s drift across back-to-back prefills.** §17.1, §15.13 |
 | v46 | 2026-09-25 | Hamed asked for GLM-5.3-Flash on Cachalot | 0.17.0: GLM through `serve-glm.sh` / `chat-glm.sh`. §17 |
 | v45 | 2026-09-24 | same as v47, one day earlier | 0.16.0: disk snapshot store by last use; lookahead and local compression closed. §15.12 |
+
+## First jobs (v216): the CUDA scaffold exists and has never run; provisioning is Hamed's
+
+Read HANDOFF section 18.167 and `benchmarks/cuda/README.md` first. Everything in the v213 block below still applies. **New in 0.66.11:** `benchmarks/cuda/` (`cuda_bench.py doctor|plan|run|validate`), tests `tests/test_cuda_*.py`. Autonomous and free: N0a item 2 of `docs/CUDA-RESEARCH-PLAN.md` (offline resident-fraction policy table on the existing traces). Needs Hamed: rotate the CloudRift API key that was pasted into a chat, the plan's D1 to D5, and the go to provision. On a provisioned host run only `doctor`, then `plan`, then `run --profile smoke --execute` under the cap, inspect `rows.jsonl` and `run-manifest.json`, then stop and report; the torch cells are untested and the first run may find defects. **New rule:** never write or read a provider key, promo code or SSH key into the repository, a note or a command line from this lane; do not claim a CUDA Cachalot backend because microbenchmarks work.
 
 ## First jobs (v213): the better 2-bit fit is a null; what is left needs Hamed
 
