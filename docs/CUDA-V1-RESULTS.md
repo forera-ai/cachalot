@@ -1,5 +1,7 @@
 # CUDA lane session V1: results (Tesla V100-SXM3 32 GB: the PCIe 3 contrast)
 
+> **Correction (added 2026-10-18 after N2 stage 1, `docs/CUDA-N2S1-RESULTS.md` section 4):** the V100 numbers below stand (a PCIe 3.0 x16 link is the limit for every buffer). The comparison with the RTX 5090 does not: the 5090's 0.35 ms at the record size was a slow-backed pinned buffer (a fast one gives 0.182 ms), so "H1 holds on the V100 and failed on the 5090, a card-specific ramp" is withdrawn, the cost ratio of the two cards is about 4.5 (the link ratio), not 2.4, and finding 3's H9 reading is restated in the N2 results (ms per GiB ratio against the Mac 3.0 to 3.9, still under 5).
+
 Run 2026-10-18 under `docs/CUDA-V1-EXPERIMENT-RECORD.md` (17 predictions committed in d507e14 before any instance existed). Instrument: `benchmarks/cuda/` at scaffold commit 4a6efdc (`REVISION` dirty=0), runtime 0.66.20. Every number is **measured** unless marked **derived**, and describes one rented virtual machine on one day (plan section 9; S2 showed that two instances of one class can differ two-fold). Sanitized manifests and rows are in `docs/cuda-results/v1-v100-2026-10-18/`; raw samples stay local. Billed time: to be filled from the console's transactions page (Hamed logs it in the private cost file). No hostname, address, key or amount appears in this repository.
 
 ## 1. The machine (N0b inventory)

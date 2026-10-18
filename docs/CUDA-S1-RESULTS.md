@@ -1,5 +1,7 @@
 # CUDA lane session S1: results (RTX 5090, inventory, smoke, baseline)
 
+> **Correction (added 2026-10-18 after N2 stage 1, `docs/CUDA-N2S1-RESULTS.md` section 4):** the 9.95 MB pinned host-to-device cost reported below (0.35 ms, 28 GB/s, "a fixed cost of about 160 us") and the CUDA-H1 falsification at the record size depend on which pinned host buffer the cell got: a fast-backed buffer of that size copies in 0.182 ms (54.7 GB/s, the plateau). Findings 1, 2 and 4 and the H1 and H9 readings below are to be read with that correction; the measurements themselves are as recorded.
+
 Run 2026-10-18 under `docs/CUDA-S1-EXPERIMENT-RECORD.md` (predictions committed in f15ef2a before any instance existed). Scaffold commit af4ed4b (`REVISION` file), runtime 0.66.15. Instrument: `benchmarks/cuda/` over SSH from the Mac. Labels follow plan section 0: every number below is **measured** unless marked **derived**, and all of them describe one rented virtual machine on one day (plan section 9: a shared host drifts, one run is one run). Sanitized manifests and result rows are in `docs/cuda-results/s1-rtx5090-2026-10-18/`; raw samples stay local. Billed time: 0.36 GPU-hours (21 min 22 s, from the provider's billing page; currency stays in the private log). The measuring itself took about three minutes of GPU run time (6 runs, 2 to 9 s each), the rest was setup and copy-back. No hostname, address, instance identifier, account or amount appears in this repository.
 
 ## 1. The machine (N0b inventory, measured)

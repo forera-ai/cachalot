@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.66.23 (2026-10-18)
+
+HANDOFF "Start here (2026-10-18, 0.66.23)" and section 18.179; results `docs/CUDA-N2S1-RESULTS.md` with sanitized manifests and rows in `docs/cuda-results/n2-rtx5090-2026-10-18/`; plan section 17.5. Measurement, harness fixes and corrections; nothing in `src/` except the version string.
+
+### Measured
+- CUDA N2 stage 1 on a third rented RTX 5090 VM (RTX 5090 arm only): a real 8 to 24 GiB slot arena with real pinned host-to-device copies driven by the recorded DeepSeek trace and by the seeded generator. The arena's events equal the Mac simulator's on every cell (checked again on the host); exposed demand-fetch copy time a token 16.7 / 12.8 / 9.4 ms at 8 / 12 / 17 % resident, 0.183 to 0.185 ms an extra miss (R-squared 0.997 to 0.999), 0.571 ms of exposed time per GiB of resident experts between 8 and 17 % (equals the N0a slope times the measured copy cost within 2 %); host bookkeeping 0.12 to 0.16 ms a token; all gates true, four cells in 130 s. Predictions: P1, P6, P8, P10 to P12 held, P9 in part; P2 to P5 missed low (their copy cost came from S1 and S2); the V100 arm was not run.
+- **A correction of S1, S2 and V1.** The H2D rate of a 9.95 MB pinned buffer depends on the buffer: 0.182 ms (54.7 GB/s) for most buffers, 0.31 to 0.36 ms for a minority, stable per buffer, the slow ones tending to be later allocations. S1's "0.35 ms at the record size, a fixed cost of 160 us" and its CUDA-H1 falsification, S2's batching gain, and V1's card-specific-ramp reading are artifacts or confounded (V1's V100 numbers stand: PCIe 3 is the limit for every buffer). Correction notes were added to the three results files; plan section 17.5 carries the restatements. The cause (physical page backing) is a hypothesis.
+
+### Fixed
+- The generator arrays imported `cachalot` (absent on a GPU host); the exploratory source-qualification copies ran outside their stream; the arena is released between cells (`empty_cache`); `session.sh` picks the latest *smoke* run by exact profile name, so an `n2s1-smoke` run no longer blocks the S2 gate.
+
+### Added
+- `benchmarks/cuda/exploratory/`: four throwaway probes and their printed output (not registered cells), and an exploratory per-source copy-time qualification in the replay.
+
+### Not done, on purpose
+- No V100 arm, no test of the buffer-backing cause, no redo of the S1 copy curve with qualified buffers. The billed time of N2 is for Hamed to log. No compute stand-in, prefetch or overlap (that is N3); no Cachalot CUDA claim.
+
 ## 0.66.22 (2026-10-18)
 
 HANDOFF "Start here (2026-10-18, 0.66.22)" and section 18.178. Instruments, tests and documents only; nothing in `src/` except the version string. No GPU, no instance used.

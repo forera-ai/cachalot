@@ -495,6 +495,15 @@ The V100 contrast session ran under `docs/CUDA-V1-EXPERIMENT-RECORD.md` and is r
 * The event timer costs 16.4 us on this VM: single-projection kernel times are below resolution; H3's single-launch claim needs a longer-running variant there.
 * Not started: N2 stage 1 (needs a design record and Hamed's go), a profiler run, an L40S contrast.
 
+### 17.5 N2 stage 1 outcome and a correction of 17.2 to 17.4 (2026-10-18)
+
+The stage 1 replay (RTX 5090 arm only) ran under `docs/CUDA-N2S1-EXPERIMENT-RECORD.md` and is recorded in `docs/CUDA-N2S1-RESULTS.md`. Consequences, written after the run:
+
+* **Correction.** The H2D cost of a 9.95 MB pinned buffer is a property of the buffer (0.182 ms fast, about 0.35 ms slow, stable per buffer; cause untested, the physical page backing is the working hypothesis). The S1 reading of "0.35 ms, a fixed cost of 160 us" and its CUDA-H1 falsification are artifacts of a slow-backed buffer; S2's batching finding is confounded by it; V1's card-specific-ramp reading is withdrawn (V1's numbers stand, link-bound). H1 and H2 are restated as buffer-dependent. CUDA-H9 on the ms-a-GiB definition: Mac 1.7 to 2.2 against 0.571 ms measured on the 5090 replay, a ratio of 3.0 to 3.9, still under the registered 5 times.
+* **N2 stage 1 headline (5090, fast-backed records, LRU, recorded DeepSeek trace):** exposed demand-fetch copy time a token 16.7 / 12.8 / 9.4 ms at 8 / 12 / 17 % resident (90.8 / 69.6 / 51.8 misses), 0.183 to 0.185 ms an extra miss (fit R-squared 0.997 to 0.999), 0.571 ms a GiB of resident experts between 8 and 17 % (equals 3.04 misses a GiB times the measured 0.1847 ms a copy within 2 %). The replay equals the Mac simulator event for event. N2-P2 to P5 missed (their copy cost came from S1 and S2); P1, P6, P8 to P12 held (P9 partly); the V100 arm (P7) was not run.
+* The harness's host bookkeeping costs 0.12 to 0.16 ms a token and the arena has no fragmentation by construction.
+* Not started: the V100 arm of N2 stage 1; a controlled test of the buffer-backing hypothesis and a redo of the S1 copy curve with qualified buffers; N2 stage 2/3 and N3.
+
 ## 18. Honest limits
 
 - This is a plan. No hypothesis in it has been tested; every "expected" device property is vendor-derived and unverified for the rented machine.

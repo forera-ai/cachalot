@@ -693,6 +693,9 @@ def cmd_run(args) -> int:
             raw[c["id"]] = {k: res[k] for k in ("token_misses", "token_host_ms", "token_event_ms", "token_book_ms")}
             raw[c["id"]]["source_ms"] = q0
             del arena
+            import torch
+
+            torch.cuda.empty_cache()                 # release the cached arena so the next cell's reserved-beyond-arena is its own
         except Exception as exc:                                    # a failed cell is recorded, never hidden
             failures.append({"cell": c["id"], "error": f"{type(exc).__name__}: {str(exc)[:200]}"})
     manifest = {

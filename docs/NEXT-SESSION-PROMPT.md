@@ -1,10 +1,11 @@
-# Next-session prompt — **v227**, written 2026-10-18
+# Next-session prompt — **v228**, written 2026-10-18
 
 **This is the file to paste.** `docs/NEXT-SESSION-PROMPT.md` is always current; superseded ones live in
 `docs/next-session-prompts/`.
 
 | version | written | produced by | what changed |
 |---|---|---|---|
+| **v228** | 2026-10-18 | Hamed chose the RTX 5090 first and created the instance (v227 first job) | **0.66.23, measurement, harness fixes and a correction: N2 stage 1 ran on an RTX 5090 (exposed copy time a token 16.7 / 12.8 / 9.4 ms at 8 / 12 / 17 % resident, 0.183 to 0.185 ms an extra miss, 0.571 ms per GiB between 8 and 17 %; the arena equals the simulator event for event). The copy cost was 0.185 ms, not S1 and S2's 0.35: the H2D rate of a pinned 9.95 MB buffer is a property of the buffer, which corrects S1 (160 us fixed cost, H1), S2 (batching) and V1 (card-specific ramp). N2-P2 to P5 missed low. Nothing in `src/`.** §18.179 |
 | **v227** | 2026-10-18 | Hamed: "build replay_arena.py on the Mac with the equality tests and CPU rehearsal; no GPU yet" (v226 first job) | **0.66.22, instrument and tests: the N2 stage 1 harness `benchmarks/cuda/replay_arena.py` (real slot arena, real copies, independent LRU) equals the simulator event for event on all six registered cells on the Mac; 22 tests; `session.sh n2smoke|n2full`, `SESSION-RUNBOOK-N2S1.md`, `n2s1-expected.json`. Never run on a GPU. Nothing in `src/`.** §18.178 |
 | **v226** | 2026-10-18 | Hamed: "Next: write the N2 stage 1 design record with predictions on the Mac" (v225 option) | **0.66.21, planning and an offline instrument: `docs/CUDA-N2S1-EXPERIMENT-RECORD.md` (a real slot arena with real H2D copies driven by the recorded trace; 12 predictions for the RTX 5090 and the V100, committed first, b1974e2) and `benchmarks/cuda/layer_miss_profile.py` (at 17 % resident a token misses 51.85 experts in 28.35 layers, 1.83 a missing layer). 25 and 34 % arenas do not fit a 32 GB card. The harness is not built. Nothing in `src/`.** §18.177 |
 | **v225** | 2026-10-18 | Hamed created the V100 SXM3 and said to proceed (v224 option V100) | **0.66.20, measurement only: CUDA session V1 on a Tesla V100-SXM3 32 GB. An expert-sized pinned copy over PCIe 3.0 x16 costs 0.84 ms (11.8 GB/s, flat from 3 MiB) against 0.35 ms on the RTX 5090s; batching and queueing buy nothing there; pageable is 0.43 of pinned; compute under copies about 0 % to 12 % and the 6 MiB L2 cannot test the L2 hypothesis; H9 restated (a resident GiB is worth about the same on this card as on the Mac, derived). 12 of 17 predictions held in whole or part, 4 missed (P5, P7, P8, P11). Nothing in `src/`.** §18.176 |
@@ -188,6 +189,10 @@
 | v47 | 2026-09-25 | Hamed asked for the v44-v46 levers planned, built, measured and documented | **0.18.0: GLM prefill 60 to 90 tok/s, bit-identical (a store path that never evicts, plus the next layer read early), GLM's missing MLX buffer-cache cap added, GLM disk snapshots (a restart reuses the system block). DeepSeek: an `iostat` trace shows prefill is not read-bound on either drive; the lookahead A/B drowned in a 124-to-200 s drift across back-to-back prefills.** §17.1, §15.13 |
 | v46 | 2026-09-25 | Hamed asked for GLM-5.3-Flash on Cachalot | 0.17.0: GLM through `serve-glm.sh` / `chat-glm.sh`. §17 |
 | v45 | 2026-09-24 | same as v47, one day earlier | 0.16.0: disk snapshot store by last use; lookahead and local compression closed. §15.12 |
+
+## First jobs (v228): the next CUDA steps need Hamed's go; the correction changes how copy costs are read
+
+Read HANDOFF section 18.179, `docs/CUDA-N2S1-RESULTS.md` section 4 and plan section 17.5 first. **Rule added:** a pinned host-to-device copy cost for an expert-sized buffer is only a number for that buffer; qualify the source buffers (time each alone) before quoting a cost, and never quote a single-buffer microbenchmark as the card's rate. Candidate jobs, each needing Hamed's go for GPU time and predictions first: (1) the V100 arm of N2 stage 1 (link-bound, so the cost should be about 0.84 ms a copy for every buffer; closes N2-P7 and tests the H9 formula on a second card); (2) a controlled test of the buffer-backing hypothesis (large-first allocation, huge-page advice where the host allows it, per-buffer page-backing evidence) and a redo of the S1 copy curve with qualified buffers; (3) N3 (copy and compute overlap, prefetch) on the same harness. Housekeeping: log the N2 billed hours, delete the S2, V1 and N2 ssh configs, known_hosts files and key; the S1 follow-ups. The v227 block below still applies.
 
 ## First jobs (v227): the stage 1 harness is ready for a GPU smoke; running it needs Hamed's go and a card
 

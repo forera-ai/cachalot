@@ -1,0 +1,3 @@
+# Exploratory probes (not registered cells)
+
+Four small scripts run by hand on the N2 RTX 5090 instance on 2026-10-18 to explain why the replay's single-miss copy read 0.20 ms while the S1 and S2 cells read 0.33 to 0.36 ms for the same 9.95 MB pinned host-to-device transfer. They carry no registered prediction and no gates; their printed output is in `docs/cuda-results/n2-rtx5090-2026-10-18/exploratory-output.txt`. Run from the scaffold root on a GPU host with the venv python (`probe2` imports `benchmarks/cuda/suite.py`). The finding they support (H2D rate of a 9.95 MB pinned buffer is a property of the buffer, stable per buffer, bimodal 0.18 or about 0.35 ms) is in `docs/CUDA-N2S1-RESULTS.md` section 4; the cause is a hypothesis.

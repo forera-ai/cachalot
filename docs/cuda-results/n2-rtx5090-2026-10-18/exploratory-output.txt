@@ -1,0 +1,39 @@
+# Printed output of the four exploratory probes, N2 RTX 5090 instance, 2026-10-18 (copied from the terminal, not edited).
+
+## probe1_stream_dst_src.py  (fresh process; event ms p50 of 60 iterations, warm 10)
+ 0.1848 ms (min 0.1841, max 0.1873)   53.8 GB/s  A full dst, default stream, same src (S2-cell style)
+ 0.1908 ms (min 0.1893, max 0.1985)   52.1 GB/s  B full dst, side stream, same src
+ 0.1921 ms (min 0.1907, max 0.1987)   51.8 GB/s  C arena slice slot 5 (offset misaligned), side stream, same src
+ 0.1921 ms (min 0.1907, max 0.196)   51.8 GB/s  D arena slice offset 0, side stream, same src
+ 0.2524 ms (min 0.1901, max 0.3604)   39.4 GB/s  E full dst, side stream, rotating src (8)
+ 0.2500 ms (min 0.191, max 0.3624)   39.8 GB/s  F arena rotating slots, side stream, rotating src
+ 0.2419 ms (min 0.1839, max 0.3539)   41.1 GB/s  G full dst, default stream, rotating src
+
+## probe2_suite_bisect.py  (fresh process; the suite's own copy cell, then single changes)
+1 suite _copy cell, fresh process, first: (0.3529, 28.2)
+2 suite _copy cell, again: (0.3584, 27.8)
+3 same ops via suite._timed, no validation copy, warmup 5: 0.3585
+4 same, warmup 60 iters 60: 0.3584
+5 after the validation round trip (dev.cpu()), warmup 5: 0.3584
+6 repeat of 3 at the end: 0.3576
+
+## probe3_event_variants.py  (one pinned buffer; event reuse, pre-sync and host clock do not matter)
+ 0.3572 ms  reused events, presync, no host clock
+ 0.3570 ms  fresh events each iter, presync, no host clock
+ 0.3567 ms  fresh events, no presync, host clock (= suite._timed)
+ 0.3566 ms  reused events, no presync, host clock
+ 0.3567 ms  reused events, presync, host clock
+ 0.3567 ms  fresh events, no presync, no host clock
+
+## probe4_pinned_buffers.py  (the rate is a property of the pinned host buffer)
+THP: always [madvise] never | defrag: always defer defer+madvise [madvise] never
+-- 24 separately pinned 9.95 MB buffers (median ms each):
+0.182 0.182 0.182 0.182 0.182 0.182 0.182 0.182 0.182 0.182 0.182 0.182 0.182 0.182 0.182 0.183 0.193 0.219 0.237 0.309 0.346 0.354 0.357 0.358
+fast (<0.25): 19 slow: 5
+-- one 24x slab pinned, sliced into 24 records (median ms each):
+0.182 0.219 0.329 0.271 0.201 0.201 0.202 0.209 0.183 0.264 0.207 0.206 0.222 0.279 0.201 0.202 0.182 0.215 0.200 0.250 0.292 0.207 0.208 0.208
+Rss:             1276368 kB
+Pss_Anon:         310712 kB
+AnonHugePages:         0 kB
+-- same 24 buffers again (stability):
+0.182 0.182 0.182 0.182 0.182 0.182 0.182 0.182

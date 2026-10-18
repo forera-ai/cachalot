@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-18, 0.66.23): N2 stage 1 ran on an RTX 5090 (exposed copy time a token 16.7 / 12.8 / 9.4 ms at 8 / 12 / 17 % resident); it also showed that the H2D rate of a pinned 9.95 MB buffer is a property of the buffer, which corrects S1, S2 and V1
+>
+> Section 18.179, results `docs/CUDA-N2S1-RESULTS.md` (manifests and rows in `docs/cuda-results/n2-rtx5090-2026-10-18/`), plan section 17.5. The arena equals the Mac simulator event for event on every cell, on the Mac and on the host. Exposed demand-fetch copy time a token 16.74 / 12.83 / 9.43 ms (90.8 / 69.6 / 51.8 misses), 0.183 to 0.185 ms an extra miss, 0.571 ms of exposed time per GiB of resident experts between 8 and 17 % (3.04 misses a GiB times the measured 0.1847 ms a copy). **The copy cost in the replay was 0.185 ms (54 GB/s), not the 0.35 ms of S1 and S2**: four exploratory probes (`benchmarks/cuda/exploratory/`) showed it is a property of the pinned source buffer (24 separately pinned 9.95 MB buffers: 19 at 0.182 ms, 5 at 0.31 to 0.36, stable per buffer, slow ones the later allocations; cause untested, the physical page backing is the hypothesis). S1's "0.35 ms, 160 us fixed cost" and H1 falsification are artifacts, S2's batching gain is confounded, V1's card-specific ramp is withdrawn (V1's V100 numbers stand), H9 on ms per GiB is a ratio of 3.0 to 3.9 against the Mac, still under 5. Correction notes sit at the top of the three results files. Predictions: P1, P6, P8, P10 to P12 held, P9 in part; P2 to P5 missed low (their copy cost came from S1 and S2); the V100 arm (P7) was not run. **Needs Hamed:** terminate N2 (done at the time of writing); log its billed hours in the private cost file; delete the S2, V1 and N2 ssh configs, known_hosts files and the key file; the S1 follow-ups; a go for the next GPU job: the V100 arm of N2 stage 1, and/or a controlled test of the buffer-backing hypothesis with a redo of the S1 copy curve on qualified buffers (predictions first).
+>
 > ## Start here (2026-10-18, 0.66.22): the N2 stage 1 harness is built and equals the simulator on the Mac; it has never run on a GPU
 >
 > Section 18.178. `benchmarks/cuda/replay_arena.py` (arena, independent LRU, walk, timed per-layer fetch, gates, CPU rehearsal), `benchmarks/cuda/n2s1-expected.json` (the simulator's event hashes and the trace sha256), `session.sh n2smoke|n2full`, `SESSION-RUNBOOK-N2S1.md`. On the Mac the arena's event stream equals the simulator's on all six registered cells (trace at 8, 12, 17 %; generator at 17 %; the two 40-token smoke cells); 22 tests pass. Offline observations that the record's predictions cover and the results will score: the generator at its default knobs misses 72.26 a token at 17 % against the trace's 51.85 (N2-P8's direction, a property of the replay, not of a card); the bytes a token are misses times 9.95 MB by construction (N2-P6). **Needs Hamed:** a card choice and a go for GPU time (RTX 5090, V100 or both; a 17 % arena needs 24.2 GiB of the 31.4 free); the instance takes about seven minutes to initialize. Next: pack from a clean commit, copy the trace to the host, `n2smoke` (required before any number counts), then `n2full`.
@@ -9230,6 +9234,18 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.179 N2 stage 1 on an RTX 5090, and a correction of S1, S2 and V1 (0.66.23)
+
+**Goal.** Hamed chose the RTX 5090 first, created the instance (a third 5090 VM, same listing and key as S2), and said go. Run the harness: smoke, then the full stage 1.
+
+**How it ran.** Over SSH to that one instance, no sudo: setup, doctor, the S1 smoke, `n2smoke`, `n2full`. The first `n2smoke` had one failed cell (the generator imported `cachalot`) and a surprise: a single-miss layer's copy took 0.20 ms against 0.33 to 0.36 in the S1 and S2 cells. A short exploratory bisect on the live instance (four probe scripts, kept in `benchmarks/cuda/exploratory/`) found the cause is the pinned source buffer, not the stream, destination, events or warm-up. The qualification arm I added for the decomposition had a stream bug of mine (6 us times), fixed; then the smoke was clean and the full run took 130 s.
+
+**Results and scoring.** `docs/CUDA-N2S1-RESULTS.md`; plan section 17.5 carries the corrections and the restated H1, H2 and H9. N2-P2 to P5 missed low because their copy cost came from S1 and S2; the structure of the H9 test held (slope times measured copy cost within 2 %).
+
+**What did not go well.** I derived the N2 intervals from the S1 and S2 copy costs without asking whether those cells' buffer was representative; the S1 H1 "falsification" and a card-specific-ramp reading in V1 were wrong for the same reason. My first source-qualification code ran copies outside the stream its events were on. The arena was not released between cells (one row, `trace.p12`'s reserved memory, is an artifact; fixed afterwards, not re-run).
+
+**Open / needs Hamed.** See the Start here block. **Kind.** Measurement, harness fixes and a correction. No default changed.
 
 ### 18.178 N2 stage 1 harness built (0.66.22)
 
