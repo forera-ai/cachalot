@@ -112,7 +112,10 @@ def main() -> int:
     ap.add_argument("trace")
     ap.add_argument("--fractions", default="8,12,17,25,34", help="percent of all experts resident")
     ap.add_argument("--policies", default=",".join(POLICIES))
-    ap.add_argument("--anchor-slots", type=int, default=5179, help="the Mac's shipped 48 GiB (33.7 %%)")
+    ap.add_argument("--anchor-slots", type=int, default=-1,
+                    help="a reference cache size in slots; default: the Mac's shipped 5,179 (48 GiB) for a DeepSeek trace, none otherwise; 0 = none")
+    ap.add_argument("--expert-bytes", type=int, default=Q2_EXPERT_BYTES,
+                    help="bytes of one expert record (DeepSeek 9,950,000; MiniMax slot image 21.1 MiB = 22,124,953; GLM 14,160,000)")
     ap.add_argument("--seed", type=int, default=20261018)
     ap.add_argument("--out")
     ap.add_argument("--lfu-decay", type=int, default=0, help="also run LFU with a halving every N decode tokens (exploratory arm 'lfu-decay')")
@@ -124,8 +127,13 @@ def main() -> int:
     n_dec = int(np.unique(arrays["position"][arrays["phase"] == PHASE_DECODE]).size)
     smoke = n_dec < MIN_DECODE_TOKENS
     cells, t_all = [], time.time()
-    slot_list = [(f"{p}%", round(TOTAL_EXPERTS * float(p) / 100)) for p in args.fractions.split(",")]
-    slot_list.append(("anchor", args.anchor_slots))
+    total_experts = int(np.unique(arrays["layer"]).size) * (int(arrays["experts"].max()) + 1)
+    anchor = args.anchor_slots
+    if anchor < 0:
+        anchor = 5179 if total_experts == TOTAL_EXPERTS else 0
+    slot_list = [(f"{p}%", round(total_experts * float(p) / 100)) for p in args.fractions.split(",")]
+    if anchor:
+        slot_list.append(("anchor", anchor))
     policies = args.policies.split(",")
     series: dict[tuple[str, str], list[int]] = {}
     consistent = True
@@ -152,8 +160,8 @@ def main() -> int:
                 consistent &= check
             series[(label, pol)] = r["per_token"]
             cells.append({
-                "fraction": label, "slots": slots, "resident_pct": round(100 * slots / TOTAL_EXPERTS, 2),
-                "resident_gib": round(slots * Q2_EXPERT_BYTES / GIB, 2), "policy": pol, "tokens": r["tokens"],
+                "fraction": label, "slots": slots, "resident_pct": round(100 * slots / total_experts, 2),
+                "resident_gib": round(slots * args.expert_bytes / GIB, 2), "policy": pol, "tokens": r["tokens"],
                 "requests": r["requests"], "misses": r["misses"], "misses_per_token": r["misses"] / r["tokens"],
                 "hit": 1 - r["misses"] / r["requests"], "consistent_with_cache_sim": check,
                 "seconds": round(time.time() - t0, 1),
@@ -175,8 +183,8 @@ def main() -> int:
                              "ci_high": hi, "relative_reduction": mean / base if base else 0.0,
                              "outside_noise": lo > 0 or hi < 0})
     out = {
-        "trace": args.trace, "decode_tokens": n_dec, "smoke_grade": smoke, "expert_bytes": Q2_EXPERT_BYTES,
-        "total_experts": TOTAL_EXPERTS, "block": BLOCK, "bootstrap": BOOT, "seed": args.seed,
+        "trace": args.trace, "decode_tokens": n_dec, "smoke_grade": smoke, "expert_bytes": args.expert_bytes,
+        "total_experts": total_experts, "block": BLOCK, "bootstrap": BOOT, "seed": args.seed,
         "all_cells_consistent_with_cache_sim": consistent if not args.no_check else None,
         "deterministic_repeat": deterministic if args.determinism else None,
         "cells": cells, "gaps_vs_lru": gaps, "seconds_total": round(time.time() - t_all, 1),

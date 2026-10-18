@@ -90,3 +90,22 @@ No CUDA claim. Nothing was measured on a GPU; the copy costs are assumptions. On
 ### Consequence for the plan
 
 N2's policy comparison should include LFU with decay and SLRU, not LFU without decay. H6 stays open and is registered for a second, longer trace before it counts. H9's threshold is likely too strict and is to be re-stated after N1 with the measured copy rate (a change recorded in the plan, not made silently).
+
+## 6. Second trace: MiniMax-M3 (predictions registered 2026-10-18, before the run)
+
+**Why this trace.** Section 5 left CUDA-H6 open pending a second long trace. No second long DeepSeek trace exists (the other four have 32 to 230 decode tokens); recording one needs the live runtime and Hamed's machine. Of the nine recorded traces only `routing-trace-minimax-long` (1,904 decode tokens, 57 MoE layers, 128 experts a layer = 7,296 experts, top-4, 228 requests a token) reaches the 1,000-token floor besides `deepseek-long`. The GLM traces (229 to 793 decode tokens) are smoke-grade and are not run. A different architecture tests whether the policy gaps are a property of the workload class or of one routing distribution; it does **not** replace the DeepSeek second trace, which stays an open item.
+
+**Setup.** Same script with `--expert-bytes 22124953` (MiniMax slot image, 21.1 MiB) and the resident fractions 8, 12, 17, 25, 34 % of 7,296 experts (584, 876, 1,240, 1,824, 2,481 slots); policies LRU, SLRU and LFU with a halving every 16 tokens (LFU without decay is not rerun: section 5 closed it for DeepSeek and the arm costs most of the runtime); the Mac's shipped 68 GiB cache (3,300 slots, 45 %) as a reference point with no live figure attached. Consistency check against `cache_sim.simulate` and `simulate_policies.run` as before. Estimated cost 12 to 15 minutes of one Mac process (LFU cells about 60 s each, doubled by the check).
+
+**Predictions** (all **predicted**; the memory of the repository is that routing concentration is DeepSeek > MiniMax > GLM, so MiniMax should miss more at the same fraction):
+
+| id | quantity | prediction | falsifier |
+|---|---|---|---|
+| M-P1 | consistency with `cache_sim` and `simulate_policies`, all cells | holds exactly | any difference |
+| M-P2 | LRU miss rate (misses over 228 requests) at 34 % / 17 % / 8 % | 15 to 30 % / 30 to 50 % / 45 to 70 % | a value outside its interval |
+| M-P3 | relative SLRU reduction against LRU at 34 %, at 17 % | 1 to 5 % at each; ratio 17 % over 34 % between 0.8 and 3 | ratio outside 0.8 to 3 |
+| M-P4 | CUDA-H6 premise (SLRU relative gain at 17 % at least twice that at 34 %, outside the noise) | passes with probability about 0.30 | scored by outcome |
+| M-P5 | LFU with decay against SLRU at 17 % (relative reduction) | within 2 percentage points of SLRU | difference above 2 points |
+| M-P6 | marginal misses a token per extra GiB (LRU), 8 to 17 % over 17 to 34 % | the 8 to 17 % slope at least twice the 17 to 34 % slope | ratio under 2 |
+
+Stop rules as in section 4. A gap inside its bootstrap interval is a null.
