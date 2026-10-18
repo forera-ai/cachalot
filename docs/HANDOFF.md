@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-18, 0.66.20): CUDA session V1 (V100) ran; an expert copy over PCIe 3 costs 0.84 ms (0.35 on the 5090), batching buys nothing there, H9 restated
+>
+> Section 18.176, results `docs/CUDA-V1-RESULTS.md` (manifests and rows in `docs/cuda-results/v1-v100-2026-10-18/`). Tesla V100-SXM3 32 GB, PCIe 3.0 x16, KVM, 83.5 GiB RAM, torch 2.7.1+cu126 (the arch gate passed). Smoke, baseline and the S2 profile three times, 74 s of GPU time, all gates true. Pinned H2D flat 11.4 to 11.9 GB/s from 3 MiB (expert copy 0.84 ms); pageable 4.3 to 5.2; D2D 883 GB/s; launch 6.9 us; router chain 20 us a layer; timer overhead 16.4 us. Batched and queued copies cost the same per expert (0.84 ms). Compute under copies about 0 % (reused matrix) and 9 to 12 % (large weights); the V100 L2 is 6 MiB so it cannot test the L2 hypothesis. H9 restated (derived): a resident GiB is worth about the same on this card as on the Mac (cost ratio 2.4 offset by the steeper small-fraction curve). Predictions: 12 of 17 held in whole or part (P3 is scored by outcome); P5, P7, P8 and P11 missed, with P5 and P11 firing their falsifiers. **Needs Hamed:** log V1's billed hours; terminate was his step; delete the S2 and V1 ssh configs, known_hosts and the key file; the S1 follow-ups; whether N2 stage 1 (replay with a real slot arena on a GPU) is next.
+>
 > ## Start here (2026-10-18, 0.66.19): CUDA session V1 (V100) is prepared; it has not run
 >
 > Section 18.175, record `docs/CUDA-V1-EXPERIMENT-RECORD.md` (17 predictions, committed d507e14 first), `benchmarks/cuda/SESSION-RUNBOOK-V1.md`. The S2 setup output showed the cu128 torch wheel lists no `sm_70`, so it cannot run on a V100; V1 uses the cu126 build, and `session.sh setup` now has an arch gate (`suite.arch_supported`, tested) that stops before any cell if the wheel has no kernels for the device. `session.sh s2` honours `SESSION_TAG`. **No instance, no measurement.** **Needs Hamed:** create one V100 32 GB instance when the agent asks (initialization about seven minutes), set the private ssh config, say go; terminate and log hours after; delete the S2 ssh config, known_hosts and key file; the S1 follow-ups.
@@ -9218,6 +9222,18 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.176 CUDA session V1: the V100 contrast (0.66.20)
+
+**Goal.** Hamed created the V100 SXM3 32 GB instance the agent asked for (the same key as S2; dedicated IP, port 22, user `riftuser`) and said to proceed. Run the committed itinerary and score the 17 registered predictions.
+
+**How it ran.** Over SSH to that one instance, no sudo: check, setup with the cu126 wheel (the arch gate passed: `sm_70` listed, V1-P1 held), doctor, smoke, baseline, the S2 profile three times; all clean, about 74 s of GPU time; results copied home and sanitized.
+
+**Results.** `docs/CUDA-V1-RESULTS.md`; the scoring table is there. Headlines are in the Start here block. Findings that change the plan: CUDA-H1 holds on the V100 and failed on the 5090 (the 5090's ramp is card-specific); batching helps on the 5090 and not on the V100; H9 restated.
+
+**What did not go well.** My timer-overhead prediction (1 to 6 us) was off by a factor of three (16.4 us), my device-bandwidth interval was low (883 GB/s), and I predicted pageable would be within 0.60 to 0.95 of pinned (0.43): three misses from not having a measured V100 prior; the intervals came from vendor figures and the 5090 sessions.
+
+**Open / needs Hamed.** See the Start here block. **Kind.** Measurement (GPU microbenchmarks). No default changed.
 
 ### 18.175 CUDA session V1 prepared (0.66.19)
 

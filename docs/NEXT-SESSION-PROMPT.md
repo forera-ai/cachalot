@@ -1,10 +1,11 @@
-# Next-session prompt — **v224**, written 2026-10-18
+# Next-session prompt — **v225**, written 2026-10-18
 
 **This is the file to paste.** `docs/NEXT-SESSION-PROMPT.md` is always current; superseded ones live in
 `docs/next-session-prompts/`.
 
 | version | written | produced by | what changed |
 |---|---|---|---|
+| **v225** | 2026-10-18 | Hamed created the V100 SXM3 and said to proceed (v224 option V100) | **0.66.20, measurement only: CUDA session V1 on a Tesla V100-SXM3 32 GB. An expert-sized pinned copy over PCIe 3.0 x16 costs 0.84 ms (11.8 GB/s, flat from 3 MiB) against 0.35 ms on the RTX 5090s; batching and queueing buy nothing there; pageable is 0.43 of pinned; compute under copies about 0 % to 12 % and the 6 MiB L2 cannot test the L2 hypothesis; H9 restated (a resident GiB is worth about the same on this card as on the Mac, derived). 12 of 17 predictions held in whole or part, 4 missed (P5, P7, P8, P11). Nothing in `src/`.** §18.176 |
 | **v224** | 2026-10-18 | Hamed: "prepare what we need in mac side and ask me to create the instance" (v223 option V100) | **0.66.19, instruments and documents: CUDA session V1 (V100) prepared. 17 predictions committed first (d507e14); the cu128 wheel has no `sm_70` so V1 uses cu126, with a tested arch gate in `session.sh setup`; `SESSION-RUNBOOK-V1.md`. No instance, nothing measured, nothing in `src/`.** §18.175 |
 | **v223** | 2026-10-18 | Hamed: provisioned the S2 instance and said "do the rest" (v222 First jobs) | **0.66.18, measurement and a cell fix: CUDA session S2 ran on a second RTX 5090 VM. H-L2 (L2 eviction explains the compute slowdown under copies) not supported: larger-than-L2 weights keep it (19 to 22 % against 12 to 13 % for one reused matrix; the S1 instance read 21 to 26 %, so it varies by instance); the d2d interferer starves the matmul and does not isolate L2; queued separate expert copies reach 35 to 45 GB/s, one contiguous 79.6 MB transfer 41 to 50. A stream race in my new d2d cell failed a gate in run 1 (fixed, 01bf195, three clean reruns). Nothing in `src/`.** §18.174 |
 | **v222** | 2026-10-18 | Hamed: "/ca read the documentations and next session's prompt file and continue with CUDA part" (v221 First jobs) | **0.66.17, instruments, tests and documents: CUDA session S2 is prepared on the Mac. Thirteen predictions committed first (3d044d4): is the 21 to 26 % compute slowdown under copies an L2 effect (one reused 23.6 MB weight matrix) or copy-engine interference, and does one transfer of k experts remove the roughly 160 us fixed cost per copy. New `s2` profile (13 cells, upper bound 29 s), overlap variants and batched-copy cells rehearsed on the CPU, `session.sh s2`, `SESSION-RUNBOOK-S2.md`. No instance, nothing measured, nothing in `src/`.** §18.173 |
@@ -185,6 +186,10 @@
 | v47 | 2026-09-25 | Hamed asked for the v44-v46 levers planned, built, measured and documented | **0.18.0: GLM prefill 60 to 90 tok/s, bit-identical (a store path that never evicts, plus the next layer read early), GLM's missing MLX buffer-cache cap added, GLM disk snapshots (a restart reuses the system block). DeepSeek: an `iostat` trace shows prefill is not read-bound on either drive; the lookahead A/B drowned in a 124-to-200 s drift across back-to-back prefills.** §17.1, §15.13 |
 | v46 | 2026-09-25 | Hamed asked for GLM-5.3-Flash on Cachalot | 0.17.0: GLM through `serve-glm.sh` / `chat-glm.sh`. §17 |
 | v45 | 2026-09-24 | same as v47, one day earlier | 0.16.0: disk snapshot store by last use; lookahead and local compression closed. §15.12 |
+
+## First jobs (v225): the microbenchmark phase is done on two cards; the next step is N2 stage 1 and needs Hamed's go
+
+Read HANDOFF section 18.176, `docs/CUDA-V1-RESULTS.md` and plan section 17.4 first; the v224 and v223 blocks below still apply for the housekeeping (log V1 hours, delete the S2 and V1 ssh configs, known_hosts and the key file, the S1 follow-ups). The offline step that is free: write the N2 stage 1 design record (a seeded synthetic and recorded-trace replay with a real fixed-size slot arena and real pinned H2D copies, using the measured copy costs of 0.35 and 0.84 ms; predictions first, the CPU rehearsal and a GPU smoke before any number counts). Running it needs Hamed's go for more GPU time and a card choice (5090, V100 or L40S).
 
 ## First jobs (v224): V1 is prepared; running it needs Hamed to create the V100
 

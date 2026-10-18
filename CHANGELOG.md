@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.66.20 (2026-10-18)
+
+HANDOFF "Start here (2026-10-18, 0.66.20)" and section 18.176; results `docs/CUDA-V1-RESULTS.md` with sanitized manifests and rows in `docs/cuda-results/v1-v100-2026-10-18/`. Measurement only; nothing in `src/` except the version string. The V100 contrast session (plan decision D3).
+
+### Measured
+- CUDA session V1 on one rented Tesla V100-SXM3 32 GB (KVM, 83.5 GiB host RAM, PCIe 3.0 x16, driver 580, torch 2.7.1+cu126): smoke, baseline and the S2 profile three times, 74 s of GPU run time, all gates true. Pinned H2D is a flat 11.4 to 11.9 GB/s from 3 MiB up (an expert-sized copy 0.84 ms against 0.35 ms on the RTX 5090s); pageable 4.3 to 5.2 GB/s (0.43 of pinned at the record size); pinned D2H 13 GB/s; device copy 883 GB/s; launch 6.9 us; router chain 20 us a layer; fp16 expert cell 36 to 73 TFLOP/s; event timer overhead 16.4 us. Batching buys nothing on this link (every k costs 0.84 ms an expert, queue or single transfer). Compute under copies: about 0 % for the reused-matrix cell, 9 to 12 % with eight distinct matrices (the V100's L2 is 6 MiB, so it cannot test the L2 hypothesis). Derived: on this card the value of a resident GiB is about the same as the Mac's, not smaller (cost ratio 2.4, offset by the steeper small-fraction curve).
+- Scored against the 17 registered predictions (d507e14): P1 to P4, P6, P9, P10, P12 large, P13 to P16 held; P5, P7, P8, P11 and P12 resident missed (P5 and P11 fired their falsifiers); P17 held on gates, missed on two timing sub-intervals.
+
+### Not done, on purpose
+- No fp8 or bf16 cell (gated by capability 7.0), no model, no token time, no profiler. The billed time of V1 is for Hamed to log. H4, H5 and H6 remain untested on a GPU.
+
 ## 0.66.19 (2026-10-18)
 
 HANDOFF "Start here (2026-10-18, 0.66.19)" and section 18.175; record `docs/CUDA-V1-EXPERIMENT-RECORD.md` (committed first, d507e14). Instruments, tests and documents only; nothing in `src/` except the version string. No GPU, no instance used.

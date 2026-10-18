@@ -484,6 +484,17 @@ The second RTX 5090 session ran under `docs/CUDA-S2-EXPERIMENT-RECORD.md` and is
 * The first S2 run failed a gate through a stream race in the new d2d cell (fixed, 01bf195): any cell with two streams needs a GPU smoke before it counts.
 * Not started: the V100 session (D3), a profiler run, a third instance.
 
+### 17.4 Session V1 outcome (2026-10-18)
+
+The V100 contrast session ran under `docs/CUDA-V1-EXPERIMENT-RECORD.md` and is recorded in `docs/CUDA-V1-RESULTS.md`. Consequences, written after the run:
+
+* **Measured copy cost, second card:** an expert-sized pinned copy takes 0.84 ms over PCIe 3.0 x16 (11.8 GB/s, flat from 3 MiB), against 0.35 ms on the RTX 5090s. CUDA-H1 holds on the V100 (record size at 98 % of the 64 MiB rate) and failed on the 5090: the fixed-cost ramp is a property of that card or link.
+* **CUDA-H9, restated (derived):** the value of a resident GiB differs between tiers by less than the cost-per-miss ratio because the miss curve is steeper at small fractions; on the V100 the cost ratio against the Mac is 2.4 and the ms-a-GiB figure (about 2.5) is about equal to the Mac's 1.7 to 2.2. N2 should budget on that, not on a five-fold gap.
+* **Batching:** no gain on the V100 (every k 0.84 ms an expert); S2's gain on the 5090 does not transfer. Pageable staging is 2.3 to 2.8 times slower than pinned on the V100.
+* **CUDA-H7 on the V100:** about 0 % for the reused-matrix cell, 9 to 12 % for the large-weights cell; the L2 hypothesis cannot be tested there (6 MiB L2). H7 stays falsified as registered and its mechanism open.
+* The event timer costs 16.4 us on this VM: single-projection kernel times are below resolution; H3's single-launch claim needs a longer-running variant there.
+* Not started: N2 stage 1 (needs a design record and Hamed's go), a profiler run, an L40S contrast.
+
 ## 18. Honest limits
 
 - This is a plan. No hypothesis in it has been tested; every "expected" device property is vendor-derived and unverified for the rented machine.
