@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-18, 0.66.12): CUDA lane N0a done offline, H6 not established, H9 threshold looks too strict
+>
+> Section 18.168, record `docs/CUDA-N0A-POLICY-RECORD.md`. Measurement only, Mac, no GPU. On `routing-trace-deepseek-long` (1,972 decode tokens): SLRU saves 3.3 to 5.2 % of LRU's misses at every resident fraction (no growth at small fractions); LFU without decay is much worse than LRU; LFU with decay shows the small-fraction effect (17 % gap 6.8 times the 34 % gap, intervals apart) as an exploratory lead; a resident GiB removes 3.7 times more misses at 11 to 17 GiB than at 36 to 48 GiB. Predictions committed first (37323a6): consistency and slope held, the LRU curve and the gap ratio missed. **Needs Hamed:** plan D1 to D5 before any metered GPU session; rotate the CloudRift key pasted into chat. The first job and closed list of the v213 prompt are unchanged.
+>
 > ## Start here (2026-10-18, 0.66.11): the CUDA N0/N1 scaffold exists, never run on a GPU
 >
 > Section 18.167. `benchmarks/cuda/` (doctor, bounded microbenchmark suite, `cuda-manifest` v1 with a redaction gate, README) and 35 Mac tests. Nothing in `src/` except the version string; no instance was provisioned, no credit used, no key read, nothing installed, no CUDA number exists. The torch cells have never executed. **Needs Hamed:** (1) rotate the CloudRift API key pasted into the chat that started this session; (2) the plan's D1 to D5 before any metered session (cap, instance order, installs); (3) say when to provision. The first job and the closed list of the v213 prompt are unchanged.
@@ -9186,6 +9190,20 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.168 CUDA lane N0a: the offline resident-fraction policy table (0.66.12)
+
+**Goal.** Hamed: "go for N0a" (v216): plan section 6, N0a item 2, the policy table at VRAM-sized resident fractions, Mac only.
+
+**Method and record.** `docs/CUDA-N0A-POLICY-RECORD.md`: predictions and stop rules committed before the run (37323a6), results appended after. New `benchmarks/cuda_offline_policy_table.py` replays a trace as `cache_sim.simulate` does but keeps per-token misses for a paired block bootstrap (blocks of 20 tokens, 2,000 resamples). Only `routing-trace-deepseek-long` has at least 1,000 decode tokens, so it alone is evidence. Cost: about 10 minutes of one Mac process per run (LFU cells about 60 to 85 s, LRU and SLRU about 1 s).
+
+**Results.** See the record's section 5. Headlines: consistency with `cache_sim` held in all 27 cells; the shipped-store anchor 25.03 equals the live 25.0; the SLRU gain is flat in relative terms (H6 not established as registered); LFU without decay is not a candidate; LFU with decay (exploratory) does show the effect; the value of resident memory per GiB falls 4.5 times from 11 to 17 GiB to 36 to 48 GiB.
+
+**What closed / what changed in the plan.** N2 should compare SLRU and LFU with decay, not LFU without decay. CUDA-H6 stays open pending a second long trace. CUDA-H9's five-fold threshold is probably too strict; re-state it after N1 measures the copy rate (recorded here; the plan text is not edited yet).
+
+**Not done.** MiniMax and GLM traces, other prompt mixes, the live store's prefetch, any decay constant but 16, any GPU work.
+
+**Needs Hamed.** D1 to D5; rotate the pasted CloudRift key. **Kind.** Measurement. No default changed.
 
 ### 18.167 The CUDA N0/N1 scaffold (0.66.11)
 

@@ -1,10 +1,11 @@
-# Next-session prompt — **v216**, written 2026-10-18
+# Next-session prompt — **v217**, written 2026-10-18
 
 **This is the file to paste.** `docs/NEXT-SESSION-PROMPT.md` is always current; superseded ones live in
 `docs/next-session-prompts/`.
 
 | version | written | produced by | what changed |
 |---|---|---|---|
+| **v217** | 2026-10-18 | Hamed: "go for N0a" (v216 free job) | **0.66.12, measurement only, Mac: the CUDA lane N0a policy table on `routing-trace-deepseek-long`. SLRU saves 3.3 to 5.2 % at every resident fraction (CUDA-H6 not established as registered); LFU without decay is much worse than LRU, with decay (exploratory) it shows the small-fraction effect; a resident GiB removes 3.7 times more misses at 11 to 17 GiB than at 36 to 48; the H9 threshold looks too strict (derived). Predictions committed first; consistency and slope held, LRU curve and gap ratio missed. New `benchmarks/cuda_offline_policy_table.py`. Nothing in `src/`.** §18.168 |
 | **v216** | 2026-10-18 | Hamed: `/ca` task "Start Cachalot CUDA Track N0/N1 safely", then "do the full 0.66.11 release routine" | **0.66.11, instruments and tests: `benchmarks/cuda/` (doctor, bounded N1 microbenchmark suite, `cuda-manifest` v1 and a redaction gate, README) and 35 Mac tests; torch cells reviewed but never run (no GPU); no instance, credit or key used; nothing in `src/` but the version string. Needs Hamed: rotate the pasted CloudRift key, plan D1 to D5, when to provision. First job and closed list unchanged from v213.** §18.167 |
 | **v215** | 2026-10-17 | Hamed: `/ca` task "Evidence-driven NVIDIA CUDA research roadmap for Cachalot" | **0.66.10, documentation only: `docs/CUDA-RESEARCH-PLAN.md` (planned CUDA lane N0a to N5, nine proposed hypotheses, manifest, comparability rules, cost discipline), charter section 14, ledger section 9 (proposed rows), README pointers. No instance, no CUDA code, no measurement; nothing in `src/` but the version string. New optional autonomous job: N0a, the offline resident-fraction policy table (plan section 6); decisions D1 to D8 are Hamed's. First job and closed list unchanged from v213.** §18.166 |
 | **v214** | 2026-10-17 | Hamed: `/ca` task "Cachalot sponsorship acknowledgement (documentation only)" | **0.66.9, documentation only: README thanks CloudRift for GPU-compute credits supporting the planned NVIDIA CUDA research; mailto support link because forera.ai has no `#support` anchor yet, no `FUNDING.yml`. Nothing in `src/` but the version string. First job and closed list unchanged from v213.** §18.165 |
@@ -177,6 +178,10 @@
 | v47 | 2026-09-25 | Hamed asked for the v44-v46 levers planned, built, measured and documented | **0.18.0: GLM prefill 60 to 90 tok/s, bit-identical (a store path that never evicts, plus the next layer read early), GLM's missing MLX buffer-cache cap added, GLM disk snapshots (a restart reuses the system block). DeepSeek: an `iostat` trace shows prefill is not read-bound on either drive; the lookahead A/B drowned in a 124-to-200 s drift across back-to-back prefills.** §17.1, §15.13 |
 | v46 | 2026-09-25 | Hamed asked for GLM-5.3-Flash on Cachalot | 0.17.0: GLM through `serve-glm.sh` / `chat-glm.sh`. §17 |
 | v45 | 2026-09-24 | same as v47, one day earlier | 0.16.0: disk snapshot store by last use; lookahead and local compression closed. §15.12 |
+
+## First jobs (v217): CUDA N0a is done; the rest of the lane needs Hamed
+
+Read HANDOFF section 18.168 and `docs/CUDA-N0A-POLICY-RECORD.md` first. The v216 block below still applies. **New in 0.66.12:** `benchmarks/cuda_offline_policy_table.py`. Free and autonomous next: re-run the table on a second long DeepSeek trace (H6 stays open until then) and consider the MiniMax and GLM traces. Needs Hamed: plan D1 to D5 and the go to provision; rotate the pasted CloudRift key. **New rule:** a policy comparison that includes LFU must say whether it decays (cache_sim's does not; simulate_policies' halves every 16 tokens).
 
 ## First jobs (v216): the CUDA scaffold exists and has never run; provisioning is Hamed's
 

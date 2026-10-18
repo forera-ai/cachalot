@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.66.12 (2026-10-18)
+
+HANDOFF "Start here (2026-10-18, 0.66.12)" and section 18.168; record `docs/CUDA-N0A-POLICY-RECORD.md`. Measurement only; nothing in `src/` except the version string. No GPU.
+
+### Measured
+- CUDA lane phase N0a, offline on the Mac: the DeepSeek `routing-trace-deepseek-long` trace (1,972 decode tokens) replayed at 8, 12, 17, 25 and 34 % of experts resident plus the shipped 5,179 slots, for LRU, SLRU and LFU, with a paired block-bootstrap interval on every gap. LRU misses a token: 90.8, 69.6, 51.9, 35.5, 24.8 (shipped store 25.03, equal to the recorded live 25.0). SLRU saves 3.3 to 5.2 % at every fraction; its relative gain does not grow at small fractions (17 % over 34 %: 1.1, falsifier fired), so the plan's CUDA-H6 is not established as registered. LFU without decay is 13 to 40 misses a token worse than LRU everywhere; LFU halved every 16 tokens (an exploratory arm added after the first result) matches SLRU at 17 % and gains only 0.30 at 34 %, a gap 6.8 times larger at 17 % with non-overlapping intervals. A resident GiB removes about 3.7 times the misses at 11 to 17 GiB that it removes at 36 to 48 GiB, which makes CUDA-H9's five-fold threshold look too strict (derived, on assumed copy rates; N1 decides).
+- Predictions (committed first, 37323a6): the consistency check and the slope held; the LRU miss curve missed on four of five fractions (the replay is flatter than my live-anchored intervals); the policy-gap ratio fell outside its band.
+
+### Added
+- `benchmarks/cuda_offline_policy_table.py` (per-token replay equal to `cache_sim.simulate`, paired block bootstrap, optional LFU decay arm, determinism check) and `tests/test_cuda_offline_policy_table.py` (10 tests on a synthetic trace).
+
 ## 0.66.11 (2026-10-18)
 
 HANDOFF "Start here (2026-10-18, 0.66.11)" and section 18.167. Instruments and tests only; nothing in `src/` except the version string. Never run on a GPU: no instance, no CUDA measurement, no credential used.

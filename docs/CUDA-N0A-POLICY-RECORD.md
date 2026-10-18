@@ -37,3 +37,56 @@ All numbers are **predicted**; the intervals come from the recorded Mac figures 
 * A trace with fewer than 1,000 decode tokens is smoke-grade and supports no conclusion.
 * If a cell of the consistency check differs, results are void until the script is fixed.
 * Estimated cost: Mac CPU only, a single Python process. A timing probe on one cell comes first; a total beyond about ten minutes is announced before it runs (Hamed's standing rule on long tests).
+
+## 5. Results (appended 2026-10-18, after the run; sections 1 to 4 above are unchanged)
+
+Commands (Mac, one Python process each, no other runtime running):
+
+```bash
+cd /Users/hamedprooshani/Projects/deepseek-v41-mac
+PYTHONPATH=src ~/venvs/deepseek-v41/bin/python benchmarks/cuda_offline_policy_table.py \
+    benchmarks/results/routing-trace-deepseek-long/trace.npz --out benchmarks/results/cuda-n0a/deepseek-long.json
+PYTHONPATH=src ~/venvs/deepseek-v41/bin/python benchmarks/cuda_offline_policy_table.py \
+    benchmarks/results/routing-trace-deepseek-long/trace.npz --fractions 17,34 --policies lru,slru \
+    --lfu-decay 16 --determinism --out benchmarks/results/cuda-n0a/deepseek-long-decay.json
+```
+
+Trace `routing-trace-deepseek-long`: 1,972 decode tokens, so not smoke-grade. The raw JSON stays local (`benchmarks/results/` is gitignored). Everything below is **measured** by replay on that trace (a trace-and-policy statement; no copy cost, no VRAM overhead, no prefetch), except where marked derived.
+
+### Table (misses a token; gap = misses LRU has and the policy saves, with a paired block-bootstrap 95 % interval)
+
+| resident | experts GiB | LRU | SLRU | SLRU saves | LFU, no decay | LFU, halved every 16 tokens (exploratory) |
+|---|---:|---:|---:|---|---:|---|
+| 8 % | 11.4 | 90.84 | 87.20 | +3.64 (+1.81 to +5.40), 4.0 % | 130.83 | not run |
+| 12 % | 17.1 | 69.64 | 66.02 | +3.62 (+2.02 to +5.20), 5.2 % | 107.55 | not run |
+| 17 % | 24.2 | 51.85 | 49.94 | +1.91 (+0.87 to +2.95), 3.7 % | 85.03 | +2.01 (+1.29 to +2.74), 3.9 % |
+| 25 % | 35.6 | 35.47 | 34.32 | +1.16 (+0.52 to +1.81), 3.3 % | 58.51 | not run |
+| 34 % | 48.4 | 24.78 | 23.97 | +0.82 (+0.48 to +1.19), 3.3 % | 37.82 | +0.30 (+0.12 to +0.49), 1.2 % |
+| Mac shipped, 5,179 slots | 48.0 | 25.03 | 24.22 | +0.82 (+0.47 to +1.19), 3.3 % | 38.35 | +0.27 (+0.08 to +0.46), 1.1 % |
+
+The shipped-store anchor, 25.03 misses a token, equals the recorded live figure at 48 GiB (25.0, ledger DS-MISS-48): the replay and the live store agree at that point.
+
+### Scoring the predictions
+
+| id | outcome |
+|---|---|
+| N0a-P1 consistency | **held.** All 18 cells of the main run and all 9 of the second run equal `cache_sim.simulate` (and, for the decay arm, `simulate_policies.run`) in misses, requests and tokens; a second replay of every LRU and SLRU cell reproduced the per-token series exactly. This is the offline premise of CUDA-H5 only: the CUDA replay itself does not exist yet |
+| N0a-P2 LRU curve | **missed on four of five.** Predicted 22 to 36 / 38 to 58 / 62 to 95 / 88 to 130 / 112 to 160; measured 24.78 (held) / 35.47 / 51.85 / 69.64 / 90.84 (all below their intervals). My intervals were anchored on live numbers that include real prefetch and a different prompt mix; the replay curve is flatter. The measured curve still agrees with the live 22 GiB point (62.2 live; the replay at 24.2 GiB reads 51.9) only loosely |
+| N0a-P3 policy-gap ratio | **missed, falsifier fired.** Best of SLRU and LFU is SLRU: relative reduction 3.3 % at 34 % and 3.7 % at 17 %, ratio 1.1 (predicted 1.5 to 5; falsifier below 1.5). In absolute misses the ratio is 2.3, but the two intervals overlap, so the plan's CUDA-H6 ("at least twice") is **not established** on the registered definition |
+| N0a-P4 probability 0.55 that H6 passes | scored as a **fail** (probability was not far from a coin) |
+| N0a-P5 slope, 8 to 17 % | **held.** (90.84 - 51.85) misses over (24.2 - 11.4) GiB = 3.04 misses a token per GiB (predicted 2.0 to 4.0) |
+| N0a-P6 cost-ratio arithmetic | **held by construction**: 2.0 ms against 0.40 to 1.0 ms is 2.0 to 5.0, on assumed copy rates that N1 will measure |
+
+### Findings the predictions did not cover (post hoc, labelled)
+
+1. **LFU as `cache_sim` models it (no decay) is far worse than LRU at every fraction** (13 to 40 more misses a token, outside the noise at every size). It is not a candidate policy. With a halving every 16 decode tokens (the `simulate_policies.py` setting; an exploratory arm added after the first result, not registered) LFU matches SLRU at 17 % (+2.01, interval +1.29 to +2.74) and falls to +0.30 at 34 % (+0.12 to +0.49). For that arm the 17 % gap is 6.8 times the 34 % gap in absolute misses and 3.2 times in relative terms, and the intervals do not overlap. So **a frequency-aware policy with decay does show the small-fraction effect CUDA-H6 expects, and SLRU does not (relative)**. This is one trace and one decay constant, chosen from an existing script, after seeing the first result: treat it as a lead for N2, not as a confirmation.
+2. **The marginal value of resident memory falls steeply with the fraction** (LRU, misses a token per extra GiB): 3.72 (11 to 17 GiB), 2.50 (17 to 24), 1.44 (24 to 36), 0.83 (36 to 48). A GiB near 17 % resident removes about 3.7 times the misses a GiB removes at the Mac's 34 %.
+3. **CUDA-H9, derived, assumption-bound.** H9 expected the value of a GiB of fast memory to be at least 5 times smaller on a PCIe-attached host tier than on the Mac's SSD tier. Multiplying the measured slopes by a cost per miss gives, at the Mac's regime (0.83 misses/GiB at 2.0 ms) about 1.7 ms a GiB (the live fit is 2.2 ms a GiB, HANDOFF 18.140), and at the 17 % regime (about 3.0 misses/GiB at an **assumed** 0.40 to 1.0 ms per miss) 1.2 to 3.0 ms a GiB. The two are within a factor of two of each other, not five apart: the cheaper miss is offset by the steeper curve at smaller fractions. If N1 measures a pinned copy rate in the assumed range, H9 as stated would be falsified. This is a derived expectation, not a measurement.
+
+### What this does not establish
+
+No CUDA claim. Nothing was measured on a GPU; the copy costs are assumptions. One trace (DeepSeek, one Hermes-shaped replay) carries every number; MiniMax and GLM traces, other prompt mixes, and the live store's prefetch were not run. The stop rule on small traces held: the other DeepSeek traces were not used.
+
+### Consequence for the plan
+
+N2's policy comparison should include LFU with decay and SLRU, not LFU without decay. H6 stays open and is registered for a second, longer trace before it counts. H9's threshold is likely too strict and is to be re-stated after N1 with the measured copy rate (a change recorded in the plan, not made silently).
