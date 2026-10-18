@@ -642,6 +642,7 @@ class TorchBench:
         else:
             src = t.randint(0, 256, (n,), dtype=t.uint8, device=self.dev)
             dev = t.empty_like(src)
+            self._sync()                      # src is built on the default stream; the copy stream must not read it early
 
         def compute():
             if nw == 1:
