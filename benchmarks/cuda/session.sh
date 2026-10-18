@@ -3,7 +3,8 @@
 # Run from the directory the scaffold archive was unpacked into. No sudo, no system package changes, no downloads other
 # than the pinned Python wheels named below, which `setup` shows before it installs them.
 #
-#   bash benchmarks/cuda/session.sh check|setup|doctor|smoke|baseline|results
+#   bash benchmarks/cuda/session.sh check|setup|doctor|smoke|baseline|s2|results
+#   (s2 = docs/CUDA-S2-EXPERIMENT-RECORD.md: overlap variants and batched expert copies; needs a clean smoke run first)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -25,7 +26,7 @@ latest_run() {  # $1 = profile name; prints the newest run directory for it, or 
   ls -d "$RESULTS"/*-"$1"-* 2>/dev/null | sort | tail -1 || true
 }
 
-note() { echo "S1 $1; freeze=$( [ -f "$ROOT/pip-freeze.txt" ] && shasum -a 256 "$ROOT/pip-freeze.txt" 2>/dev/null | cut -c1-16 || sha256sum "$ROOT/pip-freeze.txt" 2>/dev/null | cut -c1-16 || echo none )"; }
+note() { echo "${SESSION_TAG:-S1} $1; freeze=$( [ -f "$ROOT/pip-freeze.txt" ] && shasum -a 256 "$ROOT/pip-freeze.txt" 2>/dev/null | cut -c1-16 || sha256sum "$ROOT/pip-freeze.txt" 2>/dev/null | cut -c1-16 || echo none )"; }
 
 cmd="${1:-help}"
 case "$cmd" in
@@ -95,6 +96,22 @@ print("smoke run clean:" , ok, "| status", m["status"], "| failed cells", len(g[
 sys.exit(0 if ok else 1)
 EOF
     "$PY" "$BENCH" run --profile baseline --execute --max-seconds 300 --max-alloc-mib 2048 --region "$REGION" --note "$(note baseline)"
+    ;;
+
+  s2)
+    [ -x "$PY" ] || die "run setup first"
+    run="$(latest_run smoke)"
+    [ -n "$run" ] || die "no smoke run found: run smoke first"
+    "$PY" - "$run/run-manifest.json" <<'EOF2' || die "the latest smoke run is not clean: do not start the S2 profile; bring the files home"
+import json, sys
+m = json.load(open(sys.argv[1]))
+g = m["gates"]
+ok = (m["status"] == "complete" and not g["failed_cells"] and g["copy_checksum"] and g["kernel_reference"]
+      and g["sanity"] and not g["sanity_violations"])
+print("smoke run clean:", ok, "| status", m["status"], "| failed cells", len(g["failed_cells"]))
+sys.exit(0 if ok else 1)
+EOF2
+    SESSION_TAG=S2 "$PY" "$BENCH" run --profile s2 --execute --max-seconds 150 --max-alloc-mib 2048 --region "$REGION" --note "$(SESSION_TAG=S2 note s2)"
     ;;
 
   results)

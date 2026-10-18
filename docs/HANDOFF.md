@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-18, 0.66.17): CUDA session S2 is prepared on the Mac (predictions registered, cells rehearsed); it has not run
+>
+> Section 18.173, record `docs/CUDA-S2-EXPERIMENT-RECORD.md`. Instruments, tests and documents only. S2 asks the two questions S1 left open: whether the 21 to 26 % compute slowdown under copies is an L2 effect of the cell design (one 23.6 MB weight matrix reused) or interference from copy traffic, and whether one transfer of k experts removes the fixed cost per copy (S1: about 160 us on 350 us). Thirteen predictions with falsifiers were committed (3d044d4) before any cell code. The suite has an `s2` profile (13 cells, upper bound 29 s) with overlap variants `overlap.{resident,large}.{h2d,d2d}` and `batchcopy.k{1,2,4,8}.{single,loop}`; `session.sh s2`; `SESSION-RUNBOOK-S2.md`. **No instance was started and nothing was measured.** **Needs Hamed:** a yes to provision one RTX 5090 session (cap 1 GPU-hour); the S1 follow-ups (delete the saved provider key, rotate the pasted API key); whether the V100 (D3) comes before or after S2.
+>
 > ## Start here (2026-10-18, 0.66.16): the first GPU session (RTX 5090) is done; pinned copies cost 0.35 ms at the DeepSeek expert size, H9 falsified, H7 failed
 >
 > Section 18.172, results `docs/CUDA-S1-RESULTS.md` (manifests and rows in `docs/cuda-results/s1-rtx5090-2026-10-18/`). Measurement only. One RTX 5090 VM, PCIe 5.0 x16, 23.5 GiB host RAM; all gates held; pinned H2D 52 GB/s at 64 MiB but 28.4 GB/s (350 us) at 9.95 MB; pageable 24 GB/s; pinned D2H 55 GB/s; device copy 1,517 GB/s; router-style sync 7.5 us a layer; batched expert matmuls 2.4 times faster than a loop; compute slows 21 to 26 % while copies run (predicted under 5 %, L2-eviction hypothesis untested). Predictions scored: inventory and gates held, H1 and H2 failed at the record size, H7 failed, H9 as stated falsified (derived), launch and sync came in lower than predicted. The instance is terminated and S1 billed 0.36 GPU-hours (21 min 22 s, from the billing page; the private cost log is filled). **Needs Hamed:** delete the saved `cachalot-ssh` key from the provider profile; rotate the API key pasted into the first chat. The V100 session (D3) is not scheduled; the smallest next experiment is in section 7 of the results.
@@ -9206,6 +9210,18 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.173 CUDA session S2 prepared (0.66.17)
+
+**Goal.** Hamed: "read the documentations and next session's prompt file and continue with CUDA part". The v221 prompt says the next GPU step needs his go, so the autonomous part is preparing it: a Mac-only session, no instance (Jev `jev_decide` over four options: prepare 0.98; launch now, V100 first and ask each 0.00 to 0.02).
+
+**What was built.** The record `docs/CUDA-S2-EXPERIMENT-RECORD.md` with thirteen predictions, committed first (3d044d4). Then the `s2` profile in `benchmarks/cuda/suite.py`: `_overlap` generalized by `nweights` (1 = the S1 cell; 8 distinct matrices, 189 MB, above the L2 size) and `interferer` (`h2d` pinned stream as in S1, or `d2d` copy of 256 MiB that evicts L2 without PCIe), a new `_batchcopy` cell (k experts as one transfer or as k queued transfers; per-expert time derived), `l2_cache_bytes` recorded when the framework reports it, the S1 baseline cell ids unchanged. The verdict rule is fixed in the record (S2-P5): H-L2 supported if the S1 cell reproduces at 15 % or more and the large-weights cell is under 8 %; copy-engine interference if the large-weights cell stays at 15 % or more; between is reported as mixed.
+
+**Verified here.** 69 CUDA tests pass (the four CUDA test files), ruff clean, `session.sh` syntax checked; the S2 plan prints 13 cells, upper bound 29.3 s, peak allocation 986 MiB. Not verified: any of it on a GPU (the new cells ran only through the CPU rehearsal with the event shim), and `session.sh s2` was not run as a script.
+
+**Open / needs Hamed.** The yes for the session and the S1 follow-ups (see the Start here block). A caution recorded in the record: a batched win measures this card's PCIe fixed cost; a real cache-miss gather does not give k contiguous experts, so no Cachalot CUDA claim follows.
+
+**Kind.** Instruments, tests, documents. No default changed, nothing measured.
 
 ### 18.172 CUDA session S1: the first GPU measurements (0.66.16)
 

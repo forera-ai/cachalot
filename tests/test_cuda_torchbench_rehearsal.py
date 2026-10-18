@@ -73,3 +73,20 @@ def test_results_flow_into_valid_rows(bench):
     res = execute(bench, c)
     rows, _ = suite._rows_for("r", c, res, bench.timer_overhead_ms(), None, 1, [])
     assert rows and all(mf.validate_row(r) == [] for r in rows)
+
+
+@pytest.mark.parametrize("nweights,interferer", [(1, "h2d"), (3, "h2d"), (1, "d2d"), (3, "d2d")])
+def test_overlap_variants(bench, nweights, interferer):
+    res = execute(bench, cell("overlap", nbytes=1 << 20, m=4, d=64, f=48, nweights=nweights, interferer=interferer))
+    assert res.validation["ok"] and "compute_slowdown_with_copy" in res.derived
+    assert interferer in res.derived["compute_slowdown_with_copy"][2]
+
+
+@pytest.mark.parametrize("k,mode", [(1, "single"), (4, "single"), (4, "loop")])
+def test_batchcopy_cell(bench, k, mode):
+    res = execute(bench, cell("batchcopy", k=k, mode=mode, nbytes=1 << 16))
+    assert res.validation["ok"] and res.work_bytes == k * (1 << 16)
+    assert res.derived["per_expert_ms"][1] == "ms" and len(res.arms["events"]) == 4
+    c = cell("batchcopy", k=k, mode=mode, nbytes=1 << 16)
+    rows, _ = suite._rows_for("r", c, res, bench.timer_overhead_ms(), None, 1, [])
+    assert rows and all(mf.validate_row(r) == [] for r in rows)

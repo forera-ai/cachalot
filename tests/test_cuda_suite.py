@@ -192,3 +192,28 @@ def test_cli_validate_accepts_raw_samples_and_rejects_unknown_documents(tmp_path
     other = tmp_path / "other.json"
     other.write_text(json.dumps({"hello": 1}))
     assert cuda_bench.main(["validate", str(other)]) == 4
+
+
+def test_s2_plan_matches_the_registered_record():
+    lim = suite.PROFILE_DEFAULTS["s2"]
+    cells, skipped = suite.plan("s2", lim)
+    ids = [c.id for c in cells]
+    assert not skipped
+    assert ids[0] == ids[-1] == "copy.h2d.pinned.9950000.control" and cells[0].control and cells[-1].control
+    assert [i for i in ids if i.startswith("overlap.")] == [
+        "overlap.resident.h2d", "overlap.large.h2d", "overlap.resident.d2d", "overlap.large.d2d"]
+    assert [i for i in ids if i.startswith("batchcopy.")] == [
+        "batchcopy.k1.single", "batchcopy.k2.single", "batchcopy.k2.loop", "batchcopy.k4.single",
+        "batchcopy.k4.loop", "batchcopy.k8.single", "batchcopy.k8.loop"]
+    large = next(c for c in cells if c.id == "overlap.large.h2d")
+    assert large.params["nweights"] == 8 and large.params["interferer"] == "h2d"
+    assert next(c for c in cells if c.id == "overlap.resident.d2d").params["interferer"] == "d2d"
+    assert suite.describe_plan("s2", lim)["estimated_s_upper_bound"] < lim.max_seconds
+    assert max(c.alloc_mib for c in cells) <= lim.max_alloc_mib
+
+
+def test_s2_run_completes_with_a_scripted_bench_and_keeps_the_drift_bracket():
+    manifest, rows, raw = run(ScriptedBench(), "s2")
+    assert manifest["status"] == "complete" and manifest["gates"]["copy_checksum"]
+    assert any(r["field"] == "control_drift" for r in rows)
+    assert "batchcopy.k8.loop" in raw

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.66.17 (2026-10-18)
+
+HANDOFF "Start here (2026-10-18, 0.66.17)" and section 18.173; record `docs/CUDA-S2-EXPERIMENT-RECORD.md` (committed first, 3d044d4). Instruments, tests and documents only; nothing in `src/` except the version string. No GPU, no instance, no credential used.
+
+### Added
+- CUDA session S2 prepared on the Mac: thirteen predictions with falsifiers for the two open questions of S1 (is the 21 to 26 % compute slowdown under copies an L2-cache effect of the cell design or copy-engine interference; does moving k experts in one transfer remove the roughly 160 us fixed cost per copy). The suite gains the `s2` profile (13 cells, estimated upper bound 29 s, wall cap 150 s), overlap variants (`overlap.{resident,large}.{h2d,d2d}`: one reused weight matrix against eight distinct ones above the L2 size, with a PCIe stream or a device-to-device copy as the interferer) and batched-copy cells (`batchcopy.k{1,2,4,8}.{single,loop}`). `session.sh` gains an `s2` command (refuses unless the latest smoke run is clean); `SESSION-RUNBOOK-S2.md` lists what differs from S1.
+- Tests: the S2 plan matches the record, a scripted S2 run completes with its drift bracket, and every new cell variant runs through the CPU rehearsal (nine new test cases) with row validation.
+
+### Not done, on purpose
+- No instance, no measurement: the S2 numbers do not exist yet and S2 needs Hamed's yes. The V100 session (D3) is still unscheduled. The CPU rehearsal exercises the logic only; its timings are never a CUDA result.
+
 ## 0.66.16 (2026-10-18)
 
 HANDOFF "Start here (2026-10-18, 0.66.16)" and section 18.172; results `docs/CUDA-S1-RESULTS.md` with sanitized manifests and rows in `docs/cuda-results/s1-rtx5090-2026-10-18/`. Measurement only; nothing in `src/` except the version string. The first GPU session.

@@ -65,13 +65,14 @@ class Limits:
 PROFILE_DEFAULTS = {
     "smoke": Limits(max_seconds=45.0, max_iters=12, max_alloc_mib=1024, warmup=2),
     "baseline": Limits(max_seconds=300.0, max_iters=30, max_alloc_mib=2048, warmup=5),
+    "s2": Limits(max_seconds=150.0, max_iters=30, max_alloc_mib=2048, warmup=5),
 }
 
 
 @dataclass(frozen=True)
 class Cell:
     id: str
-    kind: str                       # copy | launch | device_bw | matmul | overlap
+    kind: str                       # copy | launch | device_bw | matmul | overlap | batchcopy
     params: dict
     alloc_mib: float
     est_s: float
@@ -131,7 +132,7 @@ def gbps(nbytes: float, ms: float) -> float:
 
 
 def sanity_problem(kind: str, arm_name: str, bw_gb_s: float, peak_gb_s: float | None) -> str | None:
-    if kind == "copy" and bw_gb_s > PCIE_SANITY_GB_S:
+    if kind in ("copy", "batchcopy") and bw_gb_s > PCIE_SANITY_GB_S:
         return f"{bw_gb_s:.1f} GB/s exceeds the PCIe sanity bound {PCIE_SANITY_GB_S} (cache hit or timing bug)"
     if kind == "device_bw" and bw_gb_s > HBM_SANITY_GB_S:
         return f"{bw_gb_s:.1f} GB/s exceeds the device-memory sanity bound {HBM_SANITY_GB_S}"
@@ -158,6 +159,8 @@ def plan(profile: str, limits: Limits) -> tuple[list[Cell], list[dict]]:
     limits.validated()
     if profile not in PROFILE_DEFAULTS:
         raise ValueError(f"unknown profile {profile!r}")
+    if profile == "s2":
+        return _filter_alloc(_s2_cells(limits), limits)
     smoke = profile == "smoke"
     sizes = ([MIB, RECORD_SIZES["deepseek_9.95MB"], 64 * MIB] if smoke else
              [4096, 64 * 1024, MIB, READ_3MIB, *RECORD_SIZES.values(), 64 * MIB, 256 * MIB])
@@ -186,6 +189,10 @@ def plan(profile: str, limits: Limits) -> tuple[list[Cell], list[dict]]:
     cells.append(Cell("overlap.copy_vs_compute", "overlap", {"nbytes": ov, "m": 128, "d": EXPERT_D, "f": EXPERT_F},
                       (ov * 2 + 2 * EXPERT_D * EXPERT_F * 2) / MIB + 16, 2.0 + 0.05 * _iters(limits)))
     cells.append(_copy_cell("h2d", "pinned", ctrl_size, limits, control=True))      # and at the end: drift bound
+    return _filter_alloc(cells, limits)
+
+
+def _filter_alloc(cells: list[Cell], limits: Limits) -> tuple[list[Cell], list[dict]]:
     kept, skipped = [], []
     for c in cells:
         if c.alloc_mib > limits.max_alloc_mib:
@@ -193,6 +200,34 @@ def plan(profile: str, limits: Limits) -> tuple[list[Cell], list[dict]]:
         else:
             kept.append(c)
     return kept, skipped
+
+
+S2_OVERLAP_COPY_BYTES = 64 * MIB          # the S1 overlap stream, so S2-A is comparable
+S2_D2D_BYTES = 256 * MIB                  # larger than any L2 cache, so the interferer evicts it
+S2_LARGE_WEIGHTS = 8                      # 8 x 23.6 MB = 189 MB, above an L2 of about 96 MB (vendor figure, derived input)
+S2_BATCH_K = (1, 2, 4, 8)
+
+
+def _s2_cells(limits: Limits) -> list[Cell]:
+    """Session S2 (docs/CUDA-S2-EXPERIMENT-RECORD.md): overlap variants that separate an L2 effect from copy-engine
+    interference, and batched expert copies. Cell ids are the record's S2-A..S2-F."""
+    ctrl = RECORD_SIZES["deepseek_9.95MB"]
+    wbytes = EXPERT_D * EXPERT_F * 2
+    cells = [_copy_cell("h2d", "pinned", ctrl, limits, control=True)]
+    for weights, interferer in (("resident", "h2d"), ("large", "h2d"), ("resident", "d2d"), ("large", "d2d")):
+        nw = S2_LARGE_WEIGHTS if weights == "large" else 1
+        ibytes = S2_OVERLAP_COPY_BYTES if interferer == "h2d" else S2_D2D_BYTES
+        alloc = (ibytes * (2 if interferer == "d2d" else 1) + ibytes + (nw + 1) * wbytes) / MIB + 16
+        cells.append(Cell(f"overlap.{weights}.{interferer}", "overlap",
+                          {"nbytes": ibytes, "m": 128, "d": EXPERT_D, "f": EXPERT_F, "nweights": nw, "interferer": interferer},
+                          alloc, 3.0 + 0.08 * _iters(limits)))
+    for k in S2_BATCH_K:
+        for mode in (("single",) if k == 1 else ("single", "loop")):
+            cells.append(Cell(f"batchcopy.k{k}.{mode}", "batchcopy", {"k": k, "mode": mode, "nbytes": ctrl},
+                              2 * k * ctrl / MIB + 4,
+                              (limits.warmup + _iters(limits) + 2) * (k * ctrl / 3e9 + 60e-6 * k) * 2))
+    cells.append(_copy_cell("h2d", "pinned", ctrl, limits, control=True))
+    return cells
 
 
 def describe_plan(profile: str, limits: Limits) -> dict:
@@ -298,7 +333,7 @@ def run(profile: str, limits: Limits, bench, *, run_id: str, machine_id: str, no
         if res.truncated:
             status = "truncated"
         if not res.validation.get("ok", False):
-            gates["copy_checksum" if cell.kind in ("copy", "overlap", "device_bw") else "kernel_reference"] = False
+            gates["copy_checksum" if cell.kind in ("copy", "overlap", "device_bw", "batchcopy") else "kernel_reference"] = False
             rows.append(mf.row(run_id, cell.id, "validation_failed", 1, "bool", "measured", source="validation",
                                note=str(res.validation.get("detail", ""))[:200]))
             raw[cell.id] = {"validation": res.validation, "arms": {}}
@@ -442,7 +477,7 @@ class TorchBench:
     # -- dispatch
     def execute(self, cell: Cell, dl: Deadline, limits: Limits) -> CellResult:
         fn = {"copy": self._copy, "launch": self._launch, "device_bw": self._device_bw, "matmul": self._matmul,
-              "overlap": self._overlap}[cell.kind]
+              "overlap": self._overlap, "batchcopy": self._batchcopy}[cell.kind]
         try:
             return fn(cell, dl, limits)
         finally:
@@ -591,27 +626,39 @@ class TorchBench:
                           derived, trunc, [f"fp16 compute; bf16/fp8 gated off (cc {self.cc[0]}.{self.cc[1]})"])
 
     def _overlap(self, cell: Cell, dl: Deadline, limits: Limits) -> CellResult:
+        """Compute timed alone and while an interferer runs on a second stream. Params `nweights` (1 = the S1 cell: one
+        weight matrix reused 8 times; n = n distinct matrices, each used once) and `interferer` ('h2d' pinned stream, S1;
+        'd2d' device copy that evicts L2 without PCIe) separate a cache effect from copy-engine interference (S2)."""
         t, p = self.torch, cell.params
         n, m, d, f = p["nbytes"], p["m"], p["d"], p["f"]
+        nw, interferer = p.get("nweights", 1), p.get("interferer", "h2d")
         t.manual_seed(limits.seed)
         x = (t.randn(m, d, device=self.dev) * 0.1).half()
-        w = (t.randn(d, f, device=self.dev) * 0.05).half()
-        host = self._pattern(n, limits.seed, True)
-        dev = t.empty(n, dtype=t.uint8, device=self.dev)
+        ws = [(t.randn(d, f, device=self.dev) * 0.05).half() for _ in range(nw)]
         copy_stream = self._stream()
+        if interferer == "h2d":
+            host = self._pattern(n, limits.seed, True)
+            src, dev = host, t.empty(n, dtype=t.uint8, device=self.dev)
+        else:
+            src = t.randint(0, 256, (n,), dtype=t.uint8, device=self.dev)
+            dev = t.empty_like(src)
 
         def compute():
-            for _ in range(8):
-                x @ w
+            if nw == 1:
+                for _ in range(8):
+                    x @ ws[0]
+            else:
+                for w in ws:
+                    x @ w
 
         def copy_once():
             with self._on(copy_stream):
-                dev.copy_(host, non_blocking=True)
+                dev.copy_(src, non_blocking=True)
 
         # validation of the copied bytes (outside timing)
         copy_once()
         self._sync()
-        ok = bool(t.equal(dev.cpu(), host))
+        ok = bool(t.equal(dev.cpu(), src.cpu()))
         c_alone, _, trunc = self._timed(compute, limits.warmup, limits.max_iters, dl)
         cp_alone, _, trunc2 = self._timed(copy_once, limits.warmup, limits.max_iters, dl, stream=copy_stream)
         reps = 1
@@ -627,7 +674,7 @@ class TorchBench:
             self._sync()
             a, b = self._events()
             for _ in range(reps):
-                copy_once()                       # copy traffic covers the whole compute window (reps sized above)
+                copy_once()                       # interferer traffic covers the whole compute window (reps sized above)
             a.record(cur)
             compute()
             b.record(cur)
@@ -637,8 +684,38 @@ class TorchBench:
         derived = {}
         if c_alone and both:
             slow = percentile(sorted(both), 50) / percentile(sorted(c_alone), 50) - 1.0
-            derived["compute_slowdown_with_copy"] = (slow, "fraction", f"p50 compute with {reps} concurrent pinned H2D copies / alone - 1; CUDA-H7 input")
-        derived["copies_per_compute_window"] = (float(reps), "count", "sized so copy traffic spans the compute window")
+            derived["compute_slowdown_with_copy"] = (slow, "fraction", f"p50 compute with {reps} concurrent {interferer} copies / alone - 1; CUDA-H7 input; {nw} weight matrices")
+        derived["copies_per_compute_window"] = (float(reps), "count", "sized so interferer traffic spans the compute window")
+        if not self.rehearsal:
+            l2 = getattr(self.torch.cuda.get_device_properties(self.dev), "L2_cache_size", None)
+            if l2:
+                derived["l2_cache_bytes"] = (float(l2), "bytes", "device property reported by the framework")
         return CellResult({"compute_alone": c_alone, "copy_alone": cp_alone, "compute_with_copy": both}, "cuda_events",
                           None, {"ok": ok, "detail": "copied bytes equal" if ok else "byte mismatch"}, derived,
                           trunc or trunc2 or trunc3)
+
+    def _batchcopy(self, cell: Cell, dl: Deadline, limits: Limits) -> CellResult:
+        """k expert records as one pinned H2D transfer ('single') or as k queued transfers ('loop'), one event pair around
+        all of them. Tests the fixed-cost-per-transfer explanation of S1 finding 1."""
+        t, p = self.torch, cell.params
+        k, mode, n = p["k"], p["mode"], p["nbytes"]
+        host = self._pattern(k * n, limits.seed, True)
+        dev = t.empty(k * n, dtype=t.uint8, device=self.dev)
+
+        def go():
+            if mode == "single":
+                dev.copy_(host, non_blocking=True)
+            else:
+                for i in range(k):
+                    dev[i * n:(i + 1) * n].copy_(host[i * n:(i + 1) * n], non_blocking=True)
+
+        go()
+        self._sync()
+        ok = bool(t.equal(dev.cpu(), host))
+        ev, hm, trunc = self._timed(go, limits.warmup, limits.max_iters, dl)
+        derived = {}
+        if ev:
+            derived["per_expert_ms"] = (percentile(sorted(ev), 50) / k, "ms", f"p50 event time / k={k} experts of {n} bytes ({mode})")
+        return CellResult({"events": ev, "host": hm}, "both", k * n,
+                          {"ok": ok, "detail": "round-trip bytes equal" if ok else "byte mismatch after batched copy"},
+                          derived, trunc)
