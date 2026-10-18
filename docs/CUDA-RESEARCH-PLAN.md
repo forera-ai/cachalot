@@ -452,6 +452,18 @@ Charter rule C11 and the last line of 8.2 say: keep platform-neutral what is alr
 | D7 | Lab: when to open the proposal in the Lab repository's own process | after N1 produces importable files | nothing to import before then; no Lab change now |
 | D8 | N4 Mac re-measurements: cite the ledger or re-run on the idle Mac | cite by default; re-run only a regime-stale row and only with his go | respects the one-runtime rule and the stale-constant rule (charter 8.1.4) |
 
+### 17.1 Decisions taken (2026-10-18, Hamed)
+
+| id | decision |
+|---|---|
+| D1 | Start now. N0a item 2 (the offline policy table) is done (`docs/CUDA-N0A-POLICY-RECORD.md`, `docs/CUDA-SLRU-COLLAPSE-RECORD.md`); the first instance session follows the itinerary in `benchmarks/cuda/SESSION-RUNBOOK.md` once the experiment record is committed. |
+| D2 | A private cost file outside the repository (`~/cachalot-private/cuda-cost-log.md`, mode 600) is the only source of money, credit and cap figures; the repository and memory record its path, not its contents. First session cap 2 GPU-hours; cumulative cap about one quarter of the credits until the N1 curves exist (the amount is filled in by Hamed in that file). |
+| D3 | RTX 5090 first (N0b and N1), V100 second for contrast. |
+| D4 | Software may be installed on an instance per session, pinned and listed in the itinerary. The first session is run over SSH by Hamed from a runbook of complete commands; the agent holds no key and no API token. Copy-back is by `scp`; the agent validates the files on the Mac. |
+| D5 | The open model for N2 stage 3 is deferred (it is weeks away and N1 may change the choice). Checkpoint cap: nothing above 2 GB without a written assessment (bytes, transfer time on the measured rate, disk, idle cost) and Hamed's explicit yes. No download in the first session. |
+
+**N0a exit gate, written scope reduction (2026-10-18).** The gate asks that H5 and H6's premise be supported or that N2's scope be reduced in writing. H5's offline premise held (the replay equals `cache_sim`, deterministic). H6's premise did not: a non-LRU policy saved 3 to 5 % of LRU's misses almost regardless of the resident fraction on both long traces (DeepSeek LFU-with-decay 3.9 % at 17 % against 1.2 % at 34 %, MiniMax 4.0 % against 4.2 %), and the segmented-LRU model needs probation sized from the measured miss rate. N2 is therefore reduced: its headline is the resident-fraction curve and the cost per miss on each tier; policy comparison is a secondary arm limited to LRU, SLRU with a stated protected fraction and LFU with decay, and no policy win is assumed in advance. CUDA-H6 stays open pending a second long DeepSeek trace; CUDA-H9's threshold is to be re-stated after N1 measures the pinned copy rate.
+
 ## 18. Honest limits
 
 - This is a plan. No hypothesis in it has been tested; every "expected" device property is vendor-derived and unverified for the rented machine.
