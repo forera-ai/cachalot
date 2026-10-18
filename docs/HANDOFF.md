@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-18, 0.66.24): session B1 (pinned-buffer backing, qualified copy curve) is prepared; it has not run
+>
+> Section 18.180, record `docs/CUDA-BACKING-EXPERIMENT-RECORD.md` (15 predictions, committed bc72198 first), `benchmarks/cuda/backing_probe.py`, `session.sh backing`, `SESSION-RUNBOOK-B1.md`. The test of H-backing is causal and needs no privileges: memory the process maps itself, advised (`MADV_HUGEPAGE`, `MADV_NOHUGEPAGE` or nothing) before the first touch, registered as pinned, with the huge-page outcome read from smaps; the rival H-host-side (the rate is set below the guest) is named in the record with what each outcome means. The copy curve of S1 is redone with K buffers a size (fastest, median, slowest) plus pageable and D2H arms. **No instance, no measurement.** The Linux paths have never run; the first `backing` process is the smoke. **Needs Hamed:** a go and an RTX 5090 instance when the agent says it is ready (same listing and key as S2 and N2, about seven minutes to initialize); housekeeping (log the N2 hours, delete the S2, V1 and N2 ssh configs, known_hosts files and key; the S1 follow-ups).
+>
 > ## Start here (2026-10-18, 0.66.23): N2 stage 1 ran on an RTX 5090 (exposed copy time a token 16.7 / 12.8 / 9.4 ms at 8 / 12 / 17 % resident); it also showed that the H2D rate of a pinned 9.95 MB buffer is a property of the buffer, which corrects S1, S2 and V1
 >
 > Section 18.179, results `docs/CUDA-N2S1-RESULTS.md` (manifests and rows in `docs/cuda-results/n2-rtx5090-2026-10-18/`), plan section 17.5. The arena equals the Mac simulator event for event on every cell, on the Mac and on the host. Exposed demand-fetch copy time a token 16.74 / 12.83 / 9.43 ms (90.8 / 69.6 / 51.8 misses), 0.183 to 0.185 ms an extra miss, 0.571 ms of exposed time per GiB of resident experts between 8 and 17 % (3.04 misses a GiB times the measured 0.1847 ms a copy). **The copy cost in the replay was 0.185 ms (54 GB/s), not the 0.35 ms of S1 and S2**: four exploratory probes (`benchmarks/cuda/exploratory/`) showed it is a property of the pinned source buffer (24 separately pinned 9.95 MB buffers: 19 at 0.182 ms, 5 at 0.31 to 0.36, stable per buffer, slow ones the later allocations; cause untested, the physical page backing is the hypothesis). S1's "0.35 ms, 160 us fixed cost" and H1 falsification are artifacts, S2's batching gain is confounded, V1's card-specific ramp is withdrawn (V1's V100 numbers stand), H9 on ms per GiB is a ratio of 3.0 to 3.9 against the Mac, still under 5. Correction notes sit at the top of the three results files. Predictions: P1, P6, P8, P10 to P12 held, P9 in part; P2 to P5 missed low (their copy cost came from S1 and S2); the V100 arm (P7) was not run. **Needs Hamed:** terminate N2 (done at the time of writing); log its billed hours in the private cost file; delete the S2, V1 and N2 ssh configs, known_hosts files and the key file; the S1 follow-ups; a go for the next GPU job: the V100 arm of N2 stage 1, and/or a controlled test of the buffer-backing hypothesis with a redo of the S1 copy curve on qualified buffers (predictions first).
@@ -9234,6 +9238,16 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.180 Session B1 prepared (0.66.24)
+
+**Goal.** Hamed: "prepare the controlled test of the buffer-backing hypothesis and a redo of the S1 copy curve with qualified buffers (predictions first, Mac only)." Predictions committed first (bc72198).
+
+**Design.** What can be done without root: physical addresses are not readable, so the test manipulates and observes instead. Pinned memory from two routes (`cudaHostAlloc` as before; `cudaHostRegister` on anonymous memory the process maps, 2 MiB aligned, rounded to whole 2 MiB extents, advised before first touch). Six cells: allocation order in two fresh processes, thp, nothp and default, reroll (free and reallocate: is the class re-drawn?), 4 MiB chunks of a 256 MiB slab, and the curve. Because the 9.95 MB buffer is not a whole number of 2 MiB extents, the registered range is 10 MiB and the 90 % huge-page rule is over that range (stated in the runbook; no prediction changed).
+
+**Built and verified.** `backing_probe.py` with pure helpers (smaps parser, slow classification by threshold or by 0.8 x the fastest, order gap, lag-1 agreement against the independent expectation, run lengths, a cudart finder for torch builds without `cudaHostRegister`), the bench and rows; 15 tests on the CPU rehearsal (cells, rows validate, deadline, a failing allocation that does not stop the curve, the dry run); ruff clean. Not verified: every Linux and GPU path (`madvise`, the register calls, smaps on a real mapping, the host-cache emptying, memlock behaviour), which the first process of the session exercises.
+
+**Kind.** Planning and an instrument. No default changed, nothing measured on a GPU.
 
 ### 18.179 N2 stage 1 on an RTX 5090, and a correction of S1, S2 and V1 (0.66.23)
 

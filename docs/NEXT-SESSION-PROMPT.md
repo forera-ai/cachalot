@@ -1,10 +1,11 @@
-# Next-session prompt — **v228**, written 2026-10-18
+# Next-session prompt — **v229**, written 2026-10-18
 
 **This is the file to paste.** `docs/NEXT-SESSION-PROMPT.md` is always current; superseded ones live in
 `docs/next-session-prompts/`.
 
 | version | written | produced by | what changed |
 |---|---|---|---|
+| **v229** | 2026-10-18 | Hamed: "prepare the controlled test of the buffer-backing hypothesis and a redo of the S1 copy curve with qualified buffers (predictions first, Mac only)" (v228 candidate job 2) | **0.66.24, instruments and documents: session B1 prepared. 15 predictions committed first (bc72198): allocation order, huge-page advice applied before first touch on self-mapped registered memory with the outcome read from smaps, refusal, reroll stickiness, structure inside a 256 MiB slab, and the S1 copy curve with K buffers a size. `benchmarks/cuda/backing_probe.py` (15 tests, CPU rehearsal), `session.sh backing`, `SESSION-RUNBOOK-B1.md`. The Linux paths have never run. Nothing in `src/`.** §18.180 |
 | **v228** | 2026-10-18 | Hamed chose the RTX 5090 first and created the instance (v227 first job) | **0.66.23, measurement, harness fixes and a correction: N2 stage 1 ran on an RTX 5090 (exposed copy time a token 16.7 / 12.8 / 9.4 ms at 8 / 12 / 17 % resident, 0.183 to 0.185 ms an extra miss, 0.571 ms per GiB between 8 and 17 %; the arena equals the simulator event for event). The copy cost was 0.185 ms, not S1 and S2's 0.35: the H2D rate of a pinned 9.95 MB buffer is a property of the buffer, which corrects S1 (160 us fixed cost, H1), S2 (batching) and V1 (card-specific ramp). N2-P2 to P5 missed low. Nothing in `src/`.** §18.179 |
 | **v227** | 2026-10-18 | Hamed: "build replay_arena.py on the Mac with the equality tests and CPU rehearsal; no GPU yet" (v226 first job) | **0.66.22, instrument and tests: the N2 stage 1 harness `benchmarks/cuda/replay_arena.py` (real slot arena, real copies, independent LRU) equals the simulator event for event on all six registered cells on the Mac; 22 tests; `session.sh n2smoke|n2full`, `SESSION-RUNBOOK-N2S1.md`, `n2s1-expected.json`. Never run on a GPU. Nothing in `src/`.** §18.178 |
 | **v226** | 2026-10-18 | Hamed: "Next: write the N2 stage 1 design record with predictions on the Mac" (v225 option) | **0.66.21, planning and an offline instrument: `docs/CUDA-N2S1-EXPERIMENT-RECORD.md` (a real slot arena with real H2D copies driven by the recorded trace; 12 predictions for the RTX 5090 and the V100, committed first, b1974e2) and `benchmarks/cuda/layer_miss_profile.py` (at 17 % resident a token misses 51.85 experts in 28.35 layers, 1.83 a missing layer). 25 and 34 % arenas do not fit a 32 GB card. The harness is not built. Nothing in `src/`.** §18.177 |
@@ -189,6 +190,10 @@
 | v47 | 2026-09-25 | Hamed asked for the v44-v46 levers planned, built, measured and documented | **0.18.0: GLM prefill 60 to 90 tok/s, bit-identical (a store path that never evicts, plus the next layer read early), GLM's missing MLX buffer-cache cap added, GLM disk snapshots (a restart reuses the system block). DeepSeek: an `iostat` trace shows prefill is not read-bound on either drive; the lookahead A/B drowned in a 124-to-200 s drift across back-to-back prefills.** §17.1, §15.13 |
 | v46 | 2026-09-25 | Hamed asked for GLM-5.3-Flash on Cachalot | 0.17.0: GLM through `serve-glm.sh` / `chat-glm.sh`. §17 |
 | v45 | 2026-09-24 | same as v47, one day earlier | 0.16.0: disk snapshot store by last use; lookahead and local compression closed. §15.12 |
+
+## First jobs (v229): B1 is prepared; running it needs Hamed to create an RTX 5090
+
+Read HANDOFF section 18.180, `docs/CUDA-BACKING-EXPERIMENT-RECORD.md` and `benchmarks/cuda/SESSION-RUNBOOK-B1.md` first. If Hamed says he is ready: ask him to create the instance (same listing and key as S2 and N2; about seven minutes), set the private ssh config for it, pack from a clean commit, `check`, `setup`, `doctor`, `smoke`, then `bash benchmarks/cuda/session.sh backing` (the first process is the smoke of the new instrument; the agent runs over SSH only for the instance he names, no sudo, scores by field name, and never edits the registered predictions). The other open candidates (V100 arm of N2 stage 1; N3) and the housekeeping from the earlier sessions still apply; the v228 block below still applies.
 
 ## First jobs (v228): the next CUDA steps need Hamed's go; the correction changes how copy costs are read
 

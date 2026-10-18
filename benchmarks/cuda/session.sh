@@ -3,7 +3,7 @@
 # Run from the directory the scaffold archive was unpacked into. No sudo, no system package changes, no downloads other
 # than the pinned Python wheels named below, which `setup` shows before it installs them.
 #
-#   bash benchmarks/cuda/session.sh check|setup|doctor|smoke|baseline|s2|n2smoke|n2full|results
+#   bash benchmarks/cuda/session.sh check|setup|doctor|smoke|baseline|s2|n2smoke|n2full|backing|results
 #   (s2 = docs/CUDA-S2-EXPERIMENT-RECORD.md: overlap variants and batched expert copies; needs a clean smoke run first)
 set -euo pipefail
 
@@ -150,6 +150,19 @@ sys.exit(0 if ok else 1)
 EOF3
     SESSION_TAG="${SESSION_TAG:-N2}" "$PY" "$ROOT/benchmarks/cuda/replay_arena.py" run --trace "$TRACE" \
       --expected "$ROOT/benchmarks/cuda/n2s1-expected.json" --cells full --execute --max-seconds 2400 --region "$REGION" --note "$(SESSION_TAG="${SESSION_TAG:-N2}" note n2full)"
+    ;;
+
+  backing)
+    # Session B1 (docs/CUDA-BACKING-EXPERIMENT-RECORD.md): four processes, in order, stopping at the first failure. The first
+    # is a fresh-process allocation-order probe and doubles as the GPU smoke of the new instrument; the second repeats it
+    # in a new process (B-P3); then the huge-page, reroll and slab cells; then the qualified copy curve.
+    [ -x "$PY" ] || die "run setup first"
+    export SESSION_TAG="${SESSION_TAG:-B1}"
+    for step in "b1 P1" "b1 P2" "rest R" "curve C"; do
+      set -- $step
+      "$PY" "$ROOT/benchmarks/cuda/backing_probe.py" run --cells "$1" --tag "$2" --execute --max-seconds 300 --region "$REGION" \
+        --note "$(note backing-$1-$2)" || die "backing step $1 ($2) failed: stop, bring the files home"
+    done
     ;;
 
   results)

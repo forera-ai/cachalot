@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.66.24 (2026-10-18)
+
+HANDOFF "Start here (2026-10-18, 0.66.24)" and section 18.180; record `docs/CUDA-BACKING-EXPERIMENT-RECORD.md` (committed first, bc72198). Instruments, tests and documents only; nothing in `src/` except the version string. No GPU, no instance used.
+
+### Added
+- CUDA session B1 prepared on the Mac: fifteen predictions with falsifiers for the controlled test of what sets the host-to-device rate of a pinned 9.95 MB buffer (N2 stage 1: 0.182 ms for most buffers, 0.31 to 0.36 for a minority, stable per buffer) and for the S1 copy curve redone with qualified buffers: allocation order in fresh processes, huge-page advice applied before first touch on memory the process maps itself and registers (`cudaHostRegister`) with the outcome read back from `/proc/self/smaps` (an observation, not a physical address), explicit refusal of huge pages, free-and-reallocate stickiness, structure inside a 256 MiB slab, and K buffers per size from 1 MiB to 256 MiB with pageable and D2H arms. The record names the rival reading (the rate is set below the guest, so no guest advice moves it) and what each outcome means.
+- `benchmarks/cuda/backing_probe.py` (pure helpers plus a bench with a CPU rehearsal; 15 tests, including the smaps parser and a failing allocation that does not stop the curve), `session.sh backing` (four processes, first failure stops), `SESSION-RUNBOOK-B1.md`.
+
+### Not done, on purpose
+- No instance and no measurement: B1 needs Hamed to create an RTX 5090. The instrument's Linux paths (`madvise`, `cudaHostRegister`, smaps) have never run: the Mac rehearsal reports the unavailable calls instead of hiding them, and the first process of the session is the smoke.
+
 ## 0.66.23 (2026-10-18)
 
 HANDOFF "Start here (2026-10-18, 0.66.23)" and section 18.179; results `docs/CUDA-N2S1-RESULTS.md` with sanitized manifests and rows in `docs/cuda-results/n2-rtx5090-2026-10-18/`; plan section 17.5. Measurement, harness fixes and corrections; nothing in `src/` except the version string.
