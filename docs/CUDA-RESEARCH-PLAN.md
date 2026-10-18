@@ -475,6 +475,15 @@ The first session (RTX 5090: N0b inventory, N1 smoke and baseline) ran and is re
 * The measured cost of one expert-sized pinned H2D copy (0.35 ms, 0.47 ms, 0.54 ms for the DeepSeek, GLM and MiniMax records) replaces the assumed 0.40 to 1.0 ms of the N0a record.
 * D4 was exercised differently from the runbook: after the instance existed, Hamed instructed the agent to run the session over SSH with the session's disposable key; privileged steps stayed denied (the agent was refused sudo and used a user-space pip bootstrap instead). The V100 session (D3) is not scheduled.
 
+### 17.3 Session S2 outcome (2026-10-18)
+
+The second RTX 5090 session ran under `docs/CUDA-S2-EXPERIMENT-RECORD.md` and is recorded in `docs/CUDA-S2-RESULTS.md`. Consequences, written after the run:
+
+* **CUDA-H7 stays falsified and its explanation is open.** The L2-eviction hypothesis from S1 is not supported: larger-than-L2 weights keep the slowdown (19 to 22 % against 12 to 13 % with one reused matrix). The same cell read 21 to 26 % on the S1 instance, so the size is an instance property as much as a GPU one. The device-to-device interferer was a bandwidth hog and does not isolate L2.
+* **Batched expert copies:** queued separate transfers reach 35 to 45 GB/s at k = 8; one contiguous transfer 41 to 50 GB/s. The fixed cost per copy overlaps when copies are queued, so contiguity buys only a further 10 to 15 % at k = 8 (derived from overlapping ranges).
+* The first S2 run failed a gate through a stream race in the new d2d cell (fixed, 01bf195): any cell with two streams needs a GPU smoke before it counts.
+* Not started: the V100 session (D3), a profiler run, a third instance.
+
 ## 18. Honest limits
 
 - This is a plan. No hypothesis in it has been tested; every "expected" device property is vendor-derived and unverified for the rented machine.

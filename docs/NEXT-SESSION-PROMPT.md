@@ -1,10 +1,11 @@
-# Next-session prompt — **v222**, written 2026-10-18
+# Next-session prompt — **v223**, written 2026-10-18
 
 **This is the file to paste.** `docs/NEXT-SESSION-PROMPT.md` is always current; superseded ones live in
 `docs/next-session-prompts/`.
 
 | version | written | produced by | what changed |
 |---|---|---|---|
+| **v223** | 2026-10-18 | Hamed: provisioned the S2 instance and said "do the rest" (v222 First jobs) | **0.66.18, measurement and a cell fix: CUDA session S2 ran on a second RTX 5090 VM. H-L2 (L2 eviction explains the compute slowdown under copies) not supported: larger-than-L2 weights keep it (19 to 22 % against 12 to 13 % for one reused matrix; the S1 instance read 21 to 26 %, so it varies by instance); the d2d interferer starves the matmul and does not isolate L2; queued separate expert copies reach 35 to 45 GB/s, one contiguous 79.6 MB transfer 41 to 50. A stream race in my new d2d cell failed a gate in run 1 (fixed, 01bf195, three clean reruns). Nothing in `src/`.** §18.174 |
 | **v222** | 2026-10-18 | Hamed: "/ca read the documentations and next session's prompt file and continue with CUDA part" (v221 First jobs) | **0.66.17, instruments, tests and documents: CUDA session S2 is prepared on the Mac. Thirteen predictions committed first (3d044d4): is the 21 to 26 % compute slowdown under copies an L2 effect (one reused 23.6 MB weight matrix) or copy-engine interference, and does one transfer of k experts remove the roughly 160 us fixed cost per copy. New `s2` profile (13 cells, upper bound 29 s), overlap variants and batched-copy cells rehearsed on the CPU, `session.sh s2`, `SESSION-RUNBOOK-S2.md`. No instance, nothing measured, nothing in `src/`.** §18.173 |
 | **v221** | 2026-10-18 | Hamed: "the instance is ready ... take control and do the actual work" | **0.66.16, measurement: the first GPU session (RTX 5090 VM, PCIe 5.0 x16). Pinned H2D 52 GB/s at 64 MiB but 28.4 GB/s (350 us) at the 9.95 MB expert size; pageable 24; pinned D2H 55; device copy 1,517 GB/s; router-style sync 7.5 us a layer; batched expert matmuls 2.4x a loop; compute slows 21 to 26 % under copies (H7 failed). H1 and H2 failed at the record size, H9 as stated falsified (derived), all gates held, no cell failed. Agent ran the session over SSH at Hamed's instruction; sudo was denied and not used. Nothing in `src/`.** §18.172 |
 | **v220** | 2026-10-18 | Hamed: D1 to D5 answered (start now; private cost file; RTX 5090 first; run over SSH; model deferred, 2 GB cap) | **0.66.15, instruments, tests and documents: CUDA session S1 is prepared end to end. Plan 17.1 records the decisions and the N2 scope reduction; experiment record with 17 predictions committed first; runbook, `pack.sh`, `session.sh`; a CPU rehearsal of every GPU cell (15 tests); `REVISION` fallback in `doctor`; seeded routing generator. No instance, no key held by the agent, nothing measured on a GPU. Needs Hamed: fill the cost file, lock the key, rotate the pasted API key, provision and follow the runbook.** §18.171 |
@@ -183,6 +184,10 @@
 | v47 | 2026-09-25 | Hamed asked for the v44-v46 levers planned, built, measured and documented | **0.18.0: GLM prefill 60 to 90 tok/s, bit-identical (a store path that never evicts, plus the next layer read early), GLM's missing MLX buffer-cache cap added, GLM disk snapshots (a restart reuses the system block). DeepSeek: an `iostat` trace shows prefill is not read-bound on either drive; the lookahead A/B drowned in a 124-to-200 s drift across back-to-back prefills.** §17.1, §15.13 |
 | v46 | 2026-09-25 | Hamed asked for GLM-5.3-Flash on Cachalot | 0.17.0: GLM through `serve-glm.sh` / `chat-glm.sh`. §17 |
 | v45 | 2026-09-24 | same as v47, one day earlier | 0.16.0: disk snapshot store by last use; lookahead and local compression closed. §15.12 |
+
+## First jobs (v223): S2 is done; more GPU time needs Hamed's go
+
+Read HANDOFF section 18.174 and `docs/CUDA-S2-RESULTS.md` first; the v222 and v221 blocks below still apply except that S2 has run. **New in 0.66.18:** results and sanitized manifests under `docs/cuda-results/s2-rtx5090-2026-10-18/`. Needs Hamed: log the S2 billed hours in the private cost file; delete the S2 ssh config, known_hosts and key file; the S1 follow-ups; whether to continue with a profiler run on a third instance (predictions first, a CPU rehearsal of any new cell, and a GPU smoke of any two-stream cell before it counts) or the V100 (D3). **Rules added:** a cell with two streams needs a GPU smoke before its numbers count (the CPU rehearsal cannot test ordering); do not type a region or any other manifest field from memory.
 
 ## First jobs (v222): S2 is prepared; running it needs Hamed's go
 

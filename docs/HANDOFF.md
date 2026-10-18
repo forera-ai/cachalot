@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-18, 0.66.18): CUDA session S2 ran; the L2 explanation of the compute slowdown is not supported, the effect varies by instance, queued expert copies get most of the batching benefit
+>
+> Section 18.174, results `docs/CUDA-S2-RESULTS.md` (manifests and rows in `docs/cuda-results/s2-rtx5090-2026-10-18/`). A second RTX 5090 VM of the S1 class, the `s2` profile four times (about 3 s each). Compute slowdown under pinned H2D: 12.3 to 13.3 % with one reused weight matrix (S1 instance: 21 to 26 %), 18.8 to 22.1 % with weights above the 96 MiB L2: H-L2 not supported, cause open; the d2d interferer starves the matmul (320 to 364 %) and does not isolate L2. Batched copy at k = 8: queued separate transfers 0.22 to 0.29 ms an expert (35 to 45 GB/s), one contiguous transfer 0.20 to 0.24 (41 to 50 GB/s), isolated 0.34 to 0.36. Control drift 2 to 18 % in minutes. The first run failed `copy_checksum` through my stream race in the new d2d cell (fixed in 01bf195, three clean reruns); the first VM had no network until a console reboot. **Needs Hamed:** log the billed time in the private cost file; delete the S2 ssh config, known_hosts and key file; the S1 follow-ups (delete the saved provider key from S1 days, rotate the pasted API key); whether to continue (profiler run on a third instance, or the V100 D3). Terminate was Hamed's step.
+>
 > ## Start here (2026-10-18, 0.66.17): CUDA session S2 is prepared on the Mac (predictions registered, cells rehearsed); it has not run
 >
 > Section 18.173, record `docs/CUDA-S2-EXPERIMENT-RECORD.md`. Instruments, tests and documents only. S2 asks the two questions S1 left open: whether the 21 to 26 % compute slowdown under copies is an L2 effect of the cell design (one 23.6 MB weight matrix reused) or interference from copy traffic, and whether one transfer of k experts removes the fixed cost per copy (S1: about 160 us on 350 us). Thirteen predictions with falsifiers were committed (3d044d4) before any cell code. The suite has an `s2` profile (13 cells, upper bound 29 s) with overlap variants `overlap.{resident,large}.{h2d,d2d}` and `batchcopy.k{1,2,4,8}.{single,loop}`; `session.sh s2`; `SESSION-RUNBOOK-S2.md`. **No instance was started and nothing was measured.** **Needs Hamed:** a yes to provision one RTX 5090 session (cap 1 GPU-hour); the S1 follow-ups (delete the saved provider key, rotate the pasted API key); whether the V100 (D3) comes before or after S2.
@@ -9210,6 +9214,20 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.174 CUDA session S2: the second GPU session (0.66.18)
+
+**Goal.** Hamed: provision the second instance and "do the rest" after the S2 preparation. Run the committed itinerary (smoke, then the `s2` profile) and score the 13 registered predictions.
+
+**How it ran.** Same arrangement as S1: after the instance existed and Hamed had created a new key and set the private ssh config, the agent ran over SSH to that one instance (user and port from the provider's Connect page; no sudo). Two connection failures first (wrong user, then a fresh VM with no outbound network; a console reboot fixed it). Setup, doctor and smoke clean; the `s2` profile failed a gate in run 1.
+
+**Defect.** The d2d overlap variants built the interferer's source on the default stream and read it from the copy stream with no synchronize: stale bytes, `copy_checksum` false. Fixed (01bf195), packed from a clean commit (REVISION dirty=0), rerun three times, all gates true.
+
+**Results.** `docs/CUDA-S2-RESULTS.md`; the scoring table is there. Headlines: see the Start here block. H-L2 not supported (alone times equal, cell compute-bound by derivation); H7 stays falsified with a size that varies by instance (12 against 21 to 26 %); the d2d arms are a flawed design for isolating L2; batching: queued copies get most of the gain. Misses: S2-P1, P2, P4, P8, P9 (and P6 at k = 2); held: P3, P11, P12, P13 and parts of P6, P7, P10.
+
+**What did not go well.** I typed the manifest region as "asia" from memory of the provider listing rather than reading it; it is labelled unverified in the results. The CPU rehearsal cannot test streams, which is exactly where the bug was.
+
+**Open / needs Hamed.** See the Start here block. **Kind.** Measurement (GPU microbenchmarks) and a cell fix. No default changed.
 
 ### 18.173 CUDA session S2 prepared (0.66.17)
 

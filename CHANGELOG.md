@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.66.18 (2026-10-18)
+
+HANDOFF "Start here (2026-10-18, 0.66.18)" and section 18.174; results `docs/CUDA-S2-RESULTS.md` with sanitized manifests and rows in `docs/cuda-results/s2-rtx5090-2026-10-18/`. Measurement and one cell fix; nothing in `src/` except the version string.
+
+### Measured
+- CUDA session S2 on a second rented RTX 5090 VM (same class as S1), the `s2` profile four times at about 3 s of GPU time each. The registered L2-eviction explanation of the compute slowdown under copies is not supported: with weights above the 96 MiB L2 the slowdown stays (18.8 to 22.1 % against 12.3 to 13.3 % with one reused matrix), the alone times are equal, and the cell looks compute-bound; the same cell read 21 to 26 % on the S1 instance, so the effect varies by instance. The device-to-device interferer saturates memory bandwidth (320 to 364 % slowdown) and does not isolate L2. Queued separate expert copies reach 35 to 45 GB/s (0.22 to 0.29 ms an expert at k = 8) against 0.34 to 0.36 ms one at a time; one contiguous 79.6 MB transfer reaches 41 to 50 GB/s. Scored against the 13 registered predictions: P3, P11, P12 and P13 held, P6, P7 and P10 held in part, P1, P2, P4, P8 and P9 missed.
+
+### Fixed
+- `overlap.*.d2d` cells: the interferer's source buffer was built on the default stream and read by the copy stream without a synchronize, so the byte gate failed in the first run. One `self._sync()` (01bf195); the CPU rehearsal cannot test stream ordering.
+
+### Not done, on purpose
+- No profiler counters, no third instance, no V100. The billed time of S2 is for Hamed to log in the private cost file. No model, no token time, no Cachalot code ran on the GPU.
+
 ## 0.66.17 (2026-10-18)
 
 HANDOFF "Start here (2026-10-18, 0.66.17)" and section 18.173; record `docs/CUDA-S2-EXPERIMENT-RECORD.md` (committed first, 3d044d4). Instruments, tests and documents only; nothing in `src/` except the version string. No GPU, no instance, no credential used.

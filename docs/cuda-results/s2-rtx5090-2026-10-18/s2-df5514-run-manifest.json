@@ -1,0 +1,64 @@
+{
+  "code": {
+    "git": {
+      "dirty": false,
+      "sha": "01bf195",
+      "source": "REVISION file"
+    }
+  },
+  "created_utc": "2026-10-18T17:16:56Z",
+  "gates": {
+    "copy_checksum": true,
+    "failed_cells": [],
+    "kernel_reference": true,
+    "sanity": true,
+    "sanity_violations": []
+  },
+  "instrument": {
+    "name": "benchmarks/cuda/suite.py",
+    "version": "N1-scaffold-1"
+  },
+  "kind": "run",
+  "limits": {
+    "elapsed_s": 2.978,
+    "hard_max_alloc_mib": 4096,
+    "hard_max_seconds": 900,
+    "max_alloc_mib": 2048,
+    "max_iters": 30,
+    "max_seconds": 150.0,
+    "seed": 20261018,
+    "warmup": 5
+  },
+  "machine_manifest_id": "df55142d99a094bc",
+  "manifest_id": "42b178bf5af1554c",
+  "mode": "timing",
+  "operator_note": "S2 s2; freeze=e23b7567245b3b30",
+  "platform": "cuda",
+  "protocol": {
+    "control_cells": "h2d pinned at the DeepSeek record size, first and last",
+    "min_iters_for_baseline": 30,
+    "ordering": "single pass, fixed",
+    "timed_iters_cap": 30,
+    "timer_overhead_ms": 0.005056000081822276,
+    "timer_source": "cuda events (device) and host monotonic (end-to-end)",
+    "warmup": 5
+  },
+  "run_id": "20261018T171653Z-s2-df5514",
+  "schema": "cuda-manifest",
+  "schema_version": 1,
+  "skipped": [],
+  "status": "complete",
+  "workload": {
+    "claims": "no model, no inference; microbenchmarks only",
+    "class": "microbenchmark (no W1-W7 mapping)",
+    "compute_dtype": "float16",
+    "expert_like_shape": {
+      "d": 4096,
+      "derived": true,
+      "f": 2880
+    },
+    "id": "N1-micro-s2",
+    "seed": 20261018,
+    "stored_dtype": "float16 / uint8 bytes"
+  }
+}
