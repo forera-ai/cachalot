@@ -3,7 +3,7 @@
 # Run from the directory the scaffold archive was unpacked into. No sudo, no system package changes, no downloads other
 # than the pinned Python wheels named below, which `setup` shows before it installs them.
 #
-#   bash benchmarks/cuda/session.sh check|setup|doctor|smoke|baseline|s2|results
+#   bash benchmarks/cuda/session.sh check|setup|doctor|smoke|baseline|s2|n2smoke|n2full|results
 #   (s2 = docs/CUDA-S2-EXPERIMENT-RECORD.md: overlap variants and batched expert copies; needs a clean smoke run first)
 set -euo pipefail
 
@@ -122,6 +122,34 @@ print("smoke run clean:", ok, "| status", m["status"], "| failed cells", len(g["
 sys.exit(0 if ok else 1)
 EOF2
     SESSION_TAG="${SESSION_TAG:-S2}" "$PY" "$BENCH" run --profile s2 --execute --max-seconds 150 --max-alloc-mib 2048 --region "$REGION" --note "$(SESSION_TAG="${SESSION_TAG:-S2}" note s2)"
+    ;;
+
+  n2smoke)
+    # N2 stage 1 (docs/CUDA-N2S1-EXPERIMENT-RECORD.md): a short GPU smoke of the replay's stream code. Needs the trace file
+    # copied to the host first (scp from the Mac); TRACE=path overrides the default location.
+    [ -x "$PY" ] || die "run setup first"
+    TRACE="${TRACE:-$ROOT/n2-trace.npz}"
+    [ -f "$TRACE" ] || die "trace file not found at $TRACE (scp it from the Mac, see SESSION-RUNBOOK-N2S1.md)"
+    SESSION_TAG="${SESSION_TAG:-N2}" "$PY" "$ROOT/benchmarks/cuda/replay_arena.py" run --trace "$TRACE" \
+      --expected "$ROOT/benchmarks/cuda/n2s1-expected.json" --cells smoke --execute --max-seconds 180 --region "$REGION" --note "$(SESSION_TAG="${SESSION_TAG:-N2}" note n2smoke)"
+    ;;
+
+  n2full)
+    [ -x "$PY" ] || die "run setup first"
+    TRACE="${TRACE:-$ROOT/n2-trace.npz}"
+    [ -f "$TRACE" ] || die "trace file not found at $TRACE"
+    run="$(latest_run n2s1-smoke)"
+    [ -n "$run" ] || die "no n2smoke run found: run n2smoke first"
+    "$PY" - "$run/run-manifest.json" <<'EOF3' || die "the latest n2smoke run is not clean: do not start n2full; bring the files home"
+import json, sys
+m = json.load(open(sys.argv[1]))
+g = m["gates"]
+ok = m["status"] == "complete" and not g["failed_cells"] and all(g[k] for k in ("event_hash", "determinism", "readback", "sanity"))
+print("n2smoke run clean:", ok, "| status", m["status"], "| failed cells", len(g["failed_cells"]))
+sys.exit(0 if ok else 1)
+EOF3
+    SESSION_TAG="${SESSION_TAG:-N2}" "$PY" "$ROOT/benchmarks/cuda/replay_arena.py" run --trace "$TRACE" \
+      --expected "$ROOT/benchmarks/cuda/n2s1-expected.json" --cells full --execute --max-seconds 2400 --region "$REGION" --note "$(SESSION_TAG="${SESSION_TAG:-N2}" note n2full)"
     ;;
 
   results)

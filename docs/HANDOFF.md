@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-18, 0.66.22): the N2 stage 1 harness is built and equals the simulator on the Mac; it has never run on a GPU
+>
+> Section 18.178. `benchmarks/cuda/replay_arena.py` (arena, independent LRU, walk, timed per-layer fetch, gates, CPU rehearsal), `benchmarks/cuda/n2s1-expected.json` (the simulator's event hashes and the trace sha256), `session.sh n2smoke|n2full`, `SESSION-RUNBOOK-N2S1.md`. On the Mac the arena's event stream equals the simulator's on all six registered cells (trace at 8, 12, 17 %; generator at 17 %; the two 40-token smoke cells); 22 tests pass. Offline observations that the record's predictions cover and the results will score: the generator at its default knobs misses 72.26 a token at 17 % against the trace's 51.85 (N2-P8's direction, a property of the replay, not of a card); the bytes a token are misses times 9.95 MB by construction (N2-P6). **Needs Hamed:** a card choice and a go for GPU time (RTX 5090, V100 or both; a 17 % arena needs 24.2 GiB of the 31.4 free); the instance takes about seven minutes to initialize. Next: pack from a clean commit, copy the trace to the host, `n2smoke` (required before any number counts), then `n2full`.
+>
 > ## Start here (2026-10-18, 0.66.21): the N2 stage 1 design record is written, predictions committed first; the harness is not built
 >
 > Section 18.177, record `docs/CUDA-N2S1-EXPERIMENT-RECORD.md` (12 predictions for the 5090 and the V100, committed b1974e2). Stage 1 = a real slot arena and real pinned H2D copies of dummy 9.95 MB records driven by the recorded DeepSeek trace (and the seeded generator), measuring exposed demand-fetch copy time a token; it cannot say anything about hidden copies, prefetch, compute or real routing beyond the trace. New offline baseline `benchmarks/cuda/layer_miss_profile.py`: at 17 % resident a token misses 51.85 experts in 28.35 layers (1.83 a missing layer; 41 % of misses in layers raising three or more; 67 % at 8 %), consistent with the N0a totals. A 25 or 34 % arena does not fit a 32 GB card, so stage 1 covers 8, 12 and 17 %. Next, Mac only: build `replay_arena.py` (arena, independent LRU bookkeeping, event-hash equality with the simulator, CPU rehearsal), then a GPU smoke of the stream code before any number counts. **Needs Hamed:** a go to build the harness; later a card choice and a go for GPU time; housekeeping from S2 and V1 (log hours, delete the ssh configs, known_hosts and key).
@@ -9226,6 +9230,18 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.178 N2 stage 1 harness built (0.66.22)
+
+**Goal.** Hamed: "build replay_arena.py on the Mac with the equality tests and CPU rehearsal; no GPU yet." Predictions in `docs/CUDA-N2S1-EXPERIMENT-RECORD.md` unchanged.
+
+**Built.** `ArenaLRU` from the store's specification, not from `Store`'s code (the prefill quota rule, LRU eviction with avoid-layer, slot assignment); `walk` (the same request sequence as `cache_sim`); `bookkeeping_pass` and `reference_pass` (the simulator's `Store` with a logging dict, same event format); `run_cell` over a `TorchArena` (one device buffer allocated once, 64 pinned source records, one copy stream, one reused event pair, a final seeded read-back of 48 resident slots and one every 2,000 copies); rows through `manifest.row`; `expect`, `plan`, `run`.
+
+**Verified.** 22 tests (equality against the simulator on seeds and slot counts, token limits, a deliberately wrong policy changes the hash, determinism, a corrupted slot is caught, rows validate, deadline truncation, the local trace at 17 % on a 60-token prefix), ruff clean; `expect` on the recorded trace: the arena equals the simulator on all six cells (7.7 s). Not verified: any of the GPU path (stream use, the reused event pair, the allocation of a 24 GiB arena, `session.sh n2smoke`, the doctor integration in `run`).
+
+**Choices the record left open (stated, not predictions).** The generator cell has a 200-token prefill (`GEN_PREFILL_TOKENS`). The timed span per layer starts at the first copy issue and ends at the layer's event (host monotonic), the CUDA-event time over the same span is recorded beside it. The determinism gate is a second bookkeeping pass (same event hash and the same rolling chain over the decode misses) rather than a second GPU pass.
+
+**Kind.** Instrument and tests. No default changed, nothing measured on a GPU.
 
 ### 18.177 N2 stage 1 designed (0.66.21)
 

@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.66.22 (2026-10-18)
+
+HANDOFF "Start here (2026-10-18, 0.66.22)" and section 18.178. Instruments, tests and documents only; nothing in `src/` except the version string. No GPU, no instance used.
+
+### Added
+- The CUDA lane's N2 stage 1 harness, `benchmarks/cuda/replay_arena.py`, built on the Mac per `docs/CUDA-N2S1-EXPERIMENT-RECORD.md` (predictions untouched): a fixed-size slot arena with real pinned host-to-device copies, `ArenaLRU` bookkeeping written independently of the simulator's `Store`, the walk of a routing trace, per-layer timed demand fetches (host time and CUDA events), gates for event-hash equality, determinism, arena read-back and copy-rate sanity, and a CPU rehearsal that is never a CUDA number. `expect` writes the simulator's event hashes next to the trace's sha256 (`benchmarks/cuda/n2s1-expected.json`); the host refuses a cell whose hash differs.
+- Checked on the Mac: the arena's event stream equals the simulator's, event for event, on all six registered cells of the recorded DeepSeek trace and the seeded generator (8, 12 and 17 % resident, 1,972 decode tokens, and the 40-token smoke cells); misses a token 90.84, 69.64 and 51.85 as in N0a. 22 tests, including one with teeth (an MRU-evicting arena changes the hash) and one that catches a corrupted slot.
+- `session.sh n2smoke` and `n2full` (the full run refuses unless the latest smoke run is clean) and `SESSION-RUNBOOK-N2S1.md`.
+
+### Not done, on purpose
+- No GPU run: the stream code has never run on a device, and the record requires a GPU smoke before any stage 1 number counts (the S2 d2d race is the precedent). The 25 and 34 % arenas do not fit a 32 GB card and are not planned.
+
 ## 0.66.21 (2026-10-18)
 
 HANDOFF "Start here (2026-10-18, 0.66.21)" and section 18.177; record `docs/CUDA-N2S1-EXPERIMENT-RECORD.md` (committed first, b1974e2). Instruments, tests and documents only; nothing in `src/` except the version string. No GPU, no instance used.

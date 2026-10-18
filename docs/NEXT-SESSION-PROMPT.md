@@ -1,10 +1,11 @@
-# Next-session prompt — **v226**, written 2026-10-18
+# Next-session prompt — **v227**, written 2026-10-18
 
 **This is the file to paste.** `docs/NEXT-SESSION-PROMPT.md` is always current; superseded ones live in
 `docs/next-session-prompts/`.
 
 | version | written | produced by | what changed |
 |---|---|---|---|
+| **v227** | 2026-10-18 | Hamed: "build replay_arena.py on the Mac with the equality tests and CPU rehearsal; no GPU yet" (v226 first job) | **0.66.22, instrument and tests: the N2 stage 1 harness `benchmarks/cuda/replay_arena.py` (real slot arena, real copies, independent LRU) equals the simulator event for event on all six registered cells on the Mac; 22 tests; `session.sh n2smoke|n2full`, `SESSION-RUNBOOK-N2S1.md`, `n2s1-expected.json`. Never run on a GPU. Nothing in `src/`.** §18.178 |
 | **v226** | 2026-10-18 | Hamed: "Next: write the N2 stage 1 design record with predictions on the Mac" (v225 option) | **0.66.21, planning and an offline instrument: `docs/CUDA-N2S1-EXPERIMENT-RECORD.md` (a real slot arena with real H2D copies driven by the recorded trace; 12 predictions for the RTX 5090 and the V100, committed first, b1974e2) and `benchmarks/cuda/layer_miss_profile.py` (at 17 % resident a token misses 51.85 experts in 28.35 layers, 1.83 a missing layer). 25 and 34 % arenas do not fit a 32 GB card. The harness is not built. Nothing in `src/`.** §18.177 |
 | **v225** | 2026-10-18 | Hamed created the V100 SXM3 and said to proceed (v224 option V100) | **0.66.20, measurement only: CUDA session V1 on a Tesla V100-SXM3 32 GB. An expert-sized pinned copy over PCIe 3.0 x16 costs 0.84 ms (11.8 GB/s, flat from 3 MiB) against 0.35 ms on the RTX 5090s; batching and queueing buy nothing there; pageable is 0.43 of pinned; compute under copies about 0 % to 12 % and the 6 MiB L2 cannot test the L2 hypothesis; H9 restated (a resident GiB is worth about the same on this card as on the Mac, derived). 12 of 17 predictions held in whole or part, 4 missed (P5, P7, P8, P11). Nothing in `src/`.** §18.176 |
 | **v224** | 2026-10-18 | Hamed: "prepare what we need in mac side and ask me to create the instance" (v223 option V100) | **0.66.19, instruments and documents: CUDA session V1 (V100) prepared. 17 predictions committed first (d507e14); the cu128 wheel has no `sm_70` so V1 uses cu126, with a tested arch gate in `session.sh setup`; `SESSION-RUNBOOK-V1.md`. No instance, nothing measured, nothing in `src/`.** §18.175 |
@@ -187,6 +188,10 @@
 | v47 | 2026-09-25 | Hamed asked for the v44-v46 levers planned, built, measured and documented | **0.18.0: GLM prefill 60 to 90 tok/s, bit-identical (a store path that never evicts, plus the next layer read early), GLM's missing MLX buffer-cache cap added, GLM disk snapshots (a restart reuses the system block). DeepSeek: an `iostat` trace shows prefill is not read-bound on either drive; the lookahead A/B drowned in a 124-to-200 s drift across back-to-back prefills.** §17.1, §15.13 |
 | v46 | 2026-09-25 | Hamed asked for GLM-5.3-Flash on Cachalot | 0.17.0: GLM through `serve-glm.sh` / `chat-glm.sh`. §17 |
 | v45 | 2026-09-24 | same as v47, one day earlier | 0.16.0: disk snapshot store by last use; lookahead and local compression closed. §15.12 |
+
+## First jobs (v227): the stage 1 harness is ready for a GPU smoke; running it needs Hamed's go and a card
+
+Read HANDOFF section 18.178, `docs/CUDA-N2S1-EXPERIMENT-RECORD.md` and `benchmarks/cuda/SESSION-RUNBOOK-N2S1.md` first. If Hamed says go for a card: ask him to create the instance (about seven minutes to initialize), set the private ssh config, pack from a clean commit, copy the trace, `check`, `setup` (cu126 and a lower driver floor on a V100), `doctor`, `smoke`, **`n2smoke`** (required before any number counts), then `n2full`; the agent runs over SSH only for the instance he names, no sudo, scores by field name, and does not edit the registered predictions. The housekeeping from S2 and V1 still applies. The v226 block below still applies.
 
 ## First jobs (v226): build the stage 1 harness on the Mac (Hamed's go), then a GPU smoke
 

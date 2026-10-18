@@ -1,0 +1,56 @@
+{
+  "cells": {
+    "gen.p17": {
+      "arena_equals_simulator": true,
+      "hash": "6f23c933da675365b48069d50282c1fb0e698badb20b0cd04730aedafed75b9d",
+      "misses": 142500,
+      "n_layers": 40,
+      "slots": 2611,
+      "tokens": 1972
+    },
+    "gen.p17.t40": {
+      "arena_equals_simulator": true,
+      "hash": "ddeb61290449f956b17be9bade7babf96212ea47022b5c71ba725574aee819a9",
+      "misses": 2773,
+      "n_layers": 40,
+      "slots": 2611,
+      "tokens": 40
+    },
+    "trace.p12": {
+      "arena_equals_simulator": true,
+      "hash": "8d3864b2492c88d2f2650c5fde16ee47ccb094816582327721030d7c63b0fa49",
+      "misses": 141236,
+      "n_layers": 40,
+      "slots": 1843,
+      "tokens": 2028
+    },
+    "trace.p17": {
+      "arena_equals_simulator": true,
+      "hash": "c92c2726b2d9b54017284431fd5f1288be193d165395abb52aa863387c97b25c",
+      "misses": 105146,
+      "n_layers": 40,
+      "slots": 2611,
+      "tokens": 2028
+    },
+    "trace.p17.t40": {
+      "arena_equals_simulator": true,
+      "hash": "1cdac199f7f3ac63cfda5f18b747fe6907c4a235a5e704966597b1993b3d747f",
+      "misses": 2548,
+      "n_layers": 40,
+      "slots": 2611,
+      "tokens": 40
+    },
+    "trace.p8": {
+      "arena_equals_simulator": true,
+      "hash": "2b68401a71b328ae0b722bd90fa4e25c9b5bce4b605d2e1761f36a7a6fb33227",
+      "misses": 184219,
+      "n_layers": 40,
+      "slots": 1229,
+      "tokens": 2028
+    }
+  },
+  "gen_prefill_tokens": 200,
+  "n_layers": 40,
+  "record_bytes": 9950000,
+  "trace_sha256": "f961e9e7a8971317c662925b9ce2ea2df10fe2d3b4d077e1ffddc1335b83aa48"
+}
