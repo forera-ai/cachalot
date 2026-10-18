@@ -217,3 +217,13 @@ def test_s2_run_completes_with_a_scripted_bench_and_keeps_the_drift_bracket():
     assert manifest["status"] == "complete" and manifest["gates"]["copy_checksum"]
     assert any(r["field"] == "control_drift" for r in rows)
     assert "batchcopy.k8.loop" in raw
+
+
+def test_arch_gate_rejects_a_wheel_without_kernels_for_the_device():
+    cu128 = ["sm_75", "sm_80", "sm_86", "sm_90", "sm_100", "sm_120", "compute_120"]      # S2 instance, recorded
+    cu126 = ["sm_50", "sm_60", "sm_70", "sm_75", "sm_80", "sm_86", "sm_90", "compute_90"]
+    assert suite.arch_supported(cu128, (12, 0)) and suite.arch_supported(cu126, (7, 0))
+    assert not suite.arch_supported(cu128, (7, 0))                 # V100: no sm_70, and compute_120 cannot run on 7.0
+    assert suite.arch_supported(["compute_70"], (8, 0))            # PTX is forward compatible
+    assert not suite.arch_supported(["compute_90"], (7, 0)) and not suite.arch_supported([], (7, 0))
+    assert not suite.arch_supported(["sm_70a", "weird"], (7, 0))   # malformed entries are ignored

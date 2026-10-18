@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-18, 0.66.19): CUDA session V1 (V100) is prepared; it has not run
+>
+> Section 18.175, record `docs/CUDA-V1-EXPERIMENT-RECORD.md` (17 predictions, committed d507e14 first), `benchmarks/cuda/SESSION-RUNBOOK-V1.md`. The S2 setup output showed the cu128 torch wheel lists no `sm_70`, so it cannot run on a V100; V1 uses the cu126 build, and `session.sh setup` now has an arch gate (`suite.arch_supported`, tested) that stops before any cell if the wheel has no kernels for the device. `session.sh s2` honours `SESSION_TAG`. **No instance, no measurement.** **Needs Hamed:** create one V100 32 GB instance when the agent asks (initialization about seven minutes), set the private ssh config, say go; terminate and log hours after; delete the S2 ssh config, known_hosts and key file; the S1 follow-ups.
+>
 > ## Start here (2026-10-18, 0.66.18): CUDA session S2 ran; the L2 explanation of the compute slowdown is not supported, the effect varies by instance, queued expert copies get most of the batching benefit
 >
 > Section 18.174, results `docs/CUDA-S2-RESULTS.md` (manifests and rows in `docs/cuda-results/s2-rtx5090-2026-10-18/`). A second RTX 5090 VM of the S1 class, the `s2` profile four times (about 3 s each). Compute slowdown under pinned H2D: 12.3 to 13.3 % with one reused weight matrix (S1 instance: 21 to 26 %), 18.8 to 22.1 % with weights above the 96 MiB L2: H-L2 not supported, cause open; the d2d interferer starves the matmul (320 to 364 %) and does not isolate L2. Batched copy at k = 8: queued separate transfers 0.22 to 0.29 ms an expert (35 to 45 GB/s), one contiguous transfer 0.20 to 0.24 (41 to 50 GB/s), isolated 0.34 to 0.36. Control drift 2 to 18 % in minutes. The first run failed `copy_checksum` through my stream race in the new d2d cell (fixed in 01bf195, three clean reruns); the first VM had no network until a console reboot. Billed 0.486 GPU-hours (cumulative 0.842), logged in the private cost file. **Needs Hamed:** delete the S2 ssh config, known_hosts and key file; the S1 follow-ups (delete the saved provider key from S1 days, rotate the pasted API key); whether to continue (profiler run on a third instance, or the V100 D3). Terminate was Hamed's step.
@@ -9214,6 +9218,16 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.175 CUDA session V1 prepared (0.66.19)
+
+**Goal.** Hamed: prepare the V100 session on the Mac and ask him to create the instance when ready (initialization about seven minutes). Predictions first (d507e14): copy curve on PCIe 3, pageable against pinned, compute under copies, batching on a slower link, dtype gates, control drift, completion.
+
+**Found.** The S2 arch list `sm_75 sm_80 sm_86 sm_90 sm_100 sm_120 compute_120` has no `sm_70`: the pinned cu128 wheel cannot run on a V100. The cu126 wheel of the same version exists on the PyTorch index (822 MB, headers only checked); that it lists `sm_70` is prediction V1-P1, not verified, and the new gate decides on the instance.
+
+**Built.** `suite.arch_supported` plus a unit test (cu128 on 7.0 rejected, cu126 accepted, PTX forward compatible, malformed entries ignored); the gate in `session.sh setup`, rehearsed with a stub torch (exit 1 on 7.0 with the cu128 list); `SESSION_TAG` honoured by `s2`; the V1 runbook. Verified: 20 tests in the suite file pass, ruff clean, shell syntax checked. Not verified: the gate on a real torch, the cu126 wheel's arch list, the V100 host.
+
+**Kind.** Instruments, tests, documents. No default changed, nothing measured.
 
 ### 18.174 CUDA session S2: the second GPU session (0.66.18)
 

@@ -127,6 +127,23 @@ def dtype_support(compute_capability: tuple[int, int]) -> dict[str, bool]:
             "fp8": compute_capability >= (8, 9)}
 
 
+def arch_supported(arch_list: list[str], compute_capability: tuple[int, int]) -> bool:
+    """True if the installed torch carries kernels the device can run: an exact `sm_XY` image, or a PTX `compute_XY`
+    image for a capability not above the device's (PTX is forward compatible, never backward). A cu128 wheel lists no
+    `sm_70`, so it cannot run on a V100; setup stops on this instead of failing in the first cell (plan risk table)."""
+    major, minor = compute_capability
+    cc = major * 10 + minor
+    for entry in arch_list:
+        kind, _, num = entry.partition("_")
+        if not num.isdigit():
+            continue
+        if kind == "sm" and int(num) == cc:
+            return True
+        if kind == "compute" and int(num) <= cc:
+            return True
+    return False
+
+
 def gbps(nbytes: float, ms: float) -> float:
     return nbytes / 1e9 / (ms / 1e3)
 

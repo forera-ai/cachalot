@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.66.19 (2026-10-18)
+
+HANDOFF "Start here (2026-10-18, 0.66.19)" and section 18.175; record `docs/CUDA-V1-EXPERIMENT-RECORD.md` (committed first, d507e14). Instruments, tests and documents only; nothing in `src/` except the version string. No GPU, no instance used.
+
+### Added
+- CUDA session V1 (V100 32 GB, the D3 contrast) prepared on the Mac: seventeen predictions with falsifiers (PCIe 3 copy curve, pageable against pinned, compute under copies, batching on a slower link, no bf16 or fp8), `benchmarks/cuda/SESSION-RUNBOOK-V1.md`.
+- An arch gate: `suite.arch_supported` (tested) and a check at the end of `session.sh setup` that stops if the installed torch carries no kernels for the device. S2's setup output showed the cu128 wheel lists no `sm_70`, so it cannot run on a V100; the runbook uses the cu126 build (`TORCH_INDEX`, `MIN_DRIVER_MAJOR=525`).
+- `session.sh s2` honours `SESSION_TAG` (default S2) so a V100 run is tagged V1.
+
+### Not done, on purpose
+- No instance and no measurement: V1 needs Hamed to create the V100. The claim that the cu126 wheel lists `sm_70` is a registered prediction (probability 0.85), not a checked fact; the gate on the instance decides.
+
 ## 0.66.18 (2026-10-18)
 
 HANDOFF "Start here (2026-10-18, 0.66.18)" and section 18.174; results `docs/CUDA-S2-RESULTS.md` with sanitized manifests and rows in `docs/cuda-results/s2-rtx5090-2026-10-18/`. Measurement and one cell fix; nothing in `src/` except the version string.

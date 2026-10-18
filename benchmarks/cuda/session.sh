@@ -43,7 +43,7 @@ case "$cmd" in
   setup)
     drv="$(nvidia-smi --query-gpu=driver_version --format=csv,noheader | head -1 | cut -d. -f1)"
     [ -n "$drv" ] || die "cannot read the driver version"
-    [ "$drv" -ge "$MIN_DRIVER_MAJOR" ] || die "driver $drv is older than $MIN_DRIVER_MAJOR: the pinned CUDA 12.8 wheel will not run. Do not upgrade the driver from here; tell the agent."
+    [ "$drv" -ge "$MIN_DRIVER_MAJOR" ] || die "driver $drv is older than $MIN_DRIVER_MAJOR: the pinned wheel's CUDA runtime will not run (12.8 needs 570 or newer, 12.6 needs 525 or newer: MIN_DRIVER_MAJOR). Do not upgrade the driver from here; tell the agent."
     echo "will run, in a venv at $ROOT/.venv:"
     echo "  pip install --index-url $TORCH_INDEX $TORCH_SPEC"
     echo "  pip install $NUMPY_SPEC   (pip itself: $PIP_SPEC, hash-verified, only if the venv cannot bootstrap pip)"
@@ -69,6 +69,16 @@ PYEOF
     "$PY" -m pip install "$NUMPY_SPEC"
     "$PY" -m pip freeze > "$ROOT/pip-freeze.txt"
     "$PY" -c "import torch; print('torch', torch.__version__, 'cuda build', torch.version.cuda, 'available', torch.cuda.is_available()); print('arch list', torch.cuda.get_arch_list())"
+    # Arch gate (V1): the wheel must carry kernels for this device. A cu128 wheel has no sm_70, so it cannot run on a V100.
+    "$PY" - "$ROOT/benchmarks/cuda" <<'PYEOF' || die "the installed torch has no kernels for this GPU's compute capability. Reinstall with the matching wheel (for a V100: TORCH_INDEX=https://download.pytorch.org/whl/cu126 MIN_DRIVER_MAJOR=525, see SESSION-RUNBOOK-V1.md); do not run any cell."
+import sys
+sys.path.insert(0, sys.argv[1])
+import suite, torch
+cc = torch.cuda.get_device_capability(0)
+ok = suite.arch_supported(list(torch.cuda.get_arch_list()), cc)
+print(f"arch gate: compute capability {cc[0]}.{cc[1]} supported by this torch build: {ok}")
+sys.exit(0 if ok else 1)
+PYEOF
     ;;
 
   doctor)
@@ -111,7 +121,7 @@ ok = (m["status"] == "complete" and not g["failed_cells"] and g["copy_checksum"]
 print("smoke run clean:", ok, "| status", m["status"], "| failed cells", len(g["failed_cells"]))
 sys.exit(0 if ok else 1)
 EOF2
-    SESSION_TAG=S2 "$PY" "$BENCH" run --profile s2 --execute --max-seconds 150 --max-alloc-mib 2048 --region "$REGION" --note "$(SESSION_TAG=S2 note s2)"
+    SESSION_TAG="${SESSION_TAG:-S2}" "$PY" "$BENCH" run --profile s2 --execute --max-seconds 150 --max-alloc-mib 2048 --region "$REGION" --note "$(SESSION_TAG="${SESSION_TAG:-S2}" note s2)"
     ;;
 
   results)
