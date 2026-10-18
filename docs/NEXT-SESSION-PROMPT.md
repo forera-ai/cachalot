@@ -187,7 +187,7 @@
 
 ## First jobs (v223): S2 is done; more GPU time needs Hamed's go
 
-Read HANDOFF section 18.174 and `docs/CUDA-S2-RESULTS.md` first; the v222 and v221 blocks below still apply except that S2 has run. **New in 0.66.18:** results and sanitized manifests under `docs/cuda-results/s2-rtx5090-2026-10-18/`. Needs Hamed: log the S2 billed hours in the private cost file; delete the S2 ssh config, known_hosts and key file; the S1 follow-ups; whether to continue with a profiler run on a third instance (predictions first, a CPU rehearsal of any new cell, and a GPU smoke of any two-stream cell before it counts) or the V100 (D3). **Rules added:** a cell with two streams needs a GPU smoke before its numbers count (the CPU rehearsal cannot test ordering); do not type a region or any other manifest field from memory.
+Read HANDOFF section 18.174 and `docs/CUDA-S2-RESULTS.md` first; the v222 and v221 blocks below still apply except that S2 has run. **New in 0.66.18:** results and sanitized manifests under `docs/cuda-results/s2-rtx5090-2026-10-18/`. S2 billed 0.486 GPU-hours (logged privately; cumulative 0.842). Needs Hamed: delete the S2 ssh config, known_hosts and key file; the S1 follow-ups; whether to continue with a profiler run on a third instance (predictions first, a CPU rehearsal of any new cell, and a GPU smoke of any two-stream cell before it counts) or the V100 (D3). **Rules added:** a cell with two streams needs a GPU smoke before its numbers count (the CPU rehearsal cannot test ordering); do not type a region or any other manifest field from memory.
 
 ## First jobs (v222): S2 is prepared; running it needs Hamed's go
 
