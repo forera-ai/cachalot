@@ -416,13 +416,17 @@ class TorchArena:
         """EXPLORATORY (not a registered cell): the isolated copy time of every source record into slot 0, event ms, p50 each.
         S1, S2 and the N2 smoke run showed that the H2D rate of a 9.95 MB pinned buffer depends on the buffer (about 0.18 ms or
         about 0.35 ms, stable per buffer), so the replay's cost per miss is a mixture; this table decomposes it."""
+        import contextlib
+
         out = []
         for rec in self.sources:
             ts = []
             for i in range(iters + 3):
-                self.ev_a.record(self.stream)
-                self._slot(0).copy_(rec, non_blocking=not self.rehearsal)
-                self.ev_b.record(self.stream)
+                ctx = contextlib.nullcontext() if self.stream is None else self.t.cuda.stream(self.stream)
+                with ctx:                       # the copy must run on the stream the events are recorded on
+                    self.ev_a.record(self.stream)
+                    self._slot(0).copy_(rec, non_blocking=not self.rehearsal)
+                    self.ev_b.record(self.stream)
                 self.ev_b.synchronize()
                 if i >= 3:
                     ts.append(self.ev_a.elapsed_time(self.ev_b))
