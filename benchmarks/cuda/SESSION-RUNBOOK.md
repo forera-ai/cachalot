@@ -1,5 +1,7 @@
 # CUDA session S1 runbook: RTX 5090, inventory, smoke, baseline
 
+**How S1 was actually run (2026-10-18):** after the instance existed, Hamed asked the agent to do the work over SSH with the session's disposable key. The agent used a private ssh config outside the repository (`~/cachalot-private/ssh_config`, host alias `cuda-s1` with the provider's address, mapped port, the provider's default user, key `~/.ssh/cachalot_cloudrift`, a private known-hosts file) so that the commands below work with `-F ~/cachalot-private/ssh_config cuda-s1` in place of `-i "$CUDA_KEY" "$CUDA_HOST"`. The provider maps SSH to a non-standard external port, shown beside the address in the console; the first host key is trusted on first use. No sudo was used. The manual steps below remain the way to run a session without the agent.
+
 Operator: Hamed, from his own terminal over SSH. The agent holds no key and no token and sees only what is pasted back. Decisions D1 to D5: `docs/CUDA-RESEARCH-PLAN.md` section 17.1. Predictions and stop rules: `docs/CUDA-S1-EXPERIMENT-RECORD.md` (read its section 2 first). Cap: **2 GPU-hours** of billed time, setup included. Nothing in this runbook starts an instance; you do that in the provider console.
 
 Variables you set once per terminal. Hostnames, user names and addresses stay in your terminal and are never pasted into chat or files:

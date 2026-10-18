@@ -14,6 +14,7 @@ RESULTS="$ROOT/benchmarks/results/cuda"
 # Pinned wheels (operator reviews these in the runbook before `setup`). Override only deliberately, and record it.
 TORCH_SPEC="${TORCH_SPEC:-torch==2.7.1}"
 NUMPY_SPEC="${NUMPY_SPEC:-numpy==2.2.6}"
+PIP_SPEC="${PIP_SPEC:-pip==25.1.1}"
 TORCH_INDEX="${TORCH_INDEX:-https://download.pytorch.org/whl/cu128}"
 MIN_DRIVER_MAJOR="${MIN_DRIVER_MAJOR:-570}"      # CUDA 12.8 wheels need a 570-series driver or newer
 REGION="${CUDA_REGION:-unspecified}"             # coarse only: a country or continent, never a hostname or address
@@ -44,9 +45,25 @@ case "$cmd" in
     [ "$drv" -ge "$MIN_DRIVER_MAJOR" ] || die "driver $drv is older than $MIN_DRIVER_MAJOR: the pinned CUDA 12.8 wheel will not run. Do not upgrade the driver from here; tell the agent."
     echo "will run, in a venv at $ROOT/.venv:"
     echo "  pip install --index-url $TORCH_INDEX $TORCH_SPEC"
-    echo "  pip install $NUMPY_SPEC"
-    python3 -m venv "$ROOT/.venv" || die "python3 -m venv failed (python3-venv missing?). Operator decision needed; no sudo here."
-    "$PY" -m pip install --quiet --upgrade pip
+    echo "  pip install $NUMPY_SPEC   (pip itself: $PIP_SPEC, hash-verified, only if the venv cannot bootstrap pip)"
+    if ! python3 -m venv "$ROOT/.venv" 2>/dev/null; then
+      # Ubuntu cloud images often lack the ensurepip package. Without sudo: a venv without pip, then a hash-verified,
+      # pinned pip wheel from PyPI (no system change). Session S1, 2026-10-18, needed exactly this.
+      echo "python3 -m venv could not bootstrap pip; using a venv without pip and a verified pip wheel ($PIP_SPEC)"
+      rm -rf "$ROOT/.venv"
+      python3 -m venv --without-pip "$ROOT/.venv" || die "python3 -m venv --without-pip failed. Operator decision needed; no sudo here."
+      python3 - "$PIP_SPEC" <<'PYEOF' || die "could not fetch and verify the pip wheel"
+import hashlib, json, sys, urllib.request
+ver = sys.argv[1].split("==")[1]
+meta = json.load(urllib.request.urlopen(f"https://pypi.org/pypi/pip/{ver}/json", timeout=30))
+f = next(x for x in meta["urls"] if x["filename"].endswith("py3-none-any.whl"))
+data = urllib.request.urlopen(f["url"], timeout=60).read()
+assert hashlib.sha256(data).hexdigest() == f["digests"]["sha256"], "pip wheel hash mismatch"
+open("/tmp/" + f["filename"], "wb").write(data)
+print("pip wheel verified:", f["filename"], f["digests"]["sha256"][:16])
+PYEOF
+      "$PY" "/tmp/pip-${PIP_SPEC#pip==}-py3-none-any.whl/pip" install --no-index "/tmp/pip-${PIP_SPEC#pip==}-py3-none-any.whl"
+    fi
     "$PY" -m pip install --index-url "$TORCH_INDEX" "$TORCH_SPEC"
     "$PY" -m pip install "$NUMPY_SPEC"
     "$PY" -m pip freeze > "$ROOT/pip-freeze.txt"

@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-18, 0.66.16): the first GPU session (RTX 5090) is done; pinned copies cost 0.35 ms at the DeepSeek expert size, H9 falsified, H7 failed
+>
+> Section 18.172, results `docs/CUDA-S1-RESULTS.md` (manifests and rows in `docs/cuda-results/s1-rtx5090-2026-10-18/`). Measurement only. One RTX 5090 VM, PCIe 5.0 x16, 23.5 GiB host RAM; all gates held; pinned H2D 52 GB/s at 64 MiB but 28.4 GB/s (350 us) at 9.95 MB; pageable 24 GB/s; pinned D2H 55 GB/s; device copy 1,517 GB/s; router-style sync 7.5 us a layer; batched expert matmuls 2.4 times faster than a loop; compute slows 21 to 26 % while copies run (predicted under 5 %, L2-eviction hypothesis untested). Predictions scored: inventory and gates held, H1 and H2 failed at the record size, H7 failed, H9 as stated falsified (derived), launch and sync came in lower than predicted. **Needs Hamed:** confirm the instance shows terminated in the console and fill the hours in `~/cachalot-private/cuda-cost-log.md`; delete the saved `cachalot-ssh` key from the provider profile; rotate the API key pasted into the first chat. The V100 session (D3) is not scheduled; the smallest next experiment is in section 7 of the results.
+>
 > ## Start here (2026-10-18, 0.66.15): CUDA session S1 is prepared; the next step is yours (provision the RTX 5090 and follow the runbook)
 >
 > Section 18.171. Decisions D1 to D5 are recorded (plan 17.1): start now, private cost file outside the repo (`~/cachalot-private/cuda-cost-log.md`), RTX 5090 first, SSH run by Hamed from `benchmarks/cuda/SESSION-RUNBOOK.md`, model deferred and 2 GB download cap. Ready: the experiment record with 17 predictions (committed first), the runbook, `pack.sh`, `session.sh`, the CPU rehearsal of the GPU cells (15 tests), the routing generator. No instance exists, no key is held by the agent, nothing was measured on a GPU. **Needs Hamed:** fill the cost file (rate, expiry, balance, cumulative cap); move and lock the SSH key; rotate the pasted API key; provision the instance and follow the runbook, pasting each step's output back.
@@ -9202,6 +9206,20 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.172 CUDA session S1: the first GPU measurements (0.66.16)
+
+**Goal.** Hamed: "the instance is ready, do the next steps ... take control and do the actual work." Run the committed itinerary (inventory, smoke, baseline) on the RTX 5090 and score the 17 registered predictions.
+
+**How it ran.** After the instance existed, Hamed instructed the agent to use SSH with the session's disposable key (his explicit instruction; the earlier plan had him typing every command). A private ssh config in `~/cachalot-private/` held the host alias, the provider's mapped port and the user (the provider's default user, found by trying), so nothing identifying entered the repository. The scaffold was uploaded as the packed archive (checksum equal both sides), `check` passed, `setup` failed at `python3 -m venv` (no ensurepip). The agent asked for `sudo apt install python3.12-venv`; the auto-mode classifier denied it as a security weakening and it was not retried; pip was instead bootstrapped in a user-space venv from a hash-verified pinned wheel, then torch 2.7.1+cu128 and numpy 2.2.6 were installed. `doctor`, `smoke` and `baseline` ran, then three more baselines and a second smoke for variation. Results were copied back by archive and checked by sha256 on both sides and by `validate` under `python -I` on the Mac.
+
+**Results.** `docs/CUDA-S1-RESULTS.md`. Highlights: measured expert-sized pinned copy cost 0.35 / 0.47 / 0.54 ms (DeepSeek, GLM, MiniMax records); H1, H2 failed at the record size; H3 held; H7 failed; H9 as stated falsified; stable within the session (pinned H2D spread 1 %, device copy 0.02 %).
+
+**One analysis error caught.** My first quick summary mislabelled four columns (pageable D2H read as pinned H2D) and suggested a pinned-memory anomaly; the second analysis, which indexed by name, showed it was a labelling slip, not a measurement. The results document uses the second.
+
+**Open / needs Hamed.** Confirm termination and log the hours; delete the saved provider key; rotate the API key. The L2 hypothesis for the compute slowdown, batched copies, a second day, and the V100 are the next experiments; predictions first, in a new record.
+
+**Kind.** Measurement (GPU microbenchmarks only). No default changed.
 
 ### 18.171 CUDA session S1 prepared (0.66.15)
 

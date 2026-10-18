@@ -464,6 +464,17 @@ Charter rule C11 and the last line of 8.2 say: keep platform-neutral what is alr
 
 **N0a exit gate, written scope reduction (2026-10-18).** The gate asks that H5 and H6's premise be supported or that N2's scope be reduced in writing. H5's offline premise held (the replay equals `cache_sim`, deterministic). H6's premise did not: a non-LRU policy saved 3 to 5 % of LRU's misses almost regardless of the resident fraction on both long traces (DeepSeek LFU-with-decay 3.9 % at 17 % against 1.2 % at 34 %, MiniMax 4.0 % against 4.2 %), and the segmented-LRU model needs probation sized from the measured miss rate. N2 is therefore reduced: its headline is the resident-fraction curve and the cost per miss on each tier; policy comparison is a secondary arm limited to LRU, SLRU with a stated protected fraction and LFU with decay, and no policy win is assumed in advance. CUDA-H6 stays open pending a second long DeepSeek trace; CUDA-H9's threshold is to be re-stated after N1 measures the pinned copy rate.
 
+### 17.2 Session S1 outcome (2026-10-18)
+
+The first session (RTX 5090: N0b inventory, N1 smoke and baseline) ran and is recorded in `docs/CUDA-S1-RESULTS.md`; the registered predictions are scored there. Consequences for this plan, written after the run:
+
+* **CUDA-H1 and CUDA-H2** failed their registered falsifiers at the DeepSeek record size (9.95 MB pinned H2D reaches 54 % of the plateau; pageable is within 20 % of pinned) and held at large sizes; they are restated as size-dependent, not dropped.
+* **CUDA-H3** survived (a batched launch of 8 projections is 2.4 times faster than a loop of 8).
+* **CUDA-H7** failed (compute slowed 21 to 26 % while copies ran, predicted under 5 %); a flushed-L2 variant is needed before the slowdown is attributed to copy traffic.
+* **CUDA-H9** as stated (value of a GiB at least 5 times smaller on the PCIe host tier) is **falsified on this machine, derived**: measured copy cost 0.35 ms against the Mac's 2.0 ms a miss is a ratio of 5.7, but the steeper small-fraction curve brings the ms-a-GiB ratio to 1.5 to 2. The threshold is restated: H9 now reads "the value of a GiB differs between tiers by less than the cost-per-miss ratio, because the miss curve is steeper at small fractions".
+* The measured cost of one expert-sized pinned H2D copy (0.35 ms, 0.47 ms, 0.54 ms for the DeepSeek, GLM and MiniMax records) replaces the assumed 0.40 to 1.0 ms of the N0a record.
+* D4 was exercised differently from the runbook: after the instance existed, Hamed instructed the agent to run the session over SSH with the session's disposable key; privileged steps stayed denied (the agent was refused sudo and used a user-space pip bootstrap instead). The V100 session (D3) is not scheduled.
+
 ## 18. Honest limits
 
 - This is a plan. No hypothesis in it has been tested; every "expected" device property is vendor-derived and unverified for the rented machine.

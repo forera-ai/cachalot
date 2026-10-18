@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.66.16 (2026-10-18)
+
+HANDOFF "Start here (2026-10-18, 0.66.16)" and section 18.172; results `docs/CUDA-S1-RESULTS.md` with sanitized manifests and rows in `docs/cuda-results/s1-rtx5090-2026-10-18/`. Measurement only; nothing in `src/` except the version string. The first GPU session.
+
+### Measured
+- CUDA lane session S1 on one rented RTX 5090 (KVM virtual machine, 23.5 GiB host RAM, PCIe 5.0 x16 negotiated, driver 580, torch 2.7.1+cu128 with `sm_120`): inventory, a 2 s smoke run and four 9 s baseline runs, all gates held. Pinned H2D reaches 52 GB/s at 64 MiB (83 % of the link's theoretical rate) but only 28.4 GB/s at the DeepSeek expert size (350 us a copy), 30.4 at 14.16 MB, 41.0 at 21.1 MiB; pageable H2D is 24 GB/s at every size; pinned D2H is a flat 55 GB/s; device-to-device 1,517 GB/s; launch 2.96 us, a router-style sync 7.5 us a layer (0.30 ms for 40 layers); a batched launch of 8 expert-shaped fp16 matmuls reaches 97 % of the copy peak against 41 % for a loop; compute slows 21 to 26 % while pinned copies run.
+- Scored against the 17 registered predictions (f15ef2a): inventory, link, VRAM, device bandwidth, D2H symmetry, gates and timing held; CUDA-H1 and CUDA-H2 failed their falsifiers at the record size (and held at large sizes), CUDA-H7 failed, launch and sync costs came in below their intervals; no cell failed on the real GPU. The measured cost of one expert-sized pinned copy (0.35 ms) replaces the N0a record's assumed 0.40 to 1.0 ms and makes CUDA-H9's five-fold threshold falsified (derived: 1.5 to 2 times in ms a GiB).
+
+### Changed
+- `benchmarks/cuda/session.sh` bootstraps pip without sudo when the host's Python lacks `ensurepip` (a venv without pip, then a hash-verified pinned pip wheel); this was the one operational defect of the session and was done by hand there. `SESSION-RUNBOOK.md` records how S1 was actually run (agent over SSH at Hamed's instruction, private ssh config, mapped port). README status lines now say early measurements exist. Plan section 17.2 records the consequences (H1, H2, H3, H7, H9 and the measured copy cost).
+
+### Not done, on purpose
+- No model, no token time and no Cachalot code ran on the GPU; no V100 session; CUDA-H4, H5 and H6 are untested on the GPU; the L2-eviction explanation of the compute slowdown is a hypothesis, not a result. The `session.sh` fallback branch was not re-run as a script (the same commands ran by hand).
+
 ## 0.66.15 (2026-10-18)
 
 HANDOFF "Start here (2026-10-18, 0.66.15)" and section 18.171; records `docs/CUDA-S1-EXPERIMENT-RECORD.md` and the decision log in `docs/CUDA-RESEARCH-PLAN.md` section 17.1. Instruments, tests and documents only; nothing in `src/` except the version string. No GPU, no instance, no credential used.
