@@ -49,16 +49,17 @@ BLOCK = 20
 BOOT = 2000
 
 
-def replay(arrays, slots: int, policy: str, decay_every: int = 0) -> dict:
+def replay(arrays, slots: int, policy: str, decay_every: int = 0, store=None, on_token=None) -> dict:
     """Same walk as cache_sim.simulate (tau 0, no prefetch); also returns misses per decode token, in order.
 
+    `store` replaces the default `Store` (an instrumented subclass); `on_token(token, store)` is called after each decode token.
     `decay_every` > 0 halves LFU frequencies every that many decode tokens (simulate_policies.run does 16; cache_sim does not).
     """
     phase, layer, experts = arrays["phase"], arrays["layer"], arrays["experts"]
     token_of_row = np.full(len(layer), -1, dtype=np.int64)
     drows = np.nonzero(phase == PHASE_DECODE)[0]
     token_of_row[drows] = _token_ordinals(layer[drows])
-    st = Store(slots, policy, n_layers=trace_layers(arrays))
+    st = store if store is not None else Store(slots, policy, n_layers=trace_layers(arrays))
     change = np.nonzero(np.diff(phase.astype(np.int8)) != 0)[0] + 1
     bounds = [0, *change.tolist(), len(layer)]
     per_token: dict[int, int] = {}
@@ -74,10 +75,12 @@ def replay(arrays, slots: int, policy: str, decay_every: int = 0) -> dict:
         tokens += int(np.unique(token_of_row[a:b]).size)
         for i in range(a, b):
             tok = int(token_of_row[i])
-            if decay_every and policy == "lfu" and last_tok is not None and tok != last_tok:
+            if last_tok is not None and tok != last_tok:
                 done += 1
-                if done % decay_every == 0:
+                if decay_every and policy == "lfu" and done % decay_every == 0:
                     st.decay()
+                if on_token is not None:
+                    on_token(last_tok, st)
             last_tok = tok
             la = int(layer[i])
             for e in experts[i].tolist():

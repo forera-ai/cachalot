@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-18, 0.66.14): the SLRU collapse is probation starvation; the cliff sits at about 1.4 to 1.5 times the misses a token
+>
+> Section 18.170, record `docs/CUDA-SLRU-COLLAPSE-RECORD.md`. Measurement only, Mac, no GPU, nothing in `src/` and the shipped LRU store is untouched. At 8 % resident on MiniMax the SLRU model's probation (117 slots at f = 0.8) is smaller than the keys a token inserts (126): keys live 0.6 token, 99.9 % die unseen, promotions stop, the protected segment freezes (97.7 % of hits). Sweeping the protected fraction moves the collapse exactly as the arithmetic says, and DeepSeek at 3 % resident reproduces it. Predictions committed first (c99b19a): most held; the registered threshold was too low and the collapse saturates (second falsifier fired). Consequence for N2: size probation at 1.5 times a token's inserts or more, and note the policy gains over LRU are only 3 to 5 %. **Needs Hamed:** plan D1 to D5 before any metered GPU session; rotate the CloudRift key pasted into chat; a second long DeepSeek trace needs the live runtime.
+>
 > ## Start here (2026-10-18, 0.66.13): CUDA N0a on MiniMax: H6 still not established, the DeepSeek LFU-decay lead does not replicate
 >
 > Section 18.169, record `docs/CUDA-N0A-POLICY-RECORD.md` sections 6 and 6.1. Measurement only, Mac, no GPU. On `routing-trace-minimax-long` (1,904 decode tokens) SLRU and LFU-decay save about 3 to 5 % of LRU's misses at every fraction from 12 % up (ratio 17 % over 34 %: 0.9 to 1.0), against the DeepSeek LFU-decay ratio of 3.2; so the policy matters by a few percent and the resident fraction by factors. SLRU as modelled collapses at 8 % resident (about ten slots a layer), cause open. Per-GiB value of resident memory is 2.0 to 2.7 times steeper below 17 % on both models. Predictions committed first (cb11e06): most held, the slope falsifier fired by 0.01. LFU-decay on MiniMax is not independently reproduced (its reference assumes 40 layers). **Needs Hamed:** plan D1 to D5 before any metered GPU session; rotate the CloudRift key pasted into chat. A second long DeepSeek trace needs the live runtime (his machine).
@@ -9194,6 +9198,20 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.170 Why the SLRU model collapses at small resident fractions (0.66.14)
+
+**Goal.** Hamed: "investigate why the SLRU model collapses at 8 % resident on MiniMax, offline, with a prediction committed first" (v218 open item).
+
+**Method.** Record `docs/CUDA-SLRU-COLLAPSE-RECORD.md`: one hypothesis (probation starvation), seven experiments with falsifiers, committed before any probe code (c99b19a). Then `benchmarks/slru_collapse_probe.py`: an instrumented SLRU (segment sizes, hit segment, promotions, lifetimes of decode-inserted keys) and a sweep of the protected fraction on MiniMax (584 and 876 slots) and DeepSeek (461 slots, 3 %). `Store` gained `protected_fraction` (default 0.8), verified to reproduce every earlier cell. Twelve seconds of Mac CPU.
+
+**Results.** Record section 5. Hypothesis supported on both models; internals as predicted; cliff at about 1.4 to 1.5 times the misses a token (exploratory points f = 0.68 vs 0.70); the registered threshold (1.0 times) was too low and the collapse saturates near 1.6 times LRU instead of growing.
+
+**Alternatives excluded.** The prefill quota (f = 0.5 at the same slots is fine) and a MiniMax-specific cause (DeepSeek reproduces). A bug in the demotion code is not excluded in the strict sense, but the behaviour is fully accounted for by the segment arithmetic.
+
+**What closed / changed.** The N0a open item is closed. N2 note: tune the protected fraction from the measured miss rate or use LRU; the policy gains in N0a were 3 to 5 %. Not done: other promotion rules, a per-cell tuned f, the cause of the 1.4 to 1.5 times margin, a second long DeepSeek trace, any GPU work.
+
+**Needs Hamed.** D1 to D5; the pasted CloudRift key; a live DeepSeek replay if he wants H6 closed on DeepSeek. **Kind.** Measurement. No default changed.
 
 ### 18.169 CUDA lane N0a on a second trace, MiniMax-M3 (0.66.13)
 

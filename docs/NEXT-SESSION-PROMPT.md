@@ -1,10 +1,11 @@
-# Next-session prompt — **v218**, written 2026-10-18
+# Next-session prompt — **v219**, written 2026-10-18
 
 **This is the file to paste.** `docs/NEXT-SESSION-PROMPT.md` is always current; superseded ones live in
 `docs/next-session-prompts/`.
 
 | version | written | produced by | what changed |
 |---|---|---|---|
+| **v219** | 2026-10-18 | Hamed: "investigate why the SLRU model collapses at 8 % resident on MiniMax, offline, with a prediction committed first" (v218 open item) | **0.66.14, measurement only, Mac: the SLRU collapse is probation starvation. At 584 slots, f = 0.8, probation holds 117 keys and a token inserts 126: keys live 0.6 token, 99.9 % die unseen, promotions stop, the protected segment freezes (97.7 % of hits); the protected fraction moves it as predicted on MiniMax and on DeepSeek at 3 % resident; the cliff is at about 1.4 to 1.5 times the misses a token (registered threshold 1.0 was too low; saturation at f = 0.9 was not predicted). `Store` gains `protected_fraction` (default unchanged). New `benchmarks/slru_collapse_probe.py`. Nothing in `src/`.** §18.170 |
 | **v218** | 2026-10-18 | Hamed: "go for next" (v217 free job) | **0.66.13, measurement only, Mac: CUDA lane N0a on MiniMax (`routing-trace-minimax-long`). SLRU and LFU-decay save 3 to 5 % of LRU's misses at every fraction from 12 % up, so the DeepSeek LFU-decay small-fraction lead does not replicate and CUDA-H6 stays unestablished; the SLRU model collapses at 8 % resident (open); a resident GiB is 2.0 to 2.7 times more valuable below 17 % on both models. Predictions committed first; the slope falsifier fired by 0.01; LFU-decay on MiniMax not independently reproduced (reference assumes 40 layers). Nothing in `src/`.** §18.169 |
 | **v217** | 2026-10-18 | Hamed: "go for N0a" (v216 free job) | **0.66.12, measurement only, Mac: the CUDA lane N0a policy table on `routing-trace-deepseek-long`. SLRU saves 3.3 to 5.2 % at every resident fraction (CUDA-H6 not established as registered); LFU without decay is much worse than LRU, with decay (exploratory) it shows the small-fraction effect; a resident GiB removes 3.7 times more misses at 11 to 17 GiB than at 36 to 48; the H9 threshold looks too strict (derived). Predictions committed first; consistency and slope held, LRU curve and gap ratio missed. New `benchmarks/cuda_offline_policy_table.py`. Nothing in `src/`.** §18.168 |
 | **v216** | 2026-10-18 | Hamed: `/ca` task "Start Cachalot CUDA Track N0/N1 safely", then "do the full 0.66.11 release routine" | **0.66.11, instruments and tests: `benchmarks/cuda/` (doctor, bounded N1 microbenchmark suite, `cuda-manifest` v1 and a redaction gate, README) and 35 Mac tests; torch cells reviewed but never run (no GPU); no instance, credit or key used; nothing in `src/` but the version string. Needs Hamed: rotate the pasted CloudRift key, plan D1 to D5, when to provision. First job and closed list unchanged from v213.** §18.167 |
@@ -179,6 +180,10 @@
 | v47 | 2026-09-25 | Hamed asked for the v44-v46 levers planned, built, measured and documented | **0.18.0: GLM prefill 60 to 90 tok/s, bit-identical (a store path that never evicts, plus the next layer read early), GLM's missing MLX buffer-cache cap added, GLM disk snapshots (a restart reuses the system block). DeepSeek: an `iostat` trace shows prefill is not read-bound on either drive; the lookahead A/B drowned in a 124-to-200 s drift across back-to-back prefills.** §17.1, §15.13 |
 | v46 | 2026-09-25 | Hamed asked for GLM-5.3-Flash on Cachalot | 0.17.0: GLM through `serve-glm.sh` / `chat-glm.sh`. §17 |
 | v45 | 2026-09-24 | same as v47, one day earlier | 0.16.0: disk snapshot store by last use; lookahead and local compression closed. §15.12 |
+
+## First jobs (v219): the SLRU collapse is explained; the offline CUDA lane has no free job left
+
+Read HANDOFF section 18.170 and `docs/CUDA-SLRU-COLLAPSE-RECORD.md` first. The v218 block below still applies. **New in 0.66.14:** `Store(..., protected_fraction=0.8)` and `benchmarks/slru_collapse_probe.py`. Nothing autonomous and free is left in the CUDA lane: the remaining items are a second long DeepSeek trace (the live runtime, Hamed's machine) and the metered GPU sessions (plan D1 to D5). Needs Hamed: D1 to D5, the go to provision, rotating the pasted CloudRift key. **New rule:** a segmented-LRU comparison must state its protected fraction and check that probation holds at least 1.5 times the experts a token inserts; otherwise the policy is frozen and the number measures that, not the policy.
 
 ## First jobs (v218): the offline CUDA policy work is done on both long traces; what is left needs Hamed
 

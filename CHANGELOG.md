@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.66.14 (2026-10-18)
+
+HANDOFF "Start here (2026-10-18, 0.66.14)" and section 18.170; record `docs/CUDA-SLRU-COLLAPSE-RECORD.md`. Measurement only; nothing in `src/` except the version string. No GPU.
+
+### Measured
+- Why the SLRU store model collapses at 8 % resident on MiniMax (N0a finding): probation starvation. At 584 slots with the model's protected fraction 0.8 the probation segment holds 117 keys while a token inserts about 126; a decode-inserted key lives 0.61 token, 99.9 % of them are evicted with no second hit, promotions stop (0.27 a token), the protected segment stays at 96 % of its cap, and 97.7 % of the remaining hits come from that frozen set. The protected fraction decides it: at 584 slots f = 0.50, 0.65 and 0.68 match LRU, f = 0.70 and above is 1.27 to 1.63 times worse (cliff between probation 1.48 and 1.39 times the misses a token); at 876 slots f = 0.9 collapses and 0.8 does not; DeepSeek at 3 % resident reproduces it (f = 0.8: 1.55 times LRU, f = 0.5: 0.98).
+- Predictions committed first (c99b19a): the internals, the 876-slot and DeepSeek predictions and the default-preserving change held; the registered threshold was too low (f = 0.75 collapses) and the collapse saturates instead of worsening at f = 0.9 (the second falsifier fired).
+
+### Changed
+- `benchmarks/simulate_policies.py`: `Store` takes an optional `protected_fraction` (default 0.8, the previous hard-coded cap; every earlier result reproduces). `benchmarks/cuda_offline_policy_table.py`: `replay` accepts a store and a per-token callback.
+
+### Added
+- `benchmarks/slru_collapse_probe.py` and `tests/test_slru_collapse_probe.py` (2 tests).
+
 ## 0.66.13 (2026-10-18)
 
 HANDOFF "Start here (2026-10-18, 0.66.13)" and section 18.169; record `docs/CUDA-N0A-POLICY-RECORD.md` sections 6 and 6.1. Measurement only; nothing in `src/` except the version string. No GPU.

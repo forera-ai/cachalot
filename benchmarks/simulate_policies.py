@@ -43,9 +43,10 @@ GIB = 1024**3
 
 
 class Store:
-    def __init__(self, slots: int, decode_policy: str, n_layers: int = N_LAYERS):
+    def __init__(self, slots: int, decode_policy: str, n_layers: int = N_LAYERS, protected_fraction: float = 0.8):
         # the per-layer prefill quota divides the slots over this many layers (DeepSeek: 40; a trace of another model passes its own)
         self.n_layers = n_layers
+        self.protected_fraction = protected_fraction  # slru: share of the slots the protected segment may hold
         self.slots = slots
         self.policy = decode_policy
         self.items: OrderedDict[tuple[int, int], None] = OrderedDict()  # recency order (LRU at front)
@@ -100,10 +101,10 @@ class Store:
             if key in self.protected:
                 self.protected.move_to_end(key)
             else:
-                # second hit promotes to protected (cap 80% of slots)
+                # second hit promotes to protected (cap: protected_fraction of the slots, default 80%)
                 del self.items[key]
                 self.protected[key] = None
-                cap = int(self.slots * 0.8)
+                cap = int(self.slots * self.protected_fraction)
                 while len(self.protected) > cap:
                     k, _ = self.protected.popitem(last=False)
                     self.items[k] = None
