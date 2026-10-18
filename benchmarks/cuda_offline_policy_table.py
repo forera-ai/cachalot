@@ -147,7 +147,9 @@ def main() -> int:
             check = None
             if args.determinism and pol in ("lru", "slru"):
                 deterministic &= replay(arrays, slots, real)["per_token"] == r["per_token"]
-            if pol == "lfu-decay" and not args.no_check:
+            if pol == "lfu-decay" and not args.no_check and trace_layers(arrays) != 40:
+                check = None        # simulate_policies.run assumes 40 layers (N_LAYERS), so it is no reference here
+            elif pol == "lfu-decay" and not args.no_check:
                 phase = arrays["phase"]
                 chg = np.nonzero(np.diff(phase.astype(np.int8)) != 0)[0] + 1
                 segs = [{"at": 0}, *({"at": int(i)} for i in chg)]

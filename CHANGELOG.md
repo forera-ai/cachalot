@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.66.13 (2026-10-18)
+
+HANDOFF "Start here (2026-10-18, 0.66.13)" and section 18.169; record `docs/CUDA-N0A-POLICY-RECORD.md` sections 6 and 6.1. Measurement only; nothing in `src/` except the version string. No GPU.
+
+### Measured
+- CUDA lane N0a on a second long trace, MiniMax-M3 (`routing-trace-minimax-long`, 1,904 decode tokens, 57 layers, top-4), same resident fractions, LRU, SLRU and LFU halved every 16 tokens. LRU miss rate 55.3, 45.5, 36.1, 25.7, 17.9 % at 8, 12, 17, 25, 34 %. SLRU and LFU-decay save about 3 to 5 % of LRU's misses at every fraction from 12 % up, so the small-fraction effect seen for LFU-decay on DeepSeek (gain 3.2 times larger at 17 % than at 34 %) does not replicate (ratio 0.95): CUDA-H6 stays unestablished on both traces and the DeepSeek lead is weakened. The SLRU model collapses at 8 % resident on MiniMax (about ten slots a layer, 205.97 against 125.98 misses a token; cause not investigated). The value of resident memory per GiB is again 2.0 to 2.7 times steeper below 17 % than above.
+- Predictions committed first (cb11e06): LRU miss rates, the SLRU range and ratio, the H6 failure and the LFU-against-SLRU comparison held; the slope-ratio falsifier fired by 0.01 (1.99 against 2). The LFU-decay consistency check printed False because its reference assumes 40 layers; checked afterwards with the decay disabled (equal to `cache_sim` on this trace), but LFU-decay on MiniMax is not independently reproduced.
+
+### Changed
+- `benchmarks/cuda_offline_policy_table.py`: `--expert-bytes`, the expert count derived from the trace, an optional reference cache size, and the LFU-decay reference check recorded as not applicable on traces that do not have 40 layers.
+
 ## 0.66.12 (2026-10-18)
 
 HANDOFF "Start here (2026-10-18, 0.66.12)" and section 18.168; record `docs/CUDA-N0A-POLICY-RECORD.md`. Measurement only; nothing in `src/` except the version string. No GPU.

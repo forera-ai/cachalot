@@ -109,3 +109,47 @@ N2's policy comparison should include LFU with decay and SLRU, not LFU without d
 | M-P6 | marginal misses a token per extra GiB (LRU), 8 to 17 % over 17 to 34 % | the 8 to 17 % slope at least twice the 17 to 34 % slope | ratio under 2 |
 
 Stop rules as in section 4. A gap inside its bootstrap interval is a null.
+
+### 6.1 Results (appended 2026-10-18, after the run; sections 1 to 6 above are unchanged)
+
+Command (Mac, one Python process, about 14 minutes, no other runtime running):
+
+```bash
+cd /Users/hamedprooshani/Projects/deepseek-v41-mac
+PYTHONPATH=src ~/venvs/deepseek-v41/bin/python benchmarks/cuda_offline_policy_table.py \
+    benchmarks/results/routing-trace-minimax-long/trace.npz --expert-bytes 22124953 --policies lru,slru \
+    --lfu-decay 16 --anchor-slots 3300 --determinism --out benchmarks/results/cuda-n0a/minimax-long.json
+```
+
+Trace `routing-trace-minimax-long`: 1,904 decode tokens, 57 MoE layers, 7,296 experts, top-4, 228 requests a token. **Measured** by replay (a trace-and-policy statement; no copy cost, no VRAM, no prefetch). The reference row is the Mac's shipped 68 GiB cache and carries no live figure.
+
+| resident | experts GiB | LRU misses/token (miss rate) | SLRU saves | LFU, halved every 16 tokens, saves |
+|---|---:|---|---|---|
+| 8 % | 12.0 | 125.98 (55.3 %) | **-79.99** (-63.5 %), see below | +3.75 (+1.14 to +6.28), 3.0 % |
+| 12 % | 18.1 | 103.80 (45.5 %) | +1.48 (-1.54 to +4.12), 1.4 %, **inside noise** | +4.13 (+1.63 to +6.48), 4.0 % |
+| 17 % | 25.6 | 82.25 (36.1 %) | +3.21 (+1.74 to +4.66), 3.9 % | +3.29 (+1.30 to +5.12), 4.0 % |
+| 25 % | 37.6 | 58.51 (25.7 %) | +2.32 (+1.17 to +3.42), 4.0 % | +2.89 (+1.58 to +4.11), 4.9 % |
+| 34 % | 51.1 | 40.86 (17.9 %) | +1.79 (+1.18 to +2.43), 4.4 % | +1.71 (+1.13 to +2.33), 4.2 % |
+| 3,300 slots (shipped 68 GiB) | 68.0 | 26.23 (11.5 %) | +0.75 (+0.42 to +1.13), 2.9 % | +0.77 (+0.44 to +1.14), 2.9 % |
+
+### Scoring the predictions
+
+| id | outcome |
+|---|---|
+| M-P1 consistency | **held for LRU and SLRU** (all 12 cells equal `cache_sim.simulate`); a second replay of every LRU and SLRU cell was identical. **LFU with decay is unverified on this trace as run:** the run printed `check False` for all six decay cells because the reference, `simulate_policies.run`, assumes 40 layers and this trace has 57, so it is no reference here (the script now records `None` in that case). What was checked afterwards: with the decay disabled the replay's LFU equals `cache_sim`'s LFU on this trace at 584 slots (310,139 misses both), and the decay hook is the same code path that matched `simulate_policies.run` on DeepSeek. The LFU-decay numbers above are therefore likely right but not independently reproduced |
+| M-P2 LRU miss rate | **held in all three intervals**: 17.9 % (15 to 30), 36.1 % (30 to 50), 55.3 % (45 to 70) |
+| M-P3 SLRU relative reduction | **held**: 4.4 % at 34 %, 3.9 % at 17 % (each 1 to 5), ratio 0.89 (0.8 to 3) |
+| M-P4 CUDA-H6 premise | **fails**, as predicted with probability 0.70: the ratio is 0.89, not 2 |
+| M-P5 LFU-decay against SLRU at 17 % | **held**: 4.0 % against 3.9 % |
+| M-P6 slope ratio | **missed by 0.01**: 3.23 misses/token/GiB between 8 and 17 % over 1.62 between 17 and 34 % is 1.99, the falsifier was "under 2" |
+
+### Findings (post hoc, labelled)
+
+1. **The small-fraction effect of the DeepSeek LFU-with-decay lead does not replicate.** On DeepSeek, LFU-decay's gain was 3.9 % at 17 % and 1.2 % at 34 % (ratio 3.2). On MiniMax it is 4.0 % at 17 % and 4.2 % at 34 % (ratio 0.95). Over two models, a non-LRU policy saves roughly 3 to 5 % of LRU's misses almost regardless of the resident fraction, with one DeepSeek exception (LFU-decay at 34 %, 1.2 %). **CUDA-H6 is not established on either trace; the lead of section 5 is weakened.** The policy matters by a few percent of misses; the resident fraction matters by factors (LRU misses 126 to 41 over 12 to 51 GiB).
+2. **SLRU as modelled collapses at 8 % on MiniMax**: 205.97 misses a token against LRU's 125.98, hit rate 9.7 % against 44.8 %, with the cell consistent with `cache_sim`. At 584 slots the prefill quota is 10 slots a layer; the cause was not investigated, so it is stated as an observed property of this store model at about ten slots a layer, not as an explanation. It matters for N2 only as a warning that a policy's behaviour at very small slot counts per layer must be measured, not extrapolated.
+3. **The marginal value of resident memory is steeper at small fractions on MiniMax too**: 3.68, 2.87, 1.97 and 1.30 misses a token per extra GiB over 12 to 18, 18 to 26, 26 to 38 and 38 to 51 GiB. Across the two models the 8-17 % slope is 2.0 to 2.7 times the 17-34 % slope, which is consistent with the H9 reading of section 5.3 (derived, assumed copy rates).
+4. MiniMax misses more than DeepSeek at the same fraction, as predicted from the recorded routing concentration: at 17 % resident the miss rate is 36.1 % against 21.6 % (51.85 of 240).
+
+### What this does not establish
+
+Two traces, two models, one decay constant, no GPU. A second long DeepSeek trace still does not exist; H6 is not closed, only unsupported on the data in hand. The GLM traces (229 to 793 decode tokens) are smoke-grade and were not run.

@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-18, 0.66.13): CUDA N0a on MiniMax: H6 still not established, the DeepSeek LFU-decay lead does not replicate
+>
+> Section 18.169, record `docs/CUDA-N0A-POLICY-RECORD.md` sections 6 and 6.1. Measurement only, Mac, no GPU. On `routing-trace-minimax-long` (1,904 decode tokens) SLRU and LFU-decay save about 3 to 5 % of LRU's misses at every fraction from 12 % up (ratio 17 % over 34 %: 0.9 to 1.0), against the DeepSeek LFU-decay ratio of 3.2; so the policy matters by a few percent and the resident fraction by factors. SLRU as modelled collapses at 8 % resident (about ten slots a layer), cause open. Per-GiB value of resident memory is 2.0 to 2.7 times steeper below 17 % on both models. Predictions committed first (cb11e06): most held, the slope falsifier fired by 0.01. LFU-decay on MiniMax is not independently reproduced (its reference assumes 40 layers). **Needs Hamed:** plan D1 to D5 before any metered GPU session; rotate the CloudRift key pasted into chat. A second long DeepSeek trace needs the live runtime (his machine).
+>
 > ## Start here (2026-10-18, 0.66.12): CUDA lane N0a done offline, H6 not established, H9 threshold looks too strict
 >
 > Section 18.168, record `docs/CUDA-N0A-POLICY-RECORD.md`. Measurement only, Mac, no GPU. On `routing-trace-deepseek-long` (1,972 decode tokens): SLRU saves 3.3 to 5.2 % of LRU's misses at every resident fraction (no growth at small fractions); LFU without decay is much worse than LRU; LFU with decay shows the small-fraction effect (17 % gap 6.8 times the 34 % gap, intervals apart) as an exploratory lead; a resident GiB removes 3.7 times more misses at 11 to 17 GiB than at 36 to 48 GiB. Predictions committed first (37323a6): consistency and slope held, the LRU curve and the gap ratio missed. **Needs Hamed:** plan D1 to D5 before any metered GPU session; rotate the CloudRift key pasted into chat. The first job and closed list of the v213 prompt are unchanged.
@@ -9190,6 +9194,20 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.169 CUDA lane N0a on a second trace, MiniMax-M3 (0.66.13)
+
+**Goal.** Hamed: "go for next" (v217 free job): a second long trace for CUDA-H6. No second long DeepSeek trace exists and recording one needs the live runtime, so the only other trace over 1,000 decode tokens, `routing-trace-minimax-long`, was used; GLM traces are smoke-grade and were skipped.
+
+**Method.** Predictions committed first (cb11e06, record section 6), then `cuda_offline_policy_table.py` with `--expert-bytes 22124953`, LRU, SLRU and LFU halved every 16 tokens, five fractions and the shipped 68 GiB cache as a reference, paired block bootstrap. About 14 minutes of one Mac process.
+
+**Results.** Record section 6.1. H6 stays unestablished (relative gain flat at 3 to 5 %); the DeepSeek LFU-decay lead does not replicate; SLRU collapses at 8 % resident on MiniMax (open); marginal value of a resident GiB is steeper at small fractions on both models.
+
+**Defects found and handled.** The LFU-decay consistency reference (`simulate_policies.run`) hardcodes 40 layers, so every MiniMax decay cell printed `check False`; this is a limit of the reference, verified by running the replay with the decay disabled against `cache_sim` (equal), and the script now records `None` for such traces. LFU-decay on MiniMax is likely right but not independently reproduced.
+
+**What closed / changed.** Plan N2 should not budget on a policy win at small fractions; it should budget on the fraction. CUDA-H9's reading (section 5.3 of the record) is supported in direction, still derived. Not done: a second long DeepSeek trace, GLM, other decay constants, the SLRU 8 % cause, any GPU work.
+
+**Needs Hamed.** D1 to D5; the pasted CloudRift key; a live DeepSeek replay for a second DeepSeek trace if he wants H6 closed on that model. **Kind.** Measurement. No default changed.
 
 ### 18.168 CUDA lane N0a: the offline resident-fraction policy table (0.66.12)
 
