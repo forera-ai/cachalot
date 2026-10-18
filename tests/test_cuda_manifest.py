@@ -94,3 +94,10 @@ def test_row_rules():
     assert "value" not in u and mf.validate_row(u) == []
     assert mf.validate_row(mf.row("r1", "a", "f", 0, "ms", "unavailable", source="x"))      # needs a reason
     assert mf.validate_row({**r, "tag": "estimated"})                                       # not in the vocabulary
+
+
+def test_revision_file_is_the_code_provenance_when_there_is_no_git_checkout():
+    assert doctor.parse_revision("sha=2c47ad8\ndirty=0\n") == {"sha": "2c47ad8", "dirty": False, "source": "REVISION file"}
+    assert doctor.parse_revision("sha=2c47ad8abc\ndirty=1")["dirty"] is True
+    assert doctor.parse_revision("sha=not-hex\n")["available"] is False
+    assert doctor.parse_revision("")["available"] is False

@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.66.15 (2026-10-18)
+
+HANDOFF "Start here (2026-10-18, 0.66.15)" and section 18.171; records `docs/CUDA-S1-EXPERIMENT-RECORD.md` and the decision log in `docs/CUDA-RESEARCH-PLAN.md` section 17.1. Instruments, tests and documents only; nothing in `src/` except the version string. No GPU, no instance, no credential used.
+
+### Added
+- CUDA session S1 (RTX 5090: inventory, smoke, baseline) prepared end to end: the experiment record with seventeen predictions and falsifiers (committed before any instance exists, f15ef2a), the operator runbook `benchmarks/cuda/SESSION-RUNBOOK.md` (provision, upload, setup, inventory, smoke, baseline, copy back, teardown, stop rules), `benchmarks/cuda/pack.sh` (packs the scaffold from the Mac and writes a `REVISION` file into the package only) and `benchmarks/cuda/session.sh` (GPU-host helper: `check`, `setup`, `doctor`, `smoke`, `baseline`, `results`; no sudo; the baseline refuses to start unless the latest smoke run is clean). The helper scripts were rehearsed on the Mac against a fake results tree.
+- A CPU rehearsal of the GPU cells: `TorchBench(rehearsal_cpu=True)` runs the real copy, launch, device-bandwidth, matmul and overlap cell code on the CPU with an event shim, and `tests/test_cuda_torchbench_rehearsal.py` (15 tests) checks their logic, validation gates and row output before any metered time. Its numbers are never a CUDA result and the command line does not expose it.
+- `doctor` falls back to a `REVISION` file for the code revision when there is no git checkout (the GPU host has none).
+- `benchmarks/cuda/routing_gen.py` and `tests/test_cuda_routing_gen.py` (9 tests): the seeded synthetic routing generator for N2 stage 1 (N0a item 3), deterministic, with skew and locality knobs, feeding the existing simulator.
+
+### Changed
+- `docs/CUDA-RESEARCH-PLAN.md` section 17.1 records Hamed's decisions D1 to D5 (2026-10-18) and the written N2 scope reduction required by the N0a exit gate: N2's headline is the resident-fraction curve and the cost per miss, policy comparison is a secondary arm, CUDA-H6 stays open, CUDA-H9's threshold is re-stated after N1.
+- The private cost file `~/cachalot-private/cuda-cost-log.md` (outside the repository, mode 600) is the only source of money, credit and cap figures.
+
+### Not done, on purpose
+- No instance was started and none is started by any script here. The agent holds no key and no token. The torch cells have still never run on a CUDA device. N0a item 5 (the open-model candidate sheet) is deferred with D5. No CUDA claim is made.
+
 ## 0.66.14 (2026-10-18)
 
 HANDOFF "Start here (2026-10-18, 0.66.14)" and section 18.170; record `docs/CUDA-SLRU-COLLAPSE-RECORD.md`. Measurement only; nothing in `src/` except the version string. No GPU.

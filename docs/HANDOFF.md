@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-18, 0.66.15): CUDA session S1 is prepared; the next step is yours (provision the RTX 5090 and follow the runbook)
+>
+> Section 18.171. Decisions D1 to D5 are recorded (plan 17.1): start now, private cost file outside the repo (`~/cachalot-private/cuda-cost-log.md`), RTX 5090 first, SSH run by Hamed from `benchmarks/cuda/SESSION-RUNBOOK.md`, model deferred and 2 GB download cap. Ready: the experiment record with 17 predictions (committed first), the runbook, `pack.sh`, `session.sh`, the CPU rehearsal of the GPU cells (15 tests), the routing generator. No instance exists, no key is held by the agent, nothing was measured on a GPU. **Needs Hamed:** fill the cost file (rate, expiry, balance, cumulative cap); move and lock the SSH key; rotate the pasted API key; provision the instance and follow the runbook, pasting each step's output back.
+>
 > ## Start here (2026-10-18, 0.66.14): the SLRU collapse is probation starvation; the cliff sits at about 1.4 to 1.5 times the misses a token
 >
 > Section 18.170, record `docs/CUDA-SLRU-COLLAPSE-RECORD.md`. Measurement only, Mac, no GPU, nothing in `src/` and the shipped LRU store is untouched. At 8 % resident on MiniMax the SLRU model's probation (117 slots at f = 0.8) is smaller than the keys a token inserts (126): keys live 0.6 token, 99.9 % die unseen, promotions stop, the protected segment freezes (97.7 % of hits). Sweeping the protected fraction moves the collapse exactly as the arithmetic says, and DeepSeek at 3 % resident reproduces it. Predictions committed first (c99b19a): most held; the registered threshold was too low and the collapse saturates (second falsifier fired). Consequence for N2: size probation at 1.5 times a token's inserts or more, and note the policy gains over LRU are only 3 to 5 %. **Needs Hamed:** plan D1 to D5 before any metered GPU session; rotate the CloudRift key pasted into chat; a second long DeepSeek trace needs the live runtime.
@@ -9198,6 +9202,18 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.171 CUDA session S1 prepared (0.66.15)
+
+**Goal.** Hamed answered D1 to D5 (start now; cost file outside the repo as the source of costs; RTX 5090 first; "create a run using SSH"; model deferred, cap set). I read "create a run using SSH" as: prepare the whole session so he runs it over SSH. The agent does not hold the key and does not connect; that follows the earlier key-sharing answer and the plan.
+
+**What was built.** Decisions and the N2 scope reduction in the plan (17.1). The private cost file (mode 600, outside the repo) and a memory reference to its path only. The experiment record `docs/CUDA-S1-EXPERIMENT-RECORD.md` (committed f15ef2a before any GPU run). The runbook, `pack.sh`, `session.sh`. The CPU rehearsal of every GPU cell (the real cell code on the CPU with an event shim), which exists because a defect found on a billed instance costs money and the cells had never executed. The `REVISION` fallback in `doctor`. The routing generator (N0a item 3).
+
+**Verified here.** Ruff clean on the new files; the full suite passes; `pack.sh` and `session.sh` rehearsed on the Mac (archive contents, REVISION picked up by `doctor`, the baseline gate refuses with no smoke run and with a truncated one and passes a clean one, results archive). **Not verified:** anything on a CUDA device. The pinned wheel (`torch==2.7.1`, cu128, `numpy==2.2.6`) and the 570 driver floor come from general knowledge; the instance's `arch list` is the real answer and the runbook stops if `sm_120` is missing.
+
+**Open / needs Hamed.** Fill the cost file; move and lock the key (the runbook gives the commands and the public-key check); rotate the pasted API key; provision; run the steps and paste outputs. N0a item 5 (open-model sheet) waits for D5. A second long DeepSeek trace still needs the live runtime.
+
+**Kind.** Instruments, tests, documents. No default changed, nothing measured.
 
 ### 18.170 Why the SLRU model collapses at small resident fractions (0.66.14)
 

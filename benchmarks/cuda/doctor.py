@@ -125,12 +125,29 @@ def _git(*args: str) -> str | None:
     return out.strip() if out is not None else None
 
 
+REVISION_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "REVISION")
+
+
+def parse_revision(text: str) -> dict:
+    """The REVISION file the runbook writes before packing the scaffold: `sha=<hex>` and `dirty=0|1`, one per line."""
+    fields = dict(line.split("=", 1) for line in text.splitlines() if "=" in line)
+    sha = fields.get("sha", "").strip()
+    if not re.fullmatch(r"[0-9a-f]{7,40}", sha):
+        return unavailable("REVISION file has no valid sha")
+    return {"sha": sha, "dirty": fields.get("dirty", "").strip() == "1", "source": "REVISION file"}
+
+
 def git_state() -> dict:
     sha = _git("rev-parse", "--short", "HEAD")
     status = _git("status", "--porcelain")
-    if sha is None:
-        return unavailable("not a git checkout")
-    return {"sha": sha, "dirty": bool(status), "dirty_file_count": len(status.splitlines()) if status else 0}
+    if sha is not None:
+        return {"sha": sha, "dirty": bool(status), "dirty_file_count": len(status.splitlines()) if status else 0,
+                "source": "git"}
+    try:
+        with open(REVISION_FILE, encoding="utf-8") as fh:
+            return parse_revision(fh.read())
+    except OSError:
+        return unavailable("not a git checkout and no REVISION file")
 
 
 def probe_torch() -> dict:

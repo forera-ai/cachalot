@@ -345,25 +345,64 @@ def run(profile: str, limits: Limits, bench, *, run_id: str, machine_id: str, no
 
 # ------------------------------------------------------------------------------------------------ torch cells
 
+class _CpuEvent:
+    """Stand-in for torch.cuda.Event in the CPU rehearsal."""
+
+    def record(self, stream=None):
+        self.t = time.perf_counter()
+
+    def synchronize(self):
+        pass
+
+    def elapsed_time(self, other) -> float:
+        return (other.t - self.t) * 1e3
+
+
 class TorchBench:
     """The GPU cells. Constructed only on a machine where torch sees CUDA; imports torch lazily."""
 
-    def __init__(self, device_index: int = 0):
+    def __init__(self, device_index: int = 0, rehearsal_cpu: bool = False):
+        """`rehearsal_cpu` runs the same cell code on the CPU with a perf_counter event shim. It exists so that the Mac
+        tests exercise every cell before any metered GPU time; its numbers are never a CUDA measurement and the command
+        line does not expose it."""
         import torch
+        self.torch = torch
+        self.rehearsal = rehearsal_cpu
+        if rehearsal_cpu:
+            self.dev = torch.device("cpu")
+            self.cc = (0, 0)
+            return
         if not torch.cuda.is_available():
             raise RuntimeError("torch.cuda.is_available() is False")
-        self.torch = torch
         self.dev = torch.device("cuda", device_index)
         torch.cuda.set_device(self.dev)
         self.cc = torch.cuda.get_device_capability(self.dev)
 
     # -- helpers
     def _events(self):
+        if self.rehearsal:
+            return _CpuEvent(), _CpuEvent()
         t = self.torch
         return t.cuda.Event(enable_timing=True), t.cuda.Event(enable_timing=True)
 
+    def _sync(self) -> None:
+        if not self.rehearsal:
+            self.torch.cuda.synchronize()
+
+    def _pin(self, x):
+        return x.pin_memory() if not self.rehearsal else x
+
+    def _stream(self):
+        return None if self.rehearsal else self.torch.cuda.Stream(device=self.dev)
+
+    def _on(self, stream):
+        import contextlib
+        return contextlib.nullcontext() if stream is None else self.torch.cuda.stream(stream)
+
+    def _current_stream(self):
+        return None if self.rehearsal else self.torch.cuda.current_stream(self.dev)
+
     def timer_overhead_ms(self) -> float:
-        t = self.torch
         vals = []
         for _ in range(60):
             a, b = self._events()
@@ -371,15 +410,14 @@ class TorchBench:
             b.record()
             b.synchronize()
             vals.append(a.elapsed_time(b))
-        t.cuda.synchronize()
+        self._sync()
         return percentile(sorted(vals[10:]), 50)
 
     def _timed(self, fn, warmup: int, iters: int, dl: Deadline, stream=None) -> tuple[list[float], list[float], bool]:
         """(event ms, host ms, truncated). The deadline is checked before every timed iteration."""
-        t = self.torch
         for _ in range(warmup):
             fn()
-        t.cuda.synchronize()
+        self._sync()
         ev_ms, host_ms, trunc = [], [], False
         for _ in range(iters):
             if dl.expired():
@@ -399,7 +437,7 @@ class TorchBench:
         t = self.torch
         g = t.Generator().manual_seed(seed)
         x = t.randint(0, 256, (nbytes,), dtype=t.uint8, generator=g)
-        return x.pin_memory() if pinned else x
+        return self._pin(x) if pinned else x
 
     # -- dispatch
     def execute(self, cell: Cell, dl: Deadline, limits: Limits) -> CellResult:
@@ -408,8 +446,9 @@ class TorchBench:
         try:
             return fn(cell, dl, limits)
         finally:
-            self.torch.cuda.synchronize()
-            self.torch.cuda.empty_cache()
+            self._sync()
+            if not self.rehearsal:
+                self.torch.cuda.empty_cache()
 
     def _copy(self, cell: Cell, dl: Deadline, limits: Limits) -> CellResult:
         t, p = self.torch, cell.params
@@ -418,11 +457,11 @@ class TorchBench:
         dev = t.empty(n, dtype=t.uint8, device=self.dev)
         if not h2d:
             dev.copy_(host)
-        back = t.empty(n, dtype=t.uint8, pin_memory=pinned)
+        back = self._pin(t.empty(n, dtype=t.uint8)) if pinned else t.empty(n, dtype=t.uint8)
         src, dst = (host, dev) if h2d else (dev, back)
         # validation: the bytes must survive the trip, checked outside the timed region
         dst.copy_(src)
-        t.cuda.synchronize()
+        self._sync()
         check = dev.cpu() if h2d else back
         ok = bool(t.equal(check, host))
         ev, hm, trunc = self._timed(lambda: dst.copy_(src, non_blocking=pinned), limits.warmup, limits.max_iters, dl)
@@ -442,7 +481,7 @@ class TorchBench:
             vals = []
             for _ in range(limits.warmup):
                 fn()
-            t.cuda.synchronize()
+            self._sync()
             for _ in range(limits.max_iters):
                 if dl.expired():
                     trunc = True
@@ -459,13 +498,13 @@ class TorchBench:
             def batch():
                 for _ in range(k):
                     x.add_(1)
-                t.cuda.synchronize()
+                self._sync()
             vals = sample(batch, name)
             if vals:
                 derived["per_launch_us"] = (percentile(sorted(vals), 50) / k * 1e3, "us",
                                             "framework-level launch (python + torch dispatch), 200 launches then one sync")
         elif name == "sync_idle":
-            sample(lambda: t.cuda.synchronize(), name)
+            sample(self._sync, name)
         elif name == "event_pair":
             def pair():
                 a, b = self._events()
@@ -528,13 +567,13 @@ class TorchBench:
         ev, hm, trunc = [], [], False
         for _ in range(limits.warmup):
             work()
-        t.cuda.synchronize()
+        self._sync()
         for _ in range(limits.max_iters):
             if dl.expired():
                 trunc = True
                 break
             flush.zero_()
-            t.cuda.synchronize()
+            self._sync()
             a, b = self._events()
             h0 = time.perf_counter_ns()
             a.record()
@@ -559,33 +598,33 @@ class TorchBench:
         w = (t.randn(d, f, device=self.dev) * 0.05).half()
         host = self._pattern(n, limits.seed, True)
         dev = t.empty(n, dtype=t.uint8, device=self.dev)
-        copy_stream = t.cuda.Stream(device=self.dev)
+        copy_stream = self._stream()
 
         def compute():
             for _ in range(8):
                 x @ w
 
         def copy_once():
-            with t.cuda.stream(copy_stream):
+            with self._on(copy_stream):
                 dev.copy_(host, non_blocking=True)
 
         # validation of the copied bytes (outside timing)
         copy_once()
-        t.cuda.synchronize()
+        self._sync()
         ok = bool(t.equal(dev.cpu(), host))
         c_alone, _, trunc = self._timed(compute, limits.warmup, limits.max_iters, dl)
         cp_alone, _, trunc2 = self._timed(copy_once, limits.warmup, limits.max_iters, dl, stream=copy_stream)
         reps = 1
         if c_alone and cp_alone:
             reps = min(8, max(1, math.ceil(percentile(sorted(c_alone), 50) / max(percentile(sorted(cp_alone), 50), 1e-6)) + 1))
-        cur = t.cuda.current_stream(self.dev)
+        cur = self._current_stream()
         both: list[float] = []
         trunc3 = False
         for _ in range(limits.max_iters):
             if dl.expired():
                 trunc3 = True
                 break
-            t.cuda.synchronize()
+            self._sync()
             a, b = self._events()
             for _ in range(reps):
                 copy_once()                       # copy traffic covers the whole compute window (reps sized above)
@@ -594,7 +633,7 @@ class TorchBench:
             b.record(cur)
             b.synchronize()
             both.append(a.elapsed_time(b))
-        t.cuda.synchronize()
+        self._sync()
         derived = {}
         if c_alone and both:
             slow = percentile(sorted(both), 50) / percentile(sorted(c_alone), 50) - 1.0

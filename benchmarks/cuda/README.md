@@ -7,6 +7,8 @@ Cachalot. Nothing under `src/cachalot/` imports it, and it imports nothing from 
 
 Where this file and the plan differ, the plan wins. The plan's layout is `benchmarks/cuda/`, so that is where this lives.
 
+Session S1 (RTX 5090: inventory, smoke, baseline) is specified in `docs/CUDA-S1-EXPERIMENT-RECORD.md` (predictions and stop rules, committed before any run) and operated from `SESSION-RUNBOOK.md`.
+
 ## Two environments, kept apart
 
 | | Mac development host (this repository's normal machine) | Provisioned Linux NVIDIA GPU host |
@@ -28,7 +30,8 @@ inside the GPU cells, so every Mac test and the checkpoint-free `pytest -q` pass
 | `doctor.py` | non-secret environment probe; pure parsers for `nvidia-smi`, `nvcc`, `lscpu`, `/proc/meminfo` |
 | `suite.py` | plan, limits, statistics, runner, and the torch cells (`TorchBench`) |
 | `cuda_bench.py` | command line: `doctor`, `plan`, `run`, `validate` |
-| `../../tests/test_cuda_*.py`, `../../tests/fixtures/cuda/` | Mac tests with recorded (synthetic) `nvidia-smi` and `lscpu` output |
+| `pack.sh`, `session.sh`, `SESSION-RUNBOOK.md` | pack the scaffold on the Mac (writes a `REVISION` file into the package only), and the GPU-host helper (`check`, `setup`, `doctor`, `smoke`, `baseline`, `results`); the runbook is the operator's step-by-step for session S1 |
+| `../../tests/test_cuda_*.py`, `../../tests/fixtures/cuda/` | Mac tests: recorded (synthetic) `nvidia-smi` and `lscpu` output, a scripted bench, and a CPU rehearsal that runs the real `TorchBench` cell code on the CPU with an event shim (a logic check, never a CUDA result) |
 
 ## Commands
 
