@@ -558,6 +558,10 @@ N3 stage B ran under `docs/CUDA-N3B-EXPERIMENT-RECORD.md` and is recorded in `do
 
 `docs/CUDA-N3C-EXPERIMENT-RECORD.md` (commit c72cea2, nine predictions, before any code) tests a router-weight gate on the recorded predictor: arms `G10` and `G20` (`P0L` with the predicted set filtered to experts whose recorded weight is at least 0.10 or 0.20) against `P0L` at 17 and 8 % resident, C = 1.0 ms (level L5) and C = 0.3 ms (level L4). Offline price (derived): a gate of 0.20 cuts copies a token 89.46 to 75.12 and the serial bound 0.365 to 0.290. Built on the Mac: the arms, 19 cells with a `D` arm per group (record section 8 erratum), gate (g) against `prefetch_coverage.py --gates`, `n3c-expected.json`, `session.sh n3csmoke|n3cfull`, `SESSION-RUNBOOK-N3C.md`, eight new tests. Never run on a GPU. Needs Hamed: a go and an RTX 5090.
 
+### 17.14 N3 stage C outcome (2026-10-20)
+
+`docs/CUDA-N3C-RESULTS.md` (RTX 5090, fast population, 19 cells, 301 s, all gates true). A router-weight gate on the recorded predictor does not pay at a 1 ms layer time (hidden share 0.339 to 0.241 at gate 0.20, 0.400 to 0.312 at 8 % resident; gate 0.10 is inert) and is worth 0.015 of hidden share (0.14 ms, 0.7 %) at 0.3 ms. 16 % fewer copies saved 0.087 ms of host issue (about 6 microseconds a removed copy): the per-copy host cost is not proportional to the copy count. 6 held, 2 missed low, 1 not testable, 0 falsified. Still open: predictor coverage (oracle 0.85 against 0.34), a native issue path, the V100 and AMD arms, the instance-population question.
+
 ## 18. Honest limits
 
 - This is a plan. No hypothesis in it has been tested; every "expected" device property is vendor-derived and unverified for the rented machine.

@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-20, 0.66.35): N3 stage C ran; the router-weight gate does not pay at 1 ms layers and is worth at most 0.7 % at 0.3 ms
+>
+> Section 18.190, results `docs/CUDA-N3C-RESULTS.md` (raw in `docs/cuda-results/n3c-rtx5090-2026-10-19/`), plan section 17.14. 19 cells in 301 s on a working RTX 5090 (c = 0.194 ms, fast population), all gates true including gate (g), 0 failed cells. **Measured (17 % resident, hidden share):** C = 1.0 ms: `P0L` 0.339, gate 0.10 0.340, gate 0.20 0.241; C = 0.3 ms (L4): 0.096, 0.104, 0.111 (gate 0.20 wall -0.14 ms); 8 % resident C = 1.0: 0.400 against 0.312. The gate's 16 % fewer copies saved only 0.087 ms of host issue time (about 6 microseconds a removed copy, not 19): per-copy host cost is not proportional to the copy count, which weakens "fewer, larger copies". Scored 6 held, 2 missed low (C-P4, C-P5), 1 not testable (C-P6), 0 falsified. **Needs Hamed:** terminate the instance if not done; fill the N3, N3-B and N3-C billed hours; delete the S1, S2, V1, N2, B1, B2, N3 and N3-C ssh configs, known_hosts files and the key (the agent ran SSH to the N3-C instance at his instruction and did not use sudo). The next GPU step needs his go.
+>
 > ## Start here (2026-10-19, 0.66.34): N3 stage C (a router-weight gate on the recorded predictor) is registered and built; running it needs Hamed to create an RTX 5090
 >
 > Section 18.189, record `docs/CUDA-N3C-EXPERIMENT-RECORD.md` (nine predictions committed first in c72cea2; erratum section 8), plan section 17.13, runbook `benchmarks/cuda/SESSION-RUNBOOK-N3C.md`. **Offline price (derived, 17 % resident, first 400 decode tokens):** a gate of 0.20 on the recorded router weight cuts copies a token 89.46 to 75.12 (prefetch loads 57.43 to 39.27, wasted 34.42 to 21.78) and lowers the serial bound of the hidden share 0.365 to 0.290; 0.10 changes almost nothing; 0.30 gives up almost all prefetch. The question for the card: does the 16 % fewer copies (about 0.27 ms of host issue at 19 microseconds a copy, and less copy-lane interference) buy back more than the coverage costs, at 0.3 ms layers where stage B's predictor hid only 0.100, and not at 1 ms. Built: arms `G10`/`G20` in `overlap_arena.py`, 19 cells (about 6 to 9 minutes), gate (g), `n3c-expected.json`, `session.sh n3csmoke|n3cfull`; 865 tests pass. Never run on a GPU. **Needs Hamed:** a go and an RTX 5090 instance (check `nvidia-smi` and DNS first; a GSP-less GPU is replaced); the N3 and N3-B billed hours in the cost file; the housekeeping (delete the S1, S2, V1, N2, B1, B2, N3 and N3-B ssh configs, known_hosts files and the key).
@@ -9274,6 +9278,20 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.190 CUDA N3 stage C on an RTX 5090 (0.66.35)
+
+**Goal.** Hamed created the N3-C instance ("N3C instance created", with its address) after v239's question; per the runbook that is the go for the named instance. The agent ran over SSH with a private config for that one instance and no sudo.
+
+**How it ran.** `nvidia-smi` and DNS checked first (both fine; no GSP fault), pack from a clean commit b7f8aa5, `check`, `setup`, `doctor`, `smoke`, `n3csmoke` (10 cells, clean), `n3cfull` (19 cells, 301 s). Results home in `docs/cuda-results/n3c-rtx5090-2026-10-19/`; scored in `docs/CUDA-N3C-RESULTS.md`.
+
+**Results.** The gate loses where I expected it to lose (C = 1.0 ms: 0.339 to 0.241, at the edge of C-P3's band) and barely wins where I expected it to win (C = 0.3 ms: +0.015, band 0.12 to 0.20 missed). Host issue time fell only 0.087 ms for 14.3 fewer copies. 6 held, 2 missed low, 1 not testable, 0 falsified.
+
+**What it means.** The saturated-lane story (H-gate-lane) is not supported: removing 16 % of the copies did almost nothing at a 0.3 ms window, so what limits the predictor there is the window and coverage, not wasted copies. The per-copy host cost is mostly per-layer, so grouping copies would save less than the 19 microseconds a copy suggested. The large term left is coverage (oracle 0.85 at 1 ms, 0.71 at 0.3 ms against 0.34 and 0.10).
+
+**What did not go well.** C-P6 was untestable because I put the 0.3 ms cells at level 4, which records no compute-busy rows; I had only checked that the baseline H was an L4 number. The 8 % group had no `O` arm, so C-P8 rests on 17 %.
+
+**Kind.** Research (predicted, measured, explained as hypothesis): 6 held, 2 missed low, 1 not testable, 0 falsified. No default changed.
 
 ### 18.189 CUDA N3 stage C registered and built (0.66.34)
 

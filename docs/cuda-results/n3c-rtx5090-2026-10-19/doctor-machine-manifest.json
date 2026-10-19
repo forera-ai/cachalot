@@ -1,0 +1,126 @@
+{
+  "code": {
+    "git": {
+      "dirty": false,
+      "sha": "b7f8aa5",
+      "source": "REVISION file"
+    }
+  },
+  "created_utc": "2026-10-19T22:04:28Z",
+  "environment": {
+    "CUDA_MODULE_LOADING": "LAZY"
+  },
+  "gpu": {
+    "available": true,
+    "count": 1,
+    "driver_view": {
+      "clocks_max_mem_mhz": 14001,
+      "clocks_max_sm_mhz": 3105,
+      "clocks_mem_mhz": 14001,
+      "clocks_sm_mhz": 2550,
+      "compute_cap": "12.0",
+      "driver_version": "580.159.03",
+      "ecc_mode_current": null,
+      "memory_free_mib": 32110,
+      "memory_total_mib": 32607,
+      "name": "NVIDIA GeForce RTX 5090",
+      "pcie_link_gen_current": 5,
+      "pcie_link_gen_max": 5,
+      "pcie_link_width_current": 16,
+      "pcie_link_width_max": 16,
+      "persistence_mode": "Disabled",
+      "power_limit_w": 600,
+      "temperature_gpu_c": 33
+    },
+    "framework_view": {
+      "compute_capability": "12.0",
+      "index": 0,
+      "name": "NVIDIA GeForce RTX 5090",
+      "sm_count": 170,
+      "vram_free_mib": 31602,
+      "vram_total_mib": 32109
+    },
+    "gpu_identity": "not collected (no UUID, serial or bus id by design)"
+  },
+  "host": {
+    "cpu": {
+      "cores_per_socket": 1,
+      "logical_cpus": 7,
+      "model": "AMD Ryzen 7 7800X3D 8-Core Processor",
+      "numa_nodes": 1,
+      "sockets": 7,
+      "threads_per_core": 1
+    },
+    "kernel": "6.8.0-134-generic",
+    "machine": "x86_64",
+    "memlock_limit_bytes": {
+      "hard": 3149131776,
+      "soft": 3149131776
+    },
+    "os": "Linux",
+    "python": "3.12.3",
+    "ram_total_gib": 23.46,
+    "virtualization": "kvm"
+  },
+  "instance_class": "unspecified",
+  "interconnect": {
+    "pcie_link_gen_current": 5,
+    "pcie_link_gen_max": 5,
+    "pcie_link_width_current": 16,
+    "pcie_link_width_max": 16
+  },
+  "kind": "machine",
+  "manifest_id": "41eaa1dcab2e3ac7",
+  "platform": "cuda",
+  "power": {
+    "nvml_board_power": "not probed in N1; nvidia-smi power.limit recorded only"
+  },
+  "profiler": {
+    "cuda_events": "available",
+    "nsight_compute": "not probed",
+    "nsight_systems": "not probed"
+  },
+  "provenance": {
+    "operator_note": "S1 doctor; freeze=e23b7567245b3b30",
+    "session_cap_s": null,
+    "tool": "benchmarks/cuda/doctor.py"
+  },
+  "region": "unspecified",
+  "schema": "cuda-manifest",
+  "schema_version": 1,
+  "software": {
+    "driver": {
+      "driver_cuda_version": "13.0",
+      "driver_version": "580.159.03"
+    },
+    "nvcc": {
+      "available": false,
+      "reason": "nvcc not found"
+    },
+    "torch": {
+      "arch_list": [
+        "sm_75",
+        "sm_80",
+        "sm_86",
+        "sm_90",
+        "sm_100",
+        "sm_120",
+        "compute_120"
+      ],
+      "cuda_available": true,
+      "cuda_build": "12.8",
+      "devices": [
+        {
+          "compute_capability": "12.0",
+          "index": 0,
+          "name": "NVIDIA GeForce RTX 5090",
+          "sm_count": 170,
+          "vram_free_mib": 31602,
+          "vram_total_mib": 32109
+        }
+      ],
+      "installed": true,
+      "version": "2.7.1+cu128"
+    }
+  }
+}

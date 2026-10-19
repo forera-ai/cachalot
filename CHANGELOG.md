@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.66.35 (2026-10-20)
+
+HANDOFF "Start here (2026-10-20, 0.66.35)" and section 18.190; results `docs/CUDA-N3C-RESULTS.md`, raw rows in `docs/cuda-results/n3c-rtx5090-2026-10-19/`. Measurement only; nothing in `src/` except the version string.
+
+### Added
+- CUDA N3 stage C run on an RTX 5090 (19 cells, 301 s, all ten gates true including gate (g), 0 failed cells). A router-weight gate on the recorded predictor does not pay at a 1 ms layer time: hidden share `P0L` 0.339, gate 0.10 0.340, gate 0.20 **0.241**; at 8 % resident 0.400 against 0.312. At 0.3 ms the gate 0.20 is 0.015 above `P0L` (0.111 against 0.096; wall -0.14 ms, 0.7 %). Its 16 % fewer copies saved 0.087 ms of host issue time, about 6 microseconds a removed copy, not the 19 priced: the per-copy host cost is not proportional to the copy count. Scored 6 held, 2 missed low (C-P4, C-P5), 1 not testable (C-P6: level 4 records no compute-busy), 0 falsified.
+- `docs/CUDA-N3C-RESULTS.md`, plan section 17.14.
+
 ## 0.66.34 (2026-10-19)
 
 HANDOFF "Start here (2026-10-19, 0.66.34)" and section 18.189; record `docs/CUDA-N3C-EXPERIMENT-RECORD.md` (nine predictions, committed first in c72cea2), plan section 17.13. Planning, instruments and tests; nothing in `src/` except the version string, nothing measured on a GPU.
