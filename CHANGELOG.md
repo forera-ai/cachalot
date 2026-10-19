@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.66.30 (2026-10-19)
+
+HANDOFF "Start here (2026-10-19, 0.66.30)" and section 18.185. Instruments, tests and documents only; nothing in `src/` except the version string. No instance, no GPU, nothing measured on a GPU.
+
+### Added
+- CUDA N3 stage A harness `benchmarks/cuda/overlap_arena.py`: the N2 slot arena with a compute stream (a calibrated bandwidth-bound stand-in, two kernels a layer), a copy stream with event dependencies, a per-layer synchronization, arms `N D P0 P40 O`, per-token critical-path reconstruction (compute busy, stall, host gap, copy-lane busy), exposed time and hidden share derived across arms, six registered gates (event hash against an independent reference, determinism and counts, readback, calibration, control drift, closure of the accounting), `expect` (reference hashes on the real trace, `n3-expected.json`), `session.sh n3smoke|n3full`, `SESSION-RUNBOOK-N3.md`.
+- 36 tests in `tests/test_cuda_overlap_arena.py`: the bookkeeping equals two independent references (an OrderedDict model and the offline coverage script), every gate is tripped on purpose, the stream order of every arm is checked on a recording arena (the compute stream waits for a batch event only after it is recorded; the late prefetch waits for the mid event only after it is recorded), the real run path runs on the recorded trace on the CPU.
+
+### Fixed
+- `benchmarks/cuda/prefetch_coverage.py` applied the store's prefill admission as plain LRU and all prefill segments before any decode row; the corrected script reproduces N2's 90.84 / 69.64 / 51.85 misses a token exactly. N3 record erratum (2db00e5): the first-400-token window the cells use has a best hidden share of 0.365 at 17 %, not 0.46; predictions unchanged.
+
+### Not done, on purpose
+- The stream code has never run on a GPU (events, `wait_event`, the copy stream, the stand-in kernels, the calibration); the first `n3smoke` is its smoke. No instance created.
+
 ## 0.66.29 (2026-10-19)
 
 HANDOFF "Start here (2026-10-19, 0.66.29)" and section 18.184. Planning and an offline instrument; nothing in `src/` except the version string. No instance, no GPU.

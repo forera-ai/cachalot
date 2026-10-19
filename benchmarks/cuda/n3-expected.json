@@ -1,0 +1,71 @@
+{
+  "cells": {
+    "17.40.none": {
+      "arena_equals_reference": true,
+      "demand_per_token": 63.7,
+      "hash": "91cbaf21cee7ca12bc91750e963e683c83bc1cbc68a7ddd9dc1a01432c1b0a0e",
+      "loads_per_token": 0.0,
+      "slots": 2611,
+      "tokens": 40
+    },
+    "17.40.oracle": {
+      "arena_equals_reference": true,
+      "demand_per_token": 0.025,
+      "hash": "b5e77c2ae0fa8b6b70b0a20a164cb653b547f239abc5f4387b39b83d52cade40",
+      "loads_per_token": 63.7,
+      "slots": 2611,
+      "tokens": 40
+    },
+    "17.40.pred": {
+      "arena_equals_reference": true,
+      "demand_per_token": 31.85,
+      "hash": "c88fac7ab28bd7f853008d6225e0e293c12708c33f9b24e188db3d5293df3ddc",
+      "loads_per_token": 61.475,
+      "slots": 2611,
+      "tokens": 40
+    },
+    "17.400.none": {
+      "arena_equals_reference": true,
+      "demand_per_token": 50.445,
+      "hash": "5e1bd28c75601a683110cfae93002317b761a9f24be6a5f1ee856e4dda430550",
+      "loads_per_token": 0.0,
+      "slots": 2611,
+      "tokens": 400
+    },
+    "17.400.oracle": {
+      "arena_equals_reference": true,
+      "demand_per_token": 0.0125,
+      "hash": "5798b36fd4ce52585e595d51998203c6a6ba07a71fa3f116e7255a819ca1f5ff",
+      "loads_per_token": 50.445,
+      "slots": 2611,
+      "tokens": 400
+    },
+    "17.400.pred": {
+      "arena_equals_reference": true,
+      "demand_per_token": 32.03,
+      "hash": "07b4d8f4b02b33b9ac1f68ab9095f6ad475369da933be94bac3c0b9e35f4ad50",
+      "loads_per_token": 57.4275,
+      "slots": 2611,
+      "tokens": 400
+    },
+    "8.400.none": {
+      "arena_equals_reference": true,
+      "demand_per_token": 91.7175,
+      "hash": "57a3ea31781007b2ecfca9ffe1371725459ae9f7fc1fcbe3937a295d28a1b93a",
+      "loads_per_token": 0.0,
+      "slots": 1229,
+      "tokens": 400
+    },
+    "8.400.pred": {
+      "arena_equals_reference": true,
+      "demand_per_token": 54.4375,
+      "hash": "20681953f045f6d2de87df2a49ee6dedfba4dc0b40a5408be2046794ef70c5ea",
+      "loads_per_token": 102.3025,
+      "slots": 1229,
+      "tokens": 400
+    }
+  },
+  "n_layers": 40,
+  "record_bytes": 9950000,
+  "trace_sha256": "f961e9e7a8971317c662925b9ce2ea2df10fe2d3b4d077e1ffddc1335b83aa48"
+}

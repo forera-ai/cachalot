@@ -3,7 +3,7 @@
 # Run from the directory the scaffold archive was unpacked into. No sudo, no system package changes, no downloads other
 # than the pinned Python wheels named below, which `setup` shows before it installs them.
 #
-#   bash benchmarks/cuda/session.sh check|setup|doctor|smoke|baseline|s2|n2smoke|n2full|backing|hugepage|results
+#   bash benchmarks/cuda/session.sh check|setup|doctor|smoke|baseline|s2|n2smoke|n2full|backing|hugepage|n3smoke|n3full|results
 #   (s2 = docs/CUDA-S2-EXPERIMENT-RECORD.md: overlap variants and batched expert copies; needs a clean smoke run first)
 set -euo pipefail
 
@@ -163,6 +163,35 @@ EOF3
       "$PY" "$ROOT/benchmarks/cuda/backing_probe.py" run --cells "$1" --tag "$2" --execute --max-seconds 300 --region "$REGION" \
         --note "$(note backing-$1-$2)" || die "backing step $1 ($2) failed: stop, bring the files home"
     done
+    ;;
+
+  n3smoke)
+    # N3 stage A (docs/CUDA-N3-EXPERIMENT-RECORD.md): a short GPU smoke of the overlap harness's stream code. Needs the trace file copied
+    # to the host first (scp from the Mac); TRACE=path overrides the default location.
+    [ -x "$PY" ] || die "run setup first"
+    TRACE="${TRACE:-$ROOT/n3-trace.npz}"
+    [ -f "$TRACE" ] || die "trace file not found at $TRACE (scp it from the Mac, see SESSION-RUNBOOK-N3.md)"
+    SESSION_TAG="${SESSION_TAG:-N3}" "$PY" "$ROOT/benchmarks/cuda/overlap_arena.py" run --trace "$TRACE" \
+      --expected "$ROOT/benchmarks/cuda/n3-expected.json" --cells smoke --execute --max-seconds 300 --region "$REGION" --note "$(SESSION_TAG="${SESSION_TAG:-N3}" note n3smoke)"
+    ;;
+
+  n3full)
+    [ -x "$PY" ] || die "run setup first"
+    TRACE="${TRACE:-$ROOT/n3-trace.npz}"
+    [ -f "$TRACE" ] || die "trace file not found at $TRACE"
+    run="$(latest_run n3a-smoke)"
+    [ -n "$run" ] || die "no n3smoke run found: run n3smoke first"
+    "$PY" - "$run/run-manifest.json" <<'EOF4' || die "the latest n3smoke run is not clean: do not start n3full; bring the files home"
+import json, sys
+m = json.load(open(sys.argv[1]))
+g = m["gates"]
+keys = ("event_hash", "determinism", "counts", "readback", "calibration", "drift", "closure", "sanity")
+ok = m["status"] == "complete" and not g["failed_cells"] and all(g[k] for k in keys)
+print("n3smoke run clean:", ok, "| status", m["status"], "| failed cells", len(g["failed_cells"]))
+sys.exit(0 if ok else 1)
+EOF4
+    SESSION_TAG="${SESSION_TAG:-N3}" "$PY" "$ROOT/benchmarks/cuda/overlap_arena.py" run --trace "$TRACE" \
+      --expected "$ROOT/benchmarks/cuda/n3-expected.json" --cells full --execute --max-seconds 2400 --region "$REGION" --note "$(SESSION_TAG="${SESSION_TAG:-N3}" note n3full)"
     ;;
 
   hugepage)

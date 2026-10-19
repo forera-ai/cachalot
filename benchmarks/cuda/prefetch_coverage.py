@@ -36,7 +36,7 @@ def predicted_sets(arrays) -> dict[tuple[int, int], list[int]]:
     return {(int(p), int(t)): e.tolist() for t, p, e in zip(arrays["pred_target"], arrays["pred_position"], arrays["pred_experts"], strict=True)}
 
 
-def coverage(arrays, percent: float, mode: str = "pred", oracle: bool = False) -> dict:
+def coverage(arrays, percent: float, mode: str = "pred", oracle: bool = False, max_decode_tokens: int | None = None) -> dict:
     """`mode` 'none' disables prefetch; `oracle` replaces the recorded predicted set by the layer's real experts (an upper bound)."""
     base = {k: arrays[k] for k in ("phase", "layer", "position", "experts")}
     pred = predicted_sets(arrays) if mode != "none" and not oracle else {}
@@ -52,20 +52,21 @@ def coverage(arrays, percent: float, mode: str = "pred", oracle: bool = False) -
         lru[k] = 1
         return False
 
-    dec = np.nonzero(base["phase"] == ra.PHASE_DECODE)[0]
-    pos_of = [int(base["position"][i]) for i in dec]
-    rows = []
-    for ev in ra.walk(base):
-        if ev[0] == "P":
-            for k in ev[2]:
-                touch(k)
-        else:
-            rows.append(ev[1:])
-    assert len(rows) == len(pos_of)
+    positions = iter(int(base["position"][i]) for i in np.nonzero(base["phase"] == ra.PHASE_DECODE)[0])
     miss = covered = loads = 0
     toks: set[int] = set()
     pending: set[tuple[int, int]] = set()
-    for (tok, layer, exps), pos in zip(rows, pos_of, strict=True):
+    pre = ra.ArenaLRU(slots, int(base["layer"].max()) + 1)
+    for ev in ra.walk(base):                       # in trace order: a prefill between decode rows changes the arena
+        if ev[0] == "P":
+            # the store's prefill admission rule (a per-layer quota) lives in `ArenaLRU.prefill_layer`; run it on this arena's state
+            pre.lru, pre.free = lru, list(range(slots - len(lru)))
+            pre.prefill_layer(ev[1], ev[2])
+            continue
+        _, tok, layer, exps = ev
+        if max_decode_tokens is not None and tok >= max_decode_tokens:
+            break
+        pos = next(positions)
         toks.add(tok)
         if mode != "none":
             ahead = exps if oracle else pred.get((pos, layer), [])
@@ -96,12 +97,14 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--trace", required=True)
     ap.add_argument("--percents", default="8,12,17")
+    ap.add_argument("--tokens", type=int, default=None, help="only the first N decode tokens (the N3 cells use 400)")
     args = ap.parse_args(argv)
     with np.load(args.trace) as data:
         arrays = {k: data[k] for k in data.files if k != "segments"}
     out = []
     for p in (float(x) for x in args.percents.split(",")):
-        out += [coverage(arrays, p, "none"), coverage(arrays, p, "pred"), coverage(arrays, p, "pred", oracle=True)]
+        out += [coverage(arrays, p, "none", max_decode_tokens=args.tokens), coverage(arrays, p, "pred", max_decode_tokens=args.tokens),
+                coverage(arrays, p, "pred", oracle=True, max_decode_tokens=args.tokens)]
     print(json.dumps(out, indent=1))
     return 0
 

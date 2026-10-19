@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-19, 0.66.30): the N3 stage A harness is built and rehearsed; running it needs Hamed to create an RTX 5090
+>
+> Section 18.185, harness `benchmarks/cuda/overlap_arena.py`, `session.sh n3smoke|n3full`, `SESSION-RUNBOOK-N3.md`, `benchmarks/cuda/n3-expected.json` (reference hashes on the real trace), record `docs/CUDA-N3-EXPERIMENT-RECORD.md` with its erratum (2db00e5, section 8). 36 tests assert every gate through the real run path, trip each gate on purpose, check the stream order of every arm on a recording arena and run the real path on the recorded trace on the CPU. **Never run on a GPU:** events, `wait_event`, the copy stream, the stand-in kernels and the calibration are untested on CUDA; the first `n3smoke` is their smoke. **Erratum that matters:** the offline coverage script was wrong (prefill rule, trace order); corrected, it reproduces N2's baseline exactly, and on the 400-token window the cells use the best hidden share at 17 % is 0.365 (not 0.46), copies a token 50.45 to 89.46. **Needs Hamed:** a go and an RTX 5090 instance (same listing and key); the 11 MB trace is copied to the host as in N2; the housekeeping (delete the S1, S2, V1, N2, B1 and B2 ssh configs, known_hosts files and the key).
+>
 > ## Start here (2026-10-19, 0.66.29): CUDA N3 stage A is designed with 12 predictions committed first; the harness is not built
 >
 > Section 18.184, record `docs/CUDA-N3-EXPERIMENT-RECORD.md` (commit c2305a6), `benchmarks/cuda/prefetch_coverage.py`, plan section 17.8. Layer-ahead prefetch of the recorded predicted sets against demand fetch on the stage 1 arena with a bandwidth-bound stand-in compute (C = 0.3, 1.0, 3.0 ms a layer), an oracle and a late-prefetch arm; 20 cells; copy cost through the session's own qualified `c`. **Offline (derived):** at 17 % resident the recorded predictor cuts demand misses a token from 52.15 to 28.09 but copies rise from 52.15 to 83.59 (+60 %, 28.09 wasted); best hidden share under a serial model of the rest 0.46 (the Mac's 41 to 47 %). **Needs Hamed:** a go to build the harness on the Mac (autonomous, tests asserting every gate) and later a go and an RTX 5090 instance; the B1 and B2 hours are filled by him already (his word); the housekeeping (delete the S1, S2, V1, N2, B1 and B2 ssh configs, known_hosts files and the key).
@@ -9254,6 +9258,18 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.185 CUDA N3 stage A harness built and rehearsed (0.66.30)
+
+**Goal.** Hamed: "build the N3 harness on the Mac with rehearsal tests that assert every gate and run the real path, then tell me when it is ready for an instance."
+
+**Built.** `ArenaPF` and `PfBook` (prefetch insertion, pending and covered accounting, per-token counts), an independent OrderedDict reference (`reference_pass_pf`), `StandIn` (two reduction kernels over calibrated weight bytes), `OverlapArena` (compute and copy streams, an event pool of eight events a layer in two parities), `run_cell` (arms `N D P0 P40 O`, per-layer synchronization, per-token critical-path records), `run_group` (the real path: calibration, hash check, determinism, counts, readback, closure, drift), the CLI, `n3-expected.json`, `session.sh n3smoke|n3full`, the runbook.
+
+**Found while building (mine).** The offline script behind the record's section 2 was wrong twice: prefill as plain LRU and all prefill segments applied before the decode rows, although the trace interleaves eight of them. The wrong explanation I gave for its 0.6 % excess (token counts) is retracted; the corrected script reproduces N2's baseline exactly. On the 400-token window the cells use, the best hidden share at 17 % is 0.365, not 0.46, so N3-P2's registered interval is only partly reachable (erratum in the record; predictions unchanged, my probability for N3-P2 lowered before any run). Two design faults found by reading my own loop: a `wait_event` before the event is recorded waits for nothing (the late prefetch now waits after the mid event is recorded; tested on a recording arena), and a row whose experts were all prefetched would not have waited for them (the batch event is now always recorded and waited for). A device synchronize at each token's start would have hidden the oracle's cross-token prefetch (removed).
+
+**Verified.** 36 tests; real run path on the recorded trace (CPU, tiny records, 30 tokens: counts equal the bookkeeping); the reference hashes on the real trace for every registered cell are equal between the arena and the independent model. **Not verified:** everything CUDA.
+
+**Kind.** Instrument and tests. No default changed, nothing measured on a GPU.
 
 ### 18.184 CUDA N3 stage A designed (0.66.29)
 

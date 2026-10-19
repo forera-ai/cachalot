@@ -527,6 +527,10 @@ Session B2 ran under `docs/CUDA-HUGEPAGE-RETEST-RECORD.md` and is recorded in `d
 
 `docs/CUDA-N3-EXPERIMENT-RECORD.md` (commit c2305a6, 12 predictions, before any harness code): layer-ahead prefetch of the runtime's recorded predicted sets against demand fetch, with a bandwidth-bound stand-in compute (C = 0.3, 1.0, 3.0 ms a layer), an oracle and a late-prefetch arm, on the stage 1 arena; 20 cells. Offline input (derived, `benchmarks/cuda/prefetch_coverage.py`): at 17 % resident the recorded predictor cuts demand misses a token from 52.15 to 28.09 at the cost of 83.59 copies a token (+60 %); the best hidden share under a serial model of what remains is 0.46, the Mac's 41 to 47 %. Harness not built; no instance.
 
+### 17.9 N3 stage A harness built and rehearsed (2026-10-19)
+
+`benchmarks/cuda/overlap_arena.py`, `session.sh n3smoke|n3full`, `SESSION-RUNBOOK-N3.md`, 36 tests; erratum to the record (2db00e5): the offline coverage script was fixed (prefill rule, trace order) and now reproduces N2's baseline exactly; on the 400-token window the best hidden share at 17 % is 0.365 (8 %: 0.406), copies a token 50.45 to 89.46 (+77 %). The stream code is untested on a GPU; the first `n3smoke` is its smoke. Needs Hamed: a go and an RTX 5090.
+
 ## 18. Honest limits
 
 - This is a plan. No hypothesis in it has been tested; every "expected" device property is vendor-derived and unverified for the rented machine.
