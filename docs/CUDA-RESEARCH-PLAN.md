@@ -504,6 +504,16 @@ The stage 1 replay (RTX 5090 arm only) ran under `docs/CUDA-N2S1-EXPERIMENT-RECO
 * The harness's host bookkeeping costs 0.12 to 0.16 ms a token and the arena has no fragmentation by construction.
 * Not started: the V100 arm of N2 stage 1; a controlled test of the buffer-backing hypothesis and a redo of the S1 copy curve with qualified buffers; N2 stage 2/3 and N3.
 
+### 17.6 B1 outcome: the buffer class is not a fixed share, and the huge-page route was not tested (2026-10-19)
+
+Session B1 ran under `docs/CUDA-BACKING-EXPERIMENT-RECORD.md` and is recorded in `docs/CUDA-BACKING-RESULTS.md`. Consequences, written after the run:
+
+* **Refinement of 17.5.** On the B1 instance two fresh processes' first 48 pinned 9.95 MB `cudaHostAlloc` buffers were all slow (0.359 ms, 27.7 GB/s); in a later process 9.95 MB, 14.16 MB and 21.1 MiB buffers were slow 31 %, 25 % and 17 % of the time and 64 MiB and larger buffers never (rerun). The slow share is therefore not a property of an instance; it moves with the allocation order or the process. The fast rate (54.6 to 55.2 GB/s, H2D and D2H) holds from 9.95 MB up.
+* **Not tested.** Huge-page advice before first touch produced 0 of 16 huge-page-backed buffers in every arm (`enabled=madvise`, `defrag=madvise`, fresh guest), so B-P5, the causal test of H-backing, said nothing; H-backing and H-host-side are both open. Possible causes are listed in the results; none is established.
+* **Small copies.** Every buffer read about 26.5 GB/s at 1 MiB and 27.4 to 29.1 at 3 MiB (0.04 and 0.11 ms), about half the plateau, so the copy curve has a real ramp below about 4 MiB on this card; B-P10 fell at 3 MiB.
+* **Cost rule unchanged and strengthened:** qualify each source buffer and record the allocation context before quoting a copy cost. A pinned expert store's cost on a discrete card ranges from 0.185 to 0.359 ms a copy depending on buffers, which at 51.85 misses a token is 9.6 to 18.6 ms (derived).
+* Still open: the V100 arm of N2 stage 1; N3 (copy and compute overlap, prefetch); a retest of the huge-page route with an instrument that reads smaps right after the first touch and before registration and that tries a hugetlb or `MAP_POPULATE` variant (needs a design record first).
+
 ## 18. Honest limits
 
 - This is a plan. No hypothesis in it has been tested; every "expected" device property is vendor-derived and unverified for the rented machine.

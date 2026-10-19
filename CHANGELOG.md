@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.66.25 (2026-10-19)
+
+HANDOFF "Start here (2026-10-19, 0.66.25)" and section 18.181; results `docs/CUDA-BACKING-RESULTS.md`, raw rows in `docs/cuda-results/b1-rtx5090-2026-10-19/`. Measurement and one instrument fix; nothing in `src/` except the version string.
+
+### Added
+- CUDA session B1 run on a fourth rented RTX 5090 (predictions committed first, bc72198): 48 fresh-process pinned 9.95 MB buffers were all slow (0.359 ms, 27.7 GB/s) in two processes; in the curve process the slow share of 9.95 MB, 14.16 MB and 21.1 MiB buffers was 31, 25 and 17 % and 0 at 64 MiB and above; the fast rate is the link plateau (54.6 to 55.2 GB/s, H2D and D2H) from 9.95 MB up, while every buffer reads about 26.5 (1 MiB) and 27.4 to 29.1 GB/s (3 MiB). The huge-page route was not tested: 0 of 16 buffers were backed by huge pages in any arm. Scored: 8 held, B-P15 held with the instrument defect below, 3 falsified (B-P1, B-P4, B-P10), B-P12 missed narrowly, 2 not testable (B-P2, B-P5).
+- `docs/CUDA-BACKING-RESULTS.md`, plan section 17.6.
+
+### Fixed
+- `benchmarks/cuda/backing_probe.py` curve cell: the byte round-trip check compared the first two pinned buffers with the device buffer after K different copies, so it failed for any K above 1 (the CPU rehearsal's test did not assert the gate); it now checks each buffer right after its own copy, and the test asserts it (fails on the old code).
+
 ## 0.66.24 (2026-10-18)
 
 HANDOFF "Start here (2026-10-18, 0.66.24)" and section 18.180; record `docs/CUDA-BACKING-EXPERIMENT-RECORD.md` (committed first, bc72198). Instruments, tests and documents only; nothing in `src/` except the version string. No GPU, no instance used.

@@ -1,0 +1,58 @@
+{"arm":"backing.mmap_thp","field":"slow_share","n":16,"run":"20261019T103336Z-backing-rest-5da948","source":"p50 per buffer, slow = at or above 0.28 ms","tag":"measured","unit":"fraction","value":0.875}
+{"arm":"backing.mmap_thp","field":"third_mode_share","n":16,"run":"20261019T103336Z-backing-rest-5da948","source":"buffers between 0.20 and 0.28 ms","tag":"measured","unit":"fraction","value":0.125}
+{"arm":"backing.mmap_thp","field":"copy_ms_min","run":"20261019T103336Z-backing-rest-5da948","source":"cuda events p50 of the fastest buffer","tag":"measured","unit":"ms","value":0.2758079916238785}
+{"arm":"backing.mmap_thp","field":"copy_ms_max","run":"20261019T103336Z-backing-rest-5da948","source":"cuda events p50 of the slowest buffer","tag":"measured","unit":"ms","value":0.3537919968366623}
+{"arm":"backing.mmap_thp","field":"fast_median_ms","n":2,"run":"20261019T103336Z-backing-rest-5da948","source":"cuda events","tag":"measured","unit":"ms","value":0.27671999484300613}
+{"arm":"backing.mmap_thp","field":"slow_median_ms","n":14,"run":"20261019T103336Z-backing-rest-5da948","source":"cuda events","tag":"measured","unit":"ms","value":0.30344800651073456}
+{"arm":"backing.mmap_thp","field":"order_gap","run":"20261019T103336Z-backing-rest-5da948","source":"mean allocation index of slow minus fast buffers","tag":"derived","unit":"index","value":-2.8571428571428568}
+{"arm":"backing.mmap_thp","field":"lag1_agreement","run":"20261019T103336Z-backing-rest-5da948","source":"consecutive buffers in the same class","tag":"derived","unit":"fraction","value":0.7333333333333333}
+{"arm":"backing.mmap_thp","field":"lag1_expected_if_independent","run":"20261019T103336Z-backing-rest-5da948","source":"p^2 + (1-p)^2","tag":"derived","unit":"fraction","value":0.78125}
+{"arm":"backing.mmap_thp","field":"huge_verified_count","n":16,"run":"20261019T103336Z-backing-rest-5da948","source":"smaps AnonHugePages at 90 percent or more of the registered range","tag":"measured","unit":"count","value":0}
+{"arm":"backing.mmap_thp","field":"huge_fraction_median","run":"20261019T103336Z-backing-rest-5da948","source":"smaps AnonHugePages over the registered range","tag":"measured","unit":"fraction","value":0.0}
+{"arm":"backing.mmap_nothp","field":"slow_share","n":16,"run":"20261019T103336Z-backing-rest-5da948","source":"p50 per buffer, slow = at or above 0.28 ms","tag":"measured","unit":"fraction","value":0.875}
+{"arm":"backing.mmap_nothp","field":"third_mode_share","n":16,"run":"20261019T103336Z-backing-rest-5da948","source":"buffers between 0.20 and 0.28 ms","tag":"measured","unit":"fraction","value":0.125}
+{"arm":"backing.mmap_nothp","field":"copy_ms_min","run":"20261019T103336Z-backing-rest-5da948","source":"cuda events p50 of the fastest buffer","tag":"measured","unit":"ms","value":0.272256001830101}
+{"arm":"backing.mmap_nothp","field":"copy_ms_max","run":"20261019T103336Z-backing-rest-5da948","source":"cuda events p50 of the slowest buffer","tag":"measured","unit":"ms","value":0.3320479989051819}
+{"arm":"backing.mmap_nothp","field":"fast_median_ms","n":2,"run":"20261019T103336Z-backing-rest-5da948","source":"cuda events","tag":"measured","unit":"ms","value":0.2757439985871315}
+{"arm":"backing.mmap_nothp","field":"slow_median_ms","n":14,"run":"20261019T103336Z-backing-rest-5da948","source":"cuda events","tag":"measured","unit":"ms","value":0.3160160034894943}
+{"arm":"backing.mmap_nothp","field":"order_gap","run":"20261019T103336Z-backing-rest-5da948","source":"mean allocation index of slow minus fast buffers","tag":"derived","unit":"index","value":-6.857142857142857}
+{"arm":"backing.mmap_nothp","field":"lag1_agreement","run":"20261019T103336Z-backing-rest-5da948","source":"consecutive buffers in the same class","tag":"derived","unit":"fraction","value":0.8666666666666667}
+{"arm":"backing.mmap_nothp","field":"lag1_expected_if_independent","run":"20261019T103336Z-backing-rest-5da948","source":"p^2 + (1-p)^2","tag":"derived","unit":"fraction","value":0.78125}
+{"arm":"backing.mmap_nothp","field":"huge_verified_count","n":16,"run":"20261019T103336Z-backing-rest-5da948","source":"smaps AnonHugePages at 90 percent or more of the registered range","tag":"measured","unit":"count","value":0}
+{"arm":"backing.mmap_nothp","field":"huge_fraction_median","run":"20261019T103336Z-backing-rest-5da948","source":"smaps AnonHugePages over the registered range","tag":"measured","unit":"fraction","value":0.0}
+{"arm":"backing.mmap_default","field":"slow_share","n":16,"run":"20261019T103336Z-backing-rest-5da948","source":"p50 per buffer, slow = at or above 0.28 ms","tag":"measured","unit":"fraction","value":1.0}
+{"arm":"backing.mmap_default","field":"third_mode_share","n":16,"run":"20261019T103336Z-backing-rest-5da948","source":"buffers between 0.20 and 0.28 ms","tag":"measured","unit":"fraction","value":0.0}
+{"arm":"backing.mmap_default","field":"copy_ms_min","run":"20261019T103336Z-backing-rest-5da948","source":"cuda events p50 of the fastest buffer","tag":"measured","unit":"ms","value":0.28070400655269623}
+{"arm":"backing.mmap_default","field":"copy_ms_max","run":"20261019T103336Z-backing-rest-5da948","source":"cuda events p50 of the slowest buffer","tag":"measured","unit":"ms","value":0.329135999083519}
+{"arm":"backing.mmap_default","field":"slow_median_ms","n":16,"run":"20261019T103336Z-backing-rest-5da948","source":"cuda events","tag":"measured","unit":"ms","value":0.3103199973702431}
+{"arm":"backing.mmap_default","field":"order_gap","note":"one class only","run":"20261019T103336Z-backing-rest-5da948","source":"cell","tag":"unavailable","unit":"index"}
+{"arm":"backing.mmap_default","field":"lag1_agreement","run":"20261019T103336Z-backing-rest-5da948","source":"consecutive buffers in the same class","tag":"derived","unit":"fraction","value":1.0}
+{"arm":"backing.mmap_default","field":"lag1_expected_if_independent","run":"20261019T103336Z-backing-rest-5da948","source":"p^2 + (1-p)^2","tag":"derived","unit":"fraction","value":1.0}
+{"arm":"backing.mmap_default","field":"huge_verified_count","n":16,"run":"20261019T103336Z-backing-rest-5da948","source":"smaps AnonHugePages at 90 percent or more of the registered range","tag":"measured","unit":"count","value":0}
+{"arm":"backing.mmap_default","field":"huge_fraction_median","run":"20261019T103336Z-backing-rest-5da948","source":"smaps AnonHugePages over the registered range","tag":"measured","unit":"fraction","value":0.0}
+{"arm":"backing.reroll_default","field":"slow_share","n":12,"run":"20261019T103336Z-backing-rest-5da948","source":"p50 per buffer, slow = at or above 0.28 ms","tag":"measured","unit":"fraction","value":1.0}
+{"arm":"backing.reroll_default","field":"third_mode_share","n":12,"run":"20261019T103336Z-backing-rest-5da948","source":"buffers between 0.20 and 0.28 ms","tag":"measured","unit":"fraction","value":0.0}
+{"arm":"backing.reroll_default","field":"copy_ms_min","run":"20261019T103336Z-backing-rest-5da948","source":"cuda events p50 of the fastest buffer","tag":"measured","unit":"ms","value":0.3203359991312027}
+{"arm":"backing.reroll_default","field":"copy_ms_max","run":"20261019T103336Z-backing-rest-5da948","source":"cuda events p50 of the slowest buffer","tag":"measured","unit":"ms","value":0.3530080020427704}
+{"arm":"backing.reroll_default","field":"slow_median_ms","n":12,"run":"20261019T103336Z-backing-rest-5da948","source":"cuda events","tag":"measured","unit":"ms","value":0.35094399750232697}
+{"arm":"backing.reroll_default","field":"order_gap","note":"one class only","run":"20261019T103336Z-backing-rest-5da948","source":"cell","tag":"unavailable","unit":"index"}
+{"arm":"backing.reroll_default","field":"lag1_agreement","run":"20261019T103336Z-backing-rest-5da948","source":"consecutive buffers in the same class","tag":"derived","unit":"fraction","value":1.0}
+{"arm":"backing.reroll_default","field":"lag1_expected_if_independent","run":"20261019T103336Z-backing-rest-5da948","source":"p^2 + (1-p)^2","tag":"derived","unit":"fraction","value":1.0}
+{"arm":"backing.reroll_default","field":"huge_verified_count","n":12,"run":"20261019T103336Z-backing-rest-5da948","source":"smaps AnonHugePages at 90 percent or more of the registered range","tag":"measured","unit":"count","value":0}
+{"arm":"backing.reroll_default","field":"huge_fraction_median","run":"20261019T103336Z-backing-rest-5da948","source":"smaps AnonHugePages over the registered range","tag":"measured","unit":"fraction","value":0.0}
+{"arm":"backing.reroll_thp","field":"slow_share","n":12,"run":"20261019T103336Z-backing-rest-5da948","source":"p50 per buffer, slow = at or above 0.28 ms","tag":"measured","unit":"fraction","value":1.0}
+{"arm":"backing.reroll_thp","field":"third_mode_share","n":12,"run":"20261019T103336Z-backing-rest-5da948","source":"buffers between 0.20 and 0.28 ms","tag":"measured","unit":"fraction","value":0.0}
+{"arm":"backing.reroll_thp","field":"copy_ms_min","run":"20261019T103336Z-backing-rest-5da948","source":"cuda events p50 of the fastest buffer","tag":"measured","unit":"ms","value":0.3408159911632538}
+{"arm":"backing.reroll_thp","field":"copy_ms_max","run":"20261019T103336Z-backing-rest-5da948","source":"cuda events p50 of the slowest buffer","tag":"measured","unit":"ms","value":0.3556320071220398}
+{"arm":"backing.reroll_thp","field":"slow_median_ms","n":12,"run":"20261019T103336Z-backing-rest-5da948","source":"cuda events","tag":"measured","unit":"ms","value":0.3503120020031929}
+{"arm":"backing.reroll_thp","field":"order_gap","note":"one class only","run":"20261019T103336Z-backing-rest-5da948","source":"cell","tag":"unavailable","unit":"index"}
+{"arm":"backing.reroll_thp","field":"lag1_agreement","run":"20261019T103336Z-backing-rest-5da948","source":"consecutive buffers in the same class","tag":"derived","unit":"fraction","value":1.0}
+{"arm":"backing.reroll_thp","field":"lag1_expected_if_independent","run":"20261019T103336Z-backing-rest-5da948","source":"p^2 + (1-p)^2","tag":"derived","unit":"fraction","value":1.0}
+{"arm":"backing.reroll_thp","field":"huge_verified_count","n":12,"run":"20261019T103336Z-backing-rest-5da948","source":"smaps AnonHugePages at 90 percent or more of the registered range","tag":"measured","unit":"count","value":0}
+{"arm":"backing.reroll_thp","field":"huge_fraction_median","run":"20261019T103336Z-backing-rest-5da948","source":"smaps AnonHugePages over the registered range","tag":"measured","unit":"fraction","value":0.0}
+{"arm":"backing.slab_chunks","field":"slow_chunk_share","n":64,"run":"20261019T103336Z-backing-rest-5da948","source":"chunks below 0.8 x the fastest chunk's rate","tag":"measured","unit":"fraction","value":0.140625}
+{"arm":"backing.slab_chunks","field":"whole_slab_gbps","run":"20261019T103336Z-backing-rest-5da948","source":"one copy of the slab","tag":"measured","unit":"GB/s","value":50.52343552760463}
+{"arm":"backing.slab_chunks","field":"slow_run_mean_length","run":"20261019T103336Z-backing-rest-5da948","source":"runs of consecutive slow chunks","tag":"derived","unit":"chunks","value":3.0}
+{"arm":"backing.slab_chunks","field":"fast_chunk_gbps_median","n":55,"run":"20261019T103336Z-backing-rest-5da948","source":"cuda events","tag":"measured","unit":"GB/s","value":53.65206766301715}
+{"arm":"backing.slab_chunks","field":"slow_chunk_gbps_median","n":9,"run":"20261019T103336Z-backing-rest-5da948","source":"cuda events","tag":"measured","unit":"GB/s","value":32.07046612734759}
+{"arm":"backing.slab_chunks","field":"whole_slab_gbps_implied_by_chunks","run":"20261019T103336Z-backing-rest-5da948","source":"slab bytes over the sum of chunk times","tag":"derived","unit":"GB/s","value":48.48668154666782}

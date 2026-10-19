@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-19, 0.66.25): session B1 ran on an RTX 5090; the buffer's slow class is not a fixed share, and the huge-page route was not tested
+>
+> Section 18.181, results `docs/CUDA-BACKING-RESULTS.md` (rows, manifests and per-buffer samples in `docs/cuda-results/b1-rtx5090-2026-10-19/`), plan section 17.6. Four fresh processes plus a rerun of the curve. **Measured on one instance:** the first 48 pinned 9.95 MB buffers of a fresh process were all slow (0.359 ms, 27.7 GB/s), in two processes; in the curve process 9.95 MB, 14.16 MB and 21.1 MiB buffers were 31, 25 and 17 % slow and 64 MiB and larger never; the fast rate is 54.6 to 55.2 GB/s (D2H the same) from 9.95 MB up, but every buffer reads about 26.5 GB/s at 1 MiB and 27.4 to 29.1 at 3 MiB. Huge-page advice before first touch produced 0 of 16 huge-page buffers in every arm (B-P4 falsified), so B-P5, the causal test, said nothing; H-backing and H-host-side are both open. Of 15 predictions: held B-P3, 6, 7, 8, 9, 11, 13, 14 (and 15 with an exception), falsified B-P1, B-P4, B-P10 (at 3 MiB), missed narrowly B-P12, not testable B-P2 and B-P5. One instrument defect (the curve's byte check compared two buffers with the last copy's content) failed a gate in the first curve run; fixed on the Mac (4f54685), rerun clean. Nothing in `src/` but the version string. **Needs Hamed:** terminate the B1 instance if not yet done, fill the B1 hours in the private cost file, and the housekeeping (delete the S1, S2, V1, N2 and B1 ssh configs, known_hosts files and the key); the next GPU step needs his go.
+>
 > ## Start here (2026-10-18, 0.66.24): session B1 (pinned-buffer backing, qualified copy curve) is prepared; it has not run
 >
 > Section 18.180, record `docs/CUDA-BACKING-EXPERIMENT-RECORD.md` (15 predictions, committed bc72198 first), `benchmarks/cuda/backing_probe.py`, `session.sh backing`, `SESSION-RUNBOOK-B1.md`. The test of H-backing is causal and needs no privileges: memory the process maps itself, advised (`MADV_HUGEPAGE`, `MADV_NOHUGEPAGE` or nothing) before the first touch, registered as pinned, with the huge-page outcome read from smaps; the rival H-host-side (the rate is set below the guest) is named in the record with what each outcome means. The copy curve of S1 is redone with K buffers a size (fastest, median, slowest) plus pageable and D2H arms. **No instance, no measurement.** The Linux paths have never run; the first `backing` process is the smoke. **Needs Hamed:** a go and an RTX 5090 instance when the agent says it is ready (same listing and key as S2 and N2, about seven minutes to initialize); housekeeping (log the N2 hours, delete the S2, V1 and N2 ssh configs, known_hosts files and key; the S1 follow-ups).
@@ -9238,6 +9242,18 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.181 Session B1 on an RTX 5090: the slow class moves with the allocation context, and huge pages were not obtained (0.66.25)
+
+**Goal.** Hamed: "Yes, run B1" (v229 first job); he created the instance and said it was ready.
+
+**How it ran.** Over SSH to the one instance, no sudo: pack from a clean commit (450f42c), `check`, `setup`, `doctor`, a clean smoke, then `session.sh backing`. Processes 1 to 3 passed; process 4 (the curve) failed its round-trip gate and the session stopped as registered. The cause was my instrument (a check made after the K-buffer loop against the last buffer's content); it was fixed on the Mac with a test that fails on the old code, repacked (4f54685) and the curve rerun on the same instance in a fresh process.
+
+**Results and scoring.** `docs/CUDA-BACKING-RESULTS.md`. The headline is two measured facts and one non-result: fresh-process 9.95 MB buffers all slow on this instance (against N2's mostly fast ones), a slow share of 0 to 31 % in the curve process falling with size, and no huge pages in any arm. The reroll and order predictions could not be tested because there was no fast buffer.
+
+**What did not go well.** The Mac rehearsal's test passed an instrument that could not pass on a GPU for K above 1, because it never asserted the gate: a rehearsal that does not assert its gates rehearses nothing. I also registered 15 predictions on the assumption that the instance would give a mix of classes and that huge pages would be granted; neither held, and the experiment's causal arm (B-P5) became untestable. The smaps read happens after registration, which I cannot rule out as the reason the huge-page count read 0 (I did not read it before registering).
+
+**Open / needs Hamed.** See the Start here block. A retest of the huge-page route needs a design record first (read smaps after first touch and before registration; a hugetlb or populate variant); the V100 arm of N2 stage 1 and N3 remain open. **Kind.** Measurement and an instrument fix. Predictions written first; 8 held, 1 held with an exception (B-P15), 3 falsified (B-P1, B-P4, B-P10), 1 missed narrowly (B-P12), 2 not testable (B-P2, B-P5). No default changed.
 
 ### 18.180 Session B1 prepared (0.66.24)
 

@@ -1,0 +1,8 @@
+{"arm":"backing.alloc_order","field":"slow_share","n":48,"run":"20261019T103329Z-backing-b1-4db778","source":"p50 per buffer, slow = at or above 0.28 ms","tag":"measured","unit":"fraction","value":1.0}
+{"arm":"backing.alloc_order","field":"third_mode_share","n":48,"run":"20261019T103329Z-backing-b1-4db778","source":"buffers between 0.20 and 0.28 ms","tag":"measured","unit":"fraction","value":0.0}
+{"arm":"backing.alloc_order","field":"copy_ms_min","run":"20261019T103329Z-backing-b1-4db778","source":"cuda events p50 of the fastest buffer","tag":"measured","unit":"ms","value":0.35835200548171997}
+{"arm":"backing.alloc_order","field":"copy_ms_max","run":"20261019T103329Z-backing-b1-4db778","source":"cuda events p50 of the slowest buffer","tag":"measured","unit":"ms","value":0.35915200412273407}
+{"arm":"backing.alloc_order","field":"slow_median_ms","n":48,"run":"20261019T103329Z-backing-b1-4db778","source":"cuda events","tag":"measured","unit":"ms","value":0.3587999939918518}
+{"arm":"backing.alloc_order","field":"order_gap","note":"one class only","run":"20261019T103329Z-backing-b1-4db778","source":"cell","tag":"unavailable","unit":"index"}
+{"arm":"backing.alloc_order","field":"lag1_agreement","run":"20261019T103329Z-backing-b1-4db778","source":"consecutive buffers in the same class","tag":"derived","unit":"fraction","value":1.0}
+{"arm":"backing.alloc_order","field":"lag1_expected_if_independent","run":"20261019T103329Z-backing-b1-4db778","source":"p^2 + (1-p)^2","tag":"derived","unit":"fraction","value":1.0}
