@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.66.31 (2026-10-19)
+
+HANDOFF "Start here (2026-10-19, 0.66.31)" and section 18.186; results `docs/CUDA-N3-RESULTS.md`, raw rows in `docs/cuda-results/n3-rtx5090-2026-10-19/`. Measurement only; nothing in `src/` except the version string.
+
+### Added
+- CUDA N3 stage A run on an RTX 5090 (22 cells, 560 s, all eight gates true, 0 failed cells; the stream code ran correctly on its first GPU run). On a fast-population instance (c = 0.194 ms): demand-fetch exposure 9.9 to 10.1 ms a token at 17 % resident whatever the compute window; layer-ahead prefetch with the recorded predictor hides 24 % at a layer time of 1 ms or more (34 % at 8 % resident, 8 % at 0.3 ms where the copy lane saturates), an oracle 75 %; with the copies hidden, about 2 ms a token of the remaining 2.5 is the host's issue time between layers (the harness's Python loop); compute slowed +0.3 to +1.1 % by copies at 1 ms and above, +5.7 % at 0.3 ms. Scored: 6 held, 3 missed low (P2, P3, P5), 3 falsified (P6 in direction, P7 at 1 ms, P11).
+- `docs/CUDA-N3-RESULTS.md`, plan section 17.10.
+
 ## 0.66.30 (2026-10-19)
 
 HANDOFF "Start here (2026-10-19, 0.66.30)" and section 18.185. Instruments, tests and documents only; nothing in `src/` except the version string. No instance, no GPU, nothing measured on a GPU.

@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-19, 0.66.31): N3 stage A ran on an RTX 5090; the recorded predictor hides a quarter of the copy exposure, the host issue loop is what is left
+>
+> Section 18.186, results `docs/CUDA-N3-RESULTS.md` (raw in `docs/cuda-results/n3-rtx5090-2026-10-19/`), plan section 17.10. 22 cells in 560 s, all eight gates true, 0 failed cells; the stream code worked on its first GPU run. **Measured on a fast-population instance (c = 0.194 ms; 3 of 64 records slow), 17 % resident, 400 decode tokens, a stand-in compute:** demand-fetch exposure 9.9 to 10.1 ms a token whatever the layer time (0.3, 1, 3 ms); layer-ahead prefetch with the recorded predictor hides **0.24** of it at 1 ms and 3 ms (0.08 at 0.3 ms, where the copy lane saturates: +77 % copies, 60 % of prefetches wasted; 0.34 at 8 % resident); an oracle hides **0.75**; with the oracle, 2.5 ms of exposure remains and **2.0 ms of it is the host's issue time** between layers (Python loop); copies slow compute +0.3 to +1.1 % at 1 ms and above, +5.7 % at 0.3 ms. The late prefetch beat the early one at 1 ms and above (issue order, not window). Scored 6 held, 3 missed low (P2, P3, P5), 3 falsified (P6, P7, P11). **Needs Hamed:** fill the N3 billed hours in the private cost file (he said he will; the first N3 VM had no GPU driver, the replacement had no network until a console reboot); the housekeeping (delete the S1, S2, V1, N2, B1, B2 and N3 ssh configs, known_hosts files and the key). The next GPU step needs his go.
+>
 > ## Start here (2026-10-19, 0.66.30): the N3 stage A harness is built and rehearsed; running it needs Hamed to create an RTX 5090
 >
 > Section 18.185, harness `benchmarks/cuda/overlap_arena.py`, `session.sh n3smoke|n3full`, `SESSION-RUNBOOK-N3.md`, `benchmarks/cuda/n3-expected.json` (reference hashes on the real trace), record `docs/CUDA-N3-EXPERIMENT-RECORD.md` with its erratum (2db00e5, section 8). 36 tests assert every gate through the real run path, trip each gate on purpose, check the stream order of every arm on a recording arena and run the real path on the recorded trace on the CPU. **Never run on a GPU:** events, `wait_event`, the copy stream, the stand-in kernels and the calibration are untested on CUDA; the first `n3smoke` is their smoke. **Erratum that matters:** the offline coverage script was wrong (prefill rule, trace order); corrected, it reproduces N2's baseline exactly, and on the 400-token window the cells use the best hidden share at 17 % is 0.365 (not 0.46), copies a token 50.45 to 89.46. **Needs Hamed:** a go and an RTX 5090 instance (same listing and key); the 11 MB trace is copied to the host as in N2; the housekeeping (delete the S1, S2, V1, N2, B1 and B2 ssh configs, known_hosts files and the key).
@@ -9258,6 +9262,18 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.186 CUDA N3 stage A on an RTX 5090 (0.66.31)
+
+**Goal.** Hamed: "Yes, run N3", then after the instance faults, "score the N3 results against the registered predictions and release."
+
+**How it ran.** Over SSH to the one instance, no sudo. The first N3 VM had the NVIDIA packages and DKMS module installed but no module loaded, before and after a console reboot (loading needs root); it was replaced. The second had a working driver and no outbound network (no DNS, no TCP) until a console reboot, the S2 fault again. Then pack (9390ea5, dirty=0) and the trace, `check`, `setup`, `doctor`, `smoke`, `n3smoke` (clean on its first GPU run: every gate true), and `n3full` run directly with `--max-seconds 1320` because the script's 2,400 s would have overrun the 1 GPU-hour cap; it took 560 s.
+
+**Results and scoring.** `docs/CUDA-N3-RESULTS.md`. The headline is the host's issue time: the copies are hidden by an oracle to within 2.5 ms of the floor, and 2.0 ms of that is GPU idle time between layers while the Python loop issues copies. The recorded predictor's 0.24 is two thirds of what the serial model allowed (0.365); the rest is that host time plus waiting for the 32 demand copies that remain.
+
+**What did not go well.** My N3-P11 (host time under 1.5 ms) ignored that a Python loop issuing 50 to 90 copies cannot be that cheap, which I could have priced from the N2 bookkeeping figure; N3-P6 (window limits prefetch) mixed a window effect with an issue-order effect because I put the early prefetch's copy issue before the layer's launch, which my own design note should have flagged. The results state the confound instead of claiming a window effect.
+
+**Kind.** Research (predicted, measured, explained as hypothesis): 6 held, 3 missed low, 3 falsified. No default changed.
 
 ### 18.185 CUDA N3 stage A harness built and rehearsed (0.66.30)
 

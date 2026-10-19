@@ -531,6 +531,16 @@ Session B2 ran under `docs/CUDA-HUGEPAGE-RETEST-RECORD.md` and is recorded in `d
 
 `benchmarks/cuda/overlap_arena.py`, `session.sh n3smoke|n3full`, `SESSION-RUNBOOK-N3.md`, 36 tests; erratum to the record (2db00e5): the offline coverage script was fixed (prefill rule, trace order) and now reproduces N2's baseline exactly; on the 400-token window the best hidden share at 17 % is 0.365 (8 %: 0.406), copies a token 50.45 to 89.46 (+77 %). The stream code is untested on a GPU; the first `n3smoke` is its smoke. Needs Hamed: a go and an RTX 5090.
 
+### 17.10 N3 stage A outcome (2026-10-19)
+
+N3 stage A ran under `docs/CUDA-N3-EXPERIMENT-RECORD.md` and is recorded in `docs/CUDA-N3-RESULTS.md` (RTX 5090, fast-population instance, c = 0.194 ms, a stand-in compute, 17 % resident, 400 decode tokens). Consequences, written after the run:
+
+* **Overlap (CUDA-Q6):** layer-ahead prefetch with the recorded predictor hides **24 %** of the demand-fetch exposure (9.9 to 10.1 ms a token, independent of the compute window) at a layer time of 1 ms or more, 34 % at 8 % resident, and almost nothing at 0.3 ms (the copy lane saturates: +77 % copies a token, 60 % of prefetches wasted); an oracle hides **75 %**.
+* **What is left (CUDA-H8's direction):** with copies hidden (oracle), 2.5 ms of exposure remains and 2.0 ms of it is the **host's issue time** between layers (a Python loop issuing 50 to 90 copies, events and bookkeeping); it is a property of the harness, and it is the largest remaining term.
+* **Interference (CUDA-H7):** +0.3 to +1.1 % compute slowdown at a layer time of 1 ms or more, +5.7 % at 0.3 ms (the registered 5 % bound is at its edge there).
+* **Window against issue order:** the late prefetch (after 40 % of the layer) was better, not worse, at 1 ms and above (an issue-order effect on host latency), and worse only at 0.3 ms; the two effects were not separated.
+* Registered scoring: 6 held, 3 missed low without the falsifier firing, 3 falsified (P6, P7, P11). Still open: the V100 arm of N2 stage 1 and of N3; a native issue loop or CUDA graphs against the Python loop; a predictor gate; the instance-population question.
+
 ## 18. Honest limits
 
 - This is a plan. No hypothesis in it has been tested; every "expected" device property is vendor-derived and unverified for the rented machine.
