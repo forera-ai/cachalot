@@ -1,0 +1,156 @@
+[
+ {
+  "percent": 17.0,
+  "predictor": "none",
+  "tokens": 400,
+  "demand_misses": 52.9875,
+  "covered": 0.0,
+  "loads": 0.0,
+  "wasted": 0.0,
+  "copies": 52.9875,
+  "bound": 0.0
+ },
+ {
+  "percent": 17.0,
+  "predictor": "R",
+  "tokens": 400,
+  "demand_misses": 28.3275,
+  "covered": 27.385,
+  "loads": 55.795,
+  "wasted": 28.41,
+  "copies": 84.1225,
+  "bound": 0.4653927813163482
+ },
+ {
+  "percent": 17.0,
+  "predictor": "CO6",
+  "tokens": 400,
+  "demand_misses": 51.7375,
+  "covered": 2.5775,
+  "loads": 20.2025,
+  "wasted": 17.625,
+  "copies": 71.94,
+  "bound": 0.023590469450342044
+ },
+ {
+  "percent": 17.0,
+  "predictor": "CO10",
+  "tokens": 400,
+  "demand_misses": 52.3975,
+  "covered": 4.195,
+  "loads": 41.3225,
+  "wasted": 37.1275,
+  "copies": 93.72,
+  "bound": 0.011134701580561401
+ },
+ {
+  "percent": 17.0,
+  "predictor": "TP6",
+  "tokens": 400,
+  "demand_misses": 53.0325,
+  "covered": 0.0025,
+  "loads": 0.05,
+  "wasted": 0.0475,
+  "copies": 53.0825,
+  "bound": -0.000849256900212314
+ },
+ {
+  "percent": 17.0,
+  "predictor": "MIX6",
+  "tokens": 400,
+  "demand_misses": 34.76,
+  "covered": 19.5125,
+  "loads": 38.0375,
+  "wasted": 18.525,
+  "copies": 72.7975,
+  "bound": 0.34399622552488796
+ },
+ {
+  "percent": 17.0,
+  "predictor": "RCO10",
+  "tokens": 400,
+  "demand_misses": 28.345,
+  "covered": 29.36,
+  "loads": 77.0425,
+  "wasted": 47.6825,
+  "copies": 105.3875,
+  "bound": 0.46506251474404336
+ },
+ {
+  "percent": 8.0,
+  "predictor": "none",
+  "tokens": 400,
+  "demand_misses": 91.0725,
+  "covered": 0.0,
+  "loads": 0.0,
+  "wasted": 0.0,
+  "copies": 91.0725,
+  "bound": 0.0
+ },
+ {
+  "percent": 8.0,
+  "predictor": "R",
+  "tokens": 400,
+  "demand_misses": 45.205,
+  "covered": 51.6675,
+  "loads": 95.975,
+  "wasted": 44.3075,
+  "copies": 141.18,
+  "bound": 0.5036372121112301
+ },
+ {
+  "percent": 8.0,
+  "predictor": "CO6",
+  "tokens": 400,
+  "demand_misses": 87.6425,
+  "covered": 7.8725,
+  "loads": 52.34,
+  "wasted": 44.4675,
+  "copies": 139.9825,
+  "bound": 0.037662302012133275
+ },
+ {
+  "percent": 8.0,
+  "predictor": "CO10",
+  "tokens": 400,
+  "demand_misses": 87.7075,
+  "covered": 14.3575,
+  "loads": 109.8,
+  "wasted": 95.4425,
+  "copies": 197.5075,
+  "bound": 0.03694858491860886
+ },
+ {
+  "percent": 8.0,
+  "predictor": "TP6",
+  "tokens": 400,
+  "demand_misses": 91.07,
+  "covered": 0.0025,
+  "loads": 0.0675,
+  "wasted": 0.065,
+  "copies": 91.1375,
+  "bound": 2.7450657443361948e-05
+ },
+ {
+  "percent": 8.0,
+  "predictor": "MIX6",
+  "tokens": 400,
+  "demand_misses": 56.645,
+  "covered": 38.5925,
+  "loads": 74.1925,
+  "wasted": 35.6,
+  "copies": 130.8375,
+  "bound": 0.37802300365093744
+ },
+ {
+  "percent": 8.0,
+  "predictor": "RCO10",
+  "tokens": 400,
+  "demand_misses": 44.4,
+  "covered": 57.46,
+  "loads": 147.245,
+  "wasted": 89.785,
+  "copies": 191.645,
+  "bound": 0.5124763238079553
+ }
+]

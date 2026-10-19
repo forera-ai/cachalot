@@ -562,6 +562,10 @@ N3 stage B ran under `docs/CUDA-N3B-EXPERIMENT-RECORD.md` and is recorded in `do
 
 `docs/CUDA-N3C-RESULTS.md` (RTX 5090, fast population, 19 cells, 301 s, all gates true). A router-weight gate on the recorded predictor does not pay at a 1 ms layer time (hidden share 0.339 to 0.241 at gate 0.20, 0.400 to 0.312 at 8 % resident; gate 0.10 is inert) and is worth 0.015 of hidden share (0.14 ms, 0.7 %) at 0.3 ms. 16 % fewer copies saved 0.087 ms of host issue (about 6 microseconds a removed copy): the per-copy host cost is not proportional to the copy count. 6 held, 2 missed low, 1 not testable, 0 falsified. Still open: predictor coverage (oracle 0.85 against 0.34), a native issue path, the V100 and AMD arms, the instance-population question.
 
+### 17.15 Offline predictor pricing outcome (2026-10-20)
+
+`docs/CUDA-PREDICTOR-PRICE-RESULTS.md` (Mac only). Held-out window, 17 % resident, serial bound: recorded predictor 0.465; a co-activation table from the previous layer's experts 0.024; ten picks 0.011; the previous token's experts 0.000; a four-plus-two mix 0.344; recorded plus four 0.465 at 25 % more copies. The registered rule (0.05 above the recorded) is met by none; a better predictor needs the router's scores two layers ahead, which the trace does not hold. 2 held, 3 missed, 3 falsified.
+
 ## 18. Honest limits
 
 - This is a plan. No hypothesis in it has been tested; every "expected" device property is vendor-derived and unverified for the rented machine.

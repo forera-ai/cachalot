@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.66.36 (2026-10-20)
+
+HANDOFF "Start here (2026-10-20, 0.66.36)" and section 18.191; record `docs/CUDA-PREDICTOR-PRICE-RECORD.md` (eight predictions, committed first in 6c072de), results `docs/CUDA-PREDICTOR-PRICE-RESULTS.md`, raw `docs/cuda-results/predictor-price-2026-10-20.json`. Measurement only, Mac only; nothing in `src/` except the version string.
+
+### Added
+- `benchmarks/cuda/predictor_price.py` (3 tests): the recorded predictor against a co-activation table trained on earlier tokens (6 and 10 picks), the previous token's experts, and two mixes, on a held-out window of 400 decode tokens (stage A/B bookkeeping, LRU arena). At 17 % resident the recorded predictor's serial bound is 0.465 on the window; the co-activation table 0.024 (recall of the real experts 0.27 against 0.67, but mostly experts the arena already holds), ten picks 0.011, the previous token 0.000, a four-plus-two mix 0.344, recorded-plus-four 0.465 (same as the recorded, 25 % more copies). No predictor meets the registered rule (bound at least 0.05 above the recorded). 2 held, 3 missed, 3 falsified (PP-8 by under 0.001). A better predictor needs information the trace does not hold (the router's scores two layers ahead), not a GPU stage.
+- Plan section 17.15.
+
 ## 0.66.35 (2026-10-20)
 
 HANDOFF "Start here (2026-10-20, 0.66.35)" and section 18.190; results `docs/CUDA-N3C-RESULTS.md`, raw rows in `docs/cuda-results/n3c-rtx5090-2026-10-19/`. Measurement only; nothing in `src/` except the version string.

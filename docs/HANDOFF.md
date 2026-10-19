@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-20, 0.66.36): no predictor built from the trace's expert ids beats the recorded one; the next input is a trace with router scores two layers ahead
+>
+> Section 18.191, record `docs/CUDA-PREDICTOR-PRICE-RECORD.md` (eight predictions, 6c072de), results `docs/CUDA-PREDICTOR-PRICE-RESULTS.md`, plan section 17.15. Mac only. Held-out window (tokens 1000 to 1399), 17 % resident, serial bound: recorded `R` **0.465**, co-activation `CO6` 0.024, `CO10` 0.011, previous-token `TP6` -0.001, `MIX6` 0.344, `RCO10` 0.465 (25 % more copies); at 8 %: 0.504, 0.038, 0.037, 0.000, 0.378, 0.512. Co-activation recall of the real set is 0.27 against `R`'s 0.67, but it picks experts the arena already holds. The registered rule (a bound 0.05 above `R`) is met by none. Scored 2 held, 3 missed, 3 falsified (PP-8 by under 0.001). **Needs Hamed:** nothing for this item; earlier stages' housekeeping stands (N3-C instance terminated by him; fill the N3, N3-B, N3-C hours; delete the ssh configs and key).
+>
 > ## Start here (2026-10-20, 0.66.35): N3 stage C ran; the router-weight gate does not pay at 1 ms layers and is worth at most 0.7 % at 0.3 ms
 >
 > Section 18.190, results `docs/CUDA-N3C-RESULTS.md` (raw in `docs/cuda-results/n3c-rtx5090-2026-10-19/`), plan section 17.14. 19 cells in 301 s on a working RTX 5090 (c = 0.194 ms, fast population), all gates true including gate (g), 0 failed cells. **Measured (17 % resident, hidden share):** C = 1.0 ms: `P0L` 0.339, gate 0.10 0.340, gate 0.20 0.241; C = 0.3 ms (L4): 0.096, 0.104, 0.111 (gate 0.20 wall -0.14 ms); 8 % resident C = 1.0: 0.400 against 0.312. The gate's 16 % fewer copies saved only 0.087 ms of host issue time (about 6 microseconds a removed copy, not 19): per-copy host cost is not proportional to the copy count, which weakens "fewer, larger copies". Scored 6 held, 2 missed low (C-P4, C-P5), 1 not testable (C-P6), 0 falsified. **Needs Hamed:** terminate the instance if not done; fill the N3, N3-B and N3-C billed hours; delete the S1, S2, V1, N2, B1, B2, N3 and N3-C ssh configs, known_hosts files and the key (the agent ran SSH to the N3-C instance at his instruction and did not use sudo). The next GPU step needs his go.
@@ -9278,6 +9282,22 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.191 Offline predictor pricing (0.66.36)
+
+**Goal.** Hamed: "stay offline and price a better predictor (v240 candidate 1) on the trace, record with predictions first."
+
+**What was done.** The record (eight predictions, a fixed decision rule) was committed before any code. `predictor_price.py` replays the trace through the stage A/B bookkeeping with a predictor under test; sanity: the recorded predictor reproduces `prefetch_coverage.py` on the first 400 tokens (0.365) and a test asserts equality. Co-activation tables were trained on tokens below 1000 and scored on tokens 1000 to 1399.
+
+**Results.** `docs/CUDA-PREDICTOR-PRICE-RESULTS.md`. No predictor from the trace's expert ids beats the recorded one; mixes and extra picks add copies, not coverage. 2 held, 3 missed, 3 falsified.
+
+**What it means.** The recorded predictor's edge is the hidden state the router reads, which expert ids cannot reproduce; the 0.85 oracle against 0.34 recorded needs information the trace does not hold. I over-estimated the co-activation table (predicted 0.12 to 0.32, got 0.02) because I read its 27 % recall as signal; most of it was experts already resident.
+
+**What did not go well.** My window prediction for the recorded predictor was off (0.465 against 0.30 to 0.42): the first 400 tokens are a harder window than the held-out one, which I knew and under-weighted.
+
+**Open.** A trace that records the router's logits two layers ahead (the live runtime, Hamed's machine) is the input for a real predictor study; fewer and larger copies, a native issue path, ROCm, V100/L40S remain as in v240.
+
+**Kind.** Research (predicted, measured offline, explained as hypothesis): 2 held, 3 missed, 3 falsified. No default changed.
 
 ### 18.190 CUDA N3 stage C on an RTX 5090 (0.66.35)
 
