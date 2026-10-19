@@ -545,6 +545,15 @@ N3 stage A ran under `docs/CUDA-N3-EXPERIMENT-RECORD.md` and is recorded in `doc
 
 `docs/CUDA-N3B-EXPERIMENT-RECORD.md` (commit d2d3a15, 11 predictions, before any code) tests what the stage A host term is made of with six cumulative levels (digest off, lean bookkeeping, pre-built views, bare events, one CUDA graph a layer) and separates issue order from window with a new arm (`P0L`, prefetch issued after the launch, no wait). Built on the Mac: `overlap_arena.py` levels and `P0L`, `LeanBook` and `chain2` (equal to the independent reference at every level), `session.sh n3bsmoke|n3bfull`, `SESSION-RUNBOOK-N3B.md`, 57 tests in two files. 43 cells, 12 to 18 minutes. Never run on a GPU (the `P0L` order, the bare level, the graph capture). Needs Hamed: a go and an RTX 5090.
 
+### 17.12 N3 stage B outcome (2026-10-19)
+
+N3 stage B ran under `docs/CUDA-N3B-EXPERIMENT-RECORD.md` and is recorded in `docs/CUDA-N3B-RESULTS.md` (RTX 5090, fast population, c = 0.194 ms, a stand-in compute, 17 % resident, 400 decode tokens, 43 cells, 680 s). Consequences, written after the run:
+
+* **The stage A host term was about half instrumentation.** The oracle's exposure at a 1 ms layer time falls from 2.54 ms (stage A as run) to 1.35 ms with the digest off (-0.35), lean bookkeeping (-0.12), pre-built views (-0.10), bare events (-0.18) and one graph replay a layer (-0.42). **The 1.35 ms that remains is about 19 microseconds a copy of Python and torch dispatch** (derived: 0.96 ms of host work for 50.4 copies); a native issue path or a batched copy API was not available to test. Quote 1.35 ms (this harness, this stack), not 2.0 ms, as the CUDA-H8 host term.
+* **The recorded predictor is near its bound once the host cost is low:** `H_P0L` 0.339 at L5 against the serial model's 0.365; an oracle 0.857. At C = 0.3 ms no host lever helps (0.100 at L4) and the window matters (`P40` 0.17 below `P0L`). Issue order, not window, explained stage A's `P0` against `P40` at 1 ms.
+* **A CUDA graph removes host time (the floor's host issue 0.67 to 0.25 ms) but not wall time where the GPU is the floor** (-0.05 ms), and pays only where the host is on the critical path between layers.
+* Registered scoring: 10 held, 3 missed (B-P2, B-P4, B-P9), 0 falsified. Still open: a better or gated predictor (60 % of prefetches are wasted), fewer and larger copies, a native issue path, the V100 and AMD arms, the instance-population question.
+
 ## 18. Honest limits
 
 - This is a plan. No hypothesis in it has been tested; every "expected" device property is vendor-derived and unverified for the rented machine.

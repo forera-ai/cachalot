@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.66.33 (2026-10-19)
+
+HANDOFF "Start here (2026-10-19, 0.66.33)" and section 18.188; results `docs/CUDA-N3B-RESULTS.md`, raw rows in `docs/cuda-results/n3b-rtx5090-2026-10-19/`. Measurement only; nothing in `src/` except the version string.
+
+### Added
+- CUDA N3 stage B run on an RTX 5090 (43 cells, 680 s, all nine gates true, 0 failed cells; the `P0L` arm, the bare level and the CUDA-graph path worked on their first GPU run). The oracle's exposure at a 1 ms layer time falls 2.54 to 1.35 ms as the harness's own costs are removed (digest -0.35, lean bookkeeping -0.12, pre-built views -0.10, bare events -0.18, one graph replay a layer -0.42): stage A's host term was about half instrumentation, and the rest is about 19 microseconds a copy of Python and torch dispatch. The recorded predictor's hidden share rises 0.279 to 0.339 (bound 0.365), an oracle's 0.746 to 0.857; at 0.3 ms no host lever helps (0.100) and the window matters; issue order, not window, explained stage A's `P0` against `P40`. Scored: 10 held, 3 missed low or high (B-P2, B-P4, B-P9), 0 falsified.
+- `docs/CUDA-N3B-RESULTS.md`, plan section 17.12.
+
+### Fixed
+- `docs/CUDA-N3-RESULTS.md` section 4b now points to stage B's measured split; the stage A figure (2.0 ms) should not be quoted as a host cost.
+
 ## 0.66.32 (2026-10-19)
 
 HANDOFF "Start here (2026-10-19, 0.66.32)" and section 18.187. Planning, instruments, tests and a correction; nothing in `src/` except the version string. No instance, no GPU.

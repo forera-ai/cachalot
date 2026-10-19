@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-19, 0.66.33): N3 stage B ran; about half of stage A's host term was my instrumentation, 1.35 ms (about 19 microseconds a copy of torch dispatch) remains
+>
+> Section 18.188, results `docs/CUDA-N3B-RESULTS.md` (raw in `docs/cuda-results/n3b-rtx5090-2026-10-19/`), plan section 17.12. 43 cells in 680 s on a working RTX 5090 (c = 0.194 ms, fast population), all nine gates true, 0 failed cells; the `P0L` arm, the bare level and the CUDA graph worked on their first GPU run. **Measured (C = 1.0 ms, 17 % resident):** the oracle's exposure 2.54 ms (stage A as run) to 1.35 ms (L5): digest -0.35, lean bookkeeping -0.12, views -0.10, bare events -0.18, one graph replay a layer -0.42. **Quote 1.35 ms, not 2.0 ms, as the host term;** derived: 0.96 ms of host work for 50.4 copies a token, about 19 microseconds a copy. The recorded predictor's hidden share 0.279 (L0) to 0.339 (L5), 93 % of its 0.365 bound; oracle 0.857. At C = 0.3 ms no host lever helps (0.100) and the window matters (`P40` 0.17 below `P0L`). Issue order, not window, explained stage A's `P0` against `P40` at 1 ms. The graph cut the floor's host issue time 0.67 to 0.25 ms but its wall only 0.05 ms. Scored 10 held, 3 missed (B-P2, B-P4, B-P9), 0 falsified. **Needs Hamed:** fill the N3 and N3-B billed hours (three VMs this stage, two with a GSP-less driver fault); the housekeeping (delete the S1, S2, V1, N2, B1, B2 and N3 ssh configs, known_hosts files and the key). The next GPU step needs his go.
+>
 > ## Start here (2026-10-19, 0.66.32): N3 stage B is registered and built; its levels test whether stage A's "host issue loop" was my instrumentation; running it needs Hamed to create an RTX 5090
 >
 > Section 18.187, record `docs/CUDA-N3B-EXPERIMENT-RECORD.md` (d2d3a15, 11 predictions, committed first), `benchmarks/cuda/overlap_arena.py` (levels L0 to L5, `P0L`, `LeanBook`, `chain2`), `session.sh n3bsmoke|n3bfull`, `SESSION-RUNBOOK-N3B.md`, 57 tests in two files (every level makes the same decisions and slot assignments as the independent reference, on synthetic traces and on the recorded one). **A correction first:** stage A's "about 2 ms of the oracle's 2.5 ms is the host's issue loop" is an upper bound that includes my harness's own per-event digest, eight events a layer and a view per copy (N3 results section 4b; plan 17.10 and 17.11). Stage B removes them one at a time at C = 1.0 and 0.3 ms (43 cells, 12 to 18 minutes) and adds the `P0L` arm (prefetch issued after the launch, no wait) to separate issue order from window, the confound in stage A's `P0` against `P40`. **Never run on a GPU:** the `P0L` order, the bare level's reduced events, the CUDA-graph capture; the first `n3bsmoke` is their smoke. **Needs Hamed:** a go and an RTX 5090 (check `nvidia-smi` and the network first: the last two VMs had a missing driver and no network); the N3 billed hours (his); the housekeeping (delete the S1, S2, V1, N2, B1, B2 and N3 ssh configs, known_hosts files and the key).
@@ -9266,6 +9270,20 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.188 CUDA N3 stage B on an RTX 5090 (0.66.33)
+
+**Goal.** Hamed: "Yes, run N3 stage B", then after the VM faults, "score N3 stage B against the 11 registered predictions and release."
+
+**How it ran.** Three VMs: the first two had a GPU the open driver would not initialize (the second's kernel log: no GSP; the GSP firmware was present, the packages and options matched working VMs; a console reboot did not help; the first also lost its network after the reboot); the agent ran no sudo and Hamed ran the diagnostics. The third worked at its first login. I checked `nvidia-smi` and DNS before uploading anything (the stage B runbook's new first step), then pack (201ed69), `check`, `setup`, `doctor`, `smoke`, `n3bsmoke` (clean), `n3bfull` with `MAXS=1200` (680 s).
+
+**Results and scoring.** `docs/CUDA-N3B-RESULTS.md`. The record's central bet held: B-P5 (oracle exposure 1.0 to 2.0 ms at L4, 1.78 measured) and B-P7 (predictor 0.26 to 0.365, 0.331 and 0.339). The three misses were all about size: lean bookkeeping and views saved a little less than I priced (B-P2), the bare floor's host time stayed at 0.67 ms (B-P4), and the graph cut host time (0.67 to 0.25 ms) but not wall time (B-P9), because the GPU is the floor of the `N` arm.
+
+**What it means.** Stage A's number was about half my own instrumentation; the honest host term in this stack is 1.35 ms a token, mostly the per-copy cost of Python and torch dispatch. The recorded predictor is within 7 % of its modelled bound at 1 ms layers; what limits it is coverage. I should have priced the digest, events and views before calling the stage A figure a host cost, as I did when designing stage B.
+
+**What did not go well.** Two VMs and about an hour of console round trips for a GPU that never initialized; I also misread the first fault as a hung `modprobe` before Hamed's log showed the GSP message. The runbook now says check the driver and DNS first, which saved the working VM's hour.
+
+**Kind.** Research (predicted, measured, explained as hypothesis): 10 held, 3 missed, 0 falsified. No default changed.
 
 ### 18.187 CUDA N3 stage B designed and built (0.66.32)
 
