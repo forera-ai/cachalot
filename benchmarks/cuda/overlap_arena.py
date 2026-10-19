@@ -49,9 +49,18 @@ import manifest as mf  # noqa: E402
 import replay_arena as ra  # noqa: E402
 import suite  # noqa: E402
 
-ARMS = ("N", "D", "P0", "P0L", "P40", "O")
+GATE_ARMS = {"G00": 0.0, "G10": 0.10, "G20": 0.20}                       # N3 stage C: P0L with a router-weight gate (G00 is P0L by construction)
+ARMS = ("N", "D", "P0", "P0L", "P40", "O") + tuple(GATE_ARMS)
+PRED_ARMS = ("P0", "P0L", "P40") + tuple(GATE_ARMS)
 LEVELS = (0, 1, 2, 3, 4, 5)                                               # N3 stage B: see the record, section 3
-ARM_MODE = {"D": "none", "P0": "pred", "P0L": "pred", "P40": "pred", "O": "oracle"}      # the bookkeeping each arm uses
+ARM_MODE = {"D": "none", "P0": "pred", "P0L": "pred", "P40": "pred", "O": "oracle",
+            **{a: f"pred@{t:.2f}" for a, t in GATE_ARMS.items()}}                  # the bookkeeping each arm uses ('pred@t': gated)
+
+
+def mode_parts(mode: str) -> tuple[str, float | None]:
+    """'pred@0.20' -> ('pred', 0.2); any other mode -> (mode, None)."""
+    base, _, gate = mode.partition("@")
+    return base, (float(gate) if gate else None)
 SPLIT = 0.4                                                               # first kernel's share of a layer's compute
 DECODE_TOKENS = 400
 CALIBRATION_TOLERANCE = 0.05
@@ -98,7 +107,7 @@ class PfBook:
     next row's real experts). Per row: `prefetch` (the row's predicted set), then `demand` (its real experts), then `end_row`."""
 
     def __init__(self, slots: int, n_layers: int, mode: str, digest: bool = True):
-        if mode not in ("none", "pred", "oracle"):
+        if mode_parts(mode)[0] not in ("none", "pred", "oracle"):
             raise ValueError(f"unknown mode {mode!r}")
         self.arena, self.mode, self.digest = ArenaPF(slots, n_layers), mode, digest
         self.pending: set[tuple[int, int]] = set()
@@ -176,7 +185,7 @@ class LeanBook:
     digest = False
 
     def __init__(self, slots: int, n_layers: int, mode: str):
-        if mode not in ("none", "pred", "oracle"):
+        if mode_parts(mode)[0] not in ("none", "pred", "oracle"):
             raise ValueError(f"unknown mode {mode!r}")
         self.arena, self.mode = ArenaPF(slots, n_layers), mode
         self.pending: set[tuple[int, int]] = set()
@@ -241,10 +250,15 @@ class LeanBook:
                 "wasted_per_token": (self.loads - self.covered) / n}
 
 
-def predicted_lookup(arrays) -> dict[tuple[int, int], list[int]]:
+def predicted_lookup(arrays, mode: str = "pred") -> dict[tuple[int, int], list[int]]:
+    """The recorded predicted sets; for a gated mode ('pred@t') only the experts whose recorded router weight is at least t."""
     if "pred_target" not in arrays:
         return {}
-    return {(int(p), int(t)): e.tolist() for t, p, e in zip(arrays["pred_target"], arrays["pred_position"], arrays["pred_experts"], strict=True)}
+    gate = mode_parts(mode)[1]
+    if gate is None:
+        return {(int(p), int(t)): e.tolist() for t, p, e in zip(arrays["pred_target"], arrays["pred_position"], arrays["pred_experts"], strict=True)}
+    return {(int(p), int(t)): [int(x) for x, w in zip(e, ws, strict=True) if w >= gate]
+            for t, p, e, ws in zip(arrays["pred_target"], arrays["pred_position"], arrays["pred_experts"], arrays["pred_weights"], strict=True)}
 
 
 def decode_plan(arrays, max_decode_tokens: int | None):
@@ -273,7 +287,7 @@ def row_prefetch_set(mode: str, pred, plan, i: int):
 
 def bookkeeping_pass_pf(arrays, slots: int, n_layers: int, mode: str, max_decode_tokens: int | None) -> dict:
     book = PfBook(slots, n_layers, mode)
-    pred = predicted_lookup(arrays) if mode == "pred" else {}
+    pred = predicted_lookup(arrays, mode) if mode_parts(mode)[0] == "pred" else {}
     plan = decode_plan(arrays, max_decode_tokens)
     for i, item in enumerate(plan):
         if item[0] == "P":
@@ -297,7 +311,7 @@ def reference_pass_pf(arrays, slots: int, n_layers: int, mode: str, max_decode_t
     free = list(range(slots - 1, -1, -1))
     h = hashlib.sha256()
     pending: set[tuple[int, int]] = set()
-    pred = predicted_lookup(arrays) if mode == "pred" else {}
+    pred = predicted_lookup(arrays, mode) if mode_parts(mode)[0] == "pred" else {}
     plan = decode_plan(arrays, max_decode_tokens)
     counts = {"demand": 0, "loads": 0, "covered": 0}
     chain2 = 0
@@ -389,6 +403,19 @@ def cell_defs(profile: str) -> list[dict]:
         return [{"id": "p17", "percent": 17, "slots": 40, "tokens": 6, "plan": [
             {"level": lv, "c": 0.05, "arms": ("N", "D", "O", "P0", "P0L", "P40", "N") if lv == 0 else ("N", "D", "O", "P0", "P0L", "N")}
             for lv in range(6)]}]
+    if profile == "c-smoke":
+        return [{"id": "p17", "percent": 17, "tokens": 40, "plan": [
+            {"level": 5, "c": 1.0, "arms": ("N", "D", "P0L", "G20", "O", "N")}, {"level": 4, "c": 0.3, "arms": ("N", "D", "G10", "N")}]}]
+    if profile == "c-full":                              # record N3C section 3; C = 0.3 at L4 and C = 1.0 at L5 to match stage B's baselines
+        return [{"id": "p17", "percent": 17, "tokens": DECODE_TOKENS, "plan": [
+                    {"level": 5, "c": 1.0, "arms": ("N", "D", "P0L", "G10", "G20", "O", "N")},
+                    {"level": 4, "c": 0.3, "arms": ("N", "D", "P0L", "G10", "G20", "O", "N")}]},
+                {"id": "p8", "percent": 8, "tokens": DECODE_TOKENS, "plan": [
+                    {"level": 5, "c": 1.0, "arms": ("N", "D", "P0L", "G20", "N")}]}]
+    if profile == "c-rehearsal":
+        return [{"id": "p17", "percent": 17, "slots": 40, "tokens": 6, "plan": [
+            {"level": 0, "c": 0.05, "arms": ("N", "D", "P0L", "G00", "G10", "G20", "O", "N")},      # L5 needs a CUDA graph: not on the CPU
+            {"level": 4, "c": 0.05, "arms": ("N", "P0L", "G10", "G20", "N")}]}]
     raise ValueError(f"unknown profile {profile!r}")
 
 
@@ -655,7 +682,7 @@ def run_cell(arrays, slots: int, n_layers: int, arena: OverlapArena, arm: str, *
     Levels (cumulative): 0 stage A as run; 1 no digest; 2 lean bookkeeping; 3 pre-built slot views; 4 bare (only the events
     correctness needs, no per-layer breakdown); 5 the layer as one CUDA-graph replay (when `arena.use_graph`)."""
     mode = ARM_MODE.get(arm)
-    pred = predicted_lookup(arrays) if mode == "pred" else {}
+    pred = predicted_lookup(arrays, mode) if mode and mode_parts(mode)[0] == "pred" else {}
     plan = decode_plan(arrays, max_decode_tokens)
     book = make_book(slots, n_layers, mode or "none", level) if arm != "N" else None
     instr = level < 4
@@ -669,7 +696,7 @@ def run_cell(arrays, slots: int, n_layers: int, arena: OverlapArena, arm: str, *
     pending_records: tuple | None = None                  # (parity, n, had_demand, had_pf, wall_ms, host_ms, tok) of the previous token
     parity = 0
     early = arm in ("P0", "O")                            # prefetch issued before the layer's launch
-    late_nowait = arm == "P0L"                            # after the launch, no wait
+    late_nowait = arm == "P0L" or arm in GATE_ARMS                         # after the launch, no wait
     late_wait = arm == "P40"                              # after the launch, after the first kernel through an event wait
 
     def flush(rec) -> None:
@@ -833,11 +860,11 @@ def exposed_and_hidden(walls: dict[str, float]) -> dict:
     out = {"floor_ms": floor}
     if len(n_walls) == 2:
         out["drift"] = walls["N1"] / walls["N0"] - 1.0
-    for arm in ("D", "P0", "P0L", "P40", "O"):
+    for arm in ("D", "P0", "P0L", "P40", "O", *GATE_ARMS):
         if arm in walls:
             out[f"E_{arm}"] = walls[arm] - floor
     if "E_D" in out and out["E_D"] > 0:
-        for arm in ("P0", "P0L", "P40", "O"):
+        for arm in ("P0", "P0L", "P40", "O", *GATE_ARMS):
             if f"E_{arm}" in out:
                 out[f"H_{arm}"] = 1.0 - out[f"E_{arm}"] / out["E_D"]
     return out
@@ -904,13 +931,13 @@ def group_rows(run_id: str, group_id: str, c: float, walls: dict[str, float], bu
         unit = "ms" if key.startswith(("E_", "floor")) else "fraction"
         rows.append(mf.row(run_id, arm, key, val, unit, "derived", source="p50 token wall times across arms, N controls bracketing"))
     if ed_ref and "E_D" not in eh:
-        for a in ("P0", "P0L", "P40", "O"):
+        for a in ("P0", "P0L", "P40", "O", *GATE_ARMS):
             if f"E_{a}" in eh:
                 rows.append(mf.row(run_id, arm, f"H_{a}_vs_L0_E_D", 1.0 - eh[f"E_{a}"] / ed_ref, "fraction", "derived",
                                    source="this level's exposed time against the level-0 demand exposure of the same C"))
     if "N0" in busy and "N1" in busy:
         nb = (busy["N0"] + busy["N1"]) / 2
-        for a in ("D", "P0", "P0L", "P40", "O"):
+        for a in ("D", "P0", "P0L", "P40", "O", *GATE_ARMS):
             if a in busy and nb > 0:
                 rows.append(mf.row(run_id, arm, f"compute_busy_ratio_{a}", busy[a] / nb - 1.0, "fraction", "derived",
                                    source="compute-lane busy p50 against the N controls (interference)"))
@@ -926,7 +953,7 @@ def file_sha(path) -> str:
 
 
 def cmd_plan(args) -> int:
-    for prof in ("smoke", "full", "b-smoke", "b-full"):
+    for prof in ("smoke", "full", "b-smoke", "b-full", "c-smoke", "c-full"):
         for g in cell_defs(prof):
             slots = ra.slots_for(g["percent"])
             cs = cells_of(g)
@@ -942,11 +969,12 @@ def cmd_expect(args) -> int:
         full = {k: data[k] for k in data.files if k != "segments"}
     out = {"trace_sha256": file_sha(args.trace), "record_bytes": ra.RECORD_BYTES, "n_layers": ra.trace_layer_count(trace), "cells": {}}
     seen = set()
-    for prof in ("smoke", "full"):
+    for prof in ("smoke", "full", "c-smoke", "c-full"):
         for g in cell_defs(prof):
             nl = out["n_layers"]
             slots = ra.slots_for(g["percent"])
-            for mode in sorted({ARM_MODE[a] for a in g["arms"] if a in ARM_MODE}):
+            arms = {a for e in g["plan"] for a in e["arms"]} if "plan" in g else set(g["arms"])
+            for mode in sorted({ARM_MODE[a] for a in arms if a in ARM_MODE}):
                 key = f"{g['percent']}.{g['tokens']}.{mode}"
                 if key in seen:
                     continue
@@ -956,6 +984,17 @@ def cmd_expect(args) -> int:
                 ok = ref["hash"] == mine["hash"] and ref["demand_misses"] == mine["demand_misses"] and ref["prefetch_loads"] == mine["prefetch_loads"]
                 out["cells"][key] = {"slots": slots, "hash": ref["hash"], "demand_per_token": ref["demand_per_token"],
                                      "loads_per_token": ref["loads_per_token"], "tokens": ref["tokens"], "arena_equals_reference": ok}
+                if mode_parts(mode)[1] is not None:       # gate (g): equal to the offline coverage model on the same tokens
+                    import prefetch_coverage as pcov
+
+                    cov = pcov.coverage(full, g["percent"], "pred", max_decode_tokens=g["tokens"], min_weight=mode_parts(mode)[1])
+                    gok = (abs(cov["demand_misses_per_token"] - ref["demand_per_token"]) < 1e-9
+                           and abs(cov["prefetch_loads_per_token"] - ref["loads_per_token"]) < 1e-9)
+                    out["cells"][key].update({"coverage_demand_per_token": cov["demand_misses_per_token"],
+                                              "coverage_loads_per_token": cov["prefetch_loads_per_token"], "equals_coverage_model": gok})
+                    if not gok:
+                        print(f"FAIL: gated bookkeeping {key} differs from prefetch_coverage.py", file=sys.stderr)
+                        return 4
                 print(f"{key:14s} slots={slots:5d} demand/token={ref['demand_per_token']:7.2f} loads/token={ref['loads_per_token']:7.2f} "
                       f"hash {ref['hash'][:12]} equal={ok}")
                 if not ok:
@@ -1028,6 +1067,10 @@ def run_group(arrays_full, group: dict, expected: dict | None, run_id: str, dl: 
                     else:
                         hash_ok = first["hash"] == reference_pass_pf(arrays_full, slots, nl, mode, cell["tokens"])["hash"]
                     gates["event_hash"] &= hash_ok
+                    if expected is not None and "coverage_demand_per_token" in exp:      # gate (g)
+                        gates.setdefault("coverage", True)
+                        gates["coverage"] &= (abs(first["demand_per_token"] - exp["coverage_demand_per_token"]) < 1e-9
+                                              and abs(first["loads_per_token"] - exp["coverage_loads_per_token"]) < 1e-9)
                     if not hash_ok:
                         failures.append({"cell": cell["id"], "error": "event hash differs from the Mac reference"})
                         continue
@@ -1098,14 +1141,14 @@ def cmd_run(args) -> int:
     with np.load(args.trace) as data:
         full = {k: data[k] for k in data.files if k != "segments"}
     stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
-    stage = "n3b" if args.cells.startswith("b-") else "n3a"
+    stage = "n3c" if args.cells.startswith("c-") else ("n3b" if args.cells.startswith("b-") else "n3a")
     run_id = f"{stamp}-{stage}-{args.cells}-{report['manifest_id'][:6]}"
     out = Path(args.out_dir) / run_id
     out.mkdir(parents=True, exist_ok=True)
     mf.write_json(out / "machine-manifest.json", report)
     dl = suite.Deadline(args.max_seconds)
     gates = {"event_hash": True, "determinism": True, "counts": True, "chain2": True, "readback": True, "calibration": True, "drift": True,
-             "closure": True, "sanity": True}
+             "closure": True, "sanity": True, "coverage": True}
     failures: list[dict] = []
     raw: dict = {}
     rows: list[dict] = []
@@ -1130,8 +1173,8 @@ def cmd_run(args) -> int:
     manifest = {
         "schema": mf.SCHEMA_NAME, "schema_version": mf.SCHEMA_VERSION, "platform": mf.PLATFORM, "kind": "run",
         "created_utc": mf.utc_now(), "machine_manifest_id": report["manifest_id"], "run_id": run_id,
-        "instrument": {"name": "benchmarks/cuda/overlap_arena.py", "version": "N3B-1" if stage == "n3b" else "N3A-1"}, "code": report["code"], "mode": "timing",
-        "workload": {"id": f"N3-stage{'B' if stage == 'n3b' else 'A'}-{args.cells}", "class": "N3 layer-ahead prefetch with a stand-in compute and real copies (no model)",
+        "instrument": {"name": "benchmarks/cuda/overlap_arena.py", "version": {"n3c": "N3C-1", "n3b": "N3B-1"}.get(stage, "N3A-1")}, "code": report["code"], "mode": "timing",
+        "workload": {"id": f"N3-stage{stage[-1].upper()}-{args.cells}", "class": "N3 layer-ahead prefetch with a stand-in compute and real copies (no model)",
                      "trace_sha256": expected["trace_sha256"], "record_bytes": ra.RECORD_BYTES, "source_records": ra.SOURCE_RECORDS,
                      "policy": "lru", "claims": "overlap mechanics only: exposed copy time against compute window, copy-lane saturation, interference"},
         "protocol": {"ordering": "per (level, C): N start, the arms, N end; 400 decode tokens after the same prefill; token 0 a warm-up"},
@@ -1160,7 +1203,7 @@ def main(argv=None) -> int:
     r = sub.add_parser("run")
     r.add_argument("--trace", required=True)
     r.add_argument("--expected", required=True)
-    r.add_argument("--cells", choices=("smoke", "full", "b-smoke", "b-full"), required=True)
+    r.add_argument("--cells", choices=("smoke", "full", "b-smoke", "b-full", "c-smoke", "c-full"), required=True)
     r.add_argument("--execute", action="store_true")
     r.add_argument("--max-seconds", type=float, default=1500.0)
     r.add_argument("--out-dir", default=str(Path(__file__).resolve().parents[1] / "results" / "cuda"))

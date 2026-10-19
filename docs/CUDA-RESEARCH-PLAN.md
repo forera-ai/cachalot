@@ -554,6 +554,10 @@ N3 stage B ran under `docs/CUDA-N3B-EXPERIMENT-RECORD.md` and is recorded in `do
 * **A CUDA graph removes host time (the floor's host issue 0.67 to 0.25 ms) but not wall time where the GPU is the floor** (-0.05 ms), and pays only where the host is on the critical path between layers.
 * Registered scoring: 10 held, 3 missed (B-P2, B-P4, B-P9), 0 falsified. Still open: a better or gated predictor (60 % of prefetches are wasted), fewer and larger copies, a native issue path, the V100 and AMD arms, the instance-population question.
 
+### 17.13 N3 stage C registered and built (2026-10-19)
+
+`docs/CUDA-N3C-EXPERIMENT-RECORD.md` (commit c72cea2, nine predictions, before any code) tests a router-weight gate on the recorded predictor: arms `G10` and `G20` (`P0L` with the predicted set filtered to experts whose recorded weight is at least 0.10 or 0.20) against `P0L` at 17 and 8 % resident, C = 1.0 ms (level L5) and C = 0.3 ms (level L4). Offline price (derived): a gate of 0.20 cuts copies a token 89.46 to 75.12 and the serial bound 0.365 to 0.290. Built on the Mac: the arms, 19 cells with a `D` arm per group (record section 8 erratum), gate (g) against `prefetch_coverage.py --gates`, `n3c-expected.json`, `session.sh n3csmoke|n3cfull`, `SESSION-RUNBOOK-N3C.md`, eight new tests. Never run on a GPU. Needs Hamed: a go and an RTX 5090.
+
 ## 18. Honest limits
 
 - This is a plan. No hypothesis in it has been tested; every "expected" device property is vendor-derived and unverified for the rented machine.

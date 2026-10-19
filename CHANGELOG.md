@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.66.34 (2026-10-19)
+
+HANDOFF "Start here (2026-10-19, 0.66.34)" and section 18.189; record `docs/CUDA-N3C-EXPERIMENT-RECORD.md` (nine predictions, committed first in c72cea2), plan section 17.13. Planning, instruments and tests; nothing in `src/` except the version string, nothing measured on a GPU.
+
+### Added
+- CUDA N3 stage C is registered and built on the Mac: does loading only the predicted experts whose recorded router weight is at least a threshold lift the hidden share where copies are the limit? Offline price (first 400 decode tokens, 17 % resident): a gate of 0.20 cuts copies a token 89.46 to 75.12 and the serial bound 0.365 to 0.290; 0.10 changes almost nothing; 0.30 gives up almost all prefetch. `benchmarks/cuda/overlap_arena.py` gains the arms `G10` and `G20` (`P0L` with a gated recorded set; `G00` equals `P0L` and is for the tests), the profiles `c-smoke` and `c-full` (19 cells), gate (g) (gated counts equal `prefetch_coverage.py --gates`, checked when `n3c-expected.json` is written and in every gated cell on the host), `session.sh n3csmoke|n3cfull`, `SESSION-RUNBOOK-N3C.md`. `prefetch_coverage.py` gains `--gates`. Tests: `tests/test_cuda_overlap_gate.py` (8) and a fixture update; 865 pass. The new arms have never run on a GPU.
+
+### Changed
+- `docs/CUDA-N3C-EXPERIMENT-RECORD.md` section 8 (erratum, before any run): each group also runs a `D` arm (19 cells, not 16), and C = 0.3 ms cells use level L4 to match their stage B baseline.
+
 ## 0.66.33 (2026-10-19)
 
 HANDOFF "Start here (2026-10-19, 0.66.33)" and section 18.188; results `docs/CUDA-N3B-RESULTS.md`, raw rows in `docs/cuda-results/n3b-rtx5090-2026-10-19/`. Measurement only; nothing in `src/` except the version string.

@@ -67,3 +67,11 @@ Stop and bring the files home on a failed cell, a false gate, truncation, a drif
 ## 7. Needs Hamed
 
 A go for the stage C harness build on the Mac (rehearsal tests asserting every gate) and, afterwards, an RTX 5090 instance. Housekeeping stands (delete the S1, S2, V1, N2, B1, B2, N3 and N3-B ssh configs, known_hosts files and the key; enter the N3 and N3-B billed hours in the cost file).
+
+## 8. Erratum, written 2026-10-19 while building the harness, before any instance and before any GPU run
+
+The predictions in section 4 and the design in section 3 are **not edited**; this section corrects the cell list and says which level each cell uses.
+
+* **Each (level, C) group also runs a `D` arm.** Section 3 listed `N`, `P0L`, `G0.10`, `G0.20`, `O`, `N` without `D`, but every prediction that is a hidden share (C-P2 to C-P4, C-P7) defines `H_X = 1 - E_X / E_D` within the group, so the group needs its own `E_D`. The cells are therefore 19, not 16: C = 1.0 ms at 17 % resident, level L5: `N`, `D`, `P0L`, `G0.10`, `G0.20`, `O`, `N` (7); C = 0.3 ms at 17 %, level L4: the same seven (7); 8 % resident, C = 1.0 ms, level L5: `N`, `D`, `P0L`, `G0.20`, `N` (5). The estimate is 6 to 9 minutes of cells plus qualification and calibration; the 30-minute session cap and C-P9's 15 minutes of cell time stand.
+* **C = 0.3 ms cells use level L4, not L5.** Stage B measured C = 0.3 ms only at L0 and L4, so the baseline `H_P0L` = 0.100 quoted in section 2 is an L4 number and a C = 0.3 ms graph replay was never calibrated; C = 1.0 ms cells use L5 (stage B baseline 0.339). Both levels were the best available for their C. If the L5 graph is unavailable on the card the C = 1.0 ms group is reported as such and is not re-run at another level inside the session.
+* **Names in the harness:** the arms are `G10` and `G20` (thresholds 0.10 and 0.20); `G00` (threshold 0, equal to `P0L` event for event) exists for the Mac tests only and is not run on the card. Gate (g) is checked twice: when `n3c-expected.json` is written (the Mac refuses to write it on a mismatch) and in every gated cell on the host (gate `coverage`).

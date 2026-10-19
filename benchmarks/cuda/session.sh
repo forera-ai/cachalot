@@ -3,7 +3,7 @@
 # Run from the directory the scaffold archive was unpacked into. No sudo, no system package changes, no downloads other
 # than the pinned Python wheels named below, which `setup` shows before it installs them.
 #
-#   bash benchmarks/cuda/session.sh check|setup|doctor|smoke|baseline|s2|n2smoke|n2full|backing|hugepage|n3smoke|n3full|n3bsmoke|n3bfull|results
+#   bash benchmarks/cuda/session.sh check|setup|doctor|smoke|baseline|s2|n2smoke|n2full|backing|hugepage|n3smoke|n3full|n3bsmoke|n3bfull|n3csmoke|n3cfull|results
 #   (s2 = docs/CUDA-S2-EXPERIMENT-RECORD.md: overlap variants and batched expert copies; needs a clean smoke run first)
 set -euo pipefail
 
@@ -235,6 +235,35 @@ sys.exit(0 if ok else 1)
 EOF5
     SESSION_TAG="${SESSION_TAG:-N3B}" "$PY" "$ROOT/benchmarks/cuda/overlap_arena.py" run --trace "$TRACE" \
       --expected "$ROOT/benchmarks/cuda/n3-expected.json" --cells b-full --execute --max-seconds "${MAXS:-1500}" --region "$REGION" --note "$(SESSION_TAG="${SESSION_TAG:-N3B}" note n3bfull)"
+    ;;
+
+  n3csmoke)
+    # N3 stage C (docs/CUDA-N3C-EXPERIMENT-RECORD.md): a short GPU smoke of the gated arms (G10, G20) beside P0L at L5 and L4.
+    [ -x "$PY" ] || die "run setup first"
+    TRACE="${TRACE:-$ROOT/n3-trace.npz}"
+    [ -f "$TRACE" ] || die "trace file not found at $TRACE (scp it from the Mac, see SESSION-RUNBOOK-N3C.md)"
+    SESSION_TAG="${SESSION_TAG:-N3C}" "$PY" "$ROOT/benchmarks/cuda/overlap_arena.py" run --trace "$TRACE" \
+      --expected "$ROOT/benchmarks/cuda/n3c-expected.json" --cells c-smoke --execute --max-seconds 300 --region "$REGION" --note "$(SESSION_TAG="${SESSION_TAG:-N3C}" note n3csmoke)"
+    ;;
+
+  n3cfull)
+    # The cap is explicit and below the 1 GPU-hour session cap: MAXS=seconds overrides (default 1200).
+    [ -x "$PY" ] || die "run setup first"
+    TRACE="${TRACE:-$ROOT/n3-trace.npz}"
+    [ -f "$TRACE" ] || die "trace file not found at $TRACE"
+    run="$(latest_run n3c-c-smoke)"
+    [ -n "$run" ] || die "no n3csmoke run found: run n3csmoke first"
+    "$PY" - "$run/run-manifest.json" <<'EOF6' || die "the latest n3csmoke run is not clean: do not start n3cfull; bring the files home"
+import json, sys
+m = json.load(open(sys.argv[1]))
+g = m["gates"]
+keys = ("event_hash", "determinism", "counts", "chain2", "coverage", "readback", "calibration", "drift", "closure", "sanity")
+ok = m["status"] == "complete" and not g["failed_cells"] and all(g[k] for k in keys)
+print("n3csmoke run clean:", ok, "| status", m["status"], "| failed cells", len(g["failed_cells"]))
+sys.exit(0 if ok else 1)
+EOF6
+    SESSION_TAG="${SESSION_TAG:-N3C}" "$PY" "$ROOT/benchmarks/cuda/overlap_arena.py" run --trace "$TRACE" \
+      --expected "$ROOT/benchmarks/cuda/n3c-expected.json" --cells c-full --execute --max-seconds "${MAXS:-1200}" --region "$REGION" --note "$(SESSION_TAG="${SESSION_TAG:-N3C}" note n3cfull)"
     ;;
 
   results)

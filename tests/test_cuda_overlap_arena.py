@@ -40,7 +40,8 @@ def synth(tokens=12, prefill_tokens=3, seed=1, pf_right=3):
     return {"phase": np.array([r[0] for r in rows], np.int8), "layer": np.array([r[1] for r in rows], np.int16),
             "position": np.array([r[2] for r in rows], np.int32), "experts": np.array([r[3] for r in rows], np.int16),
             "pred_target": tgt, "pred_source": tgt - 1, "pred_position": np.array([p[1] for p in pred], np.int32),
-            "pred_experts": np.array([p[2] for p in pred], np.int16)}
+            "pred_experts": np.array([p[2] for p in pred], np.int16),
+            "pred_weights": np.tile(np.array([0.40, 0.25, 0.15, 0.10, 0.06, 0.04], np.float32), (len(pred), 1))}
 
 
 @pytest.fixture(scope="module")
@@ -381,6 +382,7 @@ def test_plan_expect_and_dry_run(tmp_path, arrays, capsys):
     exp = json.loads(out.read_text())
     assert exp["trace_sha256"] == ra.file_sha256(trace) and "17.40.pred" in exp["cells"] and "8.400.none" in exp["cells"]
     assert all(c["arena_equals_reference"] for c in exp["cells"].values())
+    assert exp["cells"]["17.400.pred@0.20"]["equals_coverage_model"] and exp["cells"]["8.400.pred@0.20"]["equals_coverage_model"]
 
 
 REAL_TRACE = ROOT / "benchmarks" / "results" / "routing-trace-deepseek-long" / "trace.npz"

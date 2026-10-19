@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-19, 0.66.34): N3 stage C (a router-weight gate on the recorded predictor) is registered and built; running it needs Hamed to create an RTX 5090
+>
+> Section 18.189, record `docs/CUDA-N3C-EXPERIMENT-RECORD.md` (nine predictions committed first in c72cea2; erratum section 8), plan section 17.13, runbook `benchmarks/cuda/SESSION-RUNBOOK-N3C.md`. **Offline price (derived, 17 % resident, first 400 decode tokens):** a gate of 0.20 on the recorded router weight cuts copies a token 89.46 to 75.12 (prefetch loads 57.43 to 39.27, wasted 34.42 to 21.78) and lowers the serial bound of the hidden share 0.365 to 0.290; 0.10 changes almost nothing; 0.30 gives up almost all prefetch. The question for the card: does the 16 % fewer copies (about 0.27 ms of host issue at 19 microseconds a copy, and less copy-lane interference) buy back more than the coverage costs, at 0.3 ms layers where stage B's predictor hid only 0.100, and not at 1 ms. Built: arms `G10`/`G20` in `overlap_arena.py`, 19 cells (about 6 to 9 minutes), gate (g), `n3c-expected.json`, `session.sh n3csmoke|n3cfull`; 865 tests pass. Never run on a GPU. **Needs Hamed:** a go and an RTX 5090 instance (check `nvidia-smi` and DNS first; a GSP-less GPU is replaced); the N3 and N3-B billed hours in the cost file; the housekeeping (delete the S1, S2, V1, N2, B1, B2, N3 and N3-B ssh configs, known_hosts files and the key).
+>
 > ## Start here (2026-10-19, 0.66.33): N3 stage B ran; about half of stage A's host term was my instrumentation, 1.35 ms (about 19 microseconds a copy of torch dispatch) remains
 >
 > Section 18.188, results `docs/CUDA-N3B-RESULTS.md` (raw in `docs/cuda-results/n3b-rtx5090-2026-10-19/`), plan section 17.12. 43 cells in 680 s on a working RTX 5090 (c = 0.194 ms, fast population), all nine gates true, 0 failed cells; the `P0L` arm, the bare level and the CUDA graph worked on their first GPU run. **Measured (C = 1.0 ms, 17 % resident):** the oracle's exposure 2.54 ms (stage A as run) to 1.35 ms (L5): digest -0.35, lean bookkeeping -0.12, views -0.10, bare events -0.18, one graph replay a layer -0.42. **Quote 1.35 ms, not 2.0 ms, as the host term;** derived: 0.96 ms of host work for 50.4 copies a token, about 19 microseconds a copy. The recorded predictor's hidden share 0.279 (L0) to 0.339 (L5), 93 % of its 0.365 bound; oracle 0.857. At C = 0.3 ms no host lever helps (0.100) and the window matters (`P40` 0.17 below `P0L`). Issue order, not window, explained stage A's `P0` against `P40` at 1 ms. The graph cut the floor's host issue time 0.67 to 0.25 ms but its wall only 0.05 ms. Scored 10 held, 3 missed (B-P2, B-P4, B-P9), 0 falsified. **Needs Hamed:** fill the N3 and N3-B billed hours (three VMs this stage, two with a GSP-less driver fault); the housekeeping (delete the S1, S2, V1, N2, B1, B2 and N3 ssh configs, known_hosts files and the key). The next GPU step needs his go.
@@ -9270,6 +9274,20 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.189 CUDA N3 stage C registered and built (0.66.34)
+
+**Goal.** Hamed: "Yes, build the N3 stage C G arm in overlap_arena.py on the Mac with rehearsal tests asserting every gate incl. gate (g), then release as 0.66.34 and push." Stage C is candidate 1 of the v238 first jobs (a predictor gate), which the session chose offline-first (Jev, one call: offline design, 1.0).
+
+**What was done.** `prefetch_coverage.py` gained `--gates` and the offline price was computed (record section 2): at 17 % resident a gate of 0.20 removes 14.3 copies a token (16 %) and 7.2 covered misses; the serial bound falls 0.365 to 0.290. The record (nine predictions with falsifiers, c72cea2) was committed before any harness code. The harness change is small because arms differ only by a mode string: `pred@t` filters the recorded set by its recorded weight in one function (`predicted_lookup`), and every consumer (bookkeeping, the independent reference, the timed cell, the expected-hash file) goes through it, so the gated arm cannot disagree with its own reference by construction of the code path, and the equality is still tested. Gate (g): the gated counts equal `prefetch_coverage.py` (written into `n3c-expected.json` and refused on a mismatch on the Mac; checked in every gated cell on the host as gate `coverage`). Tests: `tests/test_cuda_overlap_gate.py` (G00 equals `P0L` event for event; gated arena equals the reference; gate (g); profile cells; hidden-share scoring of gated arms; the real run path on the CPU with every gate asserted; gate (g) tripped on purpose) and `pred_weights` added to the synthetic fixture. 865 tests pass.
+
+**Correction found while building (record section 8).** I had left the `D` arm out of the cell list although every hidden-share prediction needs `E_D` in its group; cells are 19, not 16. C = 0.3 ms cells run at level L4 because stage B's baseline for that C is an L4 number and a graph at 0.3 ms was never calibrated. The CPU rehearsal cannot run level 5 (no CUDA graph), so the rehearsal profile uses levels 0 and 4; the L5 path runs only on the card (the stage B L5 code is unchanged).
+
+**What it means.** Nothing measured on a GPU. If the gate helps at 0.3 ms and costs at 1 ms (C-P3, C-P4), the lever is conditional on the window; if it loses at both, the weight gate closes on this card and the remaining predictor lever is coverage.
+
+**What is open / needs Hamed.** A go and an RTX 5090 instance for `n3csmoke` then `n3cfull`; billed hours for N3 and N3-B; ssh/key housekeeping. Other v238 candidates unchanged: fewer larger copies, a native issue path, ROCm, V100/L40S, instance population.
+
+**Kind.** Planning, instruments and tests. No default changed, nothing measured on a GPU.
 
 ### 18.188 CUDA N3 stage B on an RTX 5090 (0.66.33)
 

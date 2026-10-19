@@ -1,0 +1,126 @@
+{
+  "cells": {
+    "17.40.none": {
+      "arena_equals_reference": true,
+      "demand_per_token": 63.7,
+      "hash": "91cbaf21cee7ca12bc91750e963e683c83bc1cbc68a7ddd9dc1a01432c1b0a0e",
+      "loads_per_token": 0.0,
+      "slots": 2611,
+      "tokens": 40
+    },
+    "17.40.oracle": {
+      "arena_equals_reference": true,
+      "demand_per_token": 0.025,
+      "hash": "b5e77c2ae0fa8b6b70b0a20a164cb653b547f239abc5f4387b39b83d52cade40",
+      "loads_per_token": 63.7,
+      "slots": 2611,
+      "tokens": 40
+    },
+    "17.40.pred": {
+      "arena_equals_reference": true,
+      "demand_per_token": 31.85,
+      "hash": "c88fac7ab28bd7f853008d6225e0e293c12708c33f9b24e188db3d5293df3ddc",
+      "loads_per_token": 61.475,
+      "slots": 2611,
+      "tokens": 40
+    },
+    "17.40.pred@0.10": {
+      "arena_equals_reference": true,
+      "coverage_demand_per_token": 32.2,
+      "coverage_loads_per_token": 60.45,
+      "demand_per_token": 32.2,
+      "equals_coverage_model": true,
+      "hash": "62727d0af69d8bfd1d36444557c8f6b713dcc800ed94bec337f634ee209b577f",
+      "loads_per_token": 60.45,
+      "slots": 2611,
+      "tokens": 40
+    },
+    "17.40.pred@0.20": {
+      "arena_equals_reference": true,
+      "coverage_demand_per_token": 40.975,
+      "coverage_loads_per_token": 39.25,
+      "demand_per_token": 40.975,
+      "equals_coverage_model": true,
+      "hash": "dd5e305b4146ca6cf033239cc7eda75ee3bdcca88f37af040ea83a74a696738d",
+      "loads_per_token": 39.25,
+      "slots": 2611,
+      "tokens": 40
+    },
+    "17.400.none": {
+      "arena_equals_reference": true,
+      "demand_per_token": 50.445,
+      "hash": "5e1bd28c75601a683110cfae93002317b761a9f24be6a5f1ee856e4dda430550",
+      "loads_per_token": 0.0,
+      "slots": 2611,
+      "tokens": 400
+    },
+    "17.400.oracle": {
+      "arena_equals_reference": true,
+      "demand_per_token": 0.0125,
+      "hash": "5798b36fd4ce52585e595d51998203c6a6ba07a71fa3f116e7255a819ca1f5ff",
+      "loads_per_token": 50.445,
+      "slots": 2611,
+      "tokens": 400
+    },
+    "17.400.pred": {
+      "arena_equals_reference": true,
+      "demand_per_token": 32.03,
+      "hash": "07b4d8f4b02b33b9ac1f68ab9095f6ad475369da933be94bac3c0b9e35f4ad50",
+      "loads_per_token": 57.4275,
+      "slots": 2611,
+      "tokens": 400
+    },
+    "17.400.pred@0.10": {
+      "arena_equals_reference": true,
+      "coverage_demand_per_token": 31.865,
+      "coverage_loads_per_token": 56.545,
+      "demand_per_token": 31.865,
+      "equals_coverage_model": true,
+      "hash": "71916f2a16e0114391c2bad3065d1c2b5930c1ecb8235210c382edc179c5a040",
+      "loads_per_token": 56.545,
+      "slots": 2611,
+      "tokens": 400
+    },
+    "17.400.pred@0.20": {
+      "arena_equals_reference": true,
+      "coverage_demand_per_token": 35.8425,
+      "coverage_loads_per_token": 39.275,
+      "demand_per_token": 35.8425,
+      "equals_coverage_model": true,
+      "hash": "7121f6421da560a3155512ae478f49c87ce65ad4645d7dfc27eebac72547865d",
+      "loads_per_token": 39.275,
+      "slots": 2611,
+      "tokens": 400
+    },
+    "8.400.none": {
+      "arena_equals_reference": true,
+      "demand_per_token": 91.7175,
+      "hash": "57a3ea31781007b2ecfca9ffe1371725459ae9f7fc1fcbe3937a295d28a1b93a",
+      "loads_per_token": 0.0,
+      "slots": 1229,
+      "tokens": 400
+    },
+    "8.400.pred": {
+      "arena_equals_reference": true,
+      "demand_per_token": 54.4375,
+      "hash": "20681953f045f6d2de87df2a49ee6dedfba4dc0b40a5408be2046794ef70c5ea",
+      "loads_per_token": 102.3025,
+      "slots": 1229,
+      "tokens": 400
+    },
+    "8.400.pred@0.20": {
+      "arena_equals_reference": true,
+      "coverage_demand_per_token": 62.2425,
+      "coverage_loads_per_token": 72.095,
+      "demand_per_token": 62.2425,
+      "equals_coverage_model": true,
+      "hash": "7981f14bc61d7173c126f832129a99f306c9925ab0bb7e604c50892341d1dfa9",
+      "loads_per_token": 72.095,
+      "slots": 1229,
+      "tokens": 400
+    }
+  },
+  "n_layers": 40,
+  "record_bytes": 9950000,
+  "trace_sha256": "f961e9e7a8971317c662925b9ce2ea2df10fe2d3b4d077e1ffddc1335b83aa48"
+}
