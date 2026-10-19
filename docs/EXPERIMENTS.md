@@ -1,6 +1,6 @@
 # Experiment index (charter section 7.2 and section 10)
 
-Written 2026-10-09 against runtime 0.66.25; regenerate with `benchmarks/experiment_index.py`. The charter asks for "a file of experiment records whose predictions were written before the build". The records themselves live in `docs/HANDOFF.md` section 18 (each with Baseline, Prediction, Method, Result, Explanation, Limits, Kind); this file is the index: where each record is, whether it carries a written prediction, and what kind of result it is, as its own **Kind** line says. It does not restate results. Sections before 18.75 predate the record format and are not listed; sections without a **Kind** line are listed as unlabelled and have no claim made for them here.
+Written 2026-10-09 against runtime 0.66.26; regenerate with `benchmarks/experiment_index.py`. The charter asks for "a file of experiment records whose predictions were written before the build". The records themselves live in `docs/HANDOFF.md` section 18 (each with Baseline, Prediction, Method, Result, Explanation, Limits, Kind); this file is the index: where each record is, whether it carries a written prediction, and what kind of result it is, as its own **Kind** line says. It does not restate results. Sections before 18.75 predate the record format and are not listed; sections without a **Kind** line are listed as unlabelled and have no claim made for them here.
 
 Counts of the 107 sections listed (18.75-18.181): 48 research, 21 measurement, 20 unlabelled, 13 engineering, 4 planning, 1 pricing.
 

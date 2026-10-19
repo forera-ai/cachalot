@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.66.26 (2026-10-19)
+
+Documentation only; nothing in `src/` except the version string. A correction of 0.66.25's B1 reading and a registered retest.
+
+### Added
+- `docs/CUDA-HUGEPAGE-RETEST-RECORD.md`: session B2, ten predictions with falsifiers committed first (4340c15): a private mapping with huge-page advice, a populate variant, a shared-mapping control, and an allocation-context cell (smaller buffers first). Instrument not built; no instance.
+
+### Fixed
+- `docs/CUDA-BACKING-RESULTS.md` section 6 (erratum): B1's huge-page arms used a shared anonymous mapping (`mmap.mmap(-1, size)`, default `MAP_SHARED`) on a host with `shmem_enabled=never`, so the 0 of 16 does not test the guest's huge-page capability; plan 17.6 and HANDOFF 18.181 say so. The `cudaHostAlloc` results are unaffected.
+
 ## 0.66.25 (2026-10-19)
 
 HANDOFF "Start here (2026-10-19, 0.66.25)" and section 18.181; results `docs/CUDA-BACKING-RESULTS.md`, raw rows in `docs/cuda-results/b1-rtx5090-2026-10-19/`. Measurement and one instrument fix; nothing in `src/` except the version string.
