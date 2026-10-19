@@ -39,3 +39,15 @@ def test_the_oracle_covers_everything_and_wastes_nothing():
     rows = [(0, 1, [0, 1, 2, 3, 4, 5]), (1, 1, [10, 11, 12, 13, 14, 15])]
     r = pc.coverage(trace(rows), 100, "pred", oracle=True)
     assert r["demand_misses_per_token"] == 0.0 and r["wasted_loads_per_token"] == 0.0 and r["covered_per_token"] == 12.0
+
+
+def test_a_weight_gate_loads_only_predicted_experts_at_or_above_the_threshold():
+    rows = [(0, 1, [0, 1, 2, 3, 4, 5]), (1, 1, [10, 11, 12, 13, 14, 15])]
+    preds = [(1, 1, [10, 11, 12, 20, 21, 22])]                      # three right, three wrong
+    a = trace(rows, preds)
+    a["pred_weights"] = np.array([[0.4, 0.3, 0.1, 0.1, 0.05, 0.05]], np.float32)
+    ungated = pc.coverage(a, 100, "pred")
+    assert pc.coverage(a, 100, "pred", min_weight=0.0) == {**ungated, "min_weight": 0.0}
+    g = pc.coverage(a, 100, "pred", min_weight=0.3)                  # keeps experts 10 and 11, both right
+    assert g["prefetch_loads_per_token"] == 2.0 and g["covered_per_token"] == 2.0 and g["wasted_loads_per_token"] == 0.0
+    assert g["demand_misses_per_token"] == 6 + 4

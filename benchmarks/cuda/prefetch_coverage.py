@@ -36,10 +36,17 @@ def predicted_sets(arrays) -> dict[tuple[int, int], list[int]]:
     return {(int(p), int(t)): e.tolist() for t, p, e in zip(arrays["pred_target"], arrays["pred_position"], arrays["pred_experts"], strict=True)}
 
 
-def coverage(arrays, percent: float, mode: str = "pred", oracle: bool = False, max_decode_tokens: int | None = None) -> dict:
-    """`mode` 'none' disables prefetch; `oracle` replaces the recorded predicted set by the layer's real experts (an upper bound)."""
+def predicted_weights(arrays) -> dict[tuple[int, int], list[float]]:
+    return {(int(p), int(t)): w.tolist() for t, p, w in zip(arrays["pred_target"], arrays["pred_position"], arrays["pred_weights"], strict=True)}
+
+
+def coverage(arrays, percent: float, mode: str = "pred", oracle: bool = False, max_decode_tokens: int | None = None,
+             min_weight: float | None = None) -> dict:
+    """`mode` 'none' disables prefetch; `oracle` replaces the recorded predicted set by the layer's real experts (an upper bound).
+    `min_weight` gates the recorded prediction: only predicted experts whose recorded router weight is at least this are loaded."""
     base = {k: arrays[k] for k in ("phase", "layer", "position", "experts")}
     pred = predicted_sets(arrays) if mode != "none" and not oracle else {}
+    pred_w = predicted_weights(arrays) if min_weight is not None and pred else {}
     slots = ra.slots_for(percent)
     lru: OrderedDict[tuple[int, int], int] = OrderedDict()
 
@@ -70,6 +77,8 @@ def coverage(arrays, percent: float, mode: str = "pred", oracle: bool = False, m
         toks.add(tok)
         if mode != "none":
             ahead = exps if oracle else pred.get((pos, layer), [])
+            if min_weight is not None and not oracle:
+                ahead = [e for e, w in zip(ahead, pred_w.get((pos, layer), []), strict=False) if w >= min_weight]
             for e in ahead:
                 k = (layer, e)
                 if k not in lru:
@@ -88,7 +97,7 @@ def coverage(arrays, percent: float, mode: str = "pred", oracle: bool = False, m
                 touch(k)
         pending = {k for k in pending if k[0] != layer}
     n = max(1, len(toks))
-    return {"percent": percent, "mode": "oracle" if oracle else mode, "tokens": len(toks), "demand_misses_per_token": miss / n,
+    return {"percent": percent, "mode": "oracle" if oracle else mode, "min_weight": min_weight, "tokens": len(toks), "demand_misses_per_token": miss / n,
             "covered_per_token": covered / n, "prefetch_loads_per_token": loads / n, "wasted_loads_per_token": (loads - covered) / n,
             "all_loads_per_token": (loads + miss) / n}
 
@@ -98,6 +107,7 @@ def main(argv=None) -> int:
     ap.add_argument("--trace", required=True)
     ap.add_argument("--percents", default="8,12,17")
     ap.add_argument("--tokens", type=int, default=None, help="only the first N decode tokens (the N3 cells use 400)")
+    ap.add_argument("--gates", default="", help="comma list of router-weight thresholds to add as gated prediction rows")
     args = ap.parse_args(argv)
     with np.load(args.trace) as data:
         arrays = {k: data[k] for k in data.files if k != "segments"}
@@ -105,6 +115,7 @@ def main(argv=None) -> int:
     for p in (float(x) for x in args.percents.split(",")):
         out += [coverage(arrays, p, "none", max_decode_tokens=args.tokens), coverage(arrays, p, "pred", max_decode_tokens=args.tokens),
                 coverage(arrays, p, "pred", oracle=True, max_decode_tokens=args.tokens)]
+        out += [coverage(arrays, p, "pred", max_decode_tokens=args.tokens, min_weight=float(g)) for g in args.gates.split(",") if g]
     print(json.dumps(out, indent=1))
     return 0
 
