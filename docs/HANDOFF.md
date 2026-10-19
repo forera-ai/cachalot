@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-19, 0.66.27): the B2 instrument is built and rehearsed; running it needs Hamed to create an RTX 5090
+>
+> Section 18.182, record `docs/CUDA-HUGEPAGE-RETEST-RECORD.md` (10 predictions, committed first, 4340c15), `benchmarks/cuda/backing_probe.py` groups `h1` to `h7`, `session.sh hugepage`, `SESSION-RUNBOOK-B2.md`. It tests what B1 did not: a **private** mapping (B1's was shared, on a host with `shmem_enabled=never`), huge-page advice before the touch, smaps at three points, a populate variant, the shared control, and whether smaller buffers allocated first change the class of 9.95 MB `cudaHostAlloc` buffers. 39 tests in the file assert every gate for K above 1 through the real run path. **Never run on Linux or a GPU;** the first `h7` process is the smoke. **Needs Hamed:** a go and an RTX 5090 instance when the agent says it is ready; his B1 billed hours for the private cost file (not given so far); the housekeeping (delete the S1, S2, V1, N2 and B1 ssh configs, known_hosts files and the key).
+>
 > ## Start here (2026-10-19, 0.66.25): session B1 ran on an RTX 5090; the buffer's slow class is not a fixed share, and the huge-page route was not tested
 >
 > Section 18.181, results `docs/CUDA-BACKING-RESULTS.md` (rows, manifests and per-buffer samples in `docs/cuda-results/b1-rtx5090-2026-10-19/`), plan section 17.6. Four fresh processes plus a rerun of the curve. **Measured on one instance:** the first 48 pinned 9.95 MB buffers of a fresh process were all slow (0.359 ms, 27.7 GB/s), in two processes; in the curve process 9.95 MB, 14.16 MB and 21.1 MiB buffers were 31, 25 and 17 % slow and 64 MiB and larger never; the fast rate is 54.6 to 55.2 GB/s (D2H the same) from 9.95 MB up, but every buffer reads about 26.5 GB/s at 1 MiB and 27.4 to 29.1 at 3 MiB. Huge-page advice before first touch produced 0 of 16 huge-page buffers in every arm (B-P4 falsified), so B-P5, the causal test, said nothing; H-backing and H-host-side are both open. Of 15 predictions: held B-P3, 6, 7, 8, 9, 11, 13, 14 (and 15 with an exception), falsified B-P1, B-P4, B-P10 (at 3 MiB), missed narrowly B-P12, not testable B-P2 and B-P5. One instrument defect (the curve's byte check compared two buffers with the last copy's content) failed a gate in the first curve run; fixed on the Mac (4f54685), rerun clean. Nothing in `src/` but the version string. **Erratum (offline review, 0.66.26):** the instrument's `mmap.mmap(-1, size)` is a *shared* anonymous mapping and the host's `shmem_enabled` was `never`, so the zero huge pages is the expected reading of that code and B1 did not test the guest's huge-page capability (`docs/CUDA-BACKING-RESULTS.md` section 6); the retest is registered first in `docs/CUDA-HUGEPAGE-RETEST-RECORD.md` (4340c15, 10 predictions), instrument not built. **Needs Hamed:** the B1 instance is terminated (his word); its billed hours were not given (the reply carried a literal placeholder), so the private cost file's B1 line is still to be filled by him, and the housekeeping (delete the S1, S2, V1, N2 and B1 ssh configs, known_hosts files and the key); the next GPU step needs his go.
@@ -9242,6 +9246,18 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.182 Session B2 prepared (0.66.27)
+
+**Goal.** Hamed: "build the B2 instrument on the Mac with rehearsal tests that assert every gate, then tell me when it is ready for an instance."
+
+**Built.** `MmapBuffer` gains `mapping` ('shared' keeps B1's behaviour, 'private' is `MAP_PRIVATE|MAP_ANONYMOUS`), `populate` (`madvise` 23 on the registered range before the content is written) and three smaps reads; `parse_smaps` reads `ShmemPmdMapped` and `FilePmdMapped`; `host_thp()`; `private_cell`, `prefix_cell`, `rows_private_cell`, `rows_prefix`; `_run_group` takes a `small` flag so the Mac tests run the real path for every group; seven new groups, `session.sh hugepage`, the runbook.
+
+**Verified.** 39 tests in the file (24 new) and 796 in the suite; `ruff` clean. The byte check follows each buffer's own copy in every cell; flipping it trips the gate in the private, prefix, fresh, B1 and curve cells; the mapping flags are checked with a spy; populate unavailable is said and is not a failure.
+
+**Not verified.** Everything Linux-only: the real `MAP_PRIVATE` mapping and huge-page backing, `madvise` 23 (the kernel needs 5.14 or later; the B1 host runs 6.8), `ShmemPmdMapped` in a real smaps, the sysfs reads. A real smaps with those lines was never parsed here; the parser is tested on a fixture I wrote.
+
+**Kind.** Instrument and tests. No default changed, nothing measured.
 
 ### 18.181 Session B1 on an RTX 5090: the slow class moves with the allocation context, and huge pages were not obtained (0.66.25)
 

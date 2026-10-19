@@ -152,3 +152,120 @@ def test_curve_records_an_allocation_failure_and_keeps_going(bench, monkeypatch)
     rows = bp.rows_curve("r", "c", res)
     validate(rows)
     assert any(r["tag"] == "unavailable" and r["arm"].endswith(str(1 << 17)) for r in rows)
+
+
+# ---------------------------------------------------------------------------------------------- B2 (private mapping, populate, prefix)
+
+SMAPS_SHM = SMAPS.replace("THPeligible:           1", "ShmemPmdMapped:     4096 kB\nFilePmdMapped:         0 kB\nTHPeligible:           1")
+
+
+def test_parse_smaps_reads_the_shmem_and_file_pmd_fields():
+    e = bp.parse_smaps(SMAPS_SHM, 0x7F0000300000)
+    assert e["shmem_pmd_kb"] == 4096 and e["file_pmd_kb"] == 0
+    assert "shmem_pmd_kb" not in bp.parse_smaps(SMAPS, 0x7F0000300000)            # absent stays absent, B1's equality test holds
+    assert bp.shmem_fraction(e, 10 * 1024 * 1024) == pytest.approx(0.4)
+    assert bp.shmem_fraction(None, 1) is None and bp.shmem_fraction({"size_kb": 1}, 1) is None
+
+
+def test_host_thp_reads_policy_and_counters_or_none():
+    h = bp.host_thp()
+    assert set(bp.THP_FILES) <= set(h) and set(bp.MEMINFO_KEYS) <= set(h)
+
+
+def _fake_smaps(monkeypatch, make=2048, register=2048, copy=2048):             # kB; a 64 KiB buffer registers 2 MiB
+    seq = {"n": 0}
+
+    def entry(self):
+        seq["n"] += 1
+        kb = (make, register, copy)[(seq["n"] - 1) % 3]
+        return {"start": 1, "end": 2, "size_kb": 4096, "rss_kb": 4096, "anon_huge_kb": kb, "thp_eligible": 1}
+
+    monkeypatch.setattr(bp.MmapBuffer, "smaps_entry", entry)
+
+
+def test_private_cell_checks_every_buffer_and_aligns_the_smaps_points(bench, monkeypatch):
+    _fake_smaps(monkeypatch, make=2048, register=1024, copy=1024)
+    res = bench.private_cell("thp", "private", False, k=3, nbytes=1 << 16)
+    assert len(res["ms"]) == 3 and len(res["smaps"]) == 3 and res["roundtrip_ok"]
+    assert all(set(p) == {"make", "register", "copy"} for p in res["smaps"])
+    rows = bp.rows_private_cell("r", "p", res)
+    validate(rows)
+    by = {r["field"]: r["value"] for r in rows if r["tag"] != "unavailable"}
+    assert by["huge_verified_count"] == 3 and by["huge_verified_count_post_register"] == 0
+    assert by["huge_fraction_max_drop_after_register"] == pytest.approx(0.5)
+    assert {"huge_verified_slow_count", "huge_verified_ms_max", "huge_verified_ms_min"} <= set(by)
+
+
+def test_private_cell_small_page_share_and_unreadable_smaps(bench, monkeypatch):
+    _fake_smaps(monkeypatch, make=0, register=0, copy=0)
+    rows = bp.rows_private_cell("r", "p", bench.private_cell("nothp", "private", False, k=3, nbytes=1 << 16))
+    validate(rows)
+    by = {r["field"]: r["value"] for r in rows if r["tag"] != "unavailable"}
+    assert by["huge_verified_count"] == 0 and "small_page_slow_share" in by and "huge_verified_ms_max" not in by
+    monkeypatch.undo()
+    monkeypatch.setattr(bp.MmapBuffer, "smaps_entry", lambda self: None)
+    rows = bp.rows_private_cell("r", "p", bench.private_cell("default", "private", False, k=2, nbytes=1 << 16))
+    validate(rows)
+    assert any(r["field"] == "huge_fraction_median" and r["tag"] == "unavailable" for r in rows)
+
+
+def test_the_private_mapping_asks_for_map_private_and_the_shared_one_does_not(bench, monkeypatch):
+    seen = []
+    real = bp.mmap.mmap
+
+    def spy(fileno, length, *a, **kw):
+        seen.append(kw.get("flags"))
+        return real(fileno, length, *a, **kw)
+
+    monkeypatch.setattr(bp.mmap, "mmap", spy)
+    bench.private_cell("default", "private", False, k=1, nbytes=1 << 16)
+    bench.private_cell("default", "shared", False, k=1, nbytes=1 << 16)
+    assert seen[0] is not None and seen[0] & bp.mmap.MAP_PRIVATE and seen[1] is None
+
+
+def test_populate_unavailable_is_said_and_is_not_a_failure(bench, monkeypatch):
+    monkeypatch.setattr(bp, "MADV_POPULATE_WRITE", 9999)                           # an option no kernel has
+    res = bench.private_cell("thp", "private", True, k=3, nbytes=1 << 16)
+    assert res["unavailable"] and res["ms"] == []
+    rows = bp.rows_private_cell("r", "p", res)
+    validate(rows)
+    assert any(r["field"] == "populate_unavailable" for r in rows)
+
+
+def test_populate_available_path_times_every_buffer(bench, monkeypatch):
+    monkeypatch.setattr(bp, "MADV_POPULATE_WRITE", bp.mmap.MADV_NORMAL)            # an option every platform accepts
+    res = bench.private_cell("thp", "private", True, k=3, nbytes=1 << 16)
+    assert res["unavailable"] is None and len(res["ms"]) == 3 and res["roundtrip_ok"]
+
+
+def test_prefix_cell_times_every_buffer_and_checks_each_copy(bench):
+    res = bench.prefix_cell(small_sizes=(1 << 14, 1 << 15), k_small=2, k=4, nbytes=1 << 16)
+    assert len(res["ms"]) == 4 and res["roundtrip_ok"] and set(res["prefix_ms"]) == {str(1 << 14), str(1 << 15)}
+    rows = bp.rows_prefix("r", "pf", res)
+    validate(rows)
+    assert any(r["field"] == "prefix_h2d_gbps_median" for r in rows) and any(r["field"] == "slow_share" for r in rows)
+
+
+@pytest.mark.parametrize("group", list(bp.GROUPS))
+def test_every_group_runs_through_the_real_run_group_with_every_gate_true(bench, group):
+    """B1's lesson: the rehearsal must run the code path the GPU session runs, gates included, with K above 1."""
+    import suite
+    gates, failures, raw = {"roundtrip": True, "sanity": True}, [], {}
+    rows = bp._run_group(bench, group, "r", suite.Deadline(120), gates, failures, raw, small=True)
+    assert rows and gates == {"roundtrip": True, "sanity": True} and failures == []
+    validate(rows)
+
+
+@pytest.mark.parametrize("group", ["h1", "h6", "h7", "b1", "curve"])
+def test_a_failing_byte_check_trips_the_roundtrip_gate(bench, monkeypatch, group):
+    import suite
+    monkeypatch.setattr(bench, "roundtrip_ok", lambda *a, **k: False)
+    gates, failures, raw = {"roundtrip": True, "sanity": True}, [], {}
+    bp._run_group(bench, group, "r", suite.Deadline(120), gates, failures, raw, small=True)
+    assert gates["roundtrip"] is False
+
+
+def test_the_b2_groups_are_in_the_plan_and_the_dry_run(capsys):
+    assert set(bp.B2_GROUPS) <= set(bp.GROUPS)
+    assert bp.main(["plan"]) == 0 and bp.main(["run", "--cells", "h5"]) == 0
+    assert "h5" in capsys.readouterr().out

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.66.27 (2026-10-19)
+
+HANDOFF "Start here (2026-10-19, 0.66.27)" and section 18.182. Instruments, tests and documents only; nothing in `src/` except the version string. No instance, no GPU, no measurement.
+
+### Added
+- Session B2 instrument, the cells of `docs/CUDA-HUGEPAGE-RETEST-RECORD.md`: `benchmarks/cuda/backing_probe.py` groups `h1` to `h7` (private mapping with and without huge-page advice, the shared-mapping control, a populate variant, smaller-buffers-first allocation context, the fresh-process control), smaps read at three points per buffer with `ShmemPmdMapped` as well as `AnonHugePages`, `host_thp()` recording the host's policy and counters, `session.sh hugepage`, `SESSION-RUNBOOK-B2.md`.
+- 24 tests (39 in the file): every group runs through the real `_run_group` with every gate asserted and K above 1, the byte check tripping the gate for each cell type, the mapping flags (`MAP_PRIVATE` against none) checked with a spy, populate unavailable and available paths, and the smaps points aligned with the timings.
+
+### Not done, on purpose
+- The Linux-only paths have never run on Linux: `MAP_PRIVATE` mappings, `madvise(MADV_POPULATE_WRITE)`, the smaps `ShmemPmdMapped` field and the sysfs reads were tested on the Mac with spies and fakes. The first `h7` process on the instance is the smoke. No instance created.
+
 ## 0.66.26 (2026-10-19)
 
 Documentation only; nothing in `src/` except the version string. A correction of 0.66.25's B1 reading and a registered retest.

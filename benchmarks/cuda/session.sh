@@ -3,7 +3,7 @@
 # Run from the directory the scaffold archive was unpacked into. No sudo, no system package changes, no downloads other
 # than the pinned Python wheels named below, which `setup` shows before it installs them.
 #
-#   bash benchmarks/cuda/session.sh check|setup|doctor|smoke|baseline|s2|n2smoke|n2full|backing|results
+#   bash benchmarks/cuda/session.sh check|setup|doctor|smoke|baseline|s2|n2smoke|n2full|backing|hugepage|results
 #   (s2 = docs/CUDA-S2-EXPERIMENT-RECORD.md: overlap variants and batched expert copies; needs a clean smoke run first)
 set -euo pipefail
 
@@ -162,6 +162,19 @@ EOF3
       set -- $step
       "$PY" "$ROOT/benchmarks/cuda/backing_probe.py" run --cells "$1" --tag "$2" --execute --max-seconds 300 --region "$REGION" \
         --note "$(note backing-$1-$2)" || die "backing step $1 ($2) failed: stop, bring the files home"
+    done
+    ;;
+
+  hugepage)
+    # Session B2 (docs/CUDA-HUGEPAGE-RETEST-RECORD.md): seven fresh processes, in order, stopping at the first failure. h7 first
+    # (the fresh-process control and the check of this instance's buffer population), then h6, then the mapping cells h4 (the
+    # shared control), h1, h2, h3 and h5 (populate; "unavailable" is a valid outcome, not a failure).
+    [ -x "$PY" ] || die "run setup first"
+    export SESSION_TAG="${SESSION_TAG:-B2}"
+    for step in "h7 F" "h6 X" "h4 S" "h1 P" "h2 N" "h3 D" "h5 O"; do
+      set -- $step
+      "$PY" "$ROOT/benchmarks/cuda/backing_probe.py" run --cells "$1" --tag "$2" --execute --max-seconds 300 --region "$REGION" \
+        --note "$(note hugepage-$1-$2)" || die "hugepage step $1 ($2) failed: stop, bring the files home"
     done
     ;;
 
