@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.66.29 (2026-10-19)
+
+HANDOFF "Start here (2026-10-19, 0.66.29)" and section 18.184. Planning and an offline instrument; nothing in `src/` except the version string. No instance, no GPU.
+
+### Added
+- `docs/CUDA-N3-EXPERIMENT-RECORD.md` (committed first, c2305a6): CUDA N3 stage A, twelve predictions with falsifiers for layer-ahead prefetch of recorded predicted sets against demand fetch, an oracle and a late-prefetch arm, with a stand-in compute at three layer times, on the N2 arena (20 cells); copy cost quoted through the session's own qualified `c`.
+- `benchmarks/cuda/prefetch_coverage.py` and 3 tests: the offline prefetch coverage model on the recorded trace (17 % resident: demand misses a token 52.15 to 28.09, copies 52.15 to 83.59, wasted 28.09; oracle 0.01).
+
+### Not done, on purpose
+- The N3 harness is not built and no instance exists; plan section 17.8.
+
 ## 0.66.28 (2026-10-19)
 
 HANDOFF "Start here (2026-10-19, 0.66.28)" and section 18.183; results `docs/CUDA-HUGEPAGE-RETEST-RESULTS.md`, raw rows in `docs/cuda-results/b2-rtx5090-2026-10-19/`. Measurement only; nothing in `src/` except the version string.

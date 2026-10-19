@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-19, 0.66.29): CUDA N3 stage A is designed with 12 predictions committed first; the harness is not built
+>
+> Section 18.184, record `docs/CUDA-N3-EXPERIMENT-RECORD.md` (commit c2305a6), `benchmarks/cuda/prefetch_coverage.py`, plan section 17.8. Layer-ahead prefetch of the recorded predicted sets against demand fetch on the stage 1 arena with a bandwidth-bound stand-in compute (C = 0.3, 1.0, 3.0 ms a layer), an oracle and a late-prefetch arm; 20 cells; copy cost through the session's own qualified `c`. **Offline (derived):** at 17 % resident the recorded predictor cuts demand misses a token from 52.15 to 28.09 but copies rise from 52.15 to 83.59 (+60 %, 28.09 wasted); best hidden share under a serial model of the rest 0.46 (the Mac's 41 to 47 %). **Needs Hamed:** a go to build the harness on the Mac (autonomous, tests asserting every gate) and later a go and an RTX 5090 instance; the B1 and B2 hours are filled by him already (his word); the housekeeping (delete the S1, S2, V1, N2, B1 and B2 ssh configs, known_hosts files and the key).
+>
 > ## Start here (2026-10-19, 0.66.28): session B2 ran on an RTX 5090; huge pages are obtainable and every huge-page buffer was slow
 >
 > Section 18.183, results `docs/CUDA-HUGEPAGE-RETEST-RESULTS.md` (raw in `docs/cuda-results/b2-rtx5090-2026-10-19/`), plan section 17.7. Seven fresh processes, all gates true, about 8 s of GPU time. **Measured:** a private mapping with `MADV_HUGEPAGE` was 16 of 16 huge-page backed (populate variant also 16 of 16), registration kept the pages, the shared control was 0 (B1's zero confirmed as its shared mapping); **every huge-page buffer copied 9.95 MB in 0.356 to 0.362 ms (27.9 GB/s), the slow class,** slower than the small-page buffers (0.255 to 0.32 ms); `cudaHostAlloc` in a fresh process 48 of 48 slow, and smaller buffers first changed nothing (48 of 48). No cell produced the 0.182 ms class. 7 of 10 predictions held; falsified R-P5 (the causal test: H-backing as registered is not supported in this guest), R-P8, R-P9. H-host-side survives untested. **Needs Hamed:** terminate B2-2 if not yet done; fill the B1 and B2 billed hours in the private cost file; the housekeeping (delete the S1, S2, V1, N2, B1 and B2 ssh configs, known_hosts files and the key). The next GPU step needs his go.
@@ -9250,6 +9254,18 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.184 CUDA N3 stage A designed (0.66.29)
+
+**Goal.** Hamed: "stay offline and design the next CUDA step with predictions first" (after B2).
+
+**Choice.** Of the three open candidates (the V100 arm of N2 stage 1, N3, the instance-population question) I took N3: stage 1 left out compute and prefetch, so its exposed times are an upper bound on what a real decode pays, and B1/B2 closed the guest-side explanations of the copy cost, which leaves overlap as the lever with a recorded predictor behind it. The V100 arm is link-bound and predictable (about 0.84 ms a copy); the population question needs several instances and has no registered lever.
+
+**Offline.** `prefetch_coverage.py` replays the recorded predicted sets with the semantics the record fixes: at 17 % resident, demand misses 52.15 to 28.09, copies 52.15 to 83.59 (+60 %), wasted 28.09; 12 %: 69.92 to 36.06, copies 109.63; 8 %: 91.05 to 45.02, copies 140.26; oracle 0.01 to 0.04 misses. An early scratch figure of mine ("loads about equal to the baseline") was wrong (it forgot the demand misses on top of the prefetch loads); the committed script and tests give the numbers above.
+
+**Record.** 12 predictions with falsifiers, written in terms of the session's measured per-copy time `c` (B1/B2: 0.185 to 0.359 ms by instance), a copy-lane saturation prediction at C = 0.3, an oracle upper bound, a window test (P40), an interference test (CUDA-H7), an accounting-closure gate and an independent-reference equality gate.
+
+**Not done.** The harness (`overlap_arena.py`), `session.sh n3` and the runbook; no instance. **Kind.** Planning and an offline instrument. No default changed, nothing measured on a GPU.
 
 ### 18.183 Session B2 on an RTX 5090: huge pages are obtainable and are not the fast class (0.66.28)
 

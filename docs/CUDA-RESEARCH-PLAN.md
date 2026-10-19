@@ -523,6 +523,10 @@ Session B2 ran under `docs/CUDA-HUGEPAGE-RETEST-RECORD.md` and is recorded in `d
 * **Cost rule.** A pinned copy cost is a property of the buffer on that instance and has not been moved by any guest-side technique tried (allocator, page size, populate, allocation order); quote 0.185 to 0.359 ms a 9.95 MB copy as the range, with the qualified buffers named.
 * Still open: why N2's instance and B1's curve process had fast buffers; the V100 arm of N2 stage 1; N3 (copy and compute overlap, prefetch).
 
+### 17.8 N3 stage A registered (2026-10-19)
+
+`docs/CUDA-N3-EXPERIMENT-RECORD.md` (commit c2305a6, 12 predictions, before any harness code): layer-ahead prefetch of the runtime's recorded predicted sets against demand fetch, with a bandwidth-bound stand-in compute (C = 0.3, 1.0, 3.0 ms a layer), an oracle and a late-prefetch arm, on the stage 1 arena; 20 cells. Offline input (derived, `benchmarks/cuda/prefetch_coverage.py`): at 17 % resident the recorded predictor cuts demand misses a token from 52.15 to 28.09 at the cost of 83.59 copies a token (+60 %); the best hidden share under a serial model of what remains is 0.46, the Mac's 41 to 47 %. Harness not built; no instance.
+
 ## 18. Honest limits
 
 - This is a plan. No hypothesis in it has been tested; every "expected" device property is vendor-derived and unverified for the rented machine.
