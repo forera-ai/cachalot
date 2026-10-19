@@ -1,8 +1,8 @@
 # Experiment index (charter section 7.2 and section 10)
 
-Written 2026-10-09 against runtime 0.66.31; regenerate with `benchmarks/experiment_index.py`. The charter asks for "a file of experiment records whose predictions were written before the build". The records themselves live in `docs/HANDOFF.md` section 18 (each with Baseline, Prediction, Method, Result, Explanation, Limits, Kind); this file is the index: where each record is, whether it carries a written prediction, and what kind of result it is, as its own **Kind** line says. It does not restate results. Sections before 18.75 predate the record format and are not listed; sections without a **Kind** line are listed as unlabelled and have no claim made for them here.
+Written 2026-10-09 against runtime 0.66.32; regenerate with `benchmarks/experiment_index.py`. The charter asks for "a file of experiment records whose predictions were written before the build". The records themselves live in `docs/HANDOFF.md` section 18 (each with Baseline, Prediction, Method, Result, Explanation, Limits, Kind); this file is the index: where each record is, whether it carries a written prediction, and what kind of result it is, as its own **Kind** line says. It does not restate results. Sections before 18.75 predate the record format and are not listed; sections without a **Kind** line are listed as unlabelled and have no claim made for them here.
 
-Counts of the 112 sections listed (18.75-18.186): 50 research, 22 unlabelled, 21 measurement, 13 engineering, 5 planning, 1 pricing.
+Counts of the 113 sections listed (18.75-18.187): 50 research, 22 unlabelled, 21 measurement, 13 engineering, 6 planning, 1 pricing.
 
 Research means predicted, measured and explained (charter section 8.1 rule 6); a falsified prediction is still research and is marked so in its Kind line. Engineering means it works without a written prediction, or an instrument was built.
 
@@ -10,6 +10,7 @@ Research means predicted, measured and explained (charter section 8.1 rule 6); a
 
 | section | title | prediction written | kind (as recorded) |
 |---|---|:---:|---|
+| §18.187 | CUDA N3 stage B designed and built (0.66.32) | no | Planning, instruments and tests, and a correction. No default changed, nothing measured on a GPU. |
 | §18.186 | CUDA N3 stage A on an RTX 5090 (0.66.31) | no | Research (predicted, measured, explained as hypothesis): 6 held, 3 missed low, 3 falsified. No default changed. |
 | §18.185 | CUDA N3 stage A harness built and rehearsed (0.66.30) | no | Instrument and tests. No default changed, nothing measured on a GPU. |
 | §18.184 | CUDA N3 stage A designed (0.66.29) | no | Planning and an offline instrument. No default changed, nothing measured on a GPU. |

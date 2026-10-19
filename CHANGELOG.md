@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.66.32 (2026-10-19)
+
+HANDOFF "Start here (2026-10-19, 0.66.32)" and section 18.187. Planning, instruments, tests and a correction; nothing in `src/` except the version string. No instance, no GPU.
+
+### Added
+- `docs/CUDA-N3B-EXPERIMENT-RECORD.md` (committed first, d2d3a15): CUDA N3 stage B, eleven predictions with falsifiers for what the stage A host issue time is made of: six cumulative levels (digest off, lean bookkeeping, pre-built views, bare events, a CUDA graph) over the oracle, the recorded predictor and demand arms, the new `P0L` arm to separate issue order from window, 43 cells.
+- `benchmarks/cuda/overlap_arena.py`: levels `L0` to `L5` (`run_cell(level=...)`), `LeanBook`, `chain2` (a rolling integer over every demand miss and prefetch load, equal in `PfBook`, `LeanBook` and the independent reference), `P0L`, `StandIn.build_graph`, plan-based cell definitions (`b-smoke` 14 cells, `b-full` 43), `session.sh n3bsmoke|n3bfull`, `SESSION-RUNBOOK-N3B.md`.
+- 21 tests (`tests/test_cuda_overlap_levels.py`): identical decisions and slots at every level on synthetic traces and on the recorded trace, the bare level's records and stream order, the late arm's order, the pre-built views, the graph's unavailable path, every new gate tripped on purpose, the registered cell counts.
+
+### Fixed
+- `docs/CUDA-N3-RESULTS.md` section 4b (addendum): the stage A claim that about 2 ms a token is "the host's issue loop" is an upper bound that includes the harness's own digest, events and views; plan section 17.10 says so.
+
+### Not done, on purpose
+- The new GPU paths have never run on a GPU: the `P0L` arm, the bare level's reduced events, the CUDA-graph capture and calibration. The first `n3bsmoke` is their smoke. No instance created.
+
 ## 0.66.31 (2026-10-19)
 
 HANDOFF "Start here (2026-10-19, 0.66.31)" and section 18.186; results `docs/CUDA-N3-RESULTS.md`, raw rows in `docs/cuda-results/n3-rtx5090-2026-10-19/`. Measurement only; nothing in `src/` except the version string.

@@ -173,6 +173,10 @@ class RecordingArena(oa.OverlapArena):
         self.log.append(("kernel", which))
         super().compute_part(which)
 
+    def compute_layer(self):
+        self.log.append(("layer",))
+        super().compute_layer()
+
 
 def _run_logged(arrays, arm):
     arena = RecordingArena(SLOTS, 2048, rehearsal_cpu=True, n_layers=LAYERS)

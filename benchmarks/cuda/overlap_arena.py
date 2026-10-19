@@ -49,8 +49,9 @@ import manifest as mf  # noqa: E402
 import replay_arena as ra  # noqa: E402
 import suite  # noqa: E402
 
-ARMS = ("N", "D", "P0", "P40", "O")
-ARM_MODE = {"D": "none", "P0": "pred", "P40": "pred", "O": "oracle"}      # the bookkeeping each arm uses
+ARMS = ("N", "D", "P0", "P0L", "P40", "O")
+LEVELS = (0, 1, 2, 3, 4, 5)                                               # N3 stage B: see the record, section 3
+ARM_MODE = {"D": "none", "P0": "pred", "P0L": "pred", "P40": "pred", "O": "oracle"}      # the bookkeeping each arm uses
 SPLIT = 0.4                                                               # first kernel's share of a layer's compute
 DECODE_TOKENS = 400
 CALIBRATION_TOLERANCE = 0.05
@@ -63,6 +64,15 @@ HARD_CELL_SECONDS = 900
 
 
 # ------------------------------------------------------------------------------------------------ bookkeeping
+
+_MASK61 = (1 << 61) - 1
+
+
+def chain2_step(chain: int, kind: int, tok: int, layer: int, expert: int, slot: int) -> int:
+    """A rolling integer over every demand miss (kind 0) and every prefetch load (kind 1): the cheap stand-in for the event hash in
+    the lean timed loop. The same formula is used by `PfBook`, `LeanBook` and `reference_pass_pf`, so equality is a real test."""
+    return (chain * 1000003 + (((tok * 64 + layer) * 1024 + expert) * 8192 + slot) * 2 + kind) & _MASK61
+
 
 class ArenaPF(ra.ArenaLRU):
     """`ArenaLRU` plus prefetch insertion: a predicted key not resident is loaded as most recently used (evicting from the LRU end
@@ -87,13 +97,14 @@ class PfBook:
     """The record's bookkeeping with counters. `mode` is 'none' (demand only), 'pred' (recorded predicted sets) or 'oracle' (the
     next row's real experts). Per row: `prefetch` (the row's predicted set), then `demand` (its real experts), then `end_row`."""
 
-    def __init__(self, slots: int, n_layers: int, mode: str):
+    def __init__(self, slots: int, n_layers: int, mode: str, digest: bool = True):
         if mode not in ("none", "pred", "oracle"):
             raise ValueError(f"unknown mode {mode!r}")
-        self.arena, self.mode = ArenaPF(slots, n_layers), mode
+        self.arena, self.mode, self.digest = ArenaPF(slots, n_layers), mode, digest
         self.pending: set[tuple[int, int]] = set()
         self.hash = hashlib.sha256()
         self.chain = 0
+        self.chain2 = 0
         self.demand_misses = self.loads = self.covered = 0
         self.token_counts: dict[int, dict[str, int]] = {}
 
@@ -102,7 +113,8 @@ class PfBook:
 
     def prefill(self, layer: int, ordered_keys):
         hits, miss, ops, sets = self.arena.prefill_layer(layer, ordered_keys)
-        ra._digest_feed(self.hash, ("P", layer, hits, miss, ops))
+        if self.digest:
+            ra._digest_feed(self.hash, ("P", layer, hits, miss, ops))
         return sets
 
     def prefetch(self, tok: int, layer: int, experts) -> list[tuple[int, tuple[int, int]]]:
@@ -111,8 +123,10 @@ class PfBook:
         for e in experts:
             key = (layer, int(e))
             loaded, slot, ops = self.arena.prefetch(key)
-            ra._digest_feed(self.hash, ("F", tok, layer, key[1], loaded, ops))
+            if self.digest:
+                ra._digest_feed(self.hash, ("F", tok, layer, key[1], loaded, ops))
             if loaded:
+                self.chain2 = chain2_step(self.chain2, 1, tok, layer, key[1], slot)
                 out.append((slot, key))
                 self.pending.add(key)
                 self.loads += 1
@@ -128,7 +142,8 @@ class PfBook:
             hit, slot, ops = self.arena.decode_request(key)
             t["requests"] += 1
             covered = bool(hit and was_pending)
-            ra._digest_feed(self.hash, ("D", tok, layer, key[1], hit, covered, ops))
+            if self.digest:
+                ra._digest_feed(self.hash, ("D", tok, layer, key[1], hit, covered, ops))
             if covered:
                 self.covered += 1
                 t["covered"] += 1
@@ -138,6 +153,7 @@ class PfBook:
                 self.demand_misses += 1
                 t["demand"] += 1
                 self.chain = (self.chain * 1000003 + ((tok * 64 + layer) * 1024 + key[1]) * 8192 + slot) & ((1 << 61) - 1)
+                self.chain2 = chain2_step(self.chain2, 0, tok, layer, key[1], slot)
         return out
 
     def end_row(self, layer: int) -> None:
@@ -145,12 +161,84 @@ class PfBook:
 
     def summary(self) -> dict:
         n = max(1, len(self.token_counts))
-        return {"hash": self.hash.hexdigest(), "chain": self.chain, "tokens": len(self.token_counts),
+        return {"hash": self.hash.hexdigest(), "chain": self.chain, "chain2": self.chain2, "tokens": len(self.token_counts),
                 "demand_misses": self.demand_misses, "prefetch_loads": self.loads, "covered": self.covered,
                 "wasted": self.loads - self.covered, "demand_per_token": self.demand_misses / n,
                 "loads_per_token": self.loads / n, "covered_per_token": self.covered / n,
                 "wasted_per_token": (self.loads - self.covered) / n,
                 "token_demand": [self.token_counts[t]["demand"] for t in sorted(self.token_counts)]}
+
+
+class LeanBook:
+    """The lean timed-loop bookkeeping of stage B (`L2` and above): the same LRU decisions and slot assignments as `PfBook`, with no
+    digest, no per-event tuples and no per-token dictionaries; a rolling integer `chain2` stands in for the event hash."""
+
+    digest = False
+
+    def __init__(self, slots: int, n_layers: int, mode: str):
+        if mode not in ("none", "pred", "oracle"):
+            raise ValueError(f"unknown mode {mode!r}")
+        self.arena, self.mode = ArenaPF(slots, n_layers), mode
+        self.pending: set[tuple[int, int]] = set()
+        self.chain2 = 0
+        self.demand_misses = self.loads = self.covered = self.tokens = 0
+        self._last_tok = None
+
+    def prefill(self, layer: int, ordered_keys):
+        return self.arena.prefill_layer(layer, ordered_keys)[3]
+
+    def prefetch(self, tok: int, layer: int, experts) -> list[tuple[int, tuple[int, int]]]:
+        lru, free, slots, pending = self.arena.lru, self.arena.free, self.arena.slots, self.pending
+        out, c = [], self.chain2
+        for e in experts:
+            key = (layer, e)
+            if key in lru:
+                continue
+            while len(lru) >= slots:
+                free.append(lru.pop(next(iter(lru))))
+            slot = free.pop()
+            lru[key] = slot
+            pending.add(key)
+            out.append((slot, key))
+            c = (c * 1000003 + (((tok * 64 + layer) * 1024 + e) * 8192 + slot) * 2 + 1) & _MASK61
+        self.chain2 = c
+        self.loads += len(out)
+        return out
+
+    def demand(self, tok: int, layer: int, experts) -> list[tuple[int, tuple[int, int]]]:
+        if tok != self._last_tok:
+            self._last_tok = tok
+            self.tokens += 1
+        lru, free, slots, pending = self.arena.lru, self.arena.free, self.arena.slots, self.pending
+        out, c = [], self.chain2
+        for e in experts:
+            key = (layer, e)
+            if key in lru:
+                if key in pending:
+                    self.covered += 1
+                    pending.discard(key)
+                lru.move_to_end(key)
+                continue
+            while len(lru) >= slots:
+                free.append(lru.pop(next(iter(lru))))
+            slot = free.pop()
+            lru[key] = slot
+            out.append((slot, key))
+            c = (c * 1000003 + (((tok * 64 + layer) * 1024 + e) * 8192 + slot) * 2) & _MASK61
+        self.chain2 = c
+        self.demand_misses += len(out)
+        return out
+
+    def end_row(self, layer: int) -> None:
+        if self.pending:
+            self.pending = {k for k in self.pending if k[0] != layer}
+
+    def summary(self) -> dict:
+        n = max(1, self.tokens)
+        return {"hash": None, "chain": None, "chain2": self.chain2, "tokens": self.tokens, "demand_misses": self.demand_misses,
+                "prefetch_loads": self.loads, "covered": self.covered, "wasted": self.loads - self.covered,
+                "demand_per_token": self.demand_misses / n, "loads_per_token": self.loads / n, "covered_per_token": self.covered / n,
+                "wasted_per_token": (self.loads - self.covered) / n}
 
 
 def predicted_lookup(arrays) -> dict[tuple[int, int], list[int]]:
@@ -212,6 +300,7 @@ def reference_pass_pf(arrays, slots: int, n_layers: int, mode: str, max_decode_t
     pred = predicted_lookup(arrays) if mode == "pred" else {}
     plan = decode_plan(arrays, max_decode_tokens)
     counts = {"demand": 0, "loads": 0, "covered": 0}
+    chain2 = 0
     toks: set[int] = set()
 
     def load(key):
@@ -220,9 +309,10 @@ def reference_pass_pf(arrays, slots: int, n_layers: int, mode: str, max_decode_t
             victim = next(iter(lru))
             free.append(lru.pop(victim))
             ops.append((0, victim[0], victim[1]))
-        lru[key] = free.pop()
+        slot = free.pop()
+        lru[key] = slot
         ops.append((1, key[0], key[1]))
-        return tuple(ops)
+        return tuple(ops), slot
 
     synced = False
     for i, item in enumerate(plan):
@@ -242,11 +332,12 @@ def reference_pass_pf(arrays, slots: int, n_layers: int, mode: str, max_decode_t
         for e in ahead or []:
             key = (layer, int(e))
             loaded = key not in lru
-            ops = load(key) if loaded else ()
+            ops, slot = load(key) if loaded else ((), -1)
             ra._digest_feed(h, ("F", tok, layer, key[1], loaded, ops))
             if loaded:
                 pending.add(key)
                 counts["loads"] += 1
+                chain2 = chain2_step(chain2, 1, tok, layer, key[1], slot)
         for e in experts:
             key = (layer, int(e))
             hit = key in lru
@@ -255,15 +346,16 @@ def reference_pass_pf(arrays, slots: int, n_layers: int, mode: str, max_decode_t
                 lru.move_to_end(key)
                 ops = ()
             else:
-                ops = load(key)
+                ops, slot = load(key)
                 counts["demand"] += 1
+                chain2 = chain2_step(chain2, 0, tok, layer, key[1], slot)
             ra._digest_feed(h, ("D", tok, layer, key[1], hit, covered, ops))
             if covered:
                 counts["covered"] += 1
                 pending.discard(key)
         pending = {k for k in pending if k[0] != layer}
     n = max(1, len(toks))
-    return {"hash": h.hexdigest(), "tokens": len(toks), "demand_misses": counts["demand"], "prefetch_loads": counts["loads"],
+    return {"hash": h.hexdigest(), "chain2": chain2, "tokens": len(toks), "demand_misses": counts["demand"], "prefetch_loads": counts["loads"],
             "covered": counts["covered"], "wasted": counts["loads"] - counts["covered"], "demand_per_token": counts["demand"] / n,
             "loads_per_token": counts["loads"] / n}
 
@@ -280,17 +372,41 @@ def cell_defs(profile: str) -> list[dict]:
                 {"id": "p8", "percent": 8, "tokens": DECODE_TOKENS, "c_values": (1.0,), "arms": ("N", "D", "P0", "N")}]
     if profile == "rehearsal":
         return [{"id": "p17", "percent": 17, "slots": 40, "tokens": 6, "c_values": (0.05,), "arms": ("N", "D", "P0", "P40", "O", "N")}]
+    if profile == "b-smoke":
+        return [{"id": "p17", "percent": 17, "tokens": 40, "plan": [
+            {"level": 0, "c": 1.0, "arms": ("N", "D", "O", "P0L", "N")}, {"level": 3, "c": 1.0, "arms": ("N", "O", "N")},
+            {"level": 4, "c": 1.0, "arms": ("N", "O", "N")}, {"level": 5, "c": 1.0, "arms": ("N", "O", "N")}]}]
+    if profile == "b-full":
+        return [{"id": "p17", "percent": 17, "tokens": DECODE_TOKENS, "plan": [
+            {"level": 0, "c": 1.0, "arms": ("N", "D", "O", "P0", "P0L", "P40", "N")},
+            {"level": 1, "c": 1.0, "arms": ("N", "O", "P0L", "N")}, {"level": 2, "c": 1.0, "arms": ("N", "O", "P0L", "N")},
+            {"level": 3, "c": 1.0, "arms": ("N", "O", "P0L", "N")},
+            {"level": 4, "c": 1.0, "arms": ("N", "D", "O", "P0", "P0L", "N")},
+            {"level": 5, "c": 1.0, "arms": ("N", "D", "O", "P0L", "N")},
+            {"level": 0, "c": 0.3, "arms": ("N", "D", "O", "P0", "P0L", "P40", "N")},
+            {"level": 4, "c": 0.3, "arms": ("N", "D", "O", "P0", "P0L", "N")}]}]
+    if profile == "b-rehearsal":
+        return [{"id": "p17", "percent": 17, "slots": 40, "tokens": 6, "plan": [
+            {"level": lv, "c": 0.05, "arms": ("N", "D", "O", "P0", "P0L", "P40", "N") if lv == 0 else ("N", "D", "O", "P0", "P0L", "N")}
+            for lv in range(6)]}]
     raise ValueError(f"unknown profile {profile!r}")
 
 
 def cells_of(group: dict) -> list[dict]:
     """One entry per (C, arm) in run order; the first and last `N` of a C are its start and end controls."""
     out = []
+    if "plan" in group:                                    # stage B: levels
+        for entry in group["plan"]:
+            for pos, arm in enumerate(entry["arms"]):
+                role = "N0" if (arm == "N" and pos == 0) else ("N1" if arm == "N" else arm)
+                out.append({"id": f"{group['id']}.L{entry['level']}.C{entry['c']}.{role}", "group": group["id"], "percent": group["percent"],
+                            "tokens": group["tokens"], "c": entry["c"], "arm": arm, "role": role, "level": entry["level"]})
+        return out
     for c in group["c_values"]:
         for pos, arm in enumerate(group["arms"]):
             role = "N0" if (arm == "N" and pos == 0) else ("N1" if arm == "N" else arm)
             out.append({"id": f"{group['id']}.C{c}.{role}", "group": group["id"], "percent": group["percent"], "tokens": group["tokens"],
-                        "c": c, "arm": arm, "role": role})
+                        "c": c, "arm": arm, "role": role, "level": 0})
     return out
 
 
@@ -319,6 +435,7 @@ class StandIn:
 
     def set_bytes(self, nbytes: int) -> None:
         self.w = None
+        self.graph = None                                  # a captured graph points at the old weights
         self.n = max(2, int(nbytes) // 2)
         self.w = self.t.ones(self.n, dtype=self.t.float16, device=self.device)
         self.cut = max(1, int(self.n * SPLIT))
@@ -331,6 +448,55 @@ class StandIn:
 
     def nbytes(self) -> int:
         return self.n * 2
+
+    graph = None
+    graph_error: str | None = None
+
+    def build_graph(self) -> bool:
+        """Capture the layer (both kernels) as one CUDA graph; False (with `graph_error`) when it cannot be done (always on the CPU)."""
+        self.graph = None
+        if self.rehearsal:
+            self.graph_error = "no CUDA graphs on the CPU rehearsal"
+            return False
+        try:
+            torch = self.t
+            side = torch.cuda.Stream()
+            side.wait_stream(torch.cuda.current_stream())
+            with torch.cuda.stream(side):
+                for _ in range(3):
+                    self.part1()
+                    self.part2()
+            torch.cuda.current_stream().wait_stream(side)
+            torch.cuda.synchronize()
+            g = torch.cuda.CUDAGraph()
+            with torch.cuda.graph(g):
+                self.part1()
+                self.part2()
+            self.graph, self.graph_error = g, None
+            return True
+        except Exception as exc:                                   # said, never fatal
+            self.graph, self.graph_error = None, f"{type(exc).__name__}: {str(exc)[:150]}"
+            return False
+
+    def run_layer(self) -> None:
+        if self.graph is not None:
+            self.graph.replay()
+        else:
+            self.part1()
+            self.part2()
+
+    def measure_graph(self, iters: int = 30, warm: int = 5) -> float:
+        out = []
+        a, b = self.events
+        for i in range(iters + warm):
+            self.t.cuda.synchronize()
+            a.record()
+            self.graph.replay()
+            b.record()
+            b.synchronize()
+            if i >= warm:
+                out.append(a.elapsed_time(b))
+        return sorted(out)[len(out) // 2]
 
     def measure(self, iters: int = 30, warm: int = 5) -> float:
         out = []
@@ -385,6 +551,15 @@ class OverlapArena(ra.TorchArena):
         self.tok_start = [mk(), mk()]
         self.standin = StandIn(torch, "cpu" if rehearsal_cpu else self.dev_name, rehearsal_cpu)
         self.issued_copies = 0
+        self.views = None
+        self.use_graph = False
+
+    def prepare_views(self, on: bool) -> None:
+        """Stage B level L3: the arena's slot views are made once, before timing, instead of one view per copy."""
+        if not on:
+            self.views = None
+        elif self.views is None:
+            self.views = [self._slot(i) for i in range(self.slots)]
 
     # events and streams
     def rec_compute(self, ev) -> None:
@@ -410,14 +585,28 @@ class OverlapArena(ra.TorchArena):
     def enqueue(self, loads: list[tuple[int, tuple[int, int]]]) -> None:
         """Queue real copies on the copy stream; no event, no wait."""
         ctx = contextlib.nullcontext() if self.stream is None else self.t.cuda.stream(self.stream)
+        nb = not self.rehearsal
         with ctx:
-            for slot, key in loads:
-                self._slot(slot).copy_(self.sources[ra.source_index(key)], non_blocking=not self.rehearsal)
+            if self.views is not None:
+                views, sources = self.views, self.sources
+                for slot, key in loads:
+                    views[slot].copy_(sources[(key[0] * 131 + key[1]) % ra.SOURCE_RECORDS], non_blocking=nb)
+            else:
+                for slot, key in loads:
+                    self._slot(slot).copy_(self.sources[ra.source_index(key)], non_blocking=nb)
         self.copies += len(loads)
         self.issued_copies += len(loads)
 
     def compute_part(self, which: int) -> None:
         (self.standin.part1 if which == 1 else self.standin.part2)()
+
+    def compute_layer(self) -> None:
+        """The whole layer in one call: one graph replay (L5) or both eager kernels."""
+        if self.use_graph:
+            self.standin.run_layer()
+        else:
+            self.standin.part1()
+            self.standin.part2()
 
     def sync_compute(self, ev) -> None:
         ev.synchronize()
@@ -450,23 +639,38 @@ def token_record(arena, parity: int, n: int, had_demand: list[bool], had_pf: lis
     return {"busy_ms": busy, "stall_ms": stall, "gap_ms": gap, "span_ms": busy + stall + gap, "dem_busy_ms": dem, "pf_busy_ms": pf}
 
 
-def run_cell(arrays, slots: int, n_layers: int, arena: OverlapArena, arm: str, *, max_decode_tokens: int | None = None,
+def make_book(slots: int, n_layers: int, mode: str, level: int):
+    """The bookkeeping object of a level: `L0` digest on, `L1` digest off, `L2` and above the lean book."""
+    if level >= 2:
+        return LeanBook(slots, n_layers, mode)
+    return PfBook(slots, n_layers, mode, digest=(level == 0))
+
+
+def run_cell(arrays, slots: int, n_layers: int, arena: OverlapArena, arm: str, *, level: int = 0, max_decode_tokens: int | None = None,
              readback_every: int = ra.READBACK_EVERY, deadline: suite.Deadline | None = None, seed: int = 0) -> dict:
-    """The timed replay of one arm. `N`: stand-in plus per-layer synchronization only. Otherwise the bookkeeping and copies of the
-    arm (record section 3). Prefill admissions populate the arena untimed. Token 0 is a warm-up and is excluded from the
-    timing statistics (not from the counts)."""
+    """The timed replay of one arm at one level. `N`: stand-in plus per-layer synchronization only. Otherwise the bookkeeping and
+    copies of the arm (N3 record section 3, stage B record section 3 for the levels). Prefill admissions populate the arena untimed.
+    Token 0 is a warm-up and is excluded from the timing statistics (not from the counts).
+
+    Levels (cumulative): 0 stage A as run; 1 no digest; 2 lean bookkeeping; 3 pre-built slot views; 4 bare (only the events
+    correctness needs, no per-layer breakdown); 5 the layer as one CUDA-graph replay (when `arena.use_graph`)."""
     mode = ARM_MODE.get(arm)
     pred = predicted_lookup(arrays) if mode == "pred" else {}
     plan = decode_plan(arrays, max_decode_tokens)
-    book = PfBook(slots, n_layers, mode or "none") if arm != "N" else None
+    book = make_book(slots, n_layers, mode or "none", level) if arm != "N" else None
+    instr = level < 4
+    arena.prepare_views(level >= 3)
+    arena.use_graph = level >= 5 and arena.standin.graph is not None
     tokens: list[dict] = []
     readbacks = readback_fail = 0
     next_check = readback_every
     truncated = False
-    # group the decode items by token, keeping prefill items as separators
     cur_tok = None
     pending_records: tuple | None = None                  # (parity, n, had_demand, had_pf, wall_ms, host_ms, tok) of the previous token
     parity = 0
+    early = arm in ("P0", "O")                            # prefetch issued before the layer's launch
+    late_nowait = arm == "P0L"                            # after the launch, no wait
+    late_wait = arm == "P40"                              # after the launch, after the first kernel through an event wait
 
     def flush(rec) -> None:
         par, n, hd, hp, wall, host, tok = rec
@@ -482,10 +686,10 @@ def run_cell(arrays, slots: int, n_layers: int, arena: OverlapArena, arm: str, *
         it = plan[idx]
         return book.prefetch(it[1], it[2], ahead)
 
-    items = list(range(len(plan)))
     k = 0
     started_pf = set()                                    # D items whose prefetch was already done at the previous boundary
-    while k < len(items):
+    perf = time.perf_counter
+    while k < len(plan):
         item = plan[k]
         if item[0] == "P":
             if book is not None:
@@ -497,12 +701,11 @@ def run_cell(arrays, slots: int, n_layers: int, arena: OverlapArena, arm: str, *
         if deadline is not None and tok != cur_tok and deadline.expired():
             truncated = True
             break
-        # one token: consecutive D items with this token number
         j = k
         while j < len(plan) and plan[j][0] == "D" and plan[j][1] == tok:
             j += 1
-        rows = list(range(k, j))
-        n = len(rows)
+        rows = range(k, j)
+        n = j - k
         if n > arena.n_layers:
             raise ValueError("a token has more layers than the event pool")
         ev = arena.pool[parity]
@@ -510,10 +713,11 @@ def run_cell(arrays, slots: int, n_layers: int, arena: OverlapArena, arm: str, *
         host_s = 0.0
         # no device synchronize here: a prefetch still in flight from the previous token's last boundary (arm `O` only) belongs to this
         # token's first layer and must be waited for by its compute, not hidden outside the timed span
-        w0 = time.perf_counter()
-        arena.rec_compute(arena.tok_start[parity])
+        w0 = perf()
+        if instr:
+            arena.rec_compute(arena.tok_start[parity])
         for pos, idx in enumerate(rows):
-            h0 = time.perf_counter()
+            h0 = perf()
             _, _t, layer, experts, _p = plan[idx]
             demand_loads: list = []
             pf_loads: list = []
@@ -528,36 +732,53 @@ def run_cell(arrays, slots: int, n_layers: int, arena: OverlapArena, arm: str, *
                     started_pf.add(nxt)
                 # the batch event is always recorded and waited for: it completes after every copy queued before it, so a row whose
                 # keys were all prefetched still waits for them (a stall) and never runs ahead of their arrival
-                arena.rec_copy(ev["dem_a"][pos])
+                if instr:
+                    arena.rec_copy(ev["dem_a"][pos])
                 arena.enqueue(demand_loads)
                 arena.rec_copy(ev["dem_b"][pos])
                 had_demand[pos] = True
-            if pf_loads and arm in ("P0", "O"):
-                arena.rec_copy(ev["pf_a"][pos])
+            if pf_loads and early:
+                if instr:
+                    arena.rec_copy(ev["pf_a"][pos])
                 arena.enqueue(pf_loads)
-                arena.rec_copy(ev["pf_b"][pos])
+                if instr:
+                    arena.rec_copy(ev["pf_b"][pos])
                 had_pf[pos] = True
-            arena.rec_compute(ev["pre"][pos])
+            if instr:
+                arena.rec_compute(ev["pre"][pos])
             if had_demand[pos]:
                 arena.compute_wait(ev["dem_b"][pos])
-            arena.rec_compute(ev["start"][pos])
-            arena.compute_part(1)
-            arena.rec_compute(ev["mid"][pos])
-            arena.compute_part(2)
+            if instr:
+                arena.rec_compute(ev["start"][pos])
+                arena.compute_part(1)
+                arena.rec_compute(ev["mid"][pos])
+                arena.compute_part(2)
+            else:
+                arena.compute_layer()
             arena.rec_compute(ev["end"][pos])
-            if pf_loads and arm == "P40":
+            if pf_loads and late_nowait:
+                if instr:
+                    arena.rec_copy(ev["pf_a"][pos])
+                arena.enqueue(pf_loads)
+                if instr:
+                    arena.rec_copy(ev["pf_b"][pos])
+                had_pf[pos] = True
+            elif pf_loads and late_wait:
                 arena.copy_wait(ev["mid"][pos])           # the event is recorded already: the copy stream waits for it
                 arena.rec_copy(ev["pf_a"][pos])
                 arena.enqueue(pf_loads)
                 arena.rec_copy(ev["pf_b"][pos])
                 had_pf[pos] = True
-            host_s += time.perf_counter() - h0
+            host_s += perf() - h0
             arena.sync_compute(ev["end"][pos])            # the router synchronization
-        wall = (time.perf_counter() - w0) * 1e3
-        rec = (parity, n, had_demand, had_pf, wall, host_s * 1e3, tok)
-        if pending_records is not None:
-            flush(pending_records)
-        pending_records = rec
+        wall = (perf() - w0) * 1e3
+        if instr:
+            rec = (parity, n, had_demand, had_pf, wall, host_s * 1e3, tok)
+            if pending_records is not None:
+                flush(pending_records)
+            pending_records = rec
+        else:
+            tokens.append({"wall_ms": wall, "host_ms": host_s * 1e3, "tok": tok, "bare": True})
         parity ^= 1
         cur_tok = tok
         # gate (b): outside the timed span, between tokens
@@ -580,9 +801,10 @@ def run_cell(arrays, slots: int, n_layers: int, arena: OverlapArena, arm: str, *
             if not arena.verify(slot, key):
                 readback_fail += 1
         book.arena.check_invariants()
-    return {"arm": arm, "tokens": tokens, "truncated": truncated, "readbacks": readbacks, "readback_failures": readback_fail,
-            "book": book.summary() if book is not None else None, "memory": arena.memory(), "nbytes": arena.nbytes,
-            "issued_copies": arena.issued_copies}
+    arena.use_graph = False
+    return {"arm": arm, "level": level, "tokens": tokens, "truncated": truncated, "readbacks": readbacks,
+            "readback_failures": readback_fail, "book": book.summary() if book is not None else None, "memory": arena.memory(),
+            "nbytes": arena.nbytes, "issued_copies": arena.issued_copies}
 
 
 # ------------------------------------------------------------------------------------------------ analysis
@@ -590,6 +812,8 @@ def run_cell(arrays, slots: int, n_layers: int, arena: OverlapArena, arm: str, *
 def closure(tokens: list[dict]) -> dict:
     """N3-P10: per token, |wall - GPU span| / wall where span = lead + stalls + busy; the share of tokens within tolerance."""
     use = tokens[1:] if len(tokens) > 1 else tokens
+    if use and use[0].get("bare"):                           # stage B levels 4 and 5 record no per-layer events: nothing to close
+        return {"share": None, "median_error": None, "n": 0, "ok": True, "meets_prediction": None, "bare": True}
     errs = [abs(t["wall_ms"] - t["span_ms"]) / t["wall_ms"] for t in use if t["wall_ms"] > 0]
     share = (sum(1 for e in errs if e <= CLOSURE_TOLERANCE) / len(errs)) if errs else 0.0
     return {"share": share, "median_error": sorted(errs)[len(errs) // 2] if errs else None, "n": len(errs),
@@ -609,11 +833,11 @@ def exposed_and_hidden(walls: dict[str, float]) -> dict:
     out = {"floor_ms": floor}
     if len(n_walls) == 2:
         out["drift"] = walls["N1"] / walls["N0"] - 1.0
-    for arm in ("D", "P0", "P40", "O"):
+    for arm in ("D", "P0", "P0L", "P40", "O"):
         if arm in walls:
             out[f"E_{arm}"] = walls[arm] - floor
     if "E_D" in out and out["E_D"] > 0:
-        for arm in ("P0", "P40", "O"):
+        for arm in ("P0", "P0L", "P40", "O"):
             if f"E_{arm}" in out:
                 out[f"H_{arm}"] = 1.0 - out[f"E_{arm}"] / out["E_D"]
     return out
@@ -624,6 +848,7 @@ def cell_rows(run_id: str, cell: dict, res: dict, hash_ok: bool | None, calib: d
     toks = res["tokens"][1:] if len(res["tokens"]) > 1 else res["tokens"]
     rows: list[dict] = []
     src = "cuda_events+host_monotonic"
+    bare = bool(toks) and toks[0].get("bare", False)
     if toks:
         for field, key, tag, note in (
                 ("wall_ms_token", "wall_ms", "measured", "host wall time of a token, first event to last synchronization"),
@@ -633,14 +858,23 @@ def cell_rows(run_id: str, cell: dict, res: dict, hash_ok: bool | None, calib: d
                 ("copy_busy_demand_ms_token", "dem_busy_ms", "measured", "copy lane resource time of demand batches (not a wall time)"),
                 ("copy_busy_prefetch_ms_token", "pf_busy_ms", "measured", "copy lane resource time of prefetch batches (not a wall time)"),
                 ("host_issue_ms_token", "host_ms", "measured", "host time in bookkeeping, copy issue and launch")):
+            if bare and key not in ("wall_ms", "host_ms"):
+                continue                                     # stage B levels 4 and 5 record no per-layer events
             s = suite.summarize([t[key] for t in toks], seed=1)
             rows.append(mf.row(run_id, arm, field, s["p50"], "ms", tag, source=src, n=s["n"], p50=s["p50"], p95=s["p95"],
                                ci_low=s.get("ci_low"), ci_high=s.get("ci_high"), ci_method=s.get("ci_method"), note=note))
     cl = closure(res["tokens"])
-    rows.append(mf.row(run_id, arm, "closure_share", cl["share"], "fraction", "derived", source="wall against GPU span, tolerance 5 %",
-                       n=cl["n"], note=f"median error {cl['median_error']}"))
+    if cl.get("bare"):
+        rows.append(mf.row(run_id, arm, "closure_share", None, "fraction", "unavailable", source="level 4 and above record no per-layer events",
+                           note="no closure at this level"))
+    else:
+        rows.append(mf.row(run_id, arm, "closure_share", cl["share"], "fraction", "derived", source="wall against GPU span, tolerance 5 %",
+                           n=cl["n"], note=f"median error {cl['median_error']}"))
     b = res.get("book")
     if b:
+        if b.get("chain2") is not None:
+            rows.append(mf.row(run_id, arm, "bookkeeping_chain2", float(b["chain2"] % (1 << 52)), "count", "measured",
+                               source="rolling integer over every demand miss and prefetch load, low 52 bits"))
         for field, key in (("demand_misses_per_token", "demand_per_token"), ("prefetch_loads_per_token", "loads_per_token"),
                            ("covered_per_token", "covered_per_token"), ("wasted_per_token", "wasted_per_token")):
             rows.append(mf.row(run_id, arm, field, b[key], "count", "measured", source="replay bookkeeping", n=b["tokens"]))
@@ -659,17 +893,24 @@ def cell_rows(run_id: str, cell: dict, res: dict, hash_ok: bool | None, calib: d
     return rows
 
 
-def group_rows(run_id: str, group_id: str, c: float, walls: dict[str, float], busy: dict[str, float], c_per_copy: float | None) -> list[dict]:
-    """Derived rows across arms of one (group, C): exposed time, hidden share, drift, compute interference, and the record's `c`."""
+def group_rows(run_id: str, group_id: str, c: float, walls: dict[str, float], busy: dict[str, float], c_per_copy: float | None,
+               ed_ref: float | None = None) -> list[dict]:
+    """Derived rows across arms of one (group, C): exposed time, hidden share, drift, compute interference, and the record's `c`.
+    `group_id` may carry the level (`p17.L3`). `ed_ref` is the same C's level-0 `E_D`, used for `H_*_vs_L0_E_D` where a level has no `D`."""
     eh = exposed_and_hidden(walls)
     arm = f"n3.{group_id}.C{c}"
     rows = []
     for key, val in eh.items():
         unit = "ms" if key.startswith(("E_", "floor")) else "fraction"
         rows.append(mf.row(run_id, arm, key, val, unit, "derived", source="p50 token wall times across arms, N controls bracketing"))
+    if ed_ref and "E_D" not in eh:
+        for a in ("P0", "P0L", "P40", "O"):
+            if f"E_{a}" in eh:
+                rows.append(mf.row(run_id, arm, f"H_{a}_vs_L0_E_D", 1.0 - eh[f"E_{a}"] / ed_ref, "fraction", "derived",
+                                   source="this level's exposed time against the level-0 demand exposure of the same C"))
     if "N0" in busy and "N1" in busy:
         nb = (busy["N0"] + busy["N1"]) / 2
-        for a in ("D", "P0", "P40", "O"):
+        for a in ("D", "P0", "P0L", "P40", "O"):
             if a in busy and nb > 0:
                 rows.append(mf.row(run_id, arm, f"compute_busy_ratio_{a}", busy[a] / nb - 1.0, "fraction", "derived",
                                    source="compute-lane busy p50 against the N controls (interference)"))
@@ -685,12 +926,13 @@ def file_sha(path) -> str:
 
 
 def cmd_plan(args) -> int:
-    for prof in ("smoke", "full"):
+    for prof in ("smoke", "full", "b-smoke", "b-full"):
         for g in cell_defs(prof):
             slots = ra.slots_for(g["percent"])
             cs = cells_of(g)
-            print(f"{prof:5s} {g['id']:4s} {g['percent']:2d} % slots={slots:5d} arena={slots * ra.RECORD_BYTES / 2**30:5.1f} GiB "
-                  f"tokens={g['tokens']} C={list(g['c_values'])} cells={len(cs)}: " + " ".join(c["id"].split('.', 1)[1] for c in cs))
+            cvals = sorted({c["c"] for c in cs})
+            print(f"{prof:7s} {g['id']:4s} {g['percent']:2d} % slots={slots:5d} arena={slots * ra.RECORD_BYTES / 2**30:5.1f} GiB "
+                  f"tokens={g['tokens']} C={cvals} cells={len(cs)}: " + " ".join(c["id"].split('.', 1)[1] for c in cs))
     return 0
 
 
@@ -727,7 +969,8 @@ def cmd_expect(args) -> int:
 def run_group(arrays_full, group: dict, expected: dict | None, run_id: str, dl: suite.Deadline, gates: dict, failures: list, raw: dict,
               *, rehearsal: bool = False, weight_start: int | None = None, calib_tolerance: float = CALIBRATION_TOLERANCE,
               nbytes: int = ra.RECORD_BYTES, readback_every: int = ra.READBACK_EVERY, drift_limit: float = DRIFT_LIMIT) -> tuple[list[dict], str]:
-    """Run every cell of a group in order; returns (rows, status). Used by the CLI and, with `rehearsal=True`, by the Mac tests."""
+    """Run every cell of a group in order; returns (rows, status). Used by the CLI and, with `rehearsal=True`, by the Mac tests.
+    A group with a `plan` (stage B) runs its (level, C) entries in order; otherwise stage A's C values with level 0."""
     trace = {k: arrays_full[k] for k in ("phase", "layer", "position", "experts")}
     nl = ra.trace_layer_count(trace)
     slots = group.get("slots") or ra.slots_for(group["percent"])
@@ -736,15 +979,37 @@ def run_group(arrays_full, group: dict, expected: dict | None, run_id: str, dl: 
     arena = OverlapArena(slots, nbytes, rehearsal_cpu=rehearsal, n_layers=nl)
     source_ms = arena.qualify_sources()
     c_per_copy = sorted(source_ms)[len(source_ms) // 2]
-    for c in group["c_values"]:
-        cs = [x for x in cells_of(group) if x["c"] == c]
-        start_bytes = weight_start or (256 * 2**20)
-        calib = arena.standin.calibrate(c, start_bytes, tolerance=calib_tolerance)
-        raw.setdefault("calibration", {})[f"{group['id']}.C{c}"] = calib
-        gates["calibration"] &= calib["ok"]
-        if not calib["ok"]:
-            failures.append({"cell": f"{group['id']}.C{c}", "error": f"stand-in calibration off by {calib['error']:.3f}"})
+    entries = group.get("plan") or [{"level": 0, "c": c, "arms": group["arms"]} for c in group["c_values"]]
+    calib_for: dict[float, dict] = {}
+    ed_ref: dict[float, float] = {}
+    graph_ok: dict[float, bool] = {}
+    first_cell_of_run = True
+    for entry in entries:
+        c, level = entry["c"], entry.get("level", 0)
+        label = f"{group['id']}.L{level}" if "plan" in group else group["id"]
+        if c not in calib_for:
+            calib = arena.standin.calibrate(c, weight_start or (256 * 2**20), tolerance=calib_tolerance)
+            calib_for[c] = calib
+            raw.setdefault("calibration", {})[f"{group['id']}.C{c}"] = calib
+            gates["calibration"] &= calib["ok"]
+            if not calib["ok"]:
+                failures.append({"cell": f"{group['id']}.C{c}", "error": f"stand-in calibration off by {calib['error']:.3f}"})
+        if not calib_for[c]["ok"]:
             continue
+        calib = calib_for[c]
+        if level >= 5:
+            if c not in graph_ok:
+                built = arena.standin.build_graph()
+                gc = None
+                if built:
+                    gc = calibration_result(c, arena.standin.measure_graph(), arena.standin.nbytes(), calib_tolerance)
+                graph_ok[c] = bool(built and gc and gc["ok"])
+                raw.setdefault("graph", {})[f"{group['id']}.C{c}"] = {"built": built, "error": arena.standin.graph_error, "calibration": gc}
+            if not graph_ok[c]:
+                rows.append(mf.row(run_id, f"n3.{label}.C{c}", "graph_unavailable", None, "text", "unavailable", source="CUDA graph",
+                                   note=(arena.standin.graph_error or "graph replay time outside the calibration tolerance")[:150]))
+                continue
+        cs = [x for x in cells_of(group) if x["c"] == c and x.get("level", 0) == level]
         walls: dict[str, float] = {}
         busy: dict[str, float] = {}
         for cell in cs:
@@ -754,6 +1019,7 @@ def run_group(arrays_full, group: dict, expected: dict | None, run_id: str, dl: 
             try:
                 mode = ARM_MODE.get(cell["arm"])
                 hash_ok = None
+                first = None
                 if mode is not None:
                     first = bookkeeping_pass_pf(arrays_full, slots, nl, mode, cell["tokens"])
                     if expected is not None:
@@ -766,35 +1032,47 @@ def run_group(arrays_full, group: dict, expected: dict | None, run_id: str, dl: 
                         failures.append({"cell": cell["id"], "error": "event hash differs from the Mac reference"})
                         continue
                 cap = suite.Deadline(min(HARD_CELL_SECONDS, max(1.0, dl.remaining())))
-                res = run_cell(arrays_full, slots, nl, arena, cell["arm"], max_decode_tokens=cell["tokens"], deadline=cap,
+                res = run_cell(arrays_full, slots, nl, arena, cell["arm"], level=level, max_decode_tokens=cell["tokens"], deadline=cap,
                                readback_every=readback_every)
                 if mode is not None:
                     again = bookkeeping_pass_pf(arrays_full, slots, nl, mode, cell["tokens"])
-                    gates["determinism"] &= again["hash"] == first["hash"] and (res["truncated"] or res["book"]["chain"] == first["chain"])
+                    b = res["book"]
+                    same = again["hash"] == first["hash"]
+                    if level < 2:
+                        same = same and (res["truncated"] or b["chain"] == first["chain"])
+                    gates["determinism"] &= same
                     if not res["truncated"]:
-                        gates["counts"] &= (res["book"]["demand_misses"] == first["demand_misses"]
-                                            and res["book"]["prefetch_loads"] == first["prefetch_loads"])
+                        gates["counts"] &= b["demand_misses"] == first["demand_misses"] and b["prefetch_loads"] == first["prefetch_loads"]
+                        gates.setdefault("chain2", True)
+                        gates["chain2"] &= b["chain2"] == first["chain2"]           # slot assignments equal the reference's
                 gates["readback"] &= res["readback_failures"] == 0
                 cl = closure(res["tokens"])
                 gates["closure"] &= cl["ok"]
                 if res["truncated"]:
                     status = "truncated"
-                rows += cell_rows(run_id, cell, res, hash_ok, calib, source_ms if cell["role"] == "N0" else None)
+                rows += cell_rows(run_id, cell, res, hash_ok, calib, source_ms if first_cell_of_run else None)
+                first_cell_of_run = False
                 toks = res["tokens"][1:] if len(res["tokens"]) > 1 else res["tokens"]
                 if toks:
                     walls[cell["role"]] = p50([t["wall_ms"] for t in toks])
-                    busy[cell["role"]] = p50([t["busy_ms"] for t in toks])
-                raw[cell["id"]] = {"wall_ms": [t["wall_ms"] for t in res["tokens"]], "busy_ms": [t["busy_ms"] for t in res["tokens"]],
-                                   "stall_ms": [t["stall_ms"] for t in res["tokens"]], "span_ms": [t["span_ms"] for t in res["tokens"]],
+                    if "busy_ms" in toks[0]:
+                        busy[cell["role"]] = p50([t["busy_ms"] for t in toks])
+                raw[cell["id"]] = {"wall_ms": [t["wall_ms"] for t in res["tokens"]], "host_ms": [t["host_ms"] for t in res["tokens"]],
                                    "closure": cl}
+                if res["tokens"] and "busy_ms" in res["tokens"][0]:
+                    raw[cell["id"]].update({"busy_ms": [t["busy_ms"] for t in res["tokens"]],
+                                            "stall_ms": [t["stall_ms"] for t in res["tokens"]],
+                                            "span_ms": [t["span_ms"] for t in res["tokens"]]})
             except Exception as exc:                                  # a failed cell is recorded, never hidden
                 failures.append({"cell": cell["id"], "error": f"{type(exc).__name__}: {str(exc)[:200]}"})
         eh = exposed_and_hidden(walls)
         if "drift" in eh:
             gates["drift"] &= abs(eh["drift"]) <= drift_limit
             if abs(eh["drift"]) > drift_limit:
-                failures.append({"cell": f"{group['id']}.C{c}", "error": f"N control drift {eh['drift']:.3f} above {drift_limit}"})
-        rows += group_rows(run_id, group["id"], c, walls, busy, c_per_copy)
+                failures.append({"cell": f"{label}.C{c}", "error": f"N control drift {eh['drift']:.3f} above {drift_limit}"})
+        if level == 0 and "E_D" in eh:
+            ed_ref[c] = eh["E_D"]
+        rows += group_rows(run_id, label, c, walls, busy, c_per_copy, ed_ref.get(c))
         if status == "truncated":
             break
     return rows, status
@@ -820,12 +1098,13 @@ def cmd_run(args) -> int:
     with np.load(args.trace) as data:
         full = {k: data[k] for k in data.files if k != "segments"}
     stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
-    run_id = f"{stamp}-n3a-{args.cells}-{report['manifest_id'][:6]}"
+    stage = "n3b" if args.cells.startswith("b-") else "n3a"
+    run_id = f"{stamp}-{stage}-{args.cells}-{report['manifest_id'][:6]}"
     out = Path(args.out_dir) / run_id
     out.mkdir(parents=True, exist_ok=True)
     mf.write_json(out / "machine-manifest.json", report)
     dl = suite.Deadline(args.max_seconds)
-    gates = {"event_hash": True, "determinism": True, "counts": True, "readback": True, "calibration": True, "drift": True,
+    gates = {"event_hash": True, "determinism": True, "counts": True, "chain2": True, "readback": True, "calibration": True, "drift": True,
              "closure": True, "sanity": True}
     failures: list[dict] = []
     raw: dict = {}
@@ -851,11 +1130,11 @@ def cmd_run(args) -> int:
     manifest = {
         "schema": mf.SCHEMA_NAME, "schema_version": mf.SCHEMA_VERSION, "platform": mf.PLATFORM, "kind": "run",
         "created_utc": mf.utc_now(), "machine_manifest_id": report["manifest_id"], "run_id": run_id,
-        "instrument": {"name": "benchmarks/cuda/overlap_arena.py", "version": "N3A-1"}, "code": report["code"], "mode": "timing",
-        "workload": {"id": f"N3-stageA-{args.cells}", "class": "N3 layer-ahead prefetch with a stand-in compute and real copies (no model)",
+        "instrument": {"name": "benchmarks/cuda/overlap_arena.py", "version": "N3B-1" if stage == "n3b" else "N3A-1"}, "code": report["code"], "mode": "timing",
+        "workload": {"id": f"N3-stage{'B' if stage == 'n3b' else 'A'}-{args.cells}", "class": "N3 layer-ahead prefetch with a stand-in compute and real copies (no model)",
                      "trace_sha256": expected["trace_sha256"], "record_bytes": ra.RECORD_BYTES, "source_records": ra.SOURCE_RECORDS,
                      "policy": "lru", "claims": "overlap mechanics only: exposed copy time against compute window, copy-lane saturation, interference"},
-        "protocol": {"ordering": "per C: N start, D, P0, P40, O, N end; 400 decode tokens after the same prefill; token 0 a warm-up"},
+        "protocol": {"ordering": "per (level, C): N start, the arms, N end; 400 decode tokens after the same prefill; token 0 a warm-up"},
         "limits": {"max_seconds": args.max_seconds, "hard_cell_seconds": HARD_CELL_SECONDS, "elapsed_s": round(dl.elapsed(), 3)},
         "gates": {**gates, "failed_cells": failures}, "status": status,
     }
@@ -881,7 +1160,7 @@ def main(argv=None) -> int:
     r = sub.add_parser("run")
     r.add_argument("--trace", required=True)
     r.add_argument("--expected", required=True)
-    r.add_argument("--cells", choices=("smoke", "full"), required=True)
+    r.add_argument("--cells", choices=("smoke", "full", "b-smoke", "b-full"), required=True)
     r.add_argument("--execute", action="store_true")
     r.add_argument("--max-seconds", type=float, default=1500.0)
     r.add_argument("--out-dir", default=str(Path(__file__).resolve().parents[1] / "results" / "cuda"))

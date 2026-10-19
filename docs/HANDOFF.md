@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-19, 0.66.32): N3 stage B is registered and built; its levels test whether stage A's "host issue loop" was my instrumentation; running it needs Hamed to create an RTX 5090
+>
+> Section 18.187, record `docs/CUDA-N3B-EXPERIMENT-RECORD.md` (d2d3a15, 11 predictions, committed first), `benchmarks/cuda/overlap_arena.py` (levels L0 to L5, `P0L`, `LeanBook`, `chain2`), `session.sh n3bsmoke|n3bfull`, `SESSION-RUNBOOK-N3B.md`, 57 tests in two files (every level makes the same decisions and slot assignments as the independent reference, on synthetic traces and on the recorded one). **A correction first:** stage A's "about 2 ms of the oracle's 2.5 ms is the host's issue loop" is an upper bound that includes my harness's own per-event digest, eight events a layer and a view per copy (N3 results section 4b; plan 17.10 and 17.11). Stage B removes them one at a time at C = 1.0 and 0.3 ms (43 cells, 12 to 18 minutes) and adds the `P0L` arm (prefetch issued after the launch, no wait) to separate issue order from window, the confound in stage A's `P0` against `P40`. **Never run on a GPU:** the `P0L` order, the bare level's reduced events, the CUDA-graph capture; the first `n3bsmoke` is their smoke. **Needs Hamed:** a go and an RTX 5090 (check `nvidia-smi` and the network first: the last two VMs had a missing driver and no network); the N3 billed hours (his); the housekeeping (delete the S1, S2, V1, N2, B1, B2 and N3 ssh configs, known_hosts files and the key).
+>
 > ## Start here (2026-10-19, 0.66.31): N3 stage A ran on an RTX 5090; the recorded predictor hides a quarter of the copy exposure, the host issue loop is what is left
 >
 > Section 18.186, results `docs/CUDA-N3-RESULTS.md` (raw in `docs/cuda-results/n3-rtx5090-2026-10-19/`), plan section 17.10. 22 cells in 560 s, all eight gates true, 0 failed cells; the stream code worked on its first GPU run. **Measured on a fast-population instance (c = 0.194 ms; 3 of 64 records slow), 17 % resident, 400 decode tokens, a stand-in compute:** demand-fetch exposure 9.9 to 10.1 ms a token whatever the layer time (0.3, 1, 3 ms); layer-ahead prefetch with the recorded predictor hides **0.24** of it at 1 ms and 3 ms (0.08 at 0.3 ms, where the copy lane saturates: +77 % copies, 60 % of prefetches wasted; 0.34 at 8 % resident); an oracle hides **0.75**; with the oracle, 2.5 ms of exposure remains and **2.0 ms of it is the host's issue time** between layers (Python loop); copies slow compute +0.3 to +1.1 % at 1 ms and above, +5.7 % at 0.3 ms. The late prefetch beat the early one at 1 ms and above (issue order, not window). Scored 6 held, 3 missed low (P2, P3, P5), 3 falsified (P6, P7, P11). **Needs Hamed:** fill the N3 billed hours in the private cost file (he said he will; the first N3 VM had no GPU driver, the replacement had no network until a console reboot); the housekeeping (delete the S1, S2, V1, N2, B1, B2 and N3 ssh configs, known_hosts files and the key). The next GPU step needs his go.
@@ -9262,6 +9266,18 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.187 CUDA N3 stage B designed and built (0.66.32)
+
+**Goal.** Hamed: "design N3 stage B offline: the host issue loop (batched issue, pre-built copy lists, CUDA graphs) with predictions committed first. Then build it on the Mac."
+
+**The design changed on the way.** Pricing the host loop before writing predictions (the lesson of stage A's N3-P11) showed that the 2 ms I had called "the host issue loop" contains my own instrumentation: a SHA-256 digest of every bookkeeping event inside the timed loop, eight CUDA events a layer, a tensor view per copy, two eager kernels per layer. The record therefore tests **what the host term is made of** before any claim about batched issue or graphs: cumulative levels L0 (stage A as run) to L5, so each cost is separated. Batched issue of the copies themselves is not offered: torch has no batched H2D call (the CUDA 12.8 batch memcpy API is not exposed), and a native extension needs a compiler and headers the agent cannot install without sudo; that is named in the record as outside what the stage can show.
+
+**Built.** Levels in `run_cell`; `LeanBook`; `chain2` in `PfBook`, `LeanBook` and the independent reference; pre-built slot views; a bare path with only the `dem_b` and `end` events; CUDA-graph capture with its own calibration (`graph_unavailable` is a valid outcome); the `P0L` arm; plan-based cells; `session.sh n3bsmoke|n3bfull` (explicit `MAXS`, default 1500 s); runbook. The first four tests that I wrote failed or were wrong in useful ways (the recording arena did not log the bare level's single call a layer; the views test counted the untimed populate; the rehearsal cannot build a graph, so level 5 is skipped and said), and the stage A test suite's drift limit had to be a parameter because CPU timings of microsecond kernels are noisy.
+
+**Verified.** 57 tests in the two overlap files; the b-smoke plan on the recorded trace on the CPU with every gate true; lean `chain2` equals the reference on the recorded trace for the demand, predicted and oracle arms at levels 0, 2 and 4. **Not verified:** everything CUDA.
+
+**Kind.** Planning, instruments and tests, and a correction. No default changed, nothing measured on a GPU.
 
 ### 18.186 CUDA N3 stage A on an RTX 5090 (0.66.31)
 

@@ -536,10 +536,14 @@ Session B2 ran under `docs/CUDA-HUGEPAGE-RETEST-RECORD.md` and is recorded in `d
 N3 stage A ran under `docs/CUDA-N3-EXPERIMENT-RECORD.md` and is recorded in `docs/CUDA-N3-RESULTS.md` (RTX 5090, fast-population instance, c = 0.194 ms, a stand-in compute, 17 % resident, 400 decode tokens). Consequences, written after the run:
 
 * **Overlap (CUDA-Q6):** layer-ahead prefetch with the recorded predictor hides **24 %** of the demand-fetch exposure (9.9 to 10.1 ms a token, independent of the compute window) at a layer time of 1 ms or more, 34 % at 8 % resident, and almost nothing at 0.3 ms (the copy lane saturates: +77 % copies a token, 60 % of prefetches wasted); an oracle hides **75 %**.
-* **What is left (CUDA-H8's direction):** with copies hidden (oracle), 2.5 ms of exposure remains and 2.0 ms of it is the **host's issue time** between layers (a Python loop issuing 50 to 90 copies, events and bookkeeping); it is a property of the harness, and it is the largest remaining term.
+* **What is left (CUDA-H8's direction), upper bound only:** with copies hidden (oracle), 2.5 ms of exposure remains and 2.0 ms of it is GPU idle time between layers while the host issues work; **that includes my harness's own per-event digest, per-layer events and per-copy views, not separated here** (section 17.11, results section 4b). Do not quote it as a runtime's host cost.
 * **Interference (CUDA-H7):** +0.3 to +1.1 % compute slowdown at a layer time of 1 ms or more, +5.7 % at 0.3 ms (the registered 5 % bound is at its edge there).
 * **Window against issue order:** the late prefetch (after 40 % of the layer) was better, not worse, at 1 ms and above (an issue-order effect on host latency), and worse only at 0.3 ms; the two effects were not separated.
 * Registered scoring: 6 held, 3 missed low without the falsifier firing, 3 falsified (P6, P7, P11). Still open: the V100 arm of N2 stage 1 and of N3; a native issue loop or CUDA graphs against the Python loop; a predictor gate; the instance-population question.
+
+### 17.11 N3 stage B registered and built (2026-10-19)
+
+`docs/CUDA-N3B-EXPERIMENT-RECORD.md` (commit d2d3a15, 11 predictions, before any code) tests what the stage A host term is made of with six cumulative levels (digest off, lean bookkeeping, pre-built views, bare events, one CUDA graph a layer) and separates issue order from window with a new arm (`P0L`, prefetch issued after the launch, no wait). Built on the Mac: `overlap_arena.py` levels and `P0L`, `LeanBook` and `chain2` (equal to the independent reference at every level), `session.sh n3bsmoke|n3bfull`, `SESSION-RUNBOOK-N3B.md`, 57 tests in two files. 43 cells, 12 to 18 minutes. Never run on a GPU (the `P0L` order, the bare level, the graph capture). Needs Hamed: a go and an RTX 5090.
 
 ## 18. Honest limits
 

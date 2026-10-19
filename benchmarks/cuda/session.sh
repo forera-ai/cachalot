@@ -3,7 +3,7 @@
 # Run from the directory the scaffold archive was unpacked into. No sudo, no system package changes, no downloads other
 # than the pinned Python wheels named below, which `setup` shows before it installs them.
 #
-#   bash benchmarks/cuda/session.sh check|setup|doctor|smoke|baseline|s2|n2smoke|n2full|backing|hugepage|n3smoke|n3full|results
+#   bash benchmarks/cuda/session.sh check|setup|doctor|smoke|baseline|s2|n2smoke|n2full|backing|hugepage|n3smoke|n3full|n3bsmoke|n3bfull|results
 #   (s2 = docs/CUDA-S2-EXPERIMENT-RECORD.md: overlap variants and batched expert copies; needs a clean smoke run first)
 set -euo pipefail
 
@@ -205,6 +205,36 @@ EOF4
       "$PY" "$ROOT/benchmarks/cuda/backing_probe.py" run --cells "$1" --tag "$2" --execute --max-seconds 300 --region "$REGION" \
         --note "$(note hugepage-$1-$2)" || die "hugepage step $1 ($2) failed: stop, bring the files home"
     done
+    ;;
+
+  n3bsmoke)
+    # N3 stage B (docs/CUDA-N3B-EXPERIMENT-RECORD.md): a short GPU smoke of the level code (digest off, lean book, views, bare events, the
+    # CUDA graph). Needs the trace copied to the host as for n3smoke.
+    [ -x "$PY" ] || die "run setup first"
+    TRACE="${TRACE:-$ROOT/n3-trace.npz}"
+    [ -f "$TRACE" ] || die "trace file not found at $TRACE (scp it from the Mac, see SESSION-RUNBOOK-N3B.md)"
+    SESSION_TAG="${SESSION_TAG:-N3B}" "$PY" "$ROOT/benchmarks/cuda/overlap_arena.py" run --trace "$TRACE" \
+      --expected "$ROOT/benchmarks/cuda/n3-expected.json" --cells b-smoke --execute --max-seconds 300 --region "$REGION" --note "$(SESSION_TAG="${SESSION_TAG:-N3B}" note n3bsmoke)"
+    ;;
+
+  n3bfull)
+    # The cap is explicit and below the 1 GPU-hour session cap: MAXS=seconds overrides (default 1500).
+    [ -x "$PY" ] || die "run setup first"
+    TRACE="${TRACE:-$ROOT/n3-trace.npz}"
+    [ -f "$TRACE" ] || die "trace file not found at $TRACE"
+    run="$(latest_run n3b-b-smoke)"
+    [ -n "$run" ] || die "no n3bsmoke run found: run n3bsmoke first"
+    "$PY" - "$run/run-manifest.json" <<'EOF5' || die "the latest n3bsmoke run is not clean: do not start n3bfull; bring the files home"
+import json, sys
+m = json.load(open(sys.argv[1]))
+g = m["gates"]
+keys = ("event_hash", "determinism", "counts", "chain2", "readback", "calibration", "drift", "closure", "sanity")
+ok = m["status"] == "complete" and not g["failed_cells"] and all(g[k] for k in keys)
+print("n3bsmoke run clean:", ok, "| status", m["status"], "| failed cells", len(g["failed_cells"]))
+sys.exit(0 if ok else 1)
+EOF5
+    SESSION_TAG="${SESSION_TAG:-N3B}" "$PY" "$ROOT/benchmarks/cuda/overlap_arena.py" run --trace "$TRACE" \
+      --expected "$ROOT/benchmarks/cuda/n3-expected.json" --cells b-full --execute --max-seconds "${MAXS:-1500}" --region "$REGION" --note "$(SESSION_TAG="${SESSION_TAG:-N3B}" note n3bfull)"
     ;;
 
   results)
