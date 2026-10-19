@@ -1,0 +1,559 @@
+{
+  "run": "20261019T105434Z-backing-h1-3e30f5",
+  "samples": {
+    "host_thp": {
+      "AnonHugePages": 0,
+      "HugePages_Total": 0,
+      "MemAvailable": 22737332,
+      "MemTotal": 24602608,
+      "ShmemHugePages": 0,
+      "ShmemPmdMapped": 0,
+      "defrag": "always defer defer+madvise [madvise] never",
+      "enabled": "always [madvise] never",
+      "khugepaged/defrag": "1",
+      "shmem_enabled": "always within_size advise [never] deny force"
+    },
+    "private_thp": {
+      "advice": "thp",
+      "errors": [],
+      "mapping": "private",
+      "ms": [
+        0.356208011507988,
+        0.35787200927734375,
+        0.3580159991979599,
+        0.356687992811203,
+        0.3580320030450821,
+        0.3579519987106323,
+        0.35708799958229065,
+        0.3571679890155792,
+        0.35740800201892853,
+        0.358240008354187,
+        0.3582720011472702,
+        0.35684800148010254,
+        0.35819199681282043,
+        0.35711999237537384,
+        0.35737599432468414,
+        0.35660800337791443
+      ],
+      "nbytes": 9950000,
+      "populate": false,
+      "registered": 10485760,
+      "roundtrip_ok": true,
+      "smaps": [
+        {
+          "copy": {
+            "anon_huge_kb": 10240,
+            "end": 140310225092608,
+            "file_pmd_kb": 0,
+            "rss_kb": 10240,
+            "shmem_pmd_kb": 0,
+            "size_kb": 10240,
+            "start": 140310214606848,
+            "thp_eligible": 1
+          },
+          "make": {
+            "anon_huge_kb": 10240,
+            "end": 140310225092608,
+            "file_pmd_kb": 0,
+            "rss_kb": 10240,
+            "shmem_pmd_kb": 0,
+            "size_kb": 10240,
+            "start": 140310214606848,
+            "thp_eligible": 1
+          },
+          "register": {
+            "anon_huge_kb": 10240,
+            "end": 140310225092608,
+            "file_pmd_kb": 0,
+            "rss_kb": 10240,
+            "shmem_pmd_kb": 0,
+            "size_kb": 10240,
+            "start": 140310214606848,
+            "thp_eligible": 1
+          }
+        },
+        {
+          "copy": {
+            "anon_huge_kb": 10240,
+            "end": 140309514158080,
+            "file_pmd_kb": 0,
+            "rss_kb": 10240,
+            "shmem_pmd_kb": 0,
+            "size_kb": 10240,
+            "start": 140309503672320,
+            "thp_eligible": 1
+          },
+          "make": {
+            "anon_huge_kb": 10240,
+            "end": 140309514158080,
+            "file_pmd_kb": 0,
+            "rss_kb": 10240,
+            "shmem_pmd_kb": 0,
+            "size_kb": 10240,
+            "start": 140309503672320,
+            "thp_eligible": 1
+          },
+          "register": {
+            "anon_huge_kb": 10240,
+            "end": 140309514158080,
+            "file_pmd_kb": 0,
+            "rss_kb": 10240,
+            "shmem_pmd_kb": 0,
+            "size_kb": 10240,
+            "start": 140309503672320,
+            "thp_eligible": 1
+          }
+        },
+        {
+          "copy": {
+            "anon_huge_kb": 10240,
+            "end": 140309501575168,
+            "file_pmd_kb": 0,
+            "rss_kb": 10240,
+            "shmem_pmd_kb": 0,
+            "size_kb": 10240,
+            "start": 140309491089408,
+            "thp_eligible": 1
+          },
+          "make": {
+            "anon_huge_kb": 10240,
+            "end": 140309501575168,
+            "file_pmd_kb": 0,
+            "rss_kb": 10240,
+            "shmem_pmd_kb": 0,
+            "size_kb": 10240,
+            "start": 140309491089408,
+            "thp_eligible": 1
+          },
+          "register": {
+            "anon_huge_kb": 10240,
+            "end": 140309501575168,
+            "file_pmd_kb": 0,
+            "rss_kb": 10240,
+            "shmem_pmd_kb": 0,
+            "size_kb": 10240,
+            "start": 140309491089408,
+            "thp_eligible": 1
+          }
+        },
+        {
+          "copy": {
+            "anon_huge_kb": 10240,
+            "end": 140309488992256,
+            "file_pmd_kb": 0,
+            "rss_kb": 10240,
+            "shmem_pmd_kb": 0,
+            "size_kb": 10240,
+            "start": 140309478506496,
+            "thp_eligible": 1
+          },
+          "make": {
+            "anon_huge_kb": 10240,
+            "end": 140309488992256,
+            "file_pmd_kb": 0,
+            "rss_kb": 10240,
+            "shmem_pmd_kb": 0,
+            "size_kb": 10240,
+            "start": 140309478506496,
+            "thp_eligible": 1
+          },
+          "register": {
+            "anon_huge_kb": 10240,
+            "end": 140309488992256,
+            "file_pmd_kb": 0,
+            "rss_kb": 10240,
+            "shmem_pmd_kb": 0,
+            "size_kb": 10240,
+            "start": 140309478506496,
+            "thp_eligible": 1
+          }
+        },
+        {
+          "copy": {
+            "anon_huge_kb": 10240,
+            "end": 140309398814720,
+            "file_pmd_kb": 0,
+            "rss_kb": 10240,
+            "shmem_pmd_kb": 0,
+            "size_kb": 10240,
+            "start": 140309388328960,
+            "thp_eligible": 1
+          },
+          "make": {
+            "anon_huge_kb": 10240,
+            "end": 140309398814720,
+            "file_pmd_kb": 0,
+            "rss_kb": 10240,
+            "shmem_pmd_kb": 0,
+            "size_kb": 10240,
+            "start": 140309388328960,
+            "thp_eligible": 1
+          },
+          "register": {
+            "anon_huge_kb": 10240,
+            "end": 140309398814720,
+            "file_pmd_kb": 0,
+            "rss_kb": 10240,
+            "shmem_pmd_kb": 0,
+            "size_kb": 10240,
+            "start": 140309388328960,
+            "thp_eligible": 1
+          }
+        },
+        {
+          "copy": {
+            "anon_huge_kb": 10240,
+            "end": 140309386231808,
+            "file_pmd_kb": 0,
+            "rss_kb": 10240,
+            "shmem_pmd_kb": 0,
+            "size_kb": 10240,
+            "start": 140309375746048,
+            "thp_eligible": 1
+          },
+          "make": {
+            "anon_huge_kb": 10240,
+            "end": 140309386231808,
+            "file_pmd_kb": 0,
+            "rss_kb": 10240,
+            "shmem_pmd_kb": 0,
+            "size_kb": 10240,
+            "start": 140309375746048,
+            "thp_eligible": 1
+          },
+          "register": {
+            "anon_huge_kb": 10240,
+            "end": 140309386231808,
+            "file_pmd_kb": 0,
+            "rss_kb": 10240,
+            "shmem_pmd_kb": 0,
+            "size_kb": 10240,
+            "start": 140309375746048,
+            "thp_eligible": 1
+          }
+        },
+        {
+          "copy": {
+            "anon_huge_kb": 10240,
+            "end": 140309373648896,
+            "file_pmd_kb": 0,
+            "rss_kb": 10240,
+            "shmem_pmd_kb": 0,
+            "size_kb": 10240,
+            "start": 140309363163136,
+            "thp_eligible": 1
+          },
+          "make": {
+            "anon_huge_kb": 10240,
+            "end": 140309373648896,
+            "file_pmd_kb": 0,
+            "rss_kb": 10240,
+            "shmem_pmd_kb": 0,
+            "size_kb": 10240,
+            "start": 140309363163136,
+            "thp_eligible": 1
+          },
+          "register": {
+            "anon_huge_kb": 10240,
+            "end": 140309373648896,
+            "file_pmd_kb": 0,
+            "rss_kb": 10240,
+            "shmem_pmd_kb": 0,
+            "size_kb": 10240,
+            "start": 140309363163136,
+            "thp_eligible": 1
+          }
+        },
+        {
+          "copy": {
+            "anon_huge_kb": 10240,
+            "end": 140309361065984,
+            "file_pmd_kb": 0,
+            "rss_kb": 10240,
+            "shmem_pmd_kb": 0,
+            "size_kb": 10240,
+            "start": 140309350580224,
+            "thp_eligible": 1
+          },
+          "make": {
+            "anon_huge_kb": 10240,
+            "end": 140309361065984,
+            "file_pmd_kb": 0,
+            "rss_kb": 10240,
+            "shmem_pmd_kb": 0,
+            "size_kb": 10240,
+            "start": 140309350580224,
+            "thp_eligible": 1
+          },
+          "register": {
+            "anon_huge_kb": 10240,
+            "end": 140309361065984,
+            "file_pmd_kb": 0,
+            "rss_kb": 10240,
+            "shmem_pmd_kb": 0,
+            "size_kb": 10240,
+            "start": 140309350580224,
+            "thp_eligible": 1
+          }
+        },
+        {
+          "copy": {
+            "anon_huge_kb": 10240,
+            "end": 140309348483072,
+            "file_pmd_kb": 0,
+            "rss_kb": 10240,
+            "shmem_pmd_kb": 0,
+            "size_kb": 10240,
+            "start": 140309337997312,
+            "thp_eligible": 1
+          },
+          "make": {
+            "anon_huge_kb": 10240,
+            "end": 140309348483072,
+            "file_pmd_kb": 0,
+            "rss_kb": 10240,
+            "shmem_pmd_kb": 0,
+            "size_kb": 10240,
+            "start": 140309337997312,
+            "thp_eligible": 1
+          },
+          "register": {
+            "anon_huge_kb": 10240,
+            "end": 140309348483072,
+            "file_pmd_kb": 0,
+            "rss_kb": 10240,
+            "shmem_pmd_kb": 0,
+            "size_kb": 10240,
+            "start": 140309337997312,
+            "thp_eligible": 1
+          }
+        },
+        {
+          "copy": {
+            "anon_huge_kb": 10240,
+            "end": 140309264596992,
+            "file_pmd_kb": 0,
+            "rss_kb": 10240,
+            "shmem_pmd_kb": 0,
+            "size_kb": 10240,
+            "start": 140309254111232,
+            "thp_eligible": 1
+          },
+          "make": {
+            "anon_huge_kb": 10240,
+            "end": 140309264596992,
+            "file_pmd_kb": 0,
+            "rss_kb": 10240,
+            "shmem_pmd_kb": 0,
+            "size_kb": 10240,
+            "start": 140309254111232,
+            "thp_eligible": 1
+          },
+          "register": {
+            "anon_huge_kb": 10240,
+            "end": 140309264596992,
+            "file_pmd_kb": 0,
+            "rss_kb": 10240,
+            "shmem_pmd_kb": 0,
+            "size_kb": 10240,
+            "start": 140309254111232,
+            "thp_eligible": 1
+          }
+        },
+        {
+          "copy": {
+            "anon_huge_kb": 10240,
+            "end": 140309252014080,
+            "file_pmd_kb": 0,
+            "rss_kb": 10240,
+            "shmem_pmd_kb": 0,
+            "size_kb": 10240,
+            "start": 140309241528320,
+            "thp_eligible": 1
+          },
+          "make": {
+            "anon_huge_kb": 10240,
+            "end": 140309252014080,
+            "file_pmd_kb": 0,
+            "rss_kb": 10240,
+            "shmem_pmd_kb": 0,
+            "size_kb": 10240,
+            "start": 140309241528320,
+            "thp_eligible": 1
+          },
+          "register": {
+            "anon_huge_kb": 10240,
+            "end": 140309252014080,
+            "file_pmd_kb": 0,
+            "rss_kb": 10240,
+            "shmem_pmd_kb": 0,
+            "size_kb": 10240,
+            "start": 140309241528320,
+            "thp_eligible": 1
+          }
+        },
+        {
+          "copy": {
+            "anon_huge_kb": 10240,
+            "end": 140309239431168,
+            "file_pmd_kb": 0,
+            "rss_kb": 10240,
+            "shmem_pmd_kb": 0,
+            "size_kb": 10240,
+            "start": 140309228945408,
+            "thp_eligible": 1
+          },
+          "make": {
+            "anon_huge_kb": 10240,
+            "end": 140309239431168,
+            "file_pmd_kb": 0,
+            "rss_kb": 10240,
+            "shmem_pmd_kb": 0,
+            "size_kb": 10240,
+            "start": 140309228945408,
+            "thp_eligible": 1
+          },
+          "register": {
+            "anon_huge_kb": 10240,
+            "end": 140309239431168,
+            "file_pmd_kb": 0,
+            "rss_kb": 10240,
+            "shmem_pmd_kb": 0,
+            "size_kb": 10240,
+            "start": 140309228945408,
+            "thp_eligible": 1
+          }
+        },
+        {
+          "copy": {
+            "anon_huge_kb": 10240,
+            "end": 140309226848256,
+            "file_pmd_kb": 0,
+            "rss_kb": 10240,
+            "shmem_pmd_kb": 0,
+            "size_kb": 10240,
+            "start": 140309216362496,
+            "thp_eligible": 1
+          },
+          "make": {
+            "anon_huge_kb": 10240,
+            "end": 140309226848256,
+            "file_pmd_kb": 0,
+            "rss_kb": 10240,
+            "shmem_pmd_kb": 0,
+            "size_kb": 10240,
+            "start": 140309216362496,
+            "thp_eligible": 1
+          },
+          "register": {
+            "anon_huge_kb": 10240,
+            "end": 140309226848256,
+            "file_pmd_kb": 0,
+            "rss_kb": 10240,
+            "shmem_pmd_kb": 0,
+            "size_kb": 10240,
+            "start": 140309216362496,
+            "thp_eligible": 1
+          }
+        },
+        {
+          "copy": {
+            "anon_huge_kb": 10240,
+            "end": 140309214265344,
+            "file_pmd_kb": 0,
+            "rss_kb": 10240,
+            "shmem_pmd_kb": 0,
+            "size_kb": 10240,
+            "start": 140309203779584,
+            "thp_eligible": 1
+          },
+          "make": {
+            "anon_huge_kb": 10240,
+            "end": 140309214265344,
+            "file_pmd_kb": 0,
+            "rss_kb": 10240,
+            "shmem_pmd_kb": 0,
+            "size_kb": 10240,
+            "start": 140309203779584,
+            "thp_eligible": 1
+          },
+          "register": {
+            "anon_huge_kb": 10240,
+            "end": 140309214265344,
+            "file_pmd_kb": 0,
+            "rss_kb": 10240,
+            "shmem_pmd_kb": 0,
+            "size_kb": 10240,
+            "start": 140309203779584,
+            "thp_eligible": 1
+          }
+        },
+        {
+          "copy": {
+            "anon_huge_kb": 10240,
+            "end": 140309130379264,
+            "file_pmd_kb": 0,
+            "rss_kb": 10240,
+            "shmem_pmd_kb": 0,
+            "size_kb": 10240,
+            "start": 140309119893504,
+            "thp_eligible": 1
+          },
+          "make": {
+            "anon_huge_kb": 10240,
+            "end": 140309130379264,
+            "file_pmd_kb": 0,
+            "rss_kb": 10240,
+            "shmem_pmd_kb": 0,
+            "size_kb": 10240,
+            "start": 140309119893504,
+            "thp_eligible": 1
+          },
+          "register": {
+            "anon_huge_kb": 10240,
+            "end": 140309130379264,
+            "file_pmd_kb": 0,
+            "rss_kb": 10240,
+            "shmem_pmd_kb": 0,
+            "size_kb": 10240,
+            "start": 140309119893504,
+            "thp_eligible": 1
+          }
+        },
+        {
+          "copy": {
+            "anon_huge_kb": 10240,
+            "end": 140309117796352,
+            "file_pmd_kb": 0,
+            "rss_kb": 10240,
+            "shmem_pmd_kb": 0,
+            "size_kb": 10240,
+            "start": 140309107310592,
+            "thp_eligible": 1
+          },
+          "make": {
+            "anon_huge_kb": 10240,
+            "end": 140309117796352,
+            "file_pmd_kb": 0,
+            "rss_kb": 10240,
+            "shmem_pmd_kb": 0,
+            "size_kb": 10240,
+            "start": 140309107310592,
+            "thp_eligible": 1
+          },
+          "register": {
+            "anon_huge_kb": 10240,
+            "end": 140309117796352,
+            "file_pmd_kb": 0,
+            "rss_kb": 10240,
+            "shmem_pmd_kb": 0,
+            "size_kb": 10240,
+            "start": 140309107310592,
+            "thp_eligible": 1
+          }
+        }
+      ],
+      "unavailable": null
+    }
+  }
+}

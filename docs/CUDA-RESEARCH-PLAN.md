@@ -514,6 +514,15 @@ Session B1 ran under `docs/CUDA-BACKING-EXPERIMENT-RECORD.md` and is recorded in
 * **Cost rule unchanged and strengthened:** qualify each source buffer and record the allocation context before quoting a copy cost. A pinned expert store's cost on a discrete card ranges from 0.185 to 0.359 ms a copy depending on buffers, which at 51.85 misses a token is 9.6 to 18.6 ms (derived).
 * Still open: the V100 arm of N2 stage 1; N3 (copy and compute overlap, prefetch); the huge-page retest with a private mapping (session B2, predictions registered in `docs/CUDA-HUGEPAGE-RETEST-RECORD.md`, instrument not built, needs Hamed's go and an instance).
 
+### 17.7 B2 outcome: huge pages are obtainable and do not make a buffer fast (2026-10-19)
+
+Session B2 ran under `docs/CUDA-HUGEPAGE-RETEST-RECORD.md` and is recorded in `docs/CUDA-HUGEPAGE-RETEST-RESULTS.md`. Consequences, written after the run:
+
+* **Confirmed erratum.** B1's zero huge pages was its shared mapping: a private mapping with `MADV_HUGEPAGE` before the touch was 16 of 16 huge-page backed on the guest (and with a populate call), and `cudaHostRegister` kept them; the shared control gave 0.
+* **H-backing as registered is not supported in this guest.** All 32 huge-page-verified buffers copied 9.95 MB in 0.356 to 0.362 ms (the slow class), slower than small-page registered buffers (0.255 to 0.32 ms) and equal to the fresh-process `cudaHostAlloc` buffers (0.359). No cell produced the 0.182 ms class; smaller-buffers-first allocation did not either (48 of 48 slow). H-host-side survives untested.
+* **Cost rule.** A pinned copy cost is a property of the buffer on that instance and has not been moved by any guest-side technique tried (allocator, page size, populate, allocation order); quote 0.185 to 0.359 ms a 9.95 MB copy as the range, with the qualified buffers named.
+* Still open: why N2's instance and B1's curve process had fast buffers; the V100 arm of N2 stage 1; N3 (copy and compute overlap, prefetch).
+
 ## 18. Honest limits
 
 - This is a plan. No hypothesis in it has been tested; every "expected" device property is vendor-derived and unverified for the rented machine.

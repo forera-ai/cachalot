@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.66.28 (2026-10-19)
+
+HANDOFF "Start here (2026-10-19, 0.66.28)" and section 18.183; results `docs/CUDA-HUGEPAGE-RETEST-RESULTS.md`, raw rows in `docs/cuda-results/b2-rtx5090-2026-10-19/`. Measurement only; nothing in `src/` except the version string.
+
+### Added
+- CUDA session B2 run on a fifth rented RTX 5090 (predictions committed first, 4340c15): a private mapping with huge-page advice was 16 of 16 huge-page backed (and with `MADV_POPULATE_WRITE`), registration kept it, the shared control was 0 (B1's erratum confirmed). **Every huge-page buffer copied 9.95 MB in the slow class (0.356 to 0.362 ms), slower than small-page buffers (0.255 to 0.32)**, and no cell produced the 0.182 ms class; smaller buffers allocated first changed nothing (48 of 48 slow). Scored: 7 held, 3 falsified (R-P5 the causal test, R-P8, R-P9). H-backing as registered is not supported in the guest; H-host-side survives untested.
+- `docs/CUDA-HUGEPAGE-RETEST-RESULTS.md`, plan section 17.7.
+
 ## 0.66.27 (2026-10-19)
 
 HANDOFF "Start here (2026-10-19, 0.66.27)" and section 18.182. Instruments, tests and documents only; nothing in `src/` except the version string. No instance, no GPU, no measurement.

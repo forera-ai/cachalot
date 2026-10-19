@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-19, 0.66.28): session B2 ran on an RTX 5090; huge pages are obtainable and every huge-page buffer was slow
+>
+> Section 18.183, results `docs/CUDA-HUGEPAGE-RETEST-RESULTS.md` (raw in `docs/cuda-results/b2-rtx5090-2026-10-19/`), plan section 17.7. Seven fresh processes, all gates true, about 8 s of GPU time. **Measured:** a private mapping with `MADV_HUGEPAGE` was 16 of 16 huge-page backed (populate variant also 16 of 16), registration kept the pages, the shared control was 0 (B1's zero confirmed as its shared mapping); **every huge-page buffer copied 9.95 MB in 0.356 to 0.362 ms (27.9 GB/s), the slow class,** slower than the small-page buffers (0.255 to 0.32 ms); `cudaHostAlloc` in a fresh process 48 of 48 slow, and smaller buffers first changed nothing (48 of 48). No cell produced the 0.182 ms class. 7 of 10 predictions held; falsified R-P5 (the causal test: H-backing as registered is not supported in this guest), R-P8, R-P9. H-host-side survives untested. **Needs Hamed:** terminate B2-2 if not yet done; fill the B1 and B2 billed hours in the private cost file; the housekeeping (delete the S1, S2, V1, N2, B1 and B2 ssh configs, known_hosts files and the key). The next GPU step needs his go.
+>
 > ## Start here (2026-10-19, 0.66.27): the B2 instrument is built and rehearsed; running it needs Hamed to create an RTX 5090
 >
 > Section 18.182, record `docs/CUDA-HUGEPAGE-RETEST-RECORD.md` (10 predictions, committed first, 4340c15), `benchmarks/cuda/backing_probe.py` groups `h1` to `h7`, `session.sh hugepage`, `SESSION-RUNBOOK-B2.md`. It tests what B1 did not: a **private** mapping (B1's was shared, on a host with `shmem_enabled=never`), huge-page advice before the touch, smaps at three points, a populate variant, the shared control, and whether smaller buffers allocated first change the class of 9.95 MB `cudaHostAlloc` buffers. 39 tests in the file assert every gate for K above 1 through the real run path. **Never run on Linux or a GPU;** the first `h7` process is the smoke. **Needs Hamed:** a go and an RTX 5090 instance when the agent says it is ready; his B1 billed hours for the private cost file (not given so far); the housekeeping (delete the S1, S2, V1, N2 and B1 ssh configs, known_hosts files and the key).
@@ -9246,6 +9250,18 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.183 Session B2 on an RTX 5090: huge pages are obtainable and are not the fast class (0.66.28)
+
+**Goal.** Hamed: "Yes, run B2"; he created the instance (B2-2) and said it was ready.
+
+**How it ran.** Over SSH to that one instance, no sudo: pack (225c663, dirty=0), `check`, `setup`, `doctor`, a clean smoke, then `session.sh hugepage`. Seven processes, all gates true, no defect found (the Linux-only paths the Mac could not test all worked first time). Results `docs/CUDA-HUGEPAGE-RETEST-RESULTS.md`; plan section 17.7.
+
+**What it means.** The B1 hypothesis (huge pages give the link plateau) is falsified in this guest by its own causal test: 32 verified buffers, all slow. The slow class equals what `cudaHostAlloc` gives here, and small-page registered buffers are faster than both. Nothing a guest process did produced the 0.182 ms class; the rate is probably set below the guest (H-host-side, untested).
+
+**What did not go well.** My B1 write-up leaned on the huge-page route being the cause; that was a hypothesis I had turned into a design and then ran twice. The B1 erratum (shared mapping) was caught offline and the retest was the right one, but the headline of both sessions is that the rate is not something this guest controls, which I could not have said before measuring. The cost-file hours for B1 and B2 are still Hamed's to enter.
+
+**Kind.** Research (predicted, measured, explained as hypothesis): 7 held, 3 falsified (R-P5, R-P8, R-P9). No default changed.
 
 ### 18.182 Session B2 prepared (0.66.27)
 

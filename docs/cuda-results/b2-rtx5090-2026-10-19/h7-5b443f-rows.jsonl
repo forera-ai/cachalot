@@ -1,0 +1,8 @@
+{"arm":"backing.fresh48","field":"slow_share","n":48,"run":"20261019T105414Z-backing-h7-5b443f","source":"p50 per buffer, slow = at or above 0.28 ms","tag":"measured","unit":"fraction","value":1.0}
+{"arm":"backing.fresh48","field":"third_mode_share","n":48,"run":"20261019T105414Z-backing-h7-5b443f","source":"buffers between 0.20 and 0.28 ms","tag":"measured","unit":"fraction","value":0.0}
+{"arm":"backing.fresh48","field":"copy_ms_min","run":"20261019T105414Z-backing-h7-5b443f","source":"cuda events p50 of the fastest buffer","tag":"measured","unit":"ms","value":0.35843199491500854}
+{"arm":"backing.fresh48","field":"copy_ms_max","run":"20261019T105414Z-backing-h7-5b443f","source":"cuda events p50 of the slowest buffer","tag":"measured","unit":"ms","value":0.3879840075969696}
+{"arm":"backing.fresh48","field":"slow_median_ms","n":48,"run":"20261019T105414Z-backing-h7-5b443f","source":"cuda events","tag":"measured","unit":"ms","value":0.3588320016860962}
+{"arm":"backing.fresh48","field":"order_gap","note":"one class only","run":"20261019T105414Z-backing-h7-5b443f","source":"cell","tag":"unavailable","unit":"index"}
+{"arm":"backing.fresh48","field":"lag1_agreement","run":"20261019T105414Z-backing-h7-5b443f","source":"consecutive buffers in the same class","tag":"derived","unit":"fraction","value":1.0}
+{"arm":"backing.fresh48","field":"lag1_expected_if_independent","run":"20261019T105414Z-backing-h7-5b443f","source":"p^2 + (1-p)^2","tag":"derived","unit":"fraction","value":1.0}
