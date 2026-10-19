@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.66.37 (2026-10-20)
+
+HANDOFF "Start here (2026-10-20, 0.66.37)" and section 18.192; record `docs/CUDA-LEAD-TRACE-RECORD.md` (seven predictions, committed first in 849b8f2), runbook `docs/CUDA-LEAD-TRACE-RUNBOOK.md`. Planning and offline instruments; no server started; nothing in `src/` except the version string.
+
+### Added
+- Plan for a routing trace with the router's predictions at leads 1, 2 and 3 for the same tokens. **The tracer knob already exists:** `CACHALOT_ROUTING_TRACE` with `CACHALOT_PREDICT_AHEAD=3` and `CACHALOT_PREDICT_SUBMIT=0` (diagnostic: predictions computed and recorded, never submitted) records every prediction with its source layer, target layer and router weights, so no `src/` change is needed. Estimate 10 to 15 minutes, worst case 25; Hamed's go needed.
+- Lead selectors: `prefetch_coverage.py --lead N`, `predictor_price.py` predictors `R2`, `R3`, `R12` (and automatic selection when a trace has leads above 1), `overlap_arena.py` keeps lead 1 explicitly. Existing outputs are unchanged (expected hashes and the predictor-price json compared equal); two new tests with a synthetic multi-lead trace.
+
 ## 0.66.36 (2026-10-20)
 
 HANDOFF "Start here (2026-10-20, 0.66.36)" and section 18.191; record `docs/CUDA-PREDICTOR-PRICE-RECORD.md` (eight predictions, committed first in 6c072de), results `docs/CUDA-PREDICTOR-PRICE-RESULTS.md`, raw `docs/cuda-results/predictor-price-2026-10-20.json`. Measurement only, Mac only; nothing in `src/` except the version string.

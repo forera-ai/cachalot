@@ -32,21 +32,28 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import replay_arena as ra  # noqa: E402
 
 
-def predicted_sets(arrays) -> dict[tuple[int, int], list[int]]:
-    return {(int(p), int(t)): e.tolist() for t, p, e in zip(arrays["pred_target"], arrays["pred_position"], arrays["pred_experts"], strict=True)}
+def lead_rows(arrays, lead: int = 1):
+    """Indices of the predicted-set records made `lead` layers ahead (target minus source); lead 1 is every record of an older trace."""
+    if "pred_source" not in arrays:
+        return np.arange(len(arrays["pred_target"]))
+    return np.nonzero(arrays["pred_target"].astype(np.int64) - arrays["pred_source"].astype(np.int64) == lead)[0]
 
 
-def predicted_weights(arrays) -> dict[tuple[int, int], list[float]]:
-    return {(int(p), int(t)): w.tolist() for t, p, w in zip(arrays["pred_target"], arrays["pred_position"], arrays["pred_weights"], strict=True)}
+def predicted_sets(arrays, lead: int = 1) -> dict[tuple[int, int], list[int]]:
+    return {(int(arrays["pred_position"][i]), int(arrays["pred_target"][i])): arrays["pred_experts"][i].tolist() for i in lead_rows(arrays, lead)}
+
+
+def predicted_weights(arrays, lead: int = 1) -> dict[tuple[int, int], list[float]]:
+    return {(int(arrays["pred_position"][i]), int(arrays["pred_target"][i])): arrays["pred_weights"][i].tolist() for i in lead_rows(arrays, lead)}
 
 
 def coverage(arrays, percent: float, mode: str = "pred", oracle: bool = False, max_decode_tokens: int | None = None,
-             min_weight: float | None = None) -> dict:
+             min_weight: float | None = None, lead: int = 1) -> dict:
     """`mode` 'none' disables prefetch; `oracle` replaces the recorded predicted set by the layer's real experts (an upper bound).
     `min_weight` gates the recorded prediction: only predicted experts whose recorded router weight is at least this are loaded."""
     base = {k: arrays[k] for k in ("phase", "layer", "position", "experts")}
-    pred = predicted_sets(arrays) if mode != "none" and not oracle else {}
-    pred_w = predicted_weights(arrays) if min_weight is not None and pred else {}
+    pred = predicted_sets(arrays, lead) if mode != "none" and not oracle else {}
+    pred_w = predicted_weights(arrays, lead) if min_weight is not None and pred else {}
     slots = ra.slots_for(percent)
     lru: OrderedDict[tuple[int, int], int] = OrderedDict()
 
@@ -107,15 +114,16 @@ def main(argv=None) -> int:
     ap.add_argument("--trace", required=True)
     ap.add_argument("--percents", default="8,12,17")
     ap.add_argument("--tokens", type=int, default=None, help="only the first N decode tokens (the N3 cells use 400)")
+    ap.add_argument("--lead", type=int, default=1, help="use the predicted sets made this many layers ahead (needs a trace recorded with CACHALOT_PREDICT_AHEAD)")
     ap.add_argument("--gates", default="", help="comma list of router-weight thresholds to add as gated prediction rows")
     args = ap.parse_args(argv)
     with np.load(args.trace) as data:
         arrays = {k: data[k] for k in data.files if k != "segments"}
     out = []
     for p in (float(x) for x in args.percents.split(",")):
-        out += [coverage(arrays, p, "none", max_decode_tokens=args.tokens), coverage(arrays, p, "pred", max_decode_tokens=args.tokens),
+        out += [coverage(arrays, p, "none", max_decode_tokens=args.tokens), coverage(arrays, p, "pred", max_decode_tokens=args.tokens, lead=args.lead),
                 coverage(arrays, p, "pred", oracle=True, max_decode_tokens=args.tokens)]
-        out += [coverage(arrays, p, "pred", max_decode_tokens=args.tokens, min_weight=float(g)) for g in args.gates.split(",") if g]
+        out += [coverage(arrays, p, "pred", max_decode_tokens=args.tokens, min_weight=float(g), lead=args.lead) for g in args.gates.split(",") if g]
     print(json.dumps(out, indent=1))
     return 0
 

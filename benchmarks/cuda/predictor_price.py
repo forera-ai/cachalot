@@ -28,6 +28,8 @@ import replay_arena as ra  # noqa: E402
 
 N_EXPERTS = 384
 PREDICTORS = ("none", "R", "CO6", "CO10", "TP6", "MIX6", "RCO10")
+LEAD_PREDICTORS = ("none", "R", "R2", "R3", "R12")                # need a trace recorded with CACHALOT_PREDICT_AHEAD >= 2
+LEADS = (1, 2, 3)
 
 
 def prepare(arrays, train_tokens: int):
@@ -35,15 +37,20 @@ def prepare(arrays, train_tokens: int):
     base = {k: arrays[k] for k in ("phase", "layer", "position", "experts")}
     items = list(ra.walk(base))
     positions = [int(base["position"][i]) for i in np.nonzero(base["phase"] == ra.PHASE_DECODE)[0]]
-    rec = {(int(p), int(t)): (e.tolist(), w.tolist()) for t, p, e, w in
-           zip(arrays["pred_target"], arrays["pred_position"], arrays["pred_experts"], arrays["pred_weights"], strict=True)}
-    real, recorded, di = {}, {}, 0
+    lead_of = arrays["pred_target"].astype(np.int64) - arrays["pred_source"].astype(np.int64)
+    rec_by_lead = {}
+    for lead in LEADS:
+        sel = np.nonzero(lead_of == lead)[0]
+        rec_by_lead[lead] = {(int(arrays["pred_position"][i]), int(arrays["pred_target"][i])): (arrays["pred_experts"][i].tolist(), arrays["pred_weights"][i].tolist())
+                             for i in sel}
+    real, recorded, di = {}, {lead: {} for lead in LEADS}, 0
     for it in items:
         if it[0] != "D":
             continue
         _, tok, layer, exps = it
         real[(tok, layer)] = [int(e) for e in exps]
-        recorded[(tok, layer)] = rec.get((positions[di], layer))
+        for lead in LEADS:
+            recorded[lead][(tok, layer)] = rec_by_lead[lead].get((positions[di], layer))
         di += 1
     n_layers = int(base["layer"].max()) + 1
     table = np.zeros((n_layers, N_EXPERTS, N_EXPERTS), np.float32)
@@ -64,7 +71,15 @@ def co_rank(table, real, tok, layer):
 
 
 def predicted(pred: str, table, real, recorded, tok, layer) -> list[int]:
-    rec = recorded.get((tok, layer))
+    rec = recorded[1].get((tok, layer))
+    if pred in ("R2", "R3"):
+        r = recorded[int(pred[1])].get((tok, layer))
+        return list(r[0]) if r else []
+    if pred == "R12":
+        out = list(rec[0]) if rec else []
+        r2 = recorded[2].get((tok, layer))
+        out += [e for e in (r2[0] if r2 else []) if e not in out]
+        return out
     if pred == "R":
         return list(rec[0]) if rec else []
     if pred in ("CO6", "CO10"):
@@ -145,15 +160,17 @@ def main(argv=None) -> int:
     ap.add_argument("--percents", default="17,8")
     ap.add_argument("--train-tokens", type=int, default=1000)
     ap.add_argument("--window", type=int, default=400)
-    ap.add_argument("--predictors", default=",".join(PREDICTORS))
+    ap.add_argument("--predictors", default=None, help="default: the expert-id predictors, or R,R2,R3,R12 when the trace has leads above 1")
     args = ap.parse_args(argv)
     with np.load(args.trace) as data:
         arrays = {k: data[k] for k in data.files if k != "segments"}
+    has_leads = bool(np.any((arrays["pred_target"].astype(np.int64) - arrays["pred_source"].astype(np.int64)) > 1))
+    names = args.predictors or ",".join(LEAD_PREDICTORS if has_leads else PREDICTORS)
     items, real, recorded, table, nl = prepare(arrays, args.train_tokens)
     lo, hi = args.train_tokens, args.train_tokens + args.window
     out = []
     for pct in (float(x) for x in args.percents.split(",")):
-        rows = [replay(items, real, recorded, table, nl, pct, p, lo, hi) for p in args.predictors.split(",")]
+        rows = [replay(items, real, recorded, table, nl, pct, p, lo, hi) for p in names.split(",")]
         base = next(r for r in rows if r["predictor"] == "none")["demand_misses"] if any(r["predictor"] == "none" for r in rows) else None
         for r in rows:
             r["bound"] = None if base is None else 1.0 - r["demand_misses"] / base

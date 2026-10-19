@@ -9283,6 +9283,20 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 **Kind.** Engineering (a default on a prior research result).
 
 
+### 18.192 Multi-lead routing trace planned (0.66.37)
+
+**Goal.** Hamed: "plan a tracer knob (off by default) that records router scores two layers ahead, predictions first; do not run the server until I say."
+
+**Finding.** The knob exists (`CACHALOT_PREDICT_LEAD`, `CACHALOT_PREDICT_AHEAD`, `CACHALOT_PREDICT_SUBMIT`, with `CACHALOT_ROUTING_TRACE`); an offline recall table from HANDOFF section 8 had already measured lead 2 at 65.0 % recall against 71.5 % at lead 1, and the `PREDICT_AHEAD` A/B (an 8.8 % worse token) had shown that submitting more leads costs bytes. What was missing was a recording of several leads for the same tokens, and offline code that does not mix leads: `(position, target)` keys would have overwritten one lead with another. I wrote the record and runbook, then added lead selectors; I did not touch `src/`.
+
+**What was done.** Seven predictions and two decision rules committed first (849b8f2). `--lead` in `prefetch_coverage.py`; `R2`, `R3`, `R12` in `predictor_price.py`; `overlap_arena.py` keeps lead 1 explicitly. Verified old outputs unchanged (n3c expected file, predictor-price json) and a synthetic multi-lead test.
+
+**What it means.** Nothing measured. If lead 2 keeps at least 0.95 of lead 1's bound it buys a full layer of window, which stage B showed matters at 0.3 ms; if not, the lead lever closes offline.
+
+**Open / needs Hamed.** A go and a quiet machine for the recording (estimate 10 to 15 minutes, worst case 25); then the lead analysis on the new trace; any GPU stage after that needs a harness change and his go.
+
+**Kind.** Planning and instruments. No default changed, nothing measured.
+
 ### 18.191 Offline predictor pricing (0.66.36)
 
 **Goal.** Hamed: "stay offline and price a better predictor (v240 candidate 1) on the trace, record with predictions first."

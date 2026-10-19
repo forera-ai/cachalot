@@ -566,6 +566,10 @@ N3 stage B ran under `docs/CUDA-N3B-EXPERIMENT-RECORD.md` and is recorded in `do
 
 `docs/CUDA-PREDICTOR-PRICE-RESULTS.md` (Mac only). Held-out window, 17 % resident, serial bound: recorded predictor 0.465; a co-activation table from the previous layer's experts 0.024; ten picks 0.011; the previous token's experts 0.000; a four-plus-two mix 0.344; recorded plus four 0.465 at 25 % more copies. The registered rule (0.05 above the recorded) is met by none; a better predictor needs the router's scores two layers ahead, which the trace does not hold. 2 held, 3 missed, 3 falsified.
 
+### 17.16 Multi-lead trace plan (2026-10-20)
+
+`docs/CUDA-LEAD-TRACE-RECORD.md`: one recording with `CACHALOT_PREDICT_AHEAD=3` and `CACHALOT_PREDICT_SUBMIT=0` gives the router's predictions at leads 1 to 3 for the same tokens; no `src/` change (the knob exists). Offline lead selectors built. Decision rules: lead 2 is worth a GPU stage if its serial bound is at least lead 1's minus 0.05; the union of leads 1 and 2 only if lead 1's plus 0.05. Needs Hamed's go for the 10 to 15 minute recording.
+
 ## 18. Honest limits
 
 - This is a plan. No hypothesis in it has been tested; every "expected" device property is vendor-derived and unverified for the rented machine.

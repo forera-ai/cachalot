@@ -255,10 +255,14 @@ def predicted_lookup(arrays, mode: str = "pred") -> dict[tuple[int, int], list[i
     if "pred_target" not in arrays:
         return {}
     gate = mode_parts(mode)[1]
+    if "pred_source" in arrays:                       # a trace recorded with several leads keeps only the lead-1 records here
+        keep = np.nonzero(arrays["pred_target"].astype(np.int64) - arrays["pred_source"].astype(np.int64) == 1)[0]
+    else:
+        keep = np.arange(len(arrays["pred_target"]))
     if gate is None:
-        return {(int(p), int(t)): e.tolist() for t, p, e in zip(arrays["pred_target"], arrays["pred_position"], arrays["pred_experts"], strict=True)}
-    return {(int(p), int(t)): [int(x) for x, w in zip(e, ws, strict=True) if w >= gate]
-            for t, p, e, ws in zip(arrays["pred_target"], arrays["pred_position"], arrays["pred_experts"], arrays["pred_weights"], strict=True)}
+        return {(int(arrays["pred_position"][i]), int(arrays["pred_target"][i])): arrays["pred_experts"][i].tolist() for i in keep}
+    return {(int(arrays["pred_position"][i]), int(arrays["pred_target"][i])):
+            [int(x) for x, w in zip(arrays["pred_experts"][i], arrays["pred_weights"][i], strict=True) if w >= gate] for i in keep}
 
 
 def decode_plan(arrays, max_decode_tokens: int | None):
