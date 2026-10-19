@@ -117,6 +117,8 @@ def test_slab_chunks_cell_and_rows(bench):
 def test_curve_cell_and_rows(bench):
     res = bench.curve(sizes=(1 << 16, 1 << 17), ks=(3, 2))
     assert set(res) == {str(1 << 16), str(1 << 17)}
+    # the byte check must hold with K > 1 distinct buffers (it failed on the first GPU run when made after the timing loop)
+    assert all(v["roundtrip_ok"] for v in res.values())
     rows = bp.rows_curve("r", "c", res)
     validate(rows)
     assert {"pinned_h2d_gbps_fastest", "pageable_h2d_gbps_median", "pinned_d2h_gbps_fastest_buffer"} <= {r["field"] for r in rows}

@@ -367,8 +367,13 @@ class BackingBench:
             try:
                 dev = self.dev_buffer(size)
                 bufs = [self.pinned(size, SEED + i) for i in range(k)]
-                ms = [self.time_copy(dev, b) for b in bufs]
-                ok = all(self.roundtrip_ok(dev, b, size) for b in bufs[:2])
+                # the device buffer holds the content of the buffer copied last, so the byte check follows each of the first
+                # two buffers' own copy (checking after the loop compared two buffers with the last one's content)
+                ms, ok = [], True
+                for i, b in enumerate(bufs):
+                    ms.append(self.time_copy(dev, b))
+                    if i < 2:
+                        ok &= self.roundtrip_ok(dev, b, size)
                 d2h_dst = self.pinned(size, SEED + 99)
                 d2h = self.time_copy(dev, d2h_dst, d2h=True)
                 pageable = []
