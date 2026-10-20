@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.66.56 (2026-10-20)
+
+HANDOFF "Start here (2026-10-20, 0.66.56)" and section 18.211; record `docs/CUDA-L40S-C-ENDS-RECORD.md` (J-1 to J-10, 04a172c; section 7 erratum before any run; section 8, 992553f, reshape and re-registration before any 0.2 ms run), results `docs/CUDA-L40S-C-ENDS-RESULTS.md`, raw scoring `docs/cuda-results/l40s-c-ends-2026-10-20.json`. Measurement on a second NVIDIA L40S 48 GB (`aquatic-existence-2628`): the first smoke at C = 0.15 ms failed calibration (the stand-in has an L2 cliff at 96 to 100 MiB; the shortest streaming stand-in is about 0.17 ms), Hamed chose to reshape to 0.2 ms, then a clean smoke and two runs of 32 cells (502 s and 496 s; run B had one cell, level 3 at 0.2 ms, fail its N-control drift gate). Nothing in `src/` but the version string.
+
+### Measured
+- The slowdown slope on measured overlap is 0.0862, 0.0914, 0.0970, 0.1077 (run A) and 0.0906, 0.0915, 0.0930, 0.1051 (run B) at C = 1.0, 0.6, 0.3, 0.2 ms: s(0.2) / s(1.0) is 1.25 and 1.16 against the RTX 5090's 2.42. By the registered rule (below 1.30) the 5090's C dependence is absent on this L40S, with a mild residual rise. Affine in 1/C: `0.0816 + 0.0051 / C` and `0.0856 + 0.0034 / C` (5090: `0.0498 + 0.01574 / C`).
+- The two L40S instances agree (anchors 0.093 to 0.097 at 0.3 ms and 0.091 to 0.092 at 0.6 ms against 0.093; copy 0.3803 against 0.378 ms). The level-4 hidden share still falls with the layer: 0.36, 0.19 to 0.23, -0.04 to -0.06, -0.21 to -0.22. Demand exposure is 16.7 to 17.3 ms a token at every layer time. 9 held, 1 falsified (J-3, by the drift-failed cell).
+
+### Changed (no runtime effect)
+- `benchmarks/cuda`: profiles `j-smoke` and `j-full` use C = 1.0, 0.6, 0.3 and 0.2 ms (0.15 replaced); `l40s_c_ends_score.py`, `SESSION-RUNBOOK-L40S-C-ENDS.md`, `session.sh n3jsmoke|n3jfull`, 7 tests. 953 tests pass.
+
+### Needs Hamed
+Terminate the L40S `aquatic-existence-2628` (every run is home, hashes verified, under `~/cachalot-private/cuda-results/n3j/`), enter the billed hours, delete `ssh_config_j1` and `known_hosts_j1` with the older ones (`i1`, `h2`, `h1`, `g1`, `f1` to `f3`), and `flat-battle-1078`, `imperfect-duck-7094`, `elegant-things-5691` if still up.
+
 ## 0.66.55 (2026-10-20)
 
 HANDOFF "Start here (2026-10-20, 0.66.55)" and section 18.210; record `docs/CUDA-L40S-C-ENDS-RECORD.md` (ten predictions J-1 to J-10, committed in 04a172c before any code; one count erratum before any run, record section 7). Planning, instruments and tests for the first open item of 0.66.54: does the RTX 5090's rise of the compute-slowdown slope at short layer times exist on an L40S? Nothing was run on a GPU and nothing is in `src/` but the version string.

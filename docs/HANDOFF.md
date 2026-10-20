@@ -25,6 +25,11 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-20, 0.66.56): on a second L40S the slope is nearly flat from 1.0 to 0.2 ms (ratio 1.25 and 1.16 against the 5090's 2.42); the 5090's C dependence is absent on this card
+>
+> Section 18.211, results `docs/CUDA-L40S-C-ENDS-RESULTS.md`, raw `docs/cuda-results/l40s-c-ends-2026-10-20.json`, plan section 17.34. The smoke at 0.15 ms failed calibration (L2 cliff: the shortest streaming stand-in is about 0.17 ms), Hamed chose to reshape to 0.2 ms; two runs of 32 cells. Slope 0.086 to 0.108 at C = 1.0, 0.6, 0.3, 0.2; the two L40S instances agree; hidden share still falls 0.36 to -0.22. 9 held, 1 falsified (J-3: one run B cell failed its drift gate). **Needs Hamed:** terminate `aquatic-existence-2628` (all runs home, hashes verified), billed hours, delete the `j1`, `i1`, `h2`, `h1`, `g1`, `f1` to `f3` ssh configs, and older instances if up.
+>
+
 > ## Start here (2026-10-20, 0.66.55): the L40S layer-time ends are registered and built; not run; an L40S instance already exists and bills idle
 >
 > Section 18.210, record `docs/CUDA-L40S-C-ENDS-RECORD.md` (J-1 to J-10, committed first in 04a172c; one count erratum, J-10, before any run), plan section 17.34, runbook `benchmarks/cuda/SESSION-RUNBOOK-L40S-C-ENDS.md`. Question: does the 5090's rise of the slope at short layers (0.0634 at 1.0 ms to 0.1534 at 0.15 ms) exist on an L40S, where 0.3 and 0.6 ms gave a flat 0.093? Smoke `n3jsmoke`, then `n3jfull` (two runs of 32 cells). Built and rehearsed on the Mac only; 953 tests pass. **Needs Hamed:** his go to run on the L40S `aquatic-existence-2628` (he created it before the build, so it bills while idle), plus the 0.66.54 housekeeping.
@@ -9359,6 +9364,25 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 **Bottleneck after.** Unchanged: expert reads on misses; of the all-resident floor, CPU graph building, GPU idle, and routed-expert launch granularity.
 
 **Kind.** Engineering (a default on a prior research result).
+
+
+### 18.211 The L40S layer-time ends: the 5090's C dependence is absent on a second L40S (0.66.56)
+
+**Goal.** Hamed: "Go: run n3jsmoke on aquatic-existence-2628 ... continue to n3jfull only if the smoke is clean", then "1- reshape" after the 0.15 ms smoke failed. Does the RTX 5090's rise of the compute-slowdown slope at short layer times exist on an L40S, and is the slope stable between L40S instances?
+
+**Baseline (recorded).** L40S first instance 0.093 at C = 0.3 and 0.6; RTX 5090 0.0634, 0.0765, 0.1053, 0.1534 at C = 1.0, 0.6, 0.3, 0.15.
+
+**Prediction.** J-1 to J-10 of `docs/CUDA-L40S-C-ENDS-RECORD.md` (04a172c, committed before any code); section 7 (count erratum, before any run); section 8 (992553f, before any 0.2 ms run): C = 0.15 ms replaced by 0.2 ms and J-2, J-3, J-6, J-7, J-8 re-registered.
+
+**Method.** Instance `aquatic-existence-2628` (L40S 48 GB). Smoke `n3jsmoke` at 0.15 ms: calibration failed (0.498 ms reached, +2.32); a side probe showed the stand-in's L2 cliff (0.047 ms at 96 MiB, 0.106 at 100, 0.169 at 104, then 1.4 microseconds per MiB). Reshaped; smoke clean (source copy 0.3782 ms); `n3jfull` twice, 32 cells each, 400 tokens, 502 s and 496 s. Run B: one cell (level 3, 0.2 ms) failed the N-control drift gate (-0.035 against 0.03).
+
+**Result.** Slope on measured overlap: run A 0.0862, 0.0914, 0.0970, 0.1077; run B 0.0906, 0.0915, 0.0930, 0.1051 at C = 1.0, 0.6, 0.3, 0.2. Ratio s(0.2) / s(1.0) 1.25 and 1.16 (5090: 2.42): absent by the registered rule (below 1.30). Instance-stable (anchors equal the first instance's 0.093). Hidden share 0.36, 0.19 to 0.23, -0.04 to -0.06, -0.21 to -0.22. Copy 0.3803 ms; demand exposure 16.7 to 17.3 ms a token at every C. 9 held, 1 falsified (J-3).
+
+**What did not go well / limits.** The instance billed idle for about 40 minutes (Hamed created it before the record and the build); the 0.15 ms point is not reachable with this stand-in on this card, and one run B cell failed its drift gate (run A's clean cell agrees to 2.4 %). Two instances of one card, one trace, stand-in compute; no mechanism for the 5090's rise.
+
+**Open / needs Hamed.** A third card (RTX 4090, A100, H100); a native issue path; fewer and larger copies; ROCm. Housekeeping: terminate `aquatic-existence-2628` and any older instance, billed hours, delete the `j1`, `i1`, `h2`, `h1`, `g1`, `f1` to `f3` ssh configs and known_hosts.
+
+**Kind.** Research (predicted, measured, explained as hypothesis): 9 held, 1 falsified (J-3). No default changed.
 
 
 ### 18.210 The L40S layer-time ends: registered and built (0.66.55)

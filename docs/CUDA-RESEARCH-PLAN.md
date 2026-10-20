@@ -638,9 +638,9 @@ Hamed resumed the lane on the card ("continue with online GPUs"). `docs/CUDA-ROW
 
 `docs/CUDA-COPY-COST-RESULTS.md` (record `docs/CUDA-COPY-COST-RECORD.md`). One NVIDIA L40S 48 GB, copies shortened to 1.0, 0.5 and 0.25 of an expert at layer times 0.3 and 0.6 ms: the slope stays near 0.10 whatever the copy time (0.10 to 0.38 ms) and the layer time, so it is not a function of copy time over layer time on this card and a copy-cost explanation of the slow RTX 5090 instance is not supported. 5 held, 3 missed narrowly, 2 falsified.
 
-### 17.34 L40S layer-time ends registered and built (2026-10-20)
+### 17.34 L40S layer-time ends (2026-10-20)
 
-`docs/CUDA-L40S-C-ENDS-RECORD.md` (ten predictions J-1 to J-10, committed first). Layer times 1.0 and 0.15 ms at the full copy on an L40S, with 0.6 and 0.3 ms re-measured as anchors on a second instance (instance stability). Built and rehearsed on the Mac (`j-smoke`, `j-full`, `l40s_c_ends_score.py`, `SESSION-RUNBOOK-L40S-C-ENDS.md`); not run on a GPU. Decision rules: the 5090's C dependence is present on the L40S if s(0.15) / s(1.0) is at least 1.30 in both runs, absent if below 1.30.
+`docs/CUDA-L40S-C-ENDS-RECORD.md` (ten predictions J-1 to J-10, committed first). Layer times 1.0 and 0.15 ms at the full copy on an L40S, with 0.6 and 0.3 ms re-measured as anchors on a second instance (instance stability). Built and rehearsed on the Mac (`j-smoke`, `j-full`, `l40s_c_ends_score.py`, `SESSION-RUNBOOK-L40S-C-ENDS.md`); not run on a GPU. Run on a second L40S (`docs/CUDA-L40S-C-ENDS-RESULTS.md`): 0.15 ms did not calibrate (L2 cliff), 0.2 ms replaced it; the slope is nearly flat (0.086 to 0.108, ratio 1.25 and 1.16 against the 5090's 2.42), so the 5090's C dependence is absent on this card by the registered rule; the two L40S instances agree. 9 held, 1 falsified.
 
 ## 18. Honest limits
 
