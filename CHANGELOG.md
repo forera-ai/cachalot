@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.66.44 (2026-10-20)
+
+HANDOFF "Start here (2026-10-20, 0.66.44)" and section 18.199; record `docs/CUDA-QUEUE-STATE-RECORD.md` (six predictions, committed first in 372e836), results `docs/CUDA-QUEUE-STATE-RESULTS.md`, raw `docs/cuda-results/queue-state-2026-10-20.json`. Measurement only, Mac only; nothing in `src/` except the version string.
+
+### Added
+- `window_fit.py --queue-state`: three queue-state terms added to the row-level window model (T1 a cost per miss in a row that also has prefetch, T2 per row with both kinds, T3 per pair of misses in a row). Best (T2, beta 0.024 ms): new-trace `P0L` error 0.073 to 0.094 down to 0.045 to 0.062, all held-out cells 0.0919 against the previous fit's 0.0986 and the copy-count screen's 0.0944; lead 2 0.155. 1 held, 3 missed, 2 falsified; the adoption rule (QS-2 and QS-4) is not met, so no model is adopted, the screen stays at about 0.1, and **the CUDA lane stops here at Hamed's instruction**. Plan section 17.23.
+
 ## 0.66.43 (2026-10-20)
 
 HANDOFF "Start here (2026-10-20, 0.66.43)" and section 18.198; record `docs/CUDA-WINDOW-FIT-RECORD.md` (seven predictions, committed first in 5e59faa), results `docs/CUDA-WINDOW-FIT-RESULTS.md`, raw `docs/cuda-results/window-fit-2026-10-20.json`. Measurement only, Mac only; nothing in `src/` except the version string.

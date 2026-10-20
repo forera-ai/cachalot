@@ -1,8 +1,8 @@
 # Experiment index (charter section 7.2 and section 10)
 
-Written 2026-10-09 against runtime 0.66.43; regenerate with `benchmarks/experiment_index.py`. The charter asks for "a file of experiment records whose predictions were written before the build". The records themselves live in `docs/HANDOFF.md` section 18 (each with Baseline, Prediction, Method, Result, Explanation, Limits, Kind); this file is the index: where each record is, whether it carries a written prediction, and what kind of result it is, as its own **Kind** line says. It does not restate results. Sections before 18.75 predate the record format and are not listed; sections without a **Kind** line are listed as unlabelled and have no claim made for them here.
+Written 2026-10-09 against runtime 0.66.44; regenerate with `benchmarks/experiment_index.py`. The charter asks for "a file of experiment records whose predictions were written before the build". The records themselves live in `docs/HANDOFF.md` section 18 (each with Baseline, Prediction, Method, Result, Explanation, Limits, Kind); this file is the index: where each record is, whether it carries a written prediction, and what kind of result it is, as its own **Kind** line says. It does not restate results. Sections before 18.75 predate the record format and are not listed; sections without a **Kind** line are listed as unlabelled and have no claim made for them here.
 
-Counts of the 124 sections listed (18.75-18.198): 57 research, 22 unlabelled, 21 measurement, 13 engineering, 10 planning, 1 pricing.
+Counts of the 125 sections listed (18.75-18.199): 58 research, 22 unlabelled, 21 measurement, 13 engineering, 10 planning, 1 pricing.
 
 Research means predicted, measured and explained (charter section 8.1 rule 6); a falsified prediction is still research and is marked so in its Kind line. Engineering means it works without a written prediction, or an instrument was built.
 
@@ -10,6 +10,7 @@ Research means predicted, measured and explained (charter section 8.1 rule 6); a
 
 | section | title | prediction written | kind (as recorded) |
 |---|---|:---:|---|
+| §18.199 | Queue-state per-miss cost (0.66.44) | no | Research (predicted, measured offline, explained as hypothesis): 1 held, 3 missed, 2 falsified. No default changed. |
 | §18.198 | Window model fit (0.66.43) | no | Research (predicted, measured offline, explained as hypothesis): 3 held, 2 missed, 2 falsified. No default changed. |
 | §18.197 | The bridge session ran (0.66.42) | no | Research (predicted, measured, explained as hypothesis): 7 held, 0 missed, 0 falsified. No default changed. |
 | §18.196 | Bridge session registered and built (0.66.41) | no | Planning and instruments (one derived price). No default changed, nothing measured on a GPU. |

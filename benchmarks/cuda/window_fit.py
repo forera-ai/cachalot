@@ -105,12 +105,20 @@ def arm_rows(arrays, percent: float, tokens: int, arm: str):
     return np.array(out, dtype=np.float64)
 
 
-def exposure(rows: np.ndarray, tokens: int, c: float, l_dem: float, l_pf: float, window: float) -> float:
-    """Mean exposed ms a token under the model."""
+def exposure(rows: np.ndarray, tokens: int, c: float, l_dem: float, l_pf: float, window: float, beta: float = 0.0, term: str | None = None) -> float:
+    """Mean exposed ms a token under the model. `term` adds a queue-state cost (record CUDA-QUEUE-STATE): T1 beta per miss in a row that also
+    has prefetch copies, T2 beta per row with both kinds, T3 beta per pair of misses in one row."""
     pf, dem = rows[:, 0], rows[:, 1]
     e_pf = np.where(pf > 0, np.maximum(0.0, l_pf + pf * c - window), 0.0)
     e_dem = np.where(dem > 0, l_dem + dem * c, 0.0)
-    return float((e_pf + e_dem).sum() / tokens)
+    extra = 0.0
+    if term == "T1":
+        extra = beta * float((dem * (pf > 0)).sum())
+    elif term == "T2":
+        extra = beta * float(((pf > 0) & (dem > 0)).sum())
+    elif term == "T3":
+        extra = beta * float((dem * (dem - 1) / 2).sum())
+    return float(((e_pf + e_dem).sum() + extra) / tokens)
 
 
 def load_groups() -> list[dict]:
@@ -151,9 +159,39 @@ def fit(groups, counts, tokens: int):
 
 
 def predict(g, counts, arm, tokens, params):
-    c, l_dem, l_pf = params
+    c, l_dem, l_pf = params[:3]
+    beta, term = (params[3], params[4]) if len(params) > 3 else (0.0, None)
     window = 2 * g["C"] if arm == "L2" else g["C"]
-    return exposure(counts[(g["trace"], g["percent"], arm)], tokens, c, l_dem, l_pf, window)
+    return exposure(counts[(g["trace"], g["percent"], arm)], tokens, c, l_dem, l_pf, window, beta, term)
+
+
+def fit_term(groups, counts, tokens: int, term: str, base_params):
+    """Queue-state fit (record CUDA-QUEUE-STATE): T1 and T2 fit (L_pf, beta) on the `P0L` cells with (c, L_dem) frozen from the `D` fit;
+    T3 refits (c, beta) on the `D` cells with L_dem = 0, then L_pf on the `P0L` cells."""
+    c, l_dem, _l_pf = base_params
+    ds = [g for g in groups if "D" in g["E"]]
+    ps = [g for g in groups if "P0L" in g["E"]]
+    if term == "T3":
+        best = None
+        for cc in np.arange(0.14, 0.3001, 0.002):
+            for beta in np.arange(-0.01, 0.0501, 0.001):
+                err = sum((exposure(counts[(g["trace"], g["percent"], "D")], tokens, cc, 0.0, 0.0, 0.0, beta, "T3") - g["E"]["D"]) ** 2 for g in ds)
+                if best is None or err < best[0]:
+                    best = (err, float(cc), float(beta))
+        _e, c, beta3 = best
+        bestp = None
+        for l_pf in np.arange(-0.1, 0.5001, 0.005):
+            err = sum((exposure(counts[(g["trace"], g["percent"], "P0L")], tokens, c, 0.0, l_pf, g["C"], beta3, "T3") - g["E"]["P0L"]) ** 2 for g in ps)
+            if bestp is None or err < bestp[0]:
+                bestp = (err, float(l_pf))
+        return (c, 0.0, bestp[1], beta3, "T3")
+    best = None
+    for l_pf in np.arange(-0.1, 0.5001, 0.01):
+        for beta in np.arange(-0.02, 0.1201, 0.002):
+            err = sum((exposure(counts[(g["trace"], g["percent"], "P0L")], tokens, c, l_dem, l_pf, g["C"], beta, term) - g["E"]["P0L"]) ** 2 for g in ps)
+            if best is None or err < best[0]:
+                best = (err, float(l_pf), float(beta))
+    return (c, l_dem, best[1], best[2], term)
 
 
 def evaluate(groups, counts, tokens, params, arms) -> list[dict]:
@@ -172,6 +210,7 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--tokens", type=int, default=400)
     ap.add_argument("--out", default=None)
+    ap.add_argument("--queue-state", action="store_true", help="also fit the queue-state terms T1, T2, T3 of the CUDA-QUEUE-STATE record")
     args = ap.parse_args(argv)
     groups = load_groups()
     counts: dict = {}
@@ -190,6 +229,20 @@ def main(argv=None) -> int:
     res = {"params": {"c": params[0], "L_dem": params[1], "L_pf": params[2]}, "fit_cells": fitted, "held_out": held, "reference_held_out": ref,
            "mean_abs_error": {"fit": float(np.mean([r["error"] for r in fitted])), "held_out": float(np.mean([r["error"] for r in held])),
                               "reference_held_out": float(np.mean([r["error"] for r in ref]))}}
+    if args.queue_state:
+        res["queue_state"] = {}
+        for term in ("T1", "T2", "T3"):
+            tp = fit_term(groups, counts, args.tokens, term, params)
+            fit_rows = evaluate(groups, counts, args.tokens, tp, ("D", "P0L"))
+            held_rows = evaluate(groups, counts, args.tokens, tp, ("G10", "G20", "L2", "O"))
+            by_arm = {a: float(np.mean([r["error"] for r in held_rows if r["arm"] == a])) for a in ("G10", "G20", "L2", "O")}
+            new_p0l = [r["error"] for r in fit_rows if r["arm"] == "P0L" and r["trace"] == "new" and r["percent"] == 17 and r["C"] in (1.0, 0.6)]
+            res["queue_state"][term] = {"params": {"c": tp[0], "L_dem": tp[1], "L_pf": tp[2], "beta": tp[3]},
+                                        "fit_mean_error": float(np.mean([r["error"] for r in fit_rows])),
+                                        "P0L_fit_mean_error": float(np.mean([r["error"] for r in fit_rows if r["arm"] == "P0L"])),
+                                        "new_trace_P0L_errors_1.0_0.6": new_p0l, "new_trace_P0L_within_0.05": int(sum(e <= 0.05 for e in new_p0l)),
+                                        "held_out_mean_error": float(np.mean([r["error"] for r in held_rows])), "held_out_by_arm": by_arm,
+                                        "held_out": held_rows}
     text = json.dumps(res, indent=1)
     if args.out:
         Path(args.out).write_text(text + "\n")

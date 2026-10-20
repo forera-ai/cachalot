@@ -594,6 +594,10 @@ N3 stage B ran under `docs/CUDA-N3B-EXPERIMENT-RECORD.md` and is recorded in `do
 
 `docs/CUDA-WINDOW-FIT-RESULTS.md` (Mac only). A three-parameter row-level model fitted on `D` and `P0L` cells (stages C, D, bridge): `c` = 0.190 ms, fixed host terms about 0; held-out hidden-share error 0.026 (gated), 0.100 (oracle), 0.187 (lead 2), 0.0986 overall against the copy-count screen's 0.0944. The replacement rule is not met; the screen stays; neither model for multi-layer prefetch or the oracle. 3 held, 2 missed, 2 falsified. Candidate later offline record: a per-miss cost that depends on queue state.
 
+### 17.23 Queue-state per-miss cost outcome (2026-10-20): the lane stops
+
+`docs/CUDA-QUEUE-STATE-RESULTS.md` (Mac only). Three queue-state terms on the row-level window model; best (a cost per row with both prefetch and demand copies) gives a held-out error of 0.0919 against the copy-count screen's 0.0944; lead 2 0.155. The adoption rule is not met; the screen stays at an error of about 0.1. **The CUDA lane is stopped at Hamed's instruction (2026-10-20).** Open items, each needing his go and a GPU: per-row timing, fewer and larger copies, a native issue path, a ROCm port, the V100 or L40S arms, the instance-population question.
+
 ## 18. Honest limits
 
 - This is a plan. No hypothesis in it has been tested; every "expected" device property is vendor-derived and unverified for the rented machine.

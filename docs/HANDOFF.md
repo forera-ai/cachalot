@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-20, 0.66.44): the CUDA lane is stopped at Hamed's instruction; no model beats the copy-count screen; the next session returns to the Mac priorities
+>
+> Section 18.199, results `docs/CUDA-QUEUE-STATE-RESULTS.md`, plan section 17.23. Three queue-state terms added to the row-level model: best (T2) reduces the new trace's `P0L` error to 0.045 to 0.062 and the held-out mean to 0.0919 against the screen's 0.0944; lead 2 0.155. 1 held, 3 missed, 2 falsified; the adoption rule is not met. **Lane state:** weight gate, expert-id predictors and leads 2 and 3 closed (offline and on the card); the stage D baseline difference is the trace (bridge); the screen (error about 0.1) stays; per-row timing on a GPU is the only way to explain the per-miss cost, and every other CUDA item (fewer and larger copies, native issue path, ROCm, V100 or L40S, instance population) needs Hamed's go and a GPU. **Needs Hamed:** billed hours (N3 to N3-D and the bridge); the ssh configs, known_hosts files and key; the provider ticket draft (`~/cachalot-private/provider-ticket-gpu-init.md`).
+>
 > ## Start here (2026-10-20, 0.66.43): a fitted host-aware window model is no better than the copy-count screen overall; the screen stays
 >
 > Section 18.198, results `docs/CUDA-WINDOW-FIT-RESULTS.md`, plan section 17.22. Mac only. Fitted on 19 `D` and 19 `P0L` group-runs (stages C, D, bridge): `c` = 0.190 ms, both fixed host terms fit to about 0. Hidden-share error: fit cells 0.026; held-out gated arms 0.026 (screen 0.038); oracle 0.100; lead 2 0.187 (up to 0.31 at short layers); all held-out 0.0986 against the screen's 0.0944. Scored 3 held, 2 missed, 2 falsified; the rule (WF-3 and WF-6) to replace the screen is not met, so the copy-count-only screen stays with an error of about 0.1, and neither model is used for multi-layer prefetch or the oracle. The remaining error is a per-miss cost that depends on queue state (the misses left after prefetch cost 0.22 ms each against 0.187 for `D`'s). **Needs Hamed:** nothing; GPU items still need his go; earlier housekeeping stands (the VMs are terminated, per his word).
@@ -9310,6 +9314,22 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.199 Queue-state per-miss cost (0.66.44)
+
+**Goal.** Hamed: "Do the queue-state per-miss cost record offline (predictions first), then stop CUDA."
+
+**What was done.** The record (six predictions, adoption rule QS-2 and QS-4) was committed before any run (372e836); three terms were fitted on the same cells as the previous model and frozen before the held-out arms were predicted.
+
+**Results.** `docs/CUDA-QUEUE-STATE-RESULTS.md`. Contention (T2) helps a little (new-trace error 0.08 to 0.055; held-out 0.0919 against 0.0986), burstiness not at all; none beats the screen's 0.0944 by enough to adopt. 1 held, 3 missed, 2 falsified.
+
+**What it means.** The per-miss cost difference is not explained by row-level counts; it needs per-row timing the harness does not record. The lane stops with a screen of about 0.1 error and an honest list of what only a GPU can answer.
+
+**What did not go well.** I worded QS-1's baseline ambiguously (the 0.026 was the mean over `D` and `P0L` fit cells); I reported both readings. Two of my six predictions were falsified, one by 0.002 (QS-4 against its 0.09 line).
+
+**Open / needs Hamed.** Billed hours; housekeeping; the ticket. The CUDA lane is paused by his instruction; resume only on his word.
+
+**Kind.** Research (predicted, measured offline, explained as hypothesis): 1 held, 3 missed, 2 falsified. No default changed.
 
 ### 18.198 Window model fit (0.66.43)
 

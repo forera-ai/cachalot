@@ -52,3 +52,24 @@ def test_the_fit_recovers_known_parameters_from_synthetic_measurements(arrays):
     # L_pf is only identifiable where a row's prefetch tail is cut by the window (flat otherwise): the fit must reproduce the data
     held = wf.evaluate(groups, counts, n, (c, l_dem, l_pf), ("D", "P0L"))
     assert max(r["error"] for r in held) < 0.02
+
+
+def test_the_queue_state_terms_and_their_fit():
+    rows = np.array([[0.0, 0.0], [3.0, 0.0], [2.0, 1.0], [0.0, 2.0], [1.0, 3.0]])
+    base = wf.exposure(rows, 1, 0.2, 0.0, 0.0, 0.4)
+    assert wf.exposure(rows, 1, 0.2, 0.0, 0.0, 0.4, 0.1, "T1") == pytest.approx(base + 0.1 * (1 + 3))        # misses in rows that also have prefetch
+    assert wf.exposure(rows, 1, 0.2, 0.0, 0.0, 0.4, 0.1, "T2") == pytest.approx(base + 0.1 * 2)             # rows with both kinds
+    assert wf.exposure(rows, 1, 0.2, 0.0, 0.0, 0.4, 0.1, "T3") == pytest.approx(base + 0.1 * (1 + 3))       # pairs: 2 in one row, 3 in another
+    assert wf.exposure(rows, 1, 0.2, 0.0, 0.0, 0.4, 5.0, None) == pytest.approx(base)
+
+
+def test_the_queue_state_fit_recovers_a_planted_beta(arrays):
+    n, true = 10, (0.20, 0.0, 0.0, 0.03, "T1")
+    counts = {("old", 17.0, arm): wf.arm_rows(arrays, 17, n, arm) for arm in ("D", "P0L")}
+    groups = [{"trace": "old", "percent": 17.0, "C": cc, "level": "L4", "stage": "t", "file": "x",
+               "E": {"D": wf.exposure(counts[("old", 17.0, "D")], n, true[0], 0.0, 0.0, 0.0),
+                     "P0L": wf.exposure(counts[("old", 17.0, "P0L")], n, true[0], 0.0, 0.0, cc, true[3], "T1")}} for cc in (0.1, 0.2, 0.4, 0.8)]
+    c, l_dem, l_pf = wf.fit(groups, counts, n)
+    tp = wf.fit_term(groups, counts, n, "T1", (c, l_dem, l_pf))
+    fitted = wf.evaluate(groups, counts, n, tp, ("P0L",))
+    assert max(r["error"] for r in fitted) < 0.03 and tp[3] > 0.005             # beta trades off against L_pf: the data must be reproduced, the sign recovered
