@@ -53,3 +53,10 @@ All **predicted**. Probabilities are my own. "Idle queue" means the copy stream 
 ## 6. Needs Hamed
 
 An RTX 5090 instance (the card every earlier stage used, so the new per-row cells compare with stages C, D and the bridge), a time cap of one GPU-hour from Ready, and his go for the named live instance. The agent never runs sudo and runs over SSH only for that instance, as in the bridge session.
+
+## 7. Erratum, written before any code was built or run (2026-10-20)
+
+Two defects found while designing the harness from this record; neither involves a measurement, and both are fixed here before the build.
+
+1. **RT-5 as worded cannot be measured.** A row's compute waits for its own demand batch (`dem_b`), so a demand copy never completes while that row's compute kernel runs. The comparison is made on **prefetch copies**: the time of a prefetch copy that completes while its row's compute kernels run (between the row's `start` and `end` events) against one that completes after the row's `end` event (compute stream idle, in the gap or in the next row's stall). The interval and falsifier of RT-5 stand unchanged (between 0 % and +8 % slower under compute; falsified above +15 % or below -3 %).
+2. **RT-7 needs a level-4 cell at C = 1.0 ms.** Section 3 listed level 4 only at C = 0.3, so no recorded hidden share existed at 1.0 ms to score "at every C" against. The cell list becomes: L3 at C = 1.0 and 0.3, L6 at C = 1.0 and 0.3, L4 at C = 1.0 and 0.3, each with arms `N`, `D`, `P0L`, `N`: **24 cells a run**, 400 decode tokens each (estimate 6 to 8 minutes a run plus calibration; two runs).
