@@ -417,8 +417,8 @@ EOF7
     ;;
 
   n3jsmoke)
-    # L40S layer-time ends (docs/CUDA-L40S-C-ENDS-RECORD.md): a short smoke of the j-profile (C = 1.0 and 0.15 ms, full copy) on the NEW trace.
-    # Read every gate of the run manifest before n3jfull (SESSION-RUNBOOK-L40S-C-ENDS.md); the calibration and floor gates at 0.15 ms are prediction J-3.
+    # L40S layer-time ends (docs/CUDA-L40S-C-ENDS-RECORD.md): a short smoke of the j-profile (C = 1.0 and 0.2 ms, full copy; 0.15 ms did not calibrate, record section 8) on the NEW trace.
+    # Read every gate of the run manifest before n3jfull (SESSION-RUNBOOK-L40S-C-ENDS.md); the calibration and floor gates at 0.2 ms are prediction J-3.
     [ -x "$PY" ] || die "run setup first"
     NEW="${TRACE_NEW:-$ROOT/n3d-trace.npz}"
     [ -f "$NEW" ] || die "new trace not found at $NEW"

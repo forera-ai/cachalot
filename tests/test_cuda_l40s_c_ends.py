@@ -25,10 +25,10 @@ def test_the_j_profiles_register_four_layer_times_at_the_full_copy():
     assert [g["id"] for g in groups] == ["p17j"] and "frac" not in groups[0]
     cells = oa.cells_of(groups[0])
     assert len(cells) == 32 and len({c["id"] for c in cells}) == 32
-    assert {(c["level"], c["c"]) for c in cells} == {(lv, c) for lv in (3, 4) for c in (1.0, 0.6, 0.3, 0.15)}
+    assert {(c["level"], c["c"]) for c in cells} == {(lv, c) for lv in (3, 4) for c in (1.0, 0.6, 0.3, 0.2)}
     assert all(c["arm"] in ("N", "D", "P0L") for c in cells) and {c["level"] for c in cells if c["rows"]} == {3}
     smoke = [c for g in oa.cell_defs("j-smoke") for c in oa.cells_of(g)]
-    assert len(smoke) == 12 and {(c["level"], c["c"]) for c in smoke} == {(3, 1.0), (3, 0.15), (4, 0.15)} and all(c["tokens"] == 40 for c in smoke)
+    assert len(smoke) == 12 and {(c["level"], c["c"]) for c in smoke} == {(3, 1.0), (3, 0.2), (4, 0.2)} and all(c["tokens"] == 40 for c in smoke)
 
 
 def test_the_expected_file_has_the_cells_the_j_profiles_need():
@@ -80,7 +80,7 @@ def test_the_scoring_script_scores_planted_runs(tmp_path):
     db, rb = _planted_run(tmp_path, "b", 2, 0.38)
     res = lc.score(ra_, rb, da, db, json.loads((da / "run-manifest.json").read_text()), json.loads((db / "run-manifest.json").read_text()))
     assert len(res["points_run_a"]) == 4 and all(p["slope"] is not None and p["copy_ms"] == 0.38 for p in res["points_run_a"])
-    assert res["ratio_run_a"] is not None and "affine_in_inverse_c_run_b" in res and set(res["g_error_run_b"]) == {"1.0", "0.6", "0.3", "0.15"}
+    assert res["ratio_run_a"] is not None and "affine_in_inverse_c_run_b" in res and set(res["g_error_run_b"]) == {"1.0", "0.6", "0.3", "0.2"}
     assert set(res["verdict"]) >= {"J-1", "J-2", "J-3", "J-4", "J-5", "J-6", "J-7", "J-9", "J-10"}
     assert res["verdict"]["J-3"] == "in interval" and res["verdict"]["J-5"] == "in interval"
     assert lc.main([str(da), str(db), "--json", str(tmp_path / "o.json")]) == 0 and json.loads((tmp_path / "o.json").read_text())["verdict"]
@@ -91,8 +91,8 @@ def _pt(c, s, h=None, ex=17.0, cm=0.38):
 
 
 def _clean():
-    slopes = {1.0: 0.093, 0.6: 0.093, 0.3: 0.095, 0.15: 0.097}
-    hid = {1.0: 0.40, 0.6: 0.30, 0.3: 0.10, 0.15: 0.02}
+    slopes = {1.0: 0.093, 0.6: 0.093, 0.3: 0.095, 0.2: 0.097}
+    hid = {1.0: 0.40, 0.6: 0.30, 0.3: 0.10, 0.2: 0.02}
     pts = [_pt(c, slopes[c], hid[c]) for c in lc.LAYER_TIMES]
     return {"points_run_a": pts, "points_run_b": [dict(p) for p in pts], "gates_run_a": {"calibration": True, "floor": True, "no_failed_cells": True},
             "gates_run_b": {"calibration": True, "floor": True, "no_failed_cells": True}, "ratio_run_a": 0.097 / 0.093, "ratio_run_b": 0.097 / 0.093}
@@ -102,7 +102,7 @@ def test_verdicts_use_only_the_registered_numbers():
     v = lc.verdicts(_clean())
     assert all(x == "in interval" for x in v.values()) and set(v) == {f"J-{i}" for i in range(1, 11)}
     res = _clean()
-    res["points_run_b"][3]["slope"] = 0.25                                  # the 5090-like rise at 0.15 ms
+    res["points_run_b"][3]["slope"] = 0.25                                  # the 5090-like rise at 0.2 ms
     assert lc.verdicts(res)["J-2"] == "past falsifier"
     res = _clean()
     res["ratio_run_a"], res["ratio_run_b"] = 1.8, 1.7

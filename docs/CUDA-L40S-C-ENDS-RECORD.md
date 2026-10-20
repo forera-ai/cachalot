@@ -63,3 +63,21 @@ An L40S instance (exists, `aquatic-existence-2628`, set up before the build), a 
 ## 7. Erratum before any run (found while writing the scorer)
 
 J-10 as registered counts "seven or more of the eight points", but a run has four slope points (one per layer time), not eight; the record's count was wrong in arithmetic, not a change of intent. Corrected before any instance run, with the same proportions: **J-10: run B's slope is within 15 % of run A's at three or more of the four layer times (probability 0.55); falsifier: fewer than two of the four within 30 %.** The scorer and its test use the corrected counts. No other prediction changes.
+
+## 8. The smoke falsified J-3 at 0.15 ms; the profile is reshaped to 0.2 ms (written before any further run)
+
+**What happened (measured, 2026-10-20, instance `aquatic-existence-2628`, commit a3cb44d, smoke `20261020T214352Z-n3j-j-smoke-27c967`, home under `~/cachalot-private/cuda-results/n3j/`).** Every gate was true except calibration: at C = 1.0 ms the stand-in tuned to 0.986 ms (697 MB of weights, error -0.014); at C = 0.15 ms it ended at 0.498 ms (335 MiB, error +2.32) after five rounds. Source copy median 0.3776 ms (J-5 inside its interval). **J-3 is falsified at 0.15 ms** (registered probability 0.45 for it holding); no 0.15 ms cell was scored.
+
+**Why (measured, a standalone probe on the same instance, not part of any registered run).** The stand-in's time against its weight bytes is not linear: 64 to 96 MiB run in 0.044 to 0.047 ms (resident in L2), 100 MiB in 0.106 ms, 104 MiB in 0.169 ms, then linear at about 1.4 microseconds per MiB (128 MiB 0.2007 ms, 160 MiB 0.2447 ms, 256 MiB 0.385 ms, 700 MiB 1.006 ms), identical across three repeats and for eager and graph launches within 0.02 ms. The calibration's proportional update jumps across that cliff and does not converge to 0.15 ms. The shortest stand-in that streams from DRAM like the longer ones is about 0.17 ms; shorter ones are partly L2-resident (and an L2-resident stand-in would mix in the cache effect the S2 record could not isolate). This is a card property (the RTX 5090's larger bandwidth and L2 put 0.15 ms inside the streaming range).
+
+**Reshape (decided by Hamed, "reshape", 2026-10-20).** C = 0.15 ms is replaced by **C = 0.2 ms** in `j-smoke` and `j-full` (levels 3 and 4 at C = 1.0, 0.6, 0.3 and 0.2 ms, 32 cells a run, everything else as section 3). 0.2 ms is 128 MiB, inside the streaming range, and its copy-to-layer ratio is 0.378 / 0.2 = 1.9, above the RTX 5090's ratio at 0.15 ms (0.194 / 0.15 = 1.3), so the copy stream is saturated by construction as there. Per section 5, the headline ratio is s(0.2) / s(1.0). Predictions J-1, J-4, J-5, J-9 and J-10 are unchanged; the others, with the shortest layer time now 0.2 ms, are re-registered here before any 0.2 ms run:
+
+| id | prediction at C = 0.2 ms (replaces the 0.15 ms wording) | falsifier |
+|---|---|---|
+| J-2 | slope at C = 0.2 between 0.085 and 0.140 (probability 0.50) | above 0.200 |
+| J-3 | calibration and floor gates hold at C = 0.2 and 1.0 in both runs, no failed cell (probability 0.75 for 0.2 ms; 128 MiB calibrated to 0.2007 ms in the probe, so the gate is within the 5 % tolerance if the start-bytes update lands) | any fails: that C is not scored |
+| J-6 | s(0.2) / s(1.0) between 0.80 and 1.30 (probability 0.45) | above 1.60 in both runs |
+| J-7 | s(0.2) at least s(1.0) in both runs (probability 0.65) | s(0.2) below s(1.0) by more than 0.02 in both runs |
+| J-8 | level 4 hidden share at C = 1.0 between 0.30 and 0.55 and at C = 0.2 below 0.10 (probability 0.45 for both) | at C = 0.2 above 0.25, or at C = 1.0 below 0.15 |
+
+The decision rules of section 5 read with 0.2 in place of 0.15. The 5090 comparison is no longer at an equal layer time (0.2 against 0.15 ms); the 5090 form is evaluated at its own ratio with this card's copy time as before. Nothing changes in `src/`.

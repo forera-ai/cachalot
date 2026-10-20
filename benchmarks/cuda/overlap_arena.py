@@ -510,15 +510,15 @@ def cell_defs(profile: str) -> list[dict]:
     if profile == "i-rehearsal":
         return [{"id": "p17f50", "percent": 17, "slots": 40, "tokens": 6, "frac": 0.5, "plan": [
             {"level": 3, "c": 0.05, "arms": ("N", "D", "P0L", "N"), "rows": True}, {"level": 4, "c": 0.05, "arms": ("N", "D", "P0L", "N")}]}]
-    if profile == "j-smoke":                             # L40S layer-time ends (record CUDA-L40S-C-ENDS): a short GPU smoke at both ends
+    if profile == "j-smoke":                             # L40S layer-time ends (record CUDA-L40S-C-ENDS): a short GPU smoke at both ends (0.15 ms replaced by 0.2 ms: record section 8)
         arms4 = ("N", "D", "P0L", "N")
         return [{"id": "p17j", "percent": 17, "tokens": 40, "plan": [
-            {"level": 3, "c": 1.0, "arms": arms4, "rows": True}, {"level": 3, "c": 0.15, "arms": arms4, "rows": True},
-            {"level": 4, "c": 0.15, "arms": arms4}]}]
+            {"level": 3, "c": 1.0, "arms": arms4, "rows": True}, {"level": 3, "c": 0.2, "arms": arms4, "rows": True},
+            {"level": 4, "c": 0.2, "arms": arms4}]}]
     if profile == "j-full":                              # record CUDA-L40S-C-ENDS section 3: 32 cells a run, four layer times, full copy
         arms4 = ("N", "D", "P0L", "N")
         return [{"id": "p17j", "percent": 17, "tokens": DECODE_TOKENS, "plan": [
-            {"level": lv, "c": c, "arms": arms4, **({"rows": True} if lv == 3 else {})} for c in (1.0, 0.6, 0.3, 0.15) for lv in (3, 4)]}]
+            {"level": lv, "c": c, "arms": arms4, **({"rows": True} if lv == 3 else {})} for c in (1.0, 0.6, 0.3, 0.2) for lv in (3, 4)]}]
     if profile == "j-rehearsal":
         return [{"id": "p17j", "percent": 17, "slots": 40, "tokens": 6, "plan": [
             {"level": 3, "c": 0.05, "arms": ("N", "D", "P0L", "N"), "rows": True}, {"level": 4, "c": 0.05, "arms": ("N", "D", "P0L", "N")}]}]

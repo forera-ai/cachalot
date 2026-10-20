@@ -6,7 +6,7 @@ Reads the two run directories of the `j-full` profile (each holds `raw-samples.j
 run B second) and prints each registered quantity beside its interval and falsifier. It judges nothing for the writer: the verdict
 column says only whether a number is inside the registered interval, past its falsifier, or between. Rows the record scores on run B
 (J-1, J-2, J-4, J-8) use run B, J-5 and J-9 run A, J-3, J-6, J-7 and J-10 both, as registered. It also prints the headline ratio
-s(0.15) / s(1.0) per run, the affine-in-1/C fit through the four slopes and the 5090 fast form evaluated with this instance's copy time.
+s(0.2) / s(1.0) per run, the affine-in-1/C fit through the four slopes and the 5090 fast form evaluated with this instance's copy time.
 
 Usage:
     cd /Users/hamedprooshani/Projects/deepseek-v41-mac
@@ -28,7 +28,7 @@ import row_timing as rt  # noqa: E402
 import third_c_score as tc  # noqa: E402
 
 GROUP = "p17j"
-LAYER_TIMES = (1.0, 0.6, 0.3, 0.15)
+LAYER_TIMES = (1.0, 0.6, 0.3, 0.2)     # 0.15 ms replaced by 0.2 ms after the smoke (record section 8)
 FIRST_L40S_SLOPE = 0.093                    # record section 2: the first L40S instance, f = 1.0, C = 0.3 and 0.6
 G_A, G_B = 0.0498, 0.0811                   # the RTX 5090 fast form as a function of r = c / C (record section 2)
 
@@ -91,7 +91,7 @@ def _by(points_: list[dict]) -> dict:
 
 
 def ratio(pts: dict) -> float | None:
-    s_lo, s_hi = pts[0.15]["slope"], pts[1.0]["slope"]
+    s_lo, s_hi = pts[0.2]["slope"], pts[1.0]["slope"]
     return s_lo / s_hi if s_lo and s_hi else None
 
 
@@ -122,7 +122,7 @@ def verdicts(res: dict) -> dict:
     if gates:
         ok = all(x for k, x in gates.items() if k.split(".")[-1] in ("calibration", "floor", "no_failed_cells"))
         put("J-3", ok, not ok)
-    s1, s2 = b[1.0]["slope"], b[0.15]["slope"]
+    s1, s2 = b[1.0]["slope"], b[0.2]["slope"]
     if s1 is not None:
         put("J-1", 0.075 <= s1 <= 0.110, s1 < 0.060 or s1 > 0.130)
     if s2 is not None:
@@ -137,12 +137,12 @@ def verdicts(res: dict) -> dict:
     ra_, rb_ = res.get("ratio_run_a"), res.get("ratio_run_b")
     if ra_ is not None and rb_ is not None:
         put("J-6", all(0.80 <= x <= 1.30 for x in (ra_, rb_)), all(x > 1.60 for x in (ra_, rb_)))
-    pairs = [(x[0.15]["slope"], x[1.0]["slope"]) for x in (a, b)]
+    pairs = [(x[0.2]["slope"], x[1.0]["slope"]) for x in (a, b)]
     if all(None not in p for p in pairs):
         put("J-7", all(lo >= hi for lo, hi in pairs), all(lo < hi - 0.02 for lo, hi in pairs))
-    h1, h015 = b[1.0]["hidden_measured"], b[0.15]["hidden_measured"]
-    if h1 is not None and h015 is not None:
-        put("J-8", 0.30 <= h1 <= 0.55 and h015 < 0.10, h015 > 0.25 or h1 < 0.15)
+    h1, h02 = b[1.0]["hidden_measured"], b[0.2]["hidden_measured"]
+    if h1 is not None and h02 is not None:
+        put("J-8", 0.30 <= h1 <= 0.55 and h02 < 0.10, h02 > 0.25 or h1 < 0.15)
     ex = [p["exposure_ms"] for p in res["points_run_a"] if p["exposure_ms"] is not None]
     if len(ex) == len(LAYER_TIMES):
         put("J-9", all(14.0 <= x <= 20.0 for x in ex), max(ex) / min(ex) - 1.0 > 0.30)
