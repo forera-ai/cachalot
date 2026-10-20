@@ -626,6 +626,10 @@ Hamed resumed the lane on the card ("continue with online GPUs"). `docs/CUDA-ROW
 
 `docs/CUDA-LOW-C-RECORD.md` (ten predictions L-1 to L-10 committed first, 823aa63): the slowdown slope at C = 0.15 ms, below the 0.196 ms copy time, to say whether the affine-in-1/C form continues into a saturated copy stream and whether the stand-in compute can be tuned that short. Built on the Mac (`h-smoke`, `h-full`, `n3hsmoke|n3hfull`, `low_c_score.py`); not run. Needs an RTX 5090 instance and Hamed's go.
 
+### 17.31 Low layer time outcome (2026-10-20)
+
+`docs/CUDA-LOW-C-RESULTS.md` (one RTX 5090, slow population: copies 0.355 ms against 0.195, 12 cells a run, two runs). The stand-in tunes to 0.15 ms; the slope there is 0.2234 on measured overlap, above the 1/C curve (0.165) and past the registered falsifier (0.220), so H-continues is not supported as registered, but the instance class moved at once; the count-only window model with this instance's copy time reproduces the hidden share (-0.286 against -0.279, post hoc). 5 held, 3 missed narrowly, 2 falsified. A fast-class repeat is the open item.
+
 ## 18. Honest limits
 
 - This is a plan. No hypothesis in it has been tested; every "expected" device property is vendor-derived and unverified for the rented machine.

@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-20, 0.66.52): the slope at a 0.15 ms layer is 0.223, above the 1/C curve, on a slow-population instance; H-continues not supported as registered, confounded with the instance
+>
+> Section 18.207, record `docs/CUDA-LOW-C-RECORD.md` (823aa63), results `docs/CUDA-LOW-C-RESULTS.md`, raw `docs/cuda-results/low-c-2026-10-20.json`, plan section 17.31. One RTX 5090 (`elegant-things-5691`), smoke and two runs of 12 cells, every gate true, the stand-in tuned to 0.15 ms within 1.6 %. Slope 0.2234 (replicate 0.2205) against 0.165 (affine in 1/C), 0.140 (power law), 0.110 (linear): L-1 falsified by 0.003. The instance was slow-population (median source copy 0.349 ms, per-copy cost 0.355 against 0.195); the count-only window model with that copy time gives hidden share -0.286 against measured -0.279 (post hoc). 5 held, 3 missed narrowly, 2 falsified; L-4 to L-10 not used for adoption under the slow rule. **Needs Hamed:** terminate the instance (results are home, hash verified), billed hours, delete the `h1`, `g1`, `f1` to `f3` ssh configs; decide whether to repeat on a fast-class instance.
+>
 > ## Start here (2026-10-20, 0.66.51): the low layer time (C = 0.15 ms) is registered and built; running it needs Hamed to create an RTX 5090
 >
 > Section 18.206, record `docs/CUDA-LOW-C-RECORD.md` (ten predictions L-1 to L-10, 823aa63), runbook `benchmarks/cuda/SESSION-RUNBOOK-LOW-C.md`. Hamed chose "a point below 0.3 ms" from the open GPU items. Mac only, no GPU, no instance. The slope on measured overlap is 0.0634, 0.0765 and 0.1053 at 1.0, 0.6 and 0.3 ms; extrapolated to 0.15 ms it is 0.165 (affine in 1/C), 0.140 (power law) or 0.110 (linear in C), and the count-only window model puts the hidden share at -0.085 (prefetch cannot fit a layer shorter than one copy). Built: profiles `h-smoke` and `h-full`, `session.sh n3hsmoke|n3hfull`, `low_c_score.py`, 11 tests. Prediction L-9 is whether the stand-in can be tuned to 0.15 ms at all; if the calibration or floor gate fails, the run stops at the smoke. **Needs Hamed:** an RTX 5090 instance and his go (estimate 12 to 18 minutes of GPU time, cap one GPU-hour); the 0.66.50 housekeeping stands.
@@ -9342,6 +9346,26 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.207 The slowdown slope at a layer time below 0.3 ms: measured (0.66.52)
+
+**Goal.** Run the 0.66.51 record: does the slope keep rising along the affine-in-1/C curve at C = 0.15 ms. Hamed created an RTX 5090 and said it was ready.
+
+**Baseline (recorded).** Slopes 0.0634, 0.0765, 0.1053 at 1.0, 0.6, 0.3 ms (fast instances); extrapolations 0.165 / 0.140 / 0.110; count-model hidden share -0.085.
+
+**Prediction.** L-1 to L-10 of `docs/CUDA-LOW-C-RECORD.md` (823aa63): slope 0.140 to 0.185, hidden share -0.25 to 0.05, queue model r at least 0.85, calibration and floor gates hold, demand exposure 9 to 11 ms.
+
+**Method.** `n3hsmoke` (24 s) then `n3hfull` (two runs of 12 cells, 110 s each) on one RTX 5090 VM, scored by `low_c_score.py`.
+
+**Result.** All gates true. Slope 0.2234 (B 0.2205); hidden share -0.279; row r 0.9946, overlap ratio 0.799; hidden-share error 0.0607; extrapolated-slope token error -0.329 ms; demand exposure 15.5 ms. 5 held (L-2, L-3, L-5, L-7, L-9), 3 missed narrowly (L-4, L-6, L-8), 2 falsified (L-1, L-10). The instance was slow-population (source copy 0.349 ms, per-copy cost 0.355 ms), so L-4 to L-10 are not adopted and L-1 is confounded with the instance.
+
+**Explanation (hypothesis).** The count-only window model with 0.355 ms copies gives -0.286, with 0.1957 ms -0.085: the hidden-share and exposure misses follow the copy time, run post hoc. How much of the high slope is the shorter layer and how much the slower copy is not separated.
+
+**What did not go well / limits.** The registered predictions assumed the fast population; the VM drew a slow one (x8 link width reported) and the question the record asked is not answered. One instance, one trace, a stand-in compute.
+
+**Open / needs Hamed.** Repeat on a fast-class instance; terminate `elegant-things-5691`; billed hours; delete the `h1` and earlier ssh configs.
+
+**Kind.** Research (predicted, measured, explained as hypothesis): 5 held, 3 missed narrowly, 2 falsified. No default changed.
 
 ### 18.206 The slowdown slope at a layer time below 0.3 ms: registered and built (0.66.51)
 

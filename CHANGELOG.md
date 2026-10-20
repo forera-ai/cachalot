@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.66.52 (2026-10-20)
+
+HANDOFF "Start here (2026-10-20, 0.66.52)" and section 18.207; record `docs/CUDA-LOW-C-RECORD.md` (ten predictions L-1 to L-10, committed first in 823aa63), results `docs/CUDA-LOW-C-RESULTS.md`, raw scoring `docs/cuda-results/low-c-2026-10-20.json`. Measurement on one RTX 5090 (smoke, then two runs of 12 cells at C = 0.15 ms, 110 s each, every gate true). Nothing in `src/` but the version string.
+
+### Measured
+- The harness tunes to 0.15 ms (calibration within 1.6 %, floor gate true). The slowdown slope there is 0.2234 on measured overlap (replicate 0.2205), above the affine-in-1/C value 0.165 and above the registered falsifier 0.220: H-continues is not supported as registered. The instance was **slow-population** (median source copy 0.349 ms, fitted per-copy cost 0.355 ms against 0.195 on the earlier instances), so the point is confounded with the instance class: the count-only window model with 0.355 ms copies gives a hidden share of -0.286 against the measured -0.279 (0.1957 ms copies: -0.085; post hoc). 5 held, 3 missed narrowly, 2 falsified (L-1 and demand exposure 15.5 ms). Under the record's slow-population rule L-4 to L-10 are not used for adoption.
+
+### Needs Hamed
+Terminate the RTX 5090 instance (`elegant-things-5691`, ssh config `~/cachalot-private/ssh_config_h1`), enter the billed hours, delete `ssh_config_h1` and `known_hosts_h1` with the earlier `g1`, `f1`, `f2`, `f3` ones. All runs are home with a verified hash. Whether to repeat the point on a fast-class instance is his call.
+
 ## 0.66.51 (2026-10-20)
 
 HANDOFF "Start here (2026-10-20, 0.66.51)" and section 18.206; record `docs/CUDA-LOW-C-RECORD.md` (ten predictions L-1 to L-10, committed first in 823aa63). Planning, instruments and tests only: nothing was measured and no instance was started. Nothing in `src/` but the version string.
