@@ -1,0 +1,84 @@
+{
+  "c": 0.6,
+  "hidden": {
+    "H_measured_L4": 0.40654039991530333,
+    "H_predicted_overlap": 0.4251198798115967,
+    "available": true,
+    "error_predicted": 0.018579479896293383
+  },
+  "interpolated": {
+    "error": 0.01710963530253362,
+    "slope": 0.07662857142857143,
+    "token_busy_predicted": 0.7105309385606854
+  },
+  "interpolated_v1_slope": 0.07662857142857143,
+  "level3": {
+    "available": true,
+    "held_out_r2_v1": 0.8200289820010135,
+    "held_out_r2_v3": 0.820471902209863,
+    "overlap_per_token_ms": {
+      "measured": 9.296886215538848,
+      "v1_predicted": 9.272402255639069,
+      "v2_closed_loop": 9.370535141358685
+    },
+    "overlap_ratio_run_b": 0.9973664343811312,
+    "overlap_row_r_run_b": 0.9974210818411241,
+    "params": {
+      "b0": 0.5911000000000008,
+      "c_dem": 0.2003540306528029,
+      "c_pf": 0.1950333333333328,
+      "gap": 0.02120000000000033,
+      "pre0": 0.042
+    },
+    "rows": 15960,
+    "s_measured_overlap_run_a": 0.07648694882892451,
+    "s_pred_run_a": 0.07673517295789639,
+    "token_busy": {
+      "measured_diff": 0.6934213032581518,
+      "v1_error": 0.01809808756350062,
+      "v1_predicted": 0.7115193908216524,
+      "v3_error": 0.015796453590117943,
+      "v3_predicted": 0.7092177568482697
+    },
+    "v2_over_v1": 1.010583329218697
+  },
+  "level6": {
+    "available": true,
+    "error": 0.019487019078298973,
+    "measured_diff": 0.6964894736842133,
+    "params": {
+      "b0": 0.5911000000000008,
+      "c_dem": 0.20092388009157683,
+      "c_pf": 0.19643333333333265,
+      "gap": 0.021399999999999864,
+      "pre0": 0.0469
+    },
+    "predicted": 0.7159764927625123
+  },
+  "shapes": {
+    "affine_in_inverse_c": 0.07537142857142858,
+    "linear_in_c": 0.08734285714285714,
+    "power_exponent": 0.4213961942278236,
+    "power_law": 0.07862768274583361
+  },
+  "shapes_v1_basis": {
+    "affine_in_inverse_c": 0.07662857142857143,
+    "linear_in_c": 0.09085714285714286,
+    "power_exponent": 0.4873180819409767,
+    "power_law": 0.08003786526880519
+  },
+  "slope_measured_run_a": 0.07648694882892451,
+  "slope_measured_run_b": 0.07468204603361815,
+  "slope_v1_run_a": 0.07673517295789639,
+  "verdict": {
+    "G-1": "in interval",
+    "G-2": "in interval",
+    "G-3": "in interval",
+    "G-4": "in interval",
+    "G-5": "in interval",
+    "G-6": "in interval",
+    "G-7": "in interval",
+    "G-8": "in interval",
+    "G-9": "in interval"
+  }
+}

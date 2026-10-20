@@ -618,6 +618,10 @@ Hamed resumed the lane on the card ("continue with online GPUs"). `docs/CUDA-ROW
 
 `docs/CUDA-THIRD-C-RECORD.md` (nine predictions G-1 to G-9 committed first, 32bd9e2; erratum before any run): the slowdown slope at C = 0.6 ms, to say whether it is a smooth function of the layer time and whether the unconditional predicted-overlap form holds at a layer time not used to build it. Built on the Mac (`g-smoke`, `g-full`, `n3gsmoke|n3gfull`, `third_c_score.py`); not run. Needs an RTX 5090 instance and Hamed's go.
 
+### 17.29 Third layer time outcome (2026-10-20)
+
+`docs/CUDA-THIRD-C-RESULTS.md` (one RTX 5090, 12 cells a run, two runs). The slope at C = 0.6 ms is 0.0765 on measured overlap, on the 1/C curve through the slopes at 1.0 and 0.3 ms (0.0753) and 12 % below linear in C; the predicted-overlap form holds there (hidden-share error 0.0186) and an interpolated slope predicts the token total to +0.017 ms. 9 held. One instance, one trace, mechanism unidentified.
+
 ## 18. Honest limits
 
 - This is a plan. No hypothesis in it has been tested; every "expected" device property is vendor-derived and unverified for the rented machine.

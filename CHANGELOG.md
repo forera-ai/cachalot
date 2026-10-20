@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.66.50 (2026-10-20)
+
+HANDOFF "Start here (2026-10-20, 0.66.50)" and section 18.205; record `docs/CUDA-THIRD-C-RECORD.md` (nine predictions G-1 to G-9, committed first in 32bd9e2), results `docs/CUDA-THIRD-C-RESULTS.md`, raw scoring `docs/cuda-results/third-c-2026-10-20.json`. Measurement on one RTX 5090 (smoke, then two runs of 12 cells at C = 0.6 ms, about 165 s each, every gate true). Nothing in `src/` but the version string.
+
+### Measured
+- The slowdown slope at a 0.6 ms layer is 0.0765 on measured overlap (replicate 0.0747, 2.4 % apart), 1.6 % above the affine-in-1/C value 0.0753 through the slopes at 1.0 and 0.3 ms, 12 % below linear in C. The predicted-overlap queue model holds at the new layer time: row r 0.997, overlap total 0.997 of measured, hidden-share error 0.0186 against a measured level-4 share of 0.407. An interpolated slope predicts the token total to +0.017 ms; level 6 to +0.019 ms. 9 held, 0 missed, 0 falsified.
+- Limits: one instance (fast population), one trace, a deterministic copy queue, a stand-in compute; the mechanism behind the 1/C dependence is not identified.
+
+### Needs Hamed
+Terminate the RTX 5090 instance (`ill-babies-2399`, ssh config `~/cachalot-private/ssh_config_g1`), enter the billed hours, delete `ssh_config_g1` and `known_hosts_g1` along with the earlier `f1`, `f2`, `f3` ones. All runs are home with verified hashes.
+
 ## 0.66.49 (2026-10-20)
 
 HANDOFF "Start here (2026-10-20, 0.66.49)" and section 18.204; record `docs/CUDA-THIRD-C-RECORD.md` (nine predictions G-1 to G-9, committed first in 32bd9e2, with an erratum in section 7 written before anything ran). Planning, instruments and tests only: nothing was measured and no instance was started. Nothing in `src/` but the version string.

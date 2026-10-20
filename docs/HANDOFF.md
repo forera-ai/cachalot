@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-20, 0.66.50): the slowdown slope at a 0.6 ms layer is on the 1/C curve; the predicted-overlap form holds at a third layer time; interpolation is usable between 0.3 and 1.0 ms
+>
+> Section 18.205, record `docs/CUDA-THIRD-C-RECORD.md` (32bd9e2), results `docs/CUDA-THIRD-C-RESULTS.md`, raw `docs/cuda-results/third-c-2026-10-20.json`, plan section 17.29. One RTX 5090 (fast population), smoke then two runs of 12 cells, all gates true. Slope 0.0765 (replicate 0.0747) against 0.0753 for affine in 1/C and 0.0873 for linear in C; queue model row r 0.997, hidden-share error 0.0186, interpolated token total +0.017 ms, level 6 +0.019 ms. 9 held, 0 missed, 0 falsified. One instance, one trace, a deterministic copy queue; no mechanism. **Needs Hamed:** terminate the instance, enter the billed hours, delete the `g1` (and `f1`, `f2`, `f3`) ssh configs and known_hosts. Nothing offline moves a number; more lane items need a GPU and his go.
+>
 > ## Start here (2026-10-20, 0.66.49): the third layer time (C = 0.6 ms) is registered and built; running it needs Hamed to create an RTX 5090
 >
 > Section 18.204, record `docs/CUDA-THIRD-C-RECORD.md` (nine predictions G-1 to G-9, 32bd9e2, erratum in its section 7), runbook `benchmarks/cuda/SESSION-RUNBOOK-THIRD-C.md`. Hamed chose "Third C at 0.6 ms" from the open CUDA items. Mac only, no GPU, no instance. The slowdown slope is 0.0634 at a 1.0 ms layer and 0.1053 at 0.3 ms; the record predicts 0.070 to 0.095 at 0.6 ms (linear in C 0.0873, power law 0.0786, affine in 1/C 0.0753 through the measured slopes) and tests whether the unconditional predicted-overlap form extends to a third layer time and whether the slope can be interpolated. Built: profiles `g-smoke` and `g-full`, `session.sh n3gsmoke|n3gfull`, `third_c_score.py`, 8 tests. **Needs Hamed:** an RTX 5090 instance and his go (estimate 12 to 18 minutes of GPU time, cap one GPU-hour); the earlier housekeeping stands.
@@ -9334,6 +9338,26 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.205 The slowdown slope at a third layer time: measured (0.66.50)
+
+**Goal.** Hamed created an RTX 5090 and said go for `n3gsmoke` then `n3gfull` (18.204). Find the slope at C = 0.6 ms and whether the unconditional predicted-overlap form holds there.
+
+**Baseline (recorded).** Slopes 0.0634 and 0.1053 (measured overlap) at 1.0 and 0.3 ms; hidden-share errors 0.0457 and 0.0067; level-4 share 0.423 and 0.232.
+
+**Prediction.** G-1 to G-9 of `docs/CUDA-THIRD-C-RECORD.md`, committed before any code (32bd9e2), erratum before any run.
+
+**Method.** One instance (driver 580.159.03, PCIe 5 x16, fast population, copy 0.194 ms): pack from a clean commit, `check`, `setup`, `doctor`, `smoke`, `n3gsmoke` (all gates true), `MAXS=600 n3gfull` (runs A and B, 165 s each). Hash-verified copy home; `third_c_score.py`.
+
+**Result.** `docs/CUDA-THIRD-C-RESULTS.md`. Slope 0.0765 (run B 0.0747); shapes through the known points on the measured basis 0.0873 (linear in C), 0.0786 (power law), 0.0753 (affine in 1/C); level-4 hidden share 0.4065; overlap r 0.9974, total ratio 0.9974; hidden-share error 0.0186; interpolated token error +0.017 ms; level 6 +0.019 ms. All nine held.
+
+**What it means.** The slope follows `a + b / C` on this card between 0.3 and 1.0 ms and can be interpolated; the predicted-overlap form extends to 0.6 ms. Linear in C is separated from the data; the power law and 1/C are not separated from each other.
+
+**What did not go well / limits.** The agreement is partly by construction (a deterministic FIFO copy queue); the mechanism of the 1/C dependence is not identified; one instance, one trace, a stand-in compute; replicate spread 2.4 % on a shared instance. The ssh `nohup` start held the connection until the tool timed out, harmless but worth starting detached with output redirected on both streams next time.
+
+**Open / needs Hamed.** Terminate the instance, billed hours, delete the `g1`, `f1`, `f2`, `f3` ssh configs and known_hosts. A GPU point below 0.3 or above 1.0 ms, another card, fewer and larger copies, a native issue path, ROCm and instance population need his go.
+
+**Kind.** Research (predicted, measured, explained as hypothesis): 9 held, 0 missed, 0 falsified. No default changed.
 
 ### 18.204 The slowdown slope at a third layer time: registered and built (0.66.49)
 
