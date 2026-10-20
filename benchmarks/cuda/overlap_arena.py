@@ -495,6 +495,21 @@ def cell_defs(profile: str) -> list[dict]:
         arms4 = ("N", "D", "P0L", "N")
         return [{"id": "p17", "percent": 17, "tokens": DECODE_TOKENS, "plan": [
             {"level": 3, "c": 0.15, "arms": arms4, "rows": True}, {"level": 6, "c": 0.15, "arms": arms4}, {"level": 4, "c": 0.15, "arms": arms4}]}]
+    if profile == "i-smoke":                             # copy-cost sweep (record CUDA-COPY-COST): a short GPU smoke, three cell sets
+        arms4 = ("N", "D", "P0L", "N")
+        return [{"id": "p17f100", "percent": 17, "tokens": 40, "frac": 1.0, "plan": [
+                    {"level": 3, "c": 0.3, "arms": arms4, "rows": True}, {"level": 4, "c": 0.3, "arms": arms4}]},
+                {"id": "p17f25", "percent": 17, "tokens": 40, "frac": 0.25, "plan": [
+                    {"level": 3, "c": 0.3, "arms": arms4, "rows": True}]}]
+    if profile == "i-full":                              # record CUDA-COPY-COST section 3: 48 cells a run, three copy fractions, two layer times
+        arms4 = ("N", "D", "P0L", "N")
+        return [{"id": f"p17f{int(round(f * 100))}", "percent": 17, "tokens": DECODE_TOKENS, "frac": f, "plan": [
+                    {"level": 3, "c": 0.3, "arms": arms4, "rows": True}, {"level": 4, "c": 0.3, "arms": arms4},
+                    {"level": 3, "c": 0.6, "arms": arms4, "rows": True}, {"level": 4, "c": 0.6, "arms": arms4}]}
+                for f in (1.0, 0.5, 0.25)]
+    if profile == "i-rehearsal":
+        return [{"id": "p17f50", "percent": 17, "slots": 40, "tokens": 6, "frac": 0.5, "plan": [
+            {"level": 3, "c": 0.05, "arms": ("N", "D", "P0L", "N"), "rows": True}, {"level": 4, "c": 0.05, "arms": ("N", "D", "P0L", "N")}]}]
     if profile == "f-rehearsal":
         return [{"id": "p17", "percent": 17, "slots": 40, "tokens": 6, "plan": [
             {"level": 3, "c": 0.05, "arms": ("N", "D", "P0L", "N"), "rows": True}, {"level": 6, "c": 0.05, "arms": ("N", "D", "P0L", "N")},
@@ -675,6 +690,20 @@ class OverlapArena(ra.TorchArena):
         self.cev_on = False
         self.cev_next = [0, 0]
         self._mk_event = mk
+        self.copy_bytes = nbytes                           # bytes each timed copy moves (record CUDA-COPY-COST: a prefix of the record)
+        self.copy_src = self.sources
+
+    def set_copy_fraction(self, frac: float) -> int:
+        """Copy only the first `frac` of each record in the timed paths (rounded down to 4 KiB). Slot assignment and every count are
+        unchanged; only the cost of a copy moves. Views and source prefixes are built once here, so the host path is the same at every
+        fraction. Returns the bytes a copy moves."""
+        if not 0.0 < frac <= 1.0:
+            raise ValueError(f"copy fraction {frac!r} outside (0, 1]")
+        cb = self.nbytes if frac >= 1.0 else max(4096, (int(self.nbytes * frac) // 4096) * 4096)
+        self.copy_bytes = cb
+        self.copy_src = self.sources if cb == self.nbytes else [s[:cb] for s in self.sources]
+        self.views = None
+        return cb
 
     def enable_copy_events(self, on: bool) -> None:
         """Level 6: one event after every enqueued copy. The pool is built once, on first use."""
@@ -690,7 +719,7 @@ class OverlapArena(ra.TorchArena):
         if not on:
             self.views = None
         elif self.views is None:
-            self.views = [self._slot(i) for i in range(self.slots)]
+            self.views = [self._slot(i)[:self.copy_bytes] for i in range(self.slots)]
 
     # events and streams
     def rec_compute(self, ev) -> None:
@@ -722,7 +751,7 @@ class OverlapArena(ra.TorchArena):
             if marks is not None and self.cev_on:
                 views = self.views
                 for slot, key in loads:
-                    src = self.sources[(key[0] * 131 + key[1]) % ra.SOURCE_RECORDS] if views is not None else self.sources[ra.source_index(key)]
+                    src = self.copy_src[(key[0] * 131 + key[1]) % ra.SOURCE_RECORDS] if views is not None else self.copy_src[ra.source_index(key)]
                     (views[slot] if views is not None else self._slot(slot)).copy_(src, non_blocking=nb)
                     i = self.cev_next[parity]
                     if i >= COPY_EVENT_POOL:
@@ -731,14 +760,40 @@ class OverlapArena(ra.TorchArena):
                     self.rec_copy(self.cpool[parity][i])
                     marks.append(i)
             elif self.views is not None:
-                views, sources = self.views, self.sources
+                views, sources = self.views, self.copy_src
                 for slot, key in loads:
                     views[slot].copy_(sources[(key[0] * 131 + key[1]) % ra.SOURCE_RECORDS], non_blocking=nb)
             else:
+                if self.copy_bytes != self.nbytes:
+                    raise RuntimeError("a copy fraction below 1 needs pre-built views (level 3 and above)")
                 for slot, key in loads:
-                    self._slot(slot).copy_(self.sources[ra.source_index(key)], non_blocking=nb)
+                    self._slot(slot).copy_(self.copy_src[ra.source_index(key)], non_blocking=nb)
         self.copies += len(loads)
         self.issued_copies += len(loads)
+
+    def verify(self, slot: int, key: tuple[int, int]) -> bool:
+        """The copied prefix of a slot equals the same prefix of its source record (the whole record at fraction 1)."""
+        self.sync()
+        return bool(self.t.equal(self._slot(slot)[:self.copy_bytes].cpu(), self.sources[ra.source_index(key)][:self.copy_bytes]))
+
+    def qualify_sources(self, iters: int = 15) -> list[float]:
+        """The isolated copy time of the copied prefix of every source record (event ms, p50 each); the whole record at fraction 1."""
+        if self.copy_bytes == self.nbytes:
+            return super().qualify_sources(iters)
+        out = []
+        for rec in self.copy_src:
+            ts = []
+            for i in range(iters + 3):
+                ctx = contextlib.nullcontext() if self.stream is None else self.t.cuda.stream(self.stream)
+                with ctx:
+                    self.ev_a.record(self.stream)
+                    self._slot(0)[:self.copy_bytes].copy_(rec, non_blocking=not self.rehearsal)
+                    self.ev_b.record(self.stream)
+                self.ev_b.synchronize()
+                if i >= 3:
+                    ts.append(self.ev_a.elapsed_time(self.ev_b))
+            out.append(sorted(ts)[len(ts) // 2])
+        return out
 
     def compute_part(self, which: int) -> None:
         (self.standin.part1 if which == 1 else self.standin.part2)()
@@ -1149,7 +1204,7 @@ def file_sha(path) -> str:
 
 
 def cmd_plan(args) -> int:
-    for prof in ("smoke", "full", "b-smoke", "b-full", "c-smoke", "c-full", "d-smoke", "d-full", "e-smoke", "e-full", "f-smoke", "f-full", "f-fix", "g-smoke", "g-full", "h-smoke", "h-full"):
+    for prof in ("smoke", "full", "b-smoke", "b-full", "c-smoke", "c-full", "d-smoke", "d-full", "e-smoke", "e-full", "f-smoke", "f-full", "f-fix", "g-smoke", "g-full", "h-smoke", "h-full", "i-smoke", "i-full"):
         for g in cell_defs(prof):
             slots = ra.slots_for(g["percent"])
             cs = cells_of(g)
@@ -1226,6 +1281,9 @@ def run_group(arrays_full, group: dict, expected: dict | None, run_id: str, dl: 
     rows: list[dict] = []
     status = "complete"
     arena = OverlapArena(slots, nbytes, rehearsal_cpu=rehearsal, n_layers=nl)
+    frac = float(group.get("frac", 1.0))
+    copy_bytes = arena.set_copy_fraction(frac)
+    raw.setdefault("copy_bytes", {})[group["id"]] = copy_bytes
     source_ms = arena.qualify_sources()
     c_per_copy = sorted(source_ms)[len(source_ms) // 2]
     entries = group.get("plan") or [{"level": 0, "c": c, "arms": group["arms"]} for c in group["c_values"]]
@@ -1347,9 +1405,24 @@ def run_group(arrays_full, group: dict, expected: dict | None, run_id: str, dl: 
         if level == 0 and "E_D" in eh:
             ed_ref[c] = eh["E_D"]
         rows += group_rows(run_id, label, c, walls, busy, c_per_copy, ed_ref.get(c))
+        if "frac" in group:
+            rows.append(mf.row(run_id, f"n3.{label}.C{c}", "copy_bytes", copy_bytes, "bytes", "measured", source="copy fraction x record bytes",
+                               note=f"fraction {frac}"))
         if status == "truncated":
             break
     return rows, status
+
+
+def sanity_ok(rows: list[dict], raw: dict) -> bool:
+    """Gate (sanity): no group's fastest source copy moves its bytes faster than the PCIe sanity bound. The bytes are the group's actual
+    copy size (`raw['copy_bytes']`, a prefix of the record in the copy-cost sweep), the whole record otherwise."""
+    for r in rows:
+        if r["field"] == "source_copy_ms_min" and r.get("value") is not None and r["value"] > 0:
+            parts = r["arm"].split(".")
+            nb = raw.get("copy_bytes", {}).get(parts[1] if len(parts) > 1 else "", ra.RECORD_BYTES)
+            if nb / 1e9 / (r["value"] / 1e3) > suite.PCIE_SANITY_GB_S:
+                return False
+    return True
 
 
 def cmd_run(args) -> int:
@@ -1372,7 +1445,7 @@ def cmd_run(args) -> int:
     with np.load(args.trace) as data:
         full = {k: data[k] for k in data.files if k != "segments"}
     stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
-    stage = {"h": "n3h", "g": "n3g", "f": "n3f", "e": "n3e", "d": "n3d", "c": "n3c", "b": "n3b"}.get(args.cells[:1] if args.cells[1:2] == "-" else "", "n3a")
+    stage = {"i": "n3i", "h": "n3h", "g": "n3g", "f": "n3f", "e": "n3e", "d": "n3d", "c": "n3c", "b": "n3b"}.get(args.cells[:1] if args.cells[1:2] == "-" else "", "n3a")
     run_id = f"{stamp}-{stage}-{args.cells}-{report['manifest_id'][:6]}"
     out = Path(args.out_dir) / run_id
     out.mkdir(parents=True, exist_ok=True)
@@ -1397,14 +1470,12 @@ def cmd_run(args) -> int:
         torch.cuda.empty_cache()
         if status == "truncated":
             break
-    for r in rows:
-        if r["field"] == "source_copy_ms_min" and r.get("value") is not None and r["value"] > 0:
-            if ra.RECORD_BYTES / 1e9 / (r["value"] / 1e3) > suite.PCIE_SANITY_GB_S:
-                gates["sanity"] = False
+    if not sanity_ok(rows, raw):
+        gates["sanity"] = False
     manifest = {
         "schema": mf.SCHEMA_NAME, "schema_version": mf.SCHEMA_VERSION, "platform": mf.PLATFORM, "kind": "run",
         "created_utc": mf.utc_now(), "machine_manifest_id": report["manifest_id"], "run_id": run_id,
-        "instrument": {"name": "benchmarks/cuda/overlap_arena.py", "version": {"n3h": "N3H-1", "n3g": "N3G-1", "n3f": "N3F-1", "n3e": "N3E-1", "n3d": "N3D-1", "n3c": "N3C-1", "n3b": "N3B-1"}.get(stage, "N3A-1")}, "code": report["code"], "mode": "timing",
+        "instrument": {"name": "benchmarks/cuda/overlap_arena.py", "version": {"n3i": "N3I-1", "n3h": "N3H-1", "n3g": "N3G-1", "n3f": "N3F-1", "n3e": "N3E-1", "n3d": "N3D-1", "n3c": "N3C-1", "n3b": "N3B-1"}.get(stage, "N3A-1")}, "code": report["code"], "mode": "timing",
         "workload": {"id": f"N3-stage{stage[-1].upper()}-{args.cells}", "class": "N3 layer-ahead prefetch with a stand-in compute and real copies (no model)",
                      "trace_sha256": expected["trace_sha256"], "record_bytes": ra.RECORD_BYTES, "source_records": ra.SOURCE_RECORDS,
                      "policy": "lru", "claims": "overlap mechanics only: exposed copy time against compute window, copy-lane saturation, interference"},
@@ -1434,7 +1505,7 @@ def main(argv=None) -> int:
     r = sub.add_parser("run")
     r.add_argument("--trace", required=True)
     r.add_argument("--expected", required=True)
-    r.add_argument("--cells", choices=("smoke", "full", "b-smoke", "b-full", "c-smoke", "c-full", "d-smoke", "d-full", "e-smoke", "e-full", "f-smoke", "f-full", "f-fix", "g-smoke", "g-full", "h-smoke", "h-full"), required=True)
+    r.add_argument("--cells", choices=("smoke", "full", "b-smoke", "b-full", "c-smoke", "c-full", "d-smoke", "d-full", "e-smoke", "e-full", "f-smoke", "f-full", "f-fix", "g-smoke", "g-full", "h-smoke", "h-full", "i-smoke", "i-full"), required=True)
     r.add_argument("--execute", action="store_true")
     r.add_argument("--max-seconds", type=float, default=1500.0)
     r.add_argument("--out-dir", default=str(Path(__file__).resolve().parents[1] / "results" / "cuda"))
