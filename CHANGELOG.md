@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.66.47 (2026-10-20)
+
+HANDOFF "Start here (2026-10-20, 0.66.47)" and section 18.202; record `docs/CUDA-SLOWDOWN-RECORD.md` (seven predictions CS-1 to CS-7, committed first in 35e2d14, before the script existed), results `docs/CUDA-SLOWDOWN-RESULTS.md`, raw scoring `docs/cuda-results/slowdown-fit-2026-10-20.json`. Measurement only, Mac only, on the raw samples already copied home from the row-timing session; nothing in `src/` except the version string. Hamed: "continue with CUDA part" (the v251 offline follow-up).
+
+### Added
+- `benchmarks/cuda/compute_slowdown_fit.py`: fits the extra busy time of a `P0L` compute row against the time its compute window overlaps prefetch copy batches (M1), with a copy-count term (M2), a constant per row (M3) and no term (M0) as competitors, fitted on run A and scored on run B, on the token-level busy-time gap, on the row model's hidden share and on the level-6 cells; `tests/test_cuda_slowdown_fit.py` (5 tests on fabricated runs with a planted slope).
+
+### Measured
+- A time-overlap term closes the row model's token error. Slope 0.0634 ms of extra compute per millisecond of overlap at a 1.0 ms layer and 0.1053 at 0.3 ms (replicates agree to 4.1 % and 2.5 %); held-out R² 0.711 and 0.850 against 0.452 and 0.067 for a copy count and about 0 for a constant per row. The hidden-share error falls from 0.110 and 0.089 to 0.045 and 0.008; the token busy-time gap is reproduced to 0.022 and 0.015 ms; the level-3 slope predicts the level-6 cells to 0.045 and 0.015 ms. 6 held, 1 missed (the slope at 1.0 ms, 0.0634 against 0.03 to 0.06), 0 falsified. Adopted for the `P0L` row model on this card, trace and resident fraction, **conditional on measured overlap** (a predicted-overlap version is not built).
+
+### Needs Hamed
+Nothing for this change. Earlier housekeeping stands: terminate the running instance, billed hours, delete the ssh configs and known_hosts of `f1`, `f2`, `f3`.
+
 ## 0.66.46 (2026-10-20)
 
 HANDOFF "Start here (2026-10-20, 0.66.46)" and section 18.201; record `docs/CUDA-ROW-TIMING-RECORD.md` (seven predictions committed first in 6502a50; erratum section 8), results `docs/CUDA-ROW-TIMING-RESULTS.md`, raw scoring `docs/cuda-results/row-timing-2026-10-20.json`. Measurement on an RTX 5090 (two full runs and one fix run on one fast-population instance, all gates true); nothing in `src/` but the version string. 4 held, 1 missed, 2 falsified; no default changed.

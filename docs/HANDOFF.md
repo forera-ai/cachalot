@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-20, 0.66.47): a time-overlap slowdown term closes the row model's token error; adopted conditional on measured overlap; one offline follow-up is named
+>
+> Section 18.202, record `docs/CUDA-SLOWDOWN-RECORD.md` (seven predictions, 35e2d14), results `docs/CUDA-SLOWDOWN-RESULTS.md`, plan section 17.26, raw `docs/cuda-results/slowdown-fit-2026-10-20.json`. Mac only, no GPU. Extra compute per millisecond of overlap with prefetch copies: 0.0634 at a 1.0 ms layer, 0.1053 at 0.3 ms (replicates 4.1 % and 2.5 % apart). Hidden-share error 0.110 and 0.089 without the term, 0.045 and 0.008 with it; held-out R² 0.711 and 0.850 against 0.45 and 0.07 for a copy count. 6 held, 1 missed (the 1.0 ms slope, 0.003 above its interval), 0 falsified. Conditional on measured overlap: the overlap is read from the run's own events and contains the stretch. **Needs Hamed:** nothing for this change; the instance, billed hours and the `f1`, `f2`, `f3` ssh configs from the last session stand. Open and offline: a predicted-overlap version of the term (Hamed's call).
+>
 > ## Start here (2026-10-20, 0.66.46): per-row timing ran on an RTX 5090: queue wait is the per-miss cost at short layers, not at 1 ms; no model adopted; one offline follow-up is named
 >
 > Section 18.201, results `docs/CUDA-ROW-TIMING-RESULTS.md`, plan section 17.25, raw `docs/cuda-results/row-timing-2026-10-20.json`. 4 held, 1 missed, 2 falsified (RT-4 and RT-7). A left-behind miss costs +1.3 % at C = 1.0 ms (RT-4 falsified) and +33 % at 0.3 ms, 90 % of it queue wait; a copy costs 0.2036 ms with no batch overhead; per-copy events are free. The queue-aware row model predicts each row's wait (r 0.945 and 0.991) but overstates the token's hidden share by 0.09 to 0.11; the stand-in compute busy time is 0.61 ms (1.5 %) longer a token in `P0L` than in `D` at 1.0 ms and 0.77 ms (6.3 %) at 0.3 ms, the missing term (hypothesis). **Defect of mine, fixed:** the plan revisited C = 1.0 after 0.3 and the stand-in was not re-tuned (found from the floors; fix 129119a: retune on every C change, a `floor` gate, `f-fix`). **Next, no GPU needed:** fit a compute-slowdown term on the recorded busy times (one run fit, the other scored). **Needs Hamed:** billed hours (about 70 minutes on one instance, over the one-hour cap by his go); terminate the running instance; delete the ssh configs and known_hosts of `f1`, `f2`, `f3`.
@@ -9322,6 +9326,26 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.202 A compute-slowdown term for the row model (0.66.47)
+
+**Goal.** Hamed: "continue with CUDA part" (v251 Job 1, the one offline follow-up). Fit the extra busy time of the stand-in compute beside prefetch copies, so that the row model's token total stops being 0.09 to 0.11 off.
+
+**Baseline (recorded).** Row model hidden-share error 0.110 (C = 1.0 ms) and 0.089 (0.3 ms) against the level-4 measured shares; `P0L` compute busy 0.607 and 0.77 ms a token longer than `D`'s.
+
+**Prediction.** CS-1 to CS-7 of `docs/CUDA-SLOWDOWN-RECORD.md`, committed before the script existed (35e2d14); the script and its tests were committed before the first real fit (the CS-1 centres are derived from the baseline aggregates).
+
+**Method.** `benchmarks/cuda/compute_slowdown_fit.py` on the saved raw samples of runs A and B (and the fix run's cells): per-row extra busy time against the overlap of the row's compute window with the copy stream's prefetch batches (M1), with a copy count (M2), a constant (M3) and no term (M0) as competitors; fit on run A, score on run B; level-6 cells as replication.
+
+**Result.** `docs/CUDA-SLOWDOWN-RESULTS.md`. Slope 0.0634 and 0.1053 ms per ms of overlap; held-out R² 0.711 and 0.850 (copy count 0.452 and 0.067, constant about 0); hidden-share error 0.045 and 0.008; token busy gap error 0.022 and 0.015 ms; level-6 error 0.045 and 0.015 ms. CS-1 missed (0.0634 above 0.06), CS-2 to CS-7 held, none falsified.
+
+**What it means.** The compute stream's slowdown is a function of how long copies and kernels overlap, not of how many copies are issued; the effect per millisecond of overlap is larger for a shorter kernel. The term is adopted for the `P0L` row model on this card, trace and resident fraction, conditional on measured overlap.
+
+**What did not go well / limits.** The overlap is read from the run's own events and includes the stretch it explains; a version that predicts overlap from the queue model is not built, so the 0.045 at C = 1.0 (limit 0.05) is optimistic for it. The bootstrap interval over tokens (about +-0.0004) is too narrow to quote; replicate agreement is the scale. One instance, one trace, a stand-in compute.
+
+**Open / needs Hamed.** The predicted-overlap version (offline, his call). A third C or another card needs a GPU and his go. Housekeeping from the last session stands.
+
+**Kind.** Research (predicted, measured offline, explained as hypothesis): 6 held, 1 missed, 0 falsified. No default changed.
 
 ### 18.201 Row and per-copy timing on an RTX 5090 (0.66.46)
 

@@ -606,6 +606,10 @@ Hamed resumed the lane on the card ("continue with online GPUs"). `docs/CUDA-ROW
 
 `docs/CUDA-ROW-TIMING-RESULTS.md` (RTX 5090, fast population). 4 held, 1 missed, 2 falsified. A left-behind miss costs +1.3 % at C = 1.0 ms and +33 % at 0.3 ms, 90 % of it queue wait; copies cost 0.2036 ms with no batch overhead; the row model's token total is 0.09 to 0.11 off because the compute busy time rises 1.5 % (1.0 ms) to 6.3 % (0.3 ms) beside prefetch copies. No model adopted. A harness defect (no re-tune on a revisited C) was found and fixed during the session.
 
+### 17.26 Compute-slowdown term outcome (2026-10-20)
+
+`docs/CUDA-SLOWDOWN-RESULTS.md` (Mac only, the saved raw samples of the row-timing session). A time-overlap term (0.0634 ms of extra compute per ms of overlap at a 1.0 ms layer, 0.1053 at 0.3 ms) takes the row model's hidden-share error from 0.110 and 0.089 to 0.045 and 0.008; a copy count explains far less. 6 held, 1 missed, 0 falsified. Adopted for the `P0L` row model on this card, trace and resident fraction, conditional on measured overlap; a predicted-overlap version is the open offline step.
+
 ## 18. Honest limits
 
 - This is a plan. No hypothesis in it has been tested; every "expected" device property is vendor-derived and unverified for the rented machine.
