@@ -77,6 +77,7 @@ CLOSURE_MIN_SHARE = 0.9                                                   # N3-P
 CLOSURE_REJECT_SHARE = 0.8                                                # below this the cell's decomposition is rejected
 WEIGHT_CAP_BYTES = 6 * 2**30
 HARD_CELL_SECONDS = 900
+FLOOR_TOLERANCE = 0.25                                                    # |N floor / (layers x C) - 1|: the stand-in is tuned to the cell's C (0.66.46)
 
 
 # ------------------------------------------------------------------------------------------------ bookkeeping
@@ -476,6 +477,10 @@ def cell_defs(profile: str) -> list[dict]:
             {"level": 3, "c": 1.0, "arms": arms4, "rows": True}, {"level": 3, "c": 0.3, "arms": arms4, "rows": True},
             {"level": 6, "c": 1.0, "arms": arms4}, {"level": 6, "c": 0.3, "arms": arms4},
             {"level": 4, "c": 1.0, "arms": arms4}, {"level": 4, "c": 0.3, "arms": arms4}]}]
+    if profile == "f-fix":                               # the two (level, C = 1.0) cell groups voided by the 0.66.45 retune defect (record section 8)
+        arms4 = ("N", "D", "P0L", "N")
+        return [{"id": "p17", "percent": 17, "tokens": DECODE_TOKENS, "plan": [
+            {"level": 6, "c": 1.0, "arms": arms4}, {"level": 4, "c": 1.0, "arms": arms4}]}]
     if profile == "f-rehearsal":
         return [{"id": "p17", "percent": 17, "slots": 40, "tokens": 6, "plan": [
             {"level": 3, "c": 0.05, "arms": ("N", "D", "P0L", "N"), "rows": True}, {"level": 6, "c": 0.05, "arms": ("N", "D", "P0L", "N")},
@@ -1130,7 +1135,7 @@ def file_sha(path) -> str:
 
 
 def cmd_plan(args) -> int:
-    for prof in ("smoke", "full", "b-smoke", "b-full", "c-smoke", "c-full", "d-smoke", "d-full", "e-smoke", "e-full", "f-smoke", "f-full"):
+    for prof in ("smoke", "full", "b-smoke", "b-full", "c-smoke", "c-full", "d-smoke", "d-full", "e-smoke", "e-full", "f-smoke", "f-full", "f-fix"):
         for g in cell_defs(prof):
             slots = ra.slots_for(g["percent"])
             cs = cells_of(g)
@@ -1195,12 +1200,15 @@ def cmd_expect(args) -> int:
 
 def run_group(arrays_full, group: dict, expected: dict | None, run_id: str, dl: suite.Deadline, gates: dict, failures: list, raw: dict,
               *, rehearsal: bool = False, weight_start: int | None = None, calib_tolerance: float = CALIBRATION_TOLERANCE,
-              nbytes: int = ra.RECORD_BYTES, readback_every: int = ra.READBACK_EVERY, drift_limit: float = DRIFT_LIMIT) -> tuple[list[dict], str]:
+              nbytes: int = ra.RECORD_BYTES, readback_every: int = ra.READBACK_EVERY, drift_limit: float = DRIFT_LIMIT,
+              floor_check: bool | None = None) -> tuple[list[dict], str]:
     """Run every cell of a group in order; returns (rows, status). Used by the CLI and, with `rehearsal=True`, by the Mac tests.
     A group with a `plan` (stage B) runs its (level, C) entries in order; otherwise stage A's C values with level 0."""
     trace = {k: arrays_full[k] for k in ("phase", "layer", "position", "experts")}
     nl = ra.trace_layer_count(trace)
     slots = group.get("slots") or ra.slots_for(group["percent"])
+    if floor_check is None:
+        floor_check = not rehearsal                         # the CPU rehearsal's microsecond kernels have no meaningful floor
     rows: list[dict] = []
     status = "complete"
     arena = OverlapArena(slots, nbytes, rehearsal_cpu=rehearsal, n_layers=nl)
@@ -1211,13 +1219,16 @@ def run_group(arrays_full, group: dict, expected: dict | None, run_id: str, dl: 
     ed_ref: dict[float, float] = {}
     graph_ok: dict[float, bool] = {}
     first_cell_of_run = True
+    cur_c = None                                           # the C the stand-in is tuned to now (0.66.46: a plan may revisit a C)
     for entry in entries:
         c, level = entry["c"], entry.get("level", 0)
         label = f"{group['id']}.L{level}" if "plan" in group else group["id"]
-        if c not in calib_for:
+        if c not in calib_for or cur_c != c:
             calib = arena.standin.calibrate(c, weight_start or (256 * 2**20), tolerance=calib_tolerance)
             calib_for[c] = calib
-            raw.setdefault("calibration", {})[f"{group['id']}.C{c}"] = calib
+            cur_c = c
+            graph_ok.clear()                               # the weights changed: a captured graph is stale
+            raw.setdefault("calibration", {}).setdefault(f"{group['id']}.C{c}", calib)
             gates["calibration"] &= calib["ok"]
             if not calib["ok"]:
                 failures.append({"cell": f"{group['id']}.C{c}", "error": f"stand-in calibration off by {calib['error']:.3f}"})
@@ -1309,6 +1320,12 @@ def run_group(arrays_full, group: dict, expected: dict | None, run_id: str, dl: 
             except Exception as exc:                                  # a failed cell is recorded, never hidden
                 failures.append({"cell": cell["id"], "error": f"{type(exc).__name__}: {str(exc)[:200]}"})
         eh = exposed_and_hidden(walls)
+        if floor_check and "floor_ms" in eh:
+            ratio = eh["floor_ms"] / (nl * c)
+            gates.setdefault("floor", True)
+            gates["floor"] &= abs(ratio - 1.0) <= FLOOR_TOLERANCE
+            if abs(ratio - 1.0) > FLOOR_TOLERANCE:
+                failures.append({"cell": f"{label}.C{c}", "error": f"N control floor {eh['floor_ms']:.2f} ms against {nl} layers x C {c} = {nl * c:.2f} ms: the stand-in is not tuned to C"})
         if "drift" in eh:
             gates["drift"] &= abs(eh["drift"]) <= drift_limit
             if abs(eh["drift"]) > drift_limit:
@@ -1403,7 +1420,7 @@ def main(argv=None) -> int:
     r = sub.add_parser("run")
     r.add_argument("--trace", required=True)
     r.add_argument("--expected", required=True)
-    r.add_argument("--cells", choices=("smoke", "full", "b-smoke", "b-full", "c-smoke", "c-full", "d-smoke", "d-full", "e-smoke", "e-full", "f-smoke", "f-full"), required=True)
+    r.add_argument("--cells", choices=("smoke", "full", "b-smoke", "b-full", "c-smoke", "c-full", "d-smoke", "d-full", "e-smoke", "e-full", "f-smoke", "f-full", "f-fix"), required=True)
     r.add_argument("--execute", action="store_true")
     r.add_argument("--max-seconds", type=float, default=1500.0)
     r.add_argument("--out-dir", default=str(Path(__file__).resolve().parents[1] / "results" / "cuda"))

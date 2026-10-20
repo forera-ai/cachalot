@@ -3,7 +3,7 @@
 # Run from the directory the scaffold archive was unpacked into. No sudo, no system package changes, no downloads other
 # than the pinned Python wheels named below, which `setup` shows before it installs them.
 #
-#   bash benchmarks/cuda/session.sh check|setup|doctor|smoke|baseline|s2|n2smoke|n2full|backing|hugepage|n3smoke|n3full|n3bsmoke|n3bfull|n3csmoke|n3cfull|n3dsmoke|n3dfull|n3esmoke|n3ebridge|n3fsmoke|n3ffull|results
+#   bash benchmarks/cuda/session.sh check|setup|doctor|smoke|baseline|s2|n2smoke|n2full|backing|hugepage|n3smoke|n3full|n3bsmoke|n3bfull|n3csmoke|n3cfull|n3dsmoke|n3dfull|n3esmoke|n3ebridge|n3fsmoke|n3ffull|n3ffix|results
 #   (s2 = docs/CUDA-S2-EXPERIMENT-RECORD.md: overlap variants and batched expert copies; needs a clean smoke run first)
 set -euo pipefail
 
@@ -342,6 +342,15 @@ EOF7
       SESSION_TAG="${SESSION_TAG:-N3F}" "$PY" "$ROOT/benchmarks/cuda/overlap_arena.py" run --trace "$NEW" --expected "$ROOT/benchmarks/cuda/n3d-expected.json" \
         --cells f-full --execute --max-seconds "${MAXS:-900}" --region "$REGION" --note "$(SESSION_TAG="${SESSION_TAG:-N3F}" note n3ffull-$rep)" || die "n3ffull $rep failed: stop, bring the files home"
     done
+    ;;
+
+  n3ffix)
+    # 0.66.46: the two (level, C = 1.0) groups of f-full that ran with the stand-in tuned to C = 0.3 (record section 8). One run on the new trace.
+    [ -x "$PY" ] || die "run setup first"
+    NEW="${TRACE_NEW:-$ROOT/n3d-trace.npz}"
+    [ -f "$NEW" ] || die "new trace not found at $NEW"
+    SESSION_TAG="${SESSION_TAG:-N3F}" "$PY" "$ROOT/benchmarks/cuda/overlap_arena.py" run --trace "$NEW" --expected "$ROOT/benchmarks/cuda/n3d-expected.json" \
+      --cells f-fix --execute --max-seconds "${MAXS:-420}" --region "$REGION" --note "$(SESSION_TAG="${SESSION_TAG:-N3F}" note n3ffix)" || die "n3ffix failed: stop, bring the files home"
     ;;
 
   results)

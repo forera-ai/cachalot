@@ -175,3 +175,41 @@ def test_the_scoring_cli_reads_two_run_directories(tmp_path, capsys):
         (d / "raw-samples.json").write_text(json.dumps({"run": name, "samples": _fab_run(seed)}))
     assert rt.main([str(tmp_path / "a"), str(tmp_path / "b"), "--json", str(tmp_path / "o.json")]) == 0
     assert json.loads((tmp_path / "o.json").read_text())["verdict"]["RT-1"]
+
+
+# ------------------------------------------------------------------------------------------ 0.66.46: retune on a revisited C, floor gate
+
+def test_a_plan_that_revisits_a_c_retunes_the_stand_in_each_time(monkeypatch):
+    a = synth(tokens=6)
+    tuned = []
+    orig = oa.StandIn.calibrate
+
+    def spy(self, target_ms, start, tolerance=0.05):
+        tuned.append(target_ms)
+        return orig(self, target_ms, start, tolerance=tolerance)
+
+    monkeypatch.setattr(oa.StandIn, "calibrate", spy)
+    group = {"id": "p17", "percent": 17, "slots": 40, "tokens": 4, "plan": [
+        {"level": 3, "c": 0.05, "arms": ("N", "D", "N")}, {"level": 3, "c": 0.04, "arms": ("N", "D", "N")}, {"level": 6, "c": 0.05, "arms": ("N", "D", "N")}]}
+    gates, failures, raw = _gates(), [], {}
+    oa.run_group(a, group, None, "r", suite.Deadline(300), gates, failures, raw, rehearsal=True, weight_start=1 << 16, calib_tolerance=50.0,
+                 nbytes=2048, readback_every=20, drift_limit=10.0)
+    assert tuned == [0.05, 0.04, 0.05]                      # 0.05 again after 0.04: stage A to E never did this
+
+
+def test_the_floor_gate_trips_when_the_stand_in_is_not_tuned_to_c(monkeypatch):
+    a = synth(tokens=6)
+    group = {"id": "p17", "percent": 17, "slots": 40, "tokens": 4, "plan": [{"level": 3, "c": 1.0, "arms": ("N", "D", "N")}]}
+    gates, failures, raw = _gates(), [], {}
+    oa.run_group(a, group, None, "r", suite.Deadline(300), gates, failures, raw, rehearsal=True, weight_start=1 << 16, calib_tolerance=50.0,
+                 nbytes=2048, readback_every=20, drift_limit=10.0, floor_check=True)             # the CPU stand-in takes microseconds, not 1 ms
+    assert gates["floor"] is False and any("not tuned to C" in f["error"] for f in failures)
+
+
+def test_the_fix_profile_and_the_merge_replace_only_the_voided_cells():
+    cells = [c for g in oa.cell_defs("f-fix") for c in oa.cells_of(g)]
+    assert len(cells) == 8 and {(c["level"], c["c"]) for c in cells} == {(6, 1.0), (4, 1.0)}
+    raw = {"p17.L6.C1.0.D": {"v": "old"}, "p17.L6.C0.3.D": {"v": "keep"}, "calibration": {"x": 1}}
+    fix = {"p17.L6.C1.0.D": {"v": "new"}, "calibration": {"y": 2}}
+    m = rt.merge_fix(raw, fix)
+    assert m["p17.L6.C1.0.D"]["v"] == "new" and m["p17.L6.C0.3.D"]["v"] == "keep" and m["calibration"] == {"x": 1}

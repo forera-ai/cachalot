@@ -219,6 +219,13 @@ def verdicts(res: dict) -> dict:
     return v
 
 
+def merge_fix(raw: dict, fix: dict) -> dict:
+    """0.66.46: cells of the fix run (`f-fix`) replace the same-id cells of a run whose stand-in was not retuned to C (record section 8)."""
+    out = {k: v for k, v in raw.items() if k not in fix or k == "calibration"}
+    out.update({k: v for k, v in fix.items() if k != "calibration"})
+    return out
+
+
 def score(raw_a: dict, raw_b: dict) -> dict:
     res = {"rt1_rt2": score_rt1_rt2(raw_a), "rt3_rt4": {}, "rt5": {}, "rt6": {}, "rt7": score_rt7(raw_a, raw_b)}
     for c in (1.0, 0.3):
@@ -234,8 +241,13 @@ def main(argv=None) -> int:
     ap.add_argument("run_a")
     ap.add_argument("run_b")
     ap.add_argument("--json")
+    ap.add_argument("--fix", help="the f-fix run directory: its cells replace the voided C = 1.0 level-6 and level-4 cells of both runs")
     args = ap.parse_args(argv)
-    res = score(load_samples(args.run_a), load_samples(args.run_b))
+    a, b = load_samples(args.run_a), load_samples(args.run_b)
+    if args.fix:
+        fx = load_samples(args.fix)
+        a, b = merge_fix(a, fx), merge_fix(b, fx)
+    res = score(a, b)
     print(json.dumps(res, indent=2, sort_keys=True, default=float))
     if args.json:
         Path(args.json).write_text(json.dumps(res, indent=2, sort_keys=True, default=float) + "\n")
