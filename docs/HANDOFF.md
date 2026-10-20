@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-20, 0.66.46): per-row timing ran on an RTX 5090: queue wait is the per-miss cost at short layers, not at 1 ms; no model adopted; one offline follow-up is named
+>
+> Section 18.201, results `docs/CUDA-ROW-TIMING-RESULTS.md`, plan section 17.25, raw `docs/cuda-results/row-timing-2026-10-20.json`. 4 held, 1 missed, 2 falsified (RT-4 and RT-7). A left-behind miss costs +1.3 % at C = 1.0 ms (RT-4 falsified) and +33 % at 0.3 ms, 90 % of it queue wait; a copy costs 0.2036 ms with no batch overhead; per-copy events are free. The queue-aware row model predicts each row's wait (r 0.945 and 0.991) but overstates the token's hidden share by 0.09 to 0.11; the stand-in compute busy time is 0.61 ms (1.5 %) longer a token in `P0L` than in `D` at 1.0 ms and 0.77 ms (6.3 %) at 0.3 ms, the missing term (hypothesis). **Defect of mine, fixed:** the plan revisited C = 1.0 after 0.3 and the stand-in was not re-tuned (found from the floors; fix 129119a: retune on every C change, a `floor` gate, `f-fix`). **Next, no GPU needed:** fit a compute-slowdown term on the recorded busy times (one run fit, the other scored). **Needs Hamed:** billed hours (about 70 minutes on one instance, over the one-hour cap by his go); terminate the running instance; delete the ssh configs and known_hosts of `f1`, `f2`, `f3`.
+>
 > ## Start here (2026-10-20, 0.66.45): the CUDA lane is resumed on the card; per-row and per-copy timing is built and rehearsed; it needs Hamed to create an RTX 5090
 >
 > Section 18.200, record `docs/CUDA-ROW-TIMING-RECORD.md` (seven predictions committed first, 6502a50; erratum 21b65ac), plan section 17.24. Hamed: "continue with online GPUs. prepare the codes and ask me which GPU is needed to be started." Built on the Mac, never run on a GPU: per-row event records and level L6 (an event after every copy) in `overlap_arena.py`, profiles `f-smoke` and `f-full` (24 cells a run), gates `rowsum` and `copyevents`, `row_timing.py` (scores RT-1 to RT-7), `session.sh n3fsmoke|n3ffull`, `SESSION-RUNBOOK-ROW-TIMING.md`; 897 tests. **Recommended card: one RTX 5090** (every earlier stage used it; only the new multi-lead trace is needed, cap one GPU-hour from Ready). **Needs Hamed:** create the instance and say go for the named live instance; billed hours and the ssh housekeeping of earlier sessions.
@@ -9318,6 +9322,26 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.201 Row and per-copy timing on an RTX 5090 (0.66.46)
+
+**Goal.** Hamed: "go ahead with smoke test", then "go" for the full runs and "go" to extend the cap by about 15 minutes for a fix run. Score the seven predictions of `docs/CUDA-ROW-TIMING-RECORD.md`.
+
+**Baseline (recorded).** Misses left behind by `P0L` cost about 0.22 ms against 0.187 ms for `D`'s; the copy-count screen's error about 0.1; copy cost 0.19 ms on a fast-population instance.
+
+**Prediction.** RT-1 to RT-7 of the record, committed before any code (6502a50), erratum 21b65ac before the build.
+
+**Method.** One RTX 5090 (fast population, source-record copy median 0.194 ms), the new multi-lead trace, 17 % resident, 400 decode tokens a cell. Smoke (8 cells), then two full runs (A and B, 24 cells, 264 s each), then a fix run (8 cells, 161 s). The first instance pair had one GPU that did not initialise (terminated); the kept instance had no outbound network until a console reboot (Hamed). Scoring by `row_timing.py`.
+
+**Result.** `docs/CUDA-ROW-TIMING-RESULTS.md`. RT-1 held (0.2036 ms), RT-2 held (+0.014 ms), RT-3 missed (0.005 at 1.0 ms held; 0.30 at 0.3 ms below 0.40 to 0.75), RT-4 falsified (+1.3 % at 1.0 ms), RT-5 held (+1.0 %), RT-6 held (at most +0.06 ms), RT-7 falsified (r 0.945 and 0.991 but token error 0.110 and 0.089). 4 held, 1 missed, 2 falsified. Not adopted.
+
+**What it means.** At a 1 ms layer prefetch finishes inside the window and a left-behind miss costs what a demand miss costs; at 0.3 ms the demand batch waits behind queued prefetch (+33 %, 90 % wait). The row stalls are right; the token total is off because prefetch copies lengthen the compute kernels (hypothesis: +0.61 ms at 1.0 ms and +0.77 ms at 0.3 ms, reproduced across runs to 0.006 ms), which is of the size of the token error.
+
+**What did not go well.** The harness did not re-tune the stand-in when a plan revisited a C: the level-6 and level-4 cells at C = 1.0 of the first runs ran at 0.3 ms. I caught it from the floors (12.6 ms against 40 ms), not from a gate; the fix run repeated those cells (single run, no replicate), and a `floor` gate now exists. The instance ran about 20 minutes over the one-hour cap by Hamed's go. Copying 80 MB of raw samples over the instance's link was too slow (30 KB/s), so results are compressed first.
+
+**Open / needs Hamed.** The offline compute-slowdown term (no GPU); the other lane items (fewer and larger copies, weakened by RT-2; a native issue path; ROCm; V100 or L40S; instance population) need his go. Billed hours; terminate the running instance; ssh housekeeping (`f1`, `f2`, `f3`).
+
+**Kind.** Research (predicted, measured, explained as hypothesis): 4 held, 1 missed, 2 falsified. No default changed.
 
 ### 18.200 Row and per-copy timing prepared (0.66.45)
 

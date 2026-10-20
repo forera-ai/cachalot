@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.66.46 (2026-10-20)
+
+HANDOFF "Start here (2026-10-20, 0.66.46)" and section 18.201; record `docs/CUDA-ROW-TIMING-RECORD.md` (seven predictions committed first in 6502a50; erratum section 8), results `docs/CUDA-ROW-TIMING-RESULTS.md`, raw scoring `docs/cuda-results/row-timing-2026-10-20.json`. Measurement on an RTX 5090 (two full runs and one fix run on one fast-population instance, all gates true); nothing in `src/` but the version string. 4 held, 1 missed, 2 falsified; no default changed.
+
+### Fixed
+- `overlap_arena.py`: the stand-in compute is re-tuned whenever C changes (0.66.45 re-tuned only the first time a C appeared, so a plan that returned to C = 1.0 after 0.3 ms ran at 0.3 ms; found from the N-control floors in the first full runs, which voided the level-6 and level-4 cells at C = 1.0). A new `floor` gate (N-control floor within 25 % of layers times C), the profile `f-fix`, `session.sh n3ffix`, and `row_timing.py --fix`.
+
+### Measured
+- A queue-aware row model is not adopted. The stall per left-behind miss is +1.3 % above a demand-only miss at C = 1.0 ms (RT-4 falsified) and +33 % at 0.3 ms, 90 % of it queue wait behind prefetch copies; an idle-queue copy is 0.2036 ms with no batch overhead (RT-1, RT-2 held); a prefetch copy under compute is 1 % slower (RT-5 held); per-copy events cost nothing visible (RT-6 held). The row model predicts each row's wait (r 0.945 and 0.991) but overstates the token's hidden share by 0.09 to 0.11 (RT-7 falsified): the stand-in's compute busy time is 0.61 ms (1.5 %) longer a token in `P0L` than in `D` at 1.0 ms and 0.77 ms (6.3 %) at 0.3 ms, the term the model lacks (hypothesis).
+
+### Needs Hamed
+Billed hours; delete the ssh configs and known_hosts of the earlier instances (`f1`, `f2`, `f3`); terminate the running instance (the fix run is home).
+
 ## 0.66.45 (2026-10-20)
 
 HANDOFF "Start here (2026-10-20, 0.66.45)" and section 18.200; record `docs/CUDA-ROW-TIMING-RECORD.md` (seven predictions RT-1 to RT-7, committed first in 6502a50, erratum in 21b65ac before any code), runbook `benchmarks/cuda/SESSION-RUNBOOK-ROW-TIMING.md`. Planning, instruments and tests; nothing was run on a GPU and nothing in `src/` changed except the version string. Hamed resumed the CUDA lane ("continue with online GPUs. prepare the codes and ask me which GPU is needed to be started"); the queue-state results had named per-row timing as the only way to explain the per-miss cost.

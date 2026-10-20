@@ -602,6 +602,10 @@ N3 stage B ran under `docs/CUDA-N3B-EXPERIMENT-RECORD.md` and is recorded in `do
 
 Hamed resumed the lane on the card ("continue with online GPUs"). `docs/CUDA-ROW-TIMING-RECORD.md` registers seven predictions (RT-1 to RT-7) for a per-row and per-copy timing of a miss on an RTX 5090, committed before any code; an erratum (RT-5 on prefetch copies, a level-4 cell at both C) is committed before the build. The harness (`overlap_arena.py` level L6 and the `rows` flag, profiles `f-smoke` and `f-full`), the scoring script `row_timing.py` and the runbook are built and rehearsed on the Mac; nothing ran on a GPU. It needs Hamed to create the instance.
 
+### 17.25 Row and per-copy timing outcome (2026-10-20)
+
+`docs/CUDA-ROW-TIMING-RESULTS.md` (RTX 5090, fast population). 4 held, 1 missed, 2 falsified. A left-behind miss costs +1.3 % at C = 1.0 ms and +33 % at 0.3 ms, 90 % of it queue wait; copies cost 0.2036 ms with no batch overhead; the row model's token total is 0.09 to 0.11 off because the compute busy time rises 1.5 % (1.0 ms) to 6.3 % (0.3 ms) beside prefetch copies. No model adopted. A harness defect (no re-tune on a revisited C) was found and fixed during the session.
+
 ## 18. Honest limits
 
 - This is a plan. No hypothesis in it has been tested; every "expected" device property is vendor-derived and unverified for the rented machine.
