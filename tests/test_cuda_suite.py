@@ -226,4 +226,5 @@ def test_arch_gate_rejects_a_wheel_without_kernels_for_the_device():
     assert not suite.arch_supported(cu128, (7, 0))                 # V100: no sm_70, and compute_120 cannot run on 7.0
     assert suite.arch_supported(["compute_70"], (8, 0))            # PTX is forward compatible
     assert not suite.arch_supported(["compute_90"], (7, 0)) and not suite.arch_supported([], (7, 0))
+    assert suite.arch_supported(cu128, (8, 9)) and not suite.arch_supported(["sm_90"], (8, 9))   # L40S: sm_86 cubin runs on 8.9, a higher minor/major does not
     assert not suite.arch_supported(["sm_70a", "weird"], (7, 0))   # malformed entries are ignored

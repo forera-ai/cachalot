@@ -129,7 +129,8 @@ def dtype_support(compute_capability: tuple[int, int]) -> dict[str, bool]:
 
 def arch_supported(arch_list: list[str], compute_capability: tuple[int, int]) -> bool:
     """True if the installed torch carries kernels the device can run: an exact `sm_XY` image, or a PTX `compute_XY`
-    image for a capability not above the device's (PTX is forward compatible, never backward). A cu128 wheel lists no
+    image for a capability not above the device's (PTX is forward compatible, never backward), or an `sm_XY` cubin of the same major with a
+    lower minor (binary compatibility inside a major: sm_86 runs on 8.9; checked on the L40S). A cu128 wheel lists no
     `sm_70`, so it cannot run on a V100; setup stops on this instead of failing in the first cell (plan risk table)."""
     major, minor = compute_capability
     cc = major * 10 + minor
@@ -138,6 +139,8 @@ def arch_supported(arch_list: list[str], compute_capability: tuple[int, int]) ->
         if not num.isdigit():
             continue
         if kind == "sm" and int(num) == cc:
+            return True
+        if kind == "sm" and int(num) // 10 == major and int(num) < cc:       # a cubin runs on a later minor of its major (sm_86 on an L40S, 8.9)
             return True
         if kind == "compute" and int(num) <= cc:
             return True
