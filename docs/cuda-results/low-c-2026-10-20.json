@@ -1,0 +1,136 @@
+{
+  "c": 0.15,
+  "demand_exposure_ms": {
+    "run_a": 15.533865500003685,
+    "run_b": 15.518827000050806
+  },
+  "extrapolated": {
+    "error": -0.3294861249791097,
+    "slope": 0.18332820512820516,
+    "token_busy_predicted": 0.728467258479536
+  },
+  "extrapolated_v1_slope": 0.18332820512820516,
+  "gates_run_a": {
+    "calibration": true,
+    "chain2": true,
+    "closure": true,
+    "copyevents": true,
+    "counts": true,
+    "coverage": true,
+    "determinism": true,
+    "drift": true,
+    "event_hash": true,
+    "floor": true,
+    "no_failed_cells": true,
+    "readback": true,
+    "rowsum": true,
+    "sanity": true
+  },
+  "gates_run_b": {
+    "calibration": true,
+    "chain2": true,
+    "closure": true,
+    "copyevents": true,
+    "counts": true,
+    "coverage": true,
+    "determinism": true,
+    "drift": true,
+    "event_hash": true,
+    "floor": true,
+    "no_failed_cells": true,
+    "readback": true,
+    "rowsum": true,
+    "sanity": true
+  },
+  "hidden": {
+    "H_measured_L4": -0.2788915682885149,
+    "H_predicted_overlap": -0.21818954378902355,
+    "available": true,
+    "error_predicted": 0.06070202449949136
+  },
+  "level3": {
+    "available": true,
+    "held_out_r2_v1": 0.9713447121815533,
+    "held_out_r2_v3": 0.8502789873447433,
+    "overlap_per_token_ms": {
+      "measured": 4.975065162907269,
+      "v1_predicted": 3.973568922305785,
+      "v2_closed_loop": 5.523172666559764
+    },
+    "overlap_ratio_run_b": 0.7986968596776647,
+    "overlap_row_r_run_b": 0.9946027413057995,
+    "params": {
+      "b0": 0.14450000000000074,
+      "c_dem": 0.35503198209799997,
+      "c_pf": 0.3464500000000008,
+      "gap": 0.03829999999999956,
+      "pre0": 0.0469
+    },
+    "rows": 15960,
+    "s_measured_overlap_run_a": 0.2233586331524463,
+    "s_pred_run_a": 0.28057181097653383,
+    "token_busy": {
+      "measured_diff": 1.0579533834586456,
+      "v1_error": 0.05691804511276222,
+      "v1_predicted": 1.1148714285714079,
+      "v3_error": -0.17042246023538654,
+      "v3_predicted": 0.8875309232232591
+    },
+    "v2_over_v1": 1.38997781957555
+  },
+  "level6": {
+    "available": true,
+    "error": 0.057471428571407523,
+    "measured_diff": 1.0574000000000003,
+    "params": {
+      "b0": 0.14450000000000074,
+      "c_dem": 0.35544453925403036,
+      "c_pf": 0.3468499999999999,
+      "gap": 0.03850000000000087,
+      "pre0": 0.0513
+    },
+    "predicted": 1.1148714285714079
+  },
+  "refit": {
+    "a": 0.02699587992420107,
+    "b": 0.02846645632544541,
+    "max_abs_residual": 0.016584067675685765,
+    "residuals": {
+      "0.15": 0.006586377725275816,
+      "0.3": -0.016584067675685765,
+      "0.6": 0.002060026200056575,
+      "1.0": 0.007937663750353513
+    }
+  },
+  "shapes": {
+    "affine_a": 0.0460794871794872,
+    "affine_b": 0.017826923076923087,
+    "affine_in_inverse_c": 0.1649256410256411,
+    "linear_in_c": 0.1099560810810811,
+    "power_exponent": 0.42367906367624975,
+    "power_law": 0.14016000019051095
+  },
+  "shapes_v1_basis": {
+    "affine_a": 0.04109743589743592,
+    "affine_b": 0.021334615384615386,
+    "affine_in_inverse_c": 0.18332820512820516,
+    "linear_in_c": 0.11722770270270269,
+    "power_exponent": 0.49086292338710497,
+    "power_law": 0.15579881553427438
+  },
+  "slope_measured_run_a": 0.2233586331524463,
+  "slope_measured_run_b": 0.22054709210918094,
+  "slope_v1_run_a": 0.28057181097653383,
+  "verdict": {
+    "L-1": "past falsifier",
+    "L-10": "past falsifier",
+    "L-2": "in interval",
+    "L-3": "in interval",
+    "L-4": "outside interval",
+    "L-5": "in interval",
+    "L-6": "outside interval",
+    "L-7": "in interval",
+    "L-8": "outside interval",
+    "L-9": "in interval"
+  }
+}
