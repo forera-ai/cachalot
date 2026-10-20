@@ -3,7 +3,7 @@
 # Run from the directory the scaffold archive was unpacked into. No sudo, no system package changes, no downloads other
 # than the pinned Python wheels named below, which `setup` shows before it installs them.
 #
-#   bash benchmarks/cuda/session.sh check|setup|doctor|smoke|baseline|s2|n2smoke|n2full|backing|hugepage|n3smoke|n3full|n3bsmoke|n3bfull|n3csmoke|n3cfull|n3dsmoke|n3dfull|n3esmoke|n3ebridge|n3fsmoke|n3ffull|n3ffix|results
+#   bash benchmarks/cuda/session.sh check|setup|doctor|smoke|baseline|s2|n2smoke|n2full|backing|hugepage|n3smoke|n3full|n3bsmoke|n3bfull|n3csmoke|n3cfull|n3dsmoke|n3dfull|n3esmoke|n3ebridge|n3fsmoke|n3ffull|n3ffix|n3gsmoke|n3gfull|results
 #   (s2 = docs/CUDA-S2-EXPERIMENT-RECORD.md: overlap variants and batched expert copies; needs a clean smoke run first)
 set -euo pipefail
 
@@ -351,6 +351,27 @@ EOF7
     [ -f "$NEW" ] || die "new trace not found at $NEW"
     SESSION_TAG="${SESSION_TAG:-N3F}" "$PY" "$ROOT/benchmarks/cuda/overlap_arena.py" run --trace "$NEW" --expected "$ROOT/benchmarks/cuda/n3d-expected.json" \
       --cells f-fix --execute --max-seconds "${MAXS:-420}" --region "$REGION" --note "$(SESSION_TAG="${SESSION_TAG:-N3F}" note n3ffix)" || die "n3ffix failed: stop, bring the files home"
+    ;;
+
+  n3gsmoke)
+    # Third layer time (docs/CUDA-THIRD-C-RECORD.md): a short smoke of the g-profile (C = 0.6 ms) on the NEW multi-lead trace only.
+    # Read every gate of the run manifest before n3gfull (SESSION-RUNBOOK-THIRD-C.md).
+    [ -x "$PY" ] || die "run setup first"
+    NEW="${TRACE_NEW:-$ROOT/n3d-trace.npz}"
+    [ -f "$NEW" ] || die "new trace not found at $NEW"
+    SESSION_TAG="${SESSION_TAG:-N3G}" "$PY" "$ROOT/benchmarks/cuda/overlap_arena.py" run --trace "$NEW" --expected "$ROOT/benchmarks/cuda/n3d-expected.json" \
+      --cells g-smoke --execute --max-seconds 300 --region "$REGION" --note "$(SESSION_TAG="${SESSION_TAG:-N3G}" note n3gsmoke)" || die "n3gsmoke failed: stop, bring the files home"
+    ;;
+
+  n3gfull)
+    # Two runs of g-full on the new trace (run A, then run B as the replicate), 12 cells each. MAXS=seconds applies to each run (default 600).
+    [ -x "$PY" ] || die "run setup first"
+    NEW="${TRACE_NEW:-$ROOT/n3d-trace.npz}"
+    [ -f "$NEW" ] || die "new trace not found at $NEW"
+    for rep in A B; do
+      SESSION_TAG="${SESSION_TAG:-N3G}" "$PY" "$ROOT/benchmarks/cuda/overlap_arena.py" run --trace "$NEW" --expected "$ROOT/benchmarks/cuda/n3d-expected.json" \
+        --cells g-full --execute --max-seconds "${MAXS:-600}" --region "$REGION" --note "$(SESSION_TAG="${SESSION_TAG:-N3G}" note n3gfull-$rep)" || die "n3gfull $rep failed: stop, bring the files home"
+    done
     ;;
 
   results)

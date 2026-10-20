@@ -614,6 +614,10 @@ Hamed resumed the lane on the card ("continue with online GPUs"). `docs/CUDA-ROW
 
 `docs/CUDA-PREDICTED-OVERLAP-RESULTS.md` (Mac only). The slowdown term's overlap computed from the trace's counts and a first-in first-out copy queue fitted on run A reproduces the measured overlap (row r 0.998 and 0.997, totals 1.01 and 0.95) and the row model's hidden-share error is 0.0457 and 0.0067 against 0.045 and 0.008 with measured overlap. 9 held, 0 missed, 0 falsified. The term is adopted without the measured-overlap condition for this card, trace, 17 % resident and the two layer times; the 0.0457 left at 1.0 ms belongs to the rest of the row model.
 
+### 17.28 Third layer time prepared (2026-10-20)
+
+`docs/CUDA-THIRD-C-RECORD.md` (nine predictions G-1 to G-9 committed first, 32bd9e2; erratum before any run): the slowdown slope at C = 0.6 ms, to say whether it is a smooth function of the layer time and whether the unconditional predicted-overlap form holds at a layer time not used to build it. Built on the Mac (`g-smoke`, `g-full`, `n3gsmoke|n3gfull`, `third_c_score.py`); not run. Needs an RTX 5090 instance and Hamed's go.
+
 ## 18. Honest limits
 
 - This is a plan. No hypothesis in it has been tested; every "expected" device property is vendor-derived and unverified for the rented machine.

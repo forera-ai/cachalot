@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-20, 0.66.49): the third layer time (C = 0.6 ms) is registered and built; running it needs Hamed to create an RTX 5090
+>
+> Section 18.204, record `docs/CUDA-THIRD-C-RECORD.md` (nine predictions G-1 to G-9, 32bd9e2, erratum in its section 7), runbook `benchmarks/cuda/SESSION-RUNBOOK-THIRD-C.md`. Hamed chose "Third C at 0.6 ms" from the open CUDA items. Mac only, no GPU, no instance. The slowdown slope is 0.0634 at a 1.0 ms layer and 0.1053 at 0.3 ms; the record predicts 0.070 to 0.095 at 0.6 ms (linear in C 0.0873, power law 0.0786, affine in 1/C 0.0753 through the measured slopes) and tests whether the unconditional predicted-overlap form extends to a third layer time and whether the slope can be interpolated. Built: profiles `g-smoke` and `g-full`, `session.sh n3gsmoke|n3gfull`, `third_c_score.py`, 8 tests. **Needs Hamed:** an RTX 5090 instance and his go (estimate 12 to 18 minutes of GPU time, cap one GPU-hour); the earlier housekeeping stands.
+>
 > ## Start here (2026-10-20, 0.66.48): the slowdown term's overlap is now predicted from the queue, not read from events; adopted without the measured-overlap condition; the CUDA lane has no free offline job left
 >
 > Section 18.203, record `docs/CUDA-PREDICTED-OVERLAP-RECORD.md` (nine predictions, 2777875), results `docs/CUDA-PREDICTED-OVERLAP-RESULTS.md`, plan section 17.27, raw `docs/cuda-results/predicted-overlap-fit-2026-10-20.json`. Mac only, no GPU. The overlap of a `P0L` compute window with prefetch batches, computed from the trace's counts and a first-in first-out copy queue fitted on run A, matches the measured overlap (row r 0.998 and 0.997; totals 1.01 and 0.95 of measured). Hidden-share error 0.0457 (1.0 ms) and 0.0067 (0.3 ms) against 0.045 and 0.008 with measured overlap. 9 held, 0 missed, 0 falsified. The 0.0457 left at 1.0 ms is the rest of the row model, not the overlap. One instance, one trace, a deterministic copy queue. **Needs Hamed:** nothing for this change; the instance, billed hours and the `f1`, `f2`, `f3` ssh configs stand. Everything left in the lane needs a GPU and his go.
@@ -9330,6 +9334,24 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.204 The slowdown slope at a third layer time: registered and built (0.66.49)
+
+**Goal.** Hamed: "read the documentations and next session's prompt file and continue with CUDA part", then chose "Third C at 0.6 ms" from the open GPU items (v253 First jobs, section 18.203's open list). Find whether the slope of the compute-slowdown term is a smooth function of the layer time, and whether the unconditional predicted-overlap form holds at a layer time not used to build it.
+
+**Baseline (recorded).** Slope 0.0634 (C = 1.0 ms) and 0.1053 (0.3 ms) on measured overlap, 0.0624 and 0.1122 on predicted overlap; hidden-share error 0.0457 and 0.0067; measured level-4 hidden share 0.423 and 0.232 (0.407 at 0.6 ms in the bridge session on another instance).
+
+**Prediction.** G-1 to G-9 of `docs/CUDA-THIRD-C-RECORD.md`, committed before any code (32bd9e2): the slope at 0.6 ms 0.070 to 0.095 (falsified outside 0.060 to 0.110), below 0.085 if the slope follows a 1/C-type shape, replicate within 15 %, the queue model's row r at least 0.85 and hidden-share error at most 0.05, an interpolated slope within 0.15 ms of the token total, level 6 within 0.15 ms.
+
+**Method.** Not run. Built: profiles `g-smoke` (8 cells) and `g-full` (12 cells a run: levels 3 with rows, 6 and 4 at C = 0.6 ms, arms `N`, `D`, `P0L`, `N`), `session.sh n3gsmoke|n3gfull` (two runs), `benchmarks/cuda/third_c_score.py`, `SESSION-RUNBOOK-THIRD-C.md`, `tests/test_cuda_third_c.py` (8 tests; 273 CUDA tests pass).
+
+**Result.** None: nothing was measured.
+
+**What did not go well / limits.** While writing the harness test I found that the record's three shape values at 0.6 ms had been computed from the predicted-overlap slopes though labelled as measured-overlap slopes (measured basis: 0.0873, 0.0753, 0.0786). Corrected in an erratum before any run; registered intervals unchanged, so a measured slope of 0.085 to 0.091 is reported as ambiguous between the shapes. Three points cannot identify a mechanism, only a shape, and one instance, one trace and a stand-in compute remain the limits.
+
+**Open / needs Hamed.** An RTX 5090 instance and his go to run `n3gsmoke` then `n3gfull` (12 to 18 minutes of GPU time, cap one GPU-hour). Housekeeping from earlier sessions stands (terminate any instance still up, billed hours, delete the `f1`, `f2`, `f3` ssh configs).
+
+**Kind.** Planning, instruments and tests (predictions committed first, one erratum before any run). No default changed, nothing measured on a GPU.
 
 ### 18.203 A predicted-overlap version of the slowdown term (0.66.48)
 

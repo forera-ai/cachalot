@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.66.49 (2026-10-20)
+
+HANDOFF "Start here (2026-10-20, 0.66.49)" and section 18.204; record `docs/CUDA-THIRD-C-RECORD.md` (nine predictions G-1 to G-9, committed first in 32bd9e2, with an erratum in section 7 written before anything ran). Planning, instruments and tests only: nothing was measured and no instance was started. Nothing in `src/` but the version string.
+
+### Added
+- `benchmarks/cuda/overlap_arena.py` profiles `g-smoke` (8 cells, 40 tokens) and `g-full` (12 cells a run: levels 3 with per-row records, 6 and 4 at C = 0.6 ms only, arms `N`, `D`, `P0L`, `N`, 400 decode tokens); `benchmarks/cuda/session.sh` steps `n3gsmoke` and `n3gfull` (two runs, A then B); `benchmarks/cuda/SESSION-RUNBOOK-THIRD-C.md`.
+- `benchmarks/cuda/third_c_score.py`: scores G-1 to G-9 on two `g-full` runs (slope on measured overlap at C = 0.6 ms in both runs, three shapes through the known slopes at 1.0 and 0.3 ms on both slope bases, the predicted-overlap queue model, interpolated slope, level 6) and prints each beside its registered interval and falsifier. `tests/test_cuda_third_c.py`, 8 tests on planted runs.
+
+### Corrected
+- The record's three shape values at C = 0.6 ms (0.0909, 0.0767, 0.0801) were computed from the predicted-overlap slopes though labelled as measured-overlap slopes; on the measured slopes 0.0634 and 0.1053 they are 0.0873, 0.0753 and 0.0786. Found before any run; intervals and falsifiers unchanged; the scorer reports both bases (record section 7).
+
+### Needs Hamed
+An RTX 5090 instance and his go for the named live instance to run `n3gsmoke` then `n3gfull` (estimate 12 to 18 minutes of GPU time, cap one GPU-hour). Earlier housekeeping stands: terminate the running instance if still up, billed hours, delete the ssh configs and known_hosts of `f1`, `f2`, `f3`.
+
 ## 0.66.48 (2026-10-20)
 
 HANDOFF "Start here (2026-10-20, 0.66.48)" and section 18.203; record `docs/CUDA-PREDICTED-OVERLAP-RECORD.md` (nine predictions PO-1 to PO-9, committed first in 2777875, before any model existed), results `docs/CUDA-PREDICTED-OVERLAP-RESULTS.md`, raw scoring `docs/cuda-results/predicted-overlap-fit-2026-10-20.json`. Measurement only, Mac only, on the raw samples already copied home from the row-timing session; nothing in `src/` changed but the version.

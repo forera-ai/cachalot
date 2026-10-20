@@ -57,3 +57,7 @@ All **predicted**; probabilities are my own. "Slope" is the least-squares slope 
 ## 6. Needs Hamed
 
 An RTX 5090 instance (the card of every earlier stage), a time cap of one GPU-hour from Ready, and his go for the named live instance. The agent never runs sudo and runs over SSH only for that instance, as in the bridge and row-timing sessions. His housekeeping from the previous sessions (terminate any instance still up, enter the billed hours, delete the ssh configs and known_hosts of `f1`, `f2`, `f3`) stands.
+
+## 7. Erratum, written before any build was run on a GPU (2026-10-20)
+
+Section 2 labels the three shape values (linear in C 0.0909, affine in 1/C 0.0767, power law 0.0801) as slopes "on measured overlap", but they were computed from the V1 (predicted-overlap) slopes 0.0624 and 0.1122. Through the measured-overlap slopes 0.0634 and 0.1053 the same three shapes give **0.0873, 0.0753 and 0.0786** at C = 0.6. The scoring script reports both sets. The registered intervals and falsifiers of G-1 to G-9 are **unchanged**: G-1 (0.070 to 0.095) contains both sets, G-2's threshold (below 0.085 for the 1/C-type shapes, falsified at or above 0.091) is read against the measured value as written, which makes the linear-in-C shape's measured-basis value (0.0873) fall between the interval and the falsifier, so a measured slope of 0.085 to 0.091 is "outside interval, not past falsifier" and is reported as ambiguous between linear in C and the 1/C-type shapes. G-8 interpolates V1's slope (0.0767), as written. No number was measured when this was found.
