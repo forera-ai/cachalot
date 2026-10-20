@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.66.57 (2026-10-21)
+
+HANDOFF "Start here (2026-10-21, 0.66.57)" and section 18.212; new lane file `docs/DEEPINFER-LEVER-LANE.md`. Documentation only: a full read of `github.com/deepseek-ai/DeepInfer` (commit `774ce24`, Apache-2.0) and of the V4.1 technical report in the checkpoint directory, turned into a lever checklist (DI-1 to DI-9 for the runtime, DM-1 to DM-12 for methods, DC-1 to DC-9 for the CUDA lane). Nothing was run, built or measured, and nothing in `src/` changes but the version string.
+
+### Added (documentation, no runtime effect)
+- `docs/DEEPINFER-LEVER-LANE.md`: provenance and coverage ledger (33 % of the non-vendor lines read in full, 11 % in part, 12 % Ascend mirrors and 43 % kernel bodies, pybind, vision and eval scoring not read), the lever checklist with status (UNRESOLVED, PRICE FIRST, REFERENCE, CLOSED), the closed table, the methods list, the CUDA techniques, the reasoning on why DeepInfer is not a macOS port candidate, and the order of work.
+- `docs/NEXT-SESSION-PROMPT.md`: a DeepInfer lane addendum with the ranked first jobs (DI-4 offline pass, DI-1 encoder and decoder time split, DI-2 mask-only quality curve) and a line in the closed list.
+- `docs/CUDA-RESEARCH-PLAN.md`: a pointer to the lane's CUDA techniques (DC-1 to DC-9).
+
+### Measured
+- Nothing. Derived only: the checkpoint is a causal encoder-decoder (layers 0 to 19 encoder, 20 to 39 decoder); a cold prefill that runs only the encoder for most tokens would cut layer passes by about 25 % at 4.5k tokens, 33 % at 12k, 42 % at 22.4k and 47 % at 64k (compute 22, 40, 44, 48 %). Cachalot prefill runs all 40 layers today. Every figure is derived from the config and the report, not measured here.
+
+### Closed
+- A macOS port of DeepInfer (NVIDIA SM100 and Ascend only, TileLang kernels); expert parallelism, EPLB and disaggregation (multi-device, no single-Mac meaning); a Metal single-pass mHC as a new lever; FP4 KV as a decode lever. Output-changing defaults and any snapshot-policy change stay Hamed's call; outreach to DeepSeek only on his word and with a specific question.
+
+### Needs Hamed
+- Whether to run DI-1 (a long test: estimate and confirm first) and whether the encoder-output tail snapshot policy (DI-3) is acceptable. The terminate-and-housekeeping items of 0.66.56 are unchanged.
+
 ## 0.66.56 (2026-10-20)
 
 HANDOFF "Start here (2026-10-20, 0.66.56)" and section 18.211; record `docs/CUDA-L40S-C-ENDS-RECORD.md` (J-1 to J-10, 04a172c; section 7 erratum before any run; section 8, 992553f, reshape and re-registration before any 0.2 ms run), results `docs/CUDA-L40S-C-ENDS-RESULTS.md`, raw scoring `docs/cuda-results/l40s-c-ends-2026-10-20.json`. Measurement on a second NVIDIA L40S 48 GB (`aquatic-existence-2628`): the first smoke at C = 0.15 ms failed calibration (the stand-in has an L2 cliff at 96 to 100 MiB; the shortest streaming stand-in is about 0.17 ms), Hamed chose to reshape to 0.2 ms, then a clean smoke and two runs of 32 cells (502 s and 496 s; run B had one cell, level 3 at 0.2 ms, fail its N-control drift gate). Nothing in `src/` but the version string.

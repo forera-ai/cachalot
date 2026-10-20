@@ -25,6 +25,11 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-21, 0.66.57): the DeepInfer lever lane is written; documentation only, nothing run; the top unpriced lever is an encoder-only prefill (derived, not measured)
+>
+> Section 18.212, lane file `docs/DEEPINFER-LEVER-LANE.md`, addendum in `docs/NEXT-SESSION-PROMPT.md`, pointer in `docs/CUDA-RESEARCH-PLAN.md` (DC-1 to DC-9). Full read of `github.com/deepseek-ai/DeepInfer` (`774ce24`) and the V4.1 technical report. DeepInfer is NVIDIA SM100 and Ascend only: not a macOS port candidate. The checkpoint is a causal encoder-decoder (layers 0 to 19 encoder, 20 to 39 decoder) and Cachalot prefill runs all 40 layers; derived layer-pass saving for a cold prompt -25 % at 4.5k, -33 % at 12k, -42 % at 22.4k, -47 % at 64k. Snapshot policy decides whether it is usable. First jobs: DI-4 offline pass with `benchmarks/prefix_pin_replay.py`, DI-1 encoder and decoder time split of one cold chunk (long test: estimate and confirm first), DI-2 mask-only quality curve. **Needs Hamed:** snapshot policy (DI-3), any outreach to DeepSeek (his call, specific question only), the 0.66.56 housekeeping unchanged.
+>
+
 > ## Start here (2026-10-20, 0.66.56): on a second L40S the slope is nearly flat from 1.0 to 0.2 ms (ratio 1.25 and 1.16 against the 5090's 2.42); the 5090's C dependence is absent on this card
 >
 > Section 18.211, results `docs/CUDA-L40S-C-ENDS-RESULTS.md`, raw `docs/cuda-results/l40s-c-ends-2026-10-20.json`, plan section 17.34. The smoke at 0.15 ms failed calibration (L2 cliff: the shortest streaming stand-in is about 0.17 ms), Hamed chose to reshape to 0.2 ms; two runs of 32 cells. Slope 0.086 to 0.108 at C = 1.0, 0.6, 0.3, 0.2; the two L40S instances agree; hidden share still falls 0.36 to -0.22. 9 held, 1 falsified (J-3: one run B cell failed its drift gate). **Needs Hamed:** terminate `aquatic-existence-2628` (all runs home, hashes verified), billed hours, delete the `j1`, `i1`, `h2`, `h1`, `g1`, `f1` to `f3` ssh configs, and older instances if up.
@@ -9364,6 +9369,25 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 **Bottleneck after.** Unchanged: expert reads on misses; of the all-resident floor, CPU graph building, GPU idle, and routed-expert launch granularity.
 
 **Kind.** Engineering (a default on a prior research result).
+
+
+### 18.212 The DeepInfer lever lane: a full read, a checklist, no measurement (0.66.57)
+
+**Goal.** Hamed: analyze `github.com/deepseek-ai/DeepInfer` deeply, say whether its improvements can be used in Cachalot and whether to contact DeepSeek about a macOS version; then read the whole needed set of files (not a few), build a professional lever checklist, add a DeepInfer lane to the unresolved-lever lists, and extract techniques for the CUDA side.
+
+**Baseline (recorded).** Cachalot cold prefill runs all 40 layers in 4,096-token chunks (`text_decode_runtime.py:2239`); prefix snapshots at chunk boundaries cost about 5.3 MB plus 3,050 B a token (`benchmarks/prefix_pin_replay.py`). No encoder-only prefill exists.
+
+**Prediction.** None registered: no experiment. Derived only, from the config (`n_prefill_layer` = 20, identical `compress_ratios` in the original and `-1017` configs) and the technical report: an exact decoder-tail replay is 19 x 127 + 128 = 2,541 rows (the report says 2,560), the approximate bounded replay in DeepInfer keeps 140 rows, retained encoder outputs for 2,668 rows are about 104 MiB; layer-pass saving -25 / -33 / -42 / -47 % at 4.5k / 12k / 22.4k / 64k tokens and compute -22 / -40 / -44 / -48 %.
+
+**Method.** Clone at `774ce24` (Apache-2.0, 63,632 non-vendor lines); read the model modules, scheduler, speculative decoding (confidence-scheduled verification), YOCO truncation modes, structured output, shared-memory broadcast, EPLB, benchmark and equivalence harnesses, and the report PDF in `/Volumes/X10Pro/Flash4-1/DeepSeek-V4.1-Flash/`. Coverage ledger in the lane file: 33 % read in full, 11 % in part, 12 % Ascend mirrors and 43 % (kernel bodies, pybind, vision, eval scoring) not read; vendored kernel libraries not fetched; DeepInfer was never built (needs SM100, CUDA 13, GCC 13; the lane's RTX 5090, L40S and V100 cannot run it).
+
+**Result.** Nine runtime levers (DI-1 to DI-9), twelve methods (DM-1 to DM-12), nine CUDA techniques (DC-1 to DC-9), each with a status. Parity already held: bias_vl, the Engram image mask, candidate source layer 20, shared-KV segments, a DSpark draft. Closed: a macOS port, expert parallelism and EPLB and disaggregation, a Metal single-pass mHC as a new lever, FP4 KV as a decode lever; DSpark D2 stays closed (the verify forward cost decides). Top lever: an encoder-only prefill (DI-1 measure, DI-3 deferred completion with a 104 MiB encoder-output tail, DI-2 mask-only quality curve). The prompt gains an addendum and the CUDA plan a pointer.
+
+**What did not go well.** The first pass read about fifteen files and Hamed rejected that depth; the second pass corrected four of my own statements before release (the approximate bounded replay is not worthless for a partly compute-bound prefill, the post-training simulated replay is in the report for the original checkpoint, a benchmark reference lived in a gitignored directory, a mask-fill cost claim had no source and is marked unverified). Half the lines are unread and the savings are derived, not measured.
+
+**Open / needs Hamed.** DI-4 offline pass (no model load), then DI-1 (a long test: estimate and confirm first) and DI-2; the snapshot policy (DI-3); outreach to DeepSeek only on his word and with a specific question. No default changed.
+
+**Kind.** Research planning (derived, nothing measured). Documentation only.
 
 
 ### 18.211 The L40S layer-time ends: the 5090's C dependence is absent on a second L40S (0.66.56)

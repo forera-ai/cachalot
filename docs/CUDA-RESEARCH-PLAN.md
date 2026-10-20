@@ -4,6 +4,8 @@ Written 2026-10-17 against runtime 0.66.10. Status: **planned**. No CUDA code ex
 
 This plan adds a research lane. It does not change the shipped runtime (Apple Silicon, MLX, Metal), any default, the HTTP server, the test suite, or Hamed's lane order (Hermes, vision, speed). It does not claim CUDA support of any kind.
 
+**Pointer (2026-10-21).** `docs/DEEPINFER-LEVER-LANE.md` section 5 lists nine techniques and methods read in `deepseek-ai/DeepInfer` that bear on this lane's open observations (DC-1 to DC-9: SM reservation for copies, copying with SMs instead of the copy engine, `cudaHostRegister` versus allocated pinned buffers, in-graph event timers, a sync-debug guard for the issue loop, a committed population threshold, synthetic skewed routing, an on-instance cost curve). They are candidates, registered nowhere, and need Hamed's go for GPU time.
+
 ## 0. How to read this document
 
 Evidence labels. Every statement about a number carries one of five labels, and a table cell without a label is a bug.
