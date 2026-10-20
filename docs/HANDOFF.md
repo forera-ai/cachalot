@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-20, 0.66.45): the CUDA lane is resumed on the card; per-row and per-copy timing is built and rehearsed; it needs Hamed to create an RTX 5090
+>
+> Section 18.200, record `docs/CUDA-ROW-TIMING-RECORD.md` (seven predictions committed first, 6502a50; erratum 21b65ac), plan section 17.24. Hamed: "continue with online GPUs. prepare the codes and ask me which GPU is needed to be started." Built on the Mac, never run on a GPU: per-row event records and level L6 (an event after every copy) in `overlap_arena.py`, profiles `f-smoke` and `f-full` (24 cells a run), gates `rowsum` and `copyevents`, `row_timing.py` (scores RT-1 to RT-7), `session.sh n3fsmoke|n3ffull`, `SESSION-RUNBOOK-ROW-TIMING.md`; 897 tests. **Recommended card: one RTX 5090** (every earlier stage used it; only the new multi-lead trace is needed, cap one GPU-hour from Ready). **Needs Hamed:** create the instance and say go for the named live instance; billed hours and the ssh housekeeping of earlier sessions.
+>
 > ## Start here (2026-10-20, 0.66.44): the CUDA lane is stopped at Hamed's instruction; no model beats the copy-count screen; the next session returns to the Mac priorities
 >
 > Section 18.199, results `docs/CUDA-QUEUE-STATE-RESULTS.md`, plan section 17.23. Three queue-state terms added to the row-level model: best (T2) reduces the new trace's `P0L` error to 0.045 to 0.062 and the held-out mean to 0.0919 against the screen's 0.0944; lead 2 0.155. 1 held, 3 missed, 2 falsified; the adoption rule is not met. **Lane state:** weight gate, expert-id predictors and leads 2 and 3 closed (offline and on the card); the stage D baseline difference is the trace (bridge); the screen (error about 0.1) stays; per-row timing on a GPU is the only way to explain the per-miss cost, and every other CUDA item (fewer and larger copies, native issue path, ROCm, V100 or L40S, instance population) needs Hamed's go and a GPU. **Needs Hamed:** billed hours (N3 to N3-D and the bridge); the ssh configs, known_hosts files and key; the provider ticket draft (`~/cachalot-private/provider-ticket-gpu-init.md`).
@@ -9314,6 +9318,28 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.200 Row and per-copy timing prepared (0.66.45)
+
+**Goal.** Hamed: "continue with online GPUs. prepare the codes and ask me which GPU is needed to be started." The CUDA lane had been paused at his word after section 18.199; he resumed it. I took the one item section 18.199 names as able to explain the per-miss cost (the misses `P0L` leaves behind cost about 0.22 ms against 0.187 ms for `D`'s): a per-row and per-copy timing on a GPU. The other open items (fewer and larger copies, a native issue path, ROCm, V100 or L40S, instance population) were not started.
+
+**Baseline (recorded).** Copy cost `c` 0.190 ms on a fast-population instance (0.35 on a slow one); `P0L` hidden share on the new trace 0.433 / 0.407 / 0.233 at 1.0 / 0.6 / 0.3 ms; the row-level screen overstates it by 0.07 to 0.10; the best queue-state term (T2) lowers that to 0.045 to 0.062 and misses the adoption rule.
+
+**Prediction.** `docs/CUDA-ROW-TIMING-RECORD.md`, committed before any code: RT-1 an idle-queue copy 0.19 ms (0.17 to 0.22), RT-2 no fixed batch cost (-0.03 to +0.06 ms), RT-3 the share of miss rows that wait behind prefetch at most 0.20 at 1.0 ms and 0.40 to 0.75 at 0.3 ms, RT-4 the stall per left-behind miss 10 to 25 % above `D`'s with at least 70 % of the excess queue wait (the main claim, H-queue-wait), RT-5 a prefetch copy 0 to 8 % slower under compute, RT-6 the per-copy events cost at most 0.5 ms a token, RT-7 a queue-aware row model correlates at r of at least 0.8 with the measured wait and has a token-level error of at most 0.05. Falsifiers are in the record. The adoption rule is RT-4 and RT-7 together with RT-6's falsifier not fired.
+
+**Method.** Nothing measured. Built: per-row records of every event of a decode row (`detail_record`: times since the token's first event, the row's copy counts and the copies still queued from the previous row), enabled with the plan flag `rows` at level L3; level L6 adds an event after every enqueued copy. Two new gates: `rowsum` (a token's rows re-add to its per-token stall and busy) and `copyevents` (one per-copy record for every copy issued). `f-full` is 24 cells a run (L3, L6, L4 at C = 1.0 and 0.3 ms, arms N, D, P0L, N, 400 tokens), run twice on the same instance. `row_timing.py` scores RT-1 to RT-7 from the two runs' raw samples.
+
+**Result.** Verification only: 897 tests pass (11 new); the 76 existing overlap, level, gate, lead-2 and bridge tests pass unchanged (levels 0 to 5 and their hashes are untouched); level 6 reproduces the reference slot chain and records exactly one event per issued copy; both new gates trip on a tampered record; the real run path over `f-rehearsal` passes every gate; the scoring script recovers fabricated costs. The Linux and CUDA paths of the new code (an event recorded on the copy stream after each `copy_`) have never run on a GPU.
+
+**What this means.** Nothing yet about a GPU. The instrument can say, per row, whether a left-behind miss costs more because it waits behind queued prefetch copies or because the copy itself is slower, which no whole-token wall time could separate.
+
+**What did not go well.** My first wording of RT-5 asked for a demand copy that completes during compute, which cannot happen (a row's compute waits for its demand batch), and RT-7 had no level-4 cell at C = 1.0 ms to be scored against; both were found while designing the harness and corrected in a committed erratum before any code was built. Per-copy events are an intervention; RT-6 prices them on the card, not here.
+
+**Recommendation.** One RTX 5090 instance (the card of every earlier stage, so the new cells compare with stages C, D and the bridge); one GPU-hour cap; the new multi-lead trace only (`n3d-trace.npz`).
+
+**Open / needs Hamed.** Create the instance and say go for the named live instance; run per `benchmarks/cuda/SESSION-RUNBOOK-ROW-TIMING.md`. Billed hours of earlier sessions and the ssh housekeeping are still his.
+
+**Kind.** Planning, instruments and tests. No default changed, nothing measured on a GPU.
 
 ### 18.199 Queue-state per-miss cost (0.66.44)
 

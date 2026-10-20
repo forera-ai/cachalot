@@ -52,7 +52,8 @@ import suite  # noqa: E402
 GATE_ARMS = {"G00": 0.0, "G10": 0.10, "G20": 0.20}                       # N3 stage C: P0L with a router-weight gate (G00 is P0L by construction)
 ARMS = ("N", "D", "P0", "P0L", "P40", "O", "L2") + tuple(GATE_ARMS)
 PRED_ARMS = ("P0", "P0L", "P40", "L2") + tuple(GATE_ARMS)
-LEVELS = (0, 1, 2, 3, 4, 5)                                               # N3 stage B: see the record, section 3
+LEVELS = (0, 1, 2, 3, 4, 5, 6)                                            # N3 stage B: see the record, section 3; 6 = L3 plus an event after every copy (row timing)
+COPY_EVENT_POOL = 768                                                     # per-copy events a token may use (two tokens in flight)
 ARM_MODE = {"D": "none", "P0": "pred", "P0L": "pred", "P40": "pred", "O": "oracle",
             "L2": "pred~2",                                                       # N3 stage D: the lead-2 recorded set, issued two rows ahead
             **{a: f"pred@{t:.2f}" for a, t in GATE_ARMS.items()}}                  # the bookkeeping each arm uses ('pred@t': gated)
@@ -466,6 +467,19 @@ def cell_defs(profile: str) -> list[dict]:
     if profile == "e-rehearsal":
         return [{"id": "p17", "percent": 17, "slots": 40, "tokens": 6, "plan": [
             {"level": 0, "c": 0.05, "arms": ("N", "D", "P0L", "N")}, {"level": 4, "c": 0.05, "arms": ("N", "D", "P0L", "N")}]}]
+    if profile == "f-smoke":                             # row timing (record CUDA-ROW-TIMING): a short GPU smoke of both new levels
+        return [{"id": "p17", "percent": 17, "tokens": 40, "plan": [
+            {"level": 6, "c": 1.0, "arms": ("N", "D", "P0L", "N")}, {"level": 3, "c": 0.3, "arms": ("N", "D", "P0L", "N"), "rows": True}]}]
+    if profile == "f-full":                              # record CUDA-ROW-TIMING section 3 with the section 7 erratum: 24 cells a run
+        arms4 = ("N", "D", "P0L", "N")
+        return [{"id": "p17", "percent": 17, "tokens": DECODE_TOKENS, "plan": [
+            {"level": 3, "c": 1.0, "arms": arms4, "rows": True}, {"level": 3, "c": 0.3, "arms": arms4, "rows": True},
+            {"level": 6, "c": 1.0, "arms": arms4}, {"level": 6, "c": 0.3, "arms": arms4},
+            {"level": 4, "c": 1.0, "arms": arms4}, {"level": 4, "c": 0.3, "arms": arms4}]}]
+    if profile == "f-rehearsal":
+        return [{"id": "p17", "percent": 17, "slots": 40, "tokens": 6, "plan": [
+            {"level": 3, "c": 0.05, "arms": ("N", "D", "P0L", "N"), "rows": True}, {"level": 6, "c": 0.05, "arms": ("N", "D", "P0L", "N")},
+            {"level": 4, "c": 0.05, "arms": ("N", "D", "P0L", "N")}]}]
     if profile == "d-rehearsal":
         return [{"id": "p17", "percent": 17, "slots": 40, "tokens": 6, "plan": [
             {"level": 0, "c": 0.05, "arms": ("N", "D", "P0L", "L2", "O", "N")}, {"level": 4, "c": 0.05, "arms": ("N", "D", "P0L", "L2", "N")}]}]
@@ -484,7 +498,8 @@ def cells_of(group: dict) -> list[dict]:
             for pos, arm in enumerate(entry["arms"]):
                 role = "N0" if (arm == "N" and pos == 0) else ("N1" if arm == "N" else arm)
                 out.append({"id": f"{group['id']}.L{entry['level']}.C{entry['c']}.{role}", "group": group["id"], "percent": group["percent"],
-                            "tokens": group["tokens"], "c": entry["c"], "arm": arm, "role": role, "level": entry["level"]})
+                            "tokens": group["tokens"], "c": entry["c"], "arm": arm, "role": role, "level": entry["level"],
+                            "rows": bool(entry.get("rows", False))})
         return out
     for c in group["c_values"]:
         for pos, arm in enumerate(group["arms"]):
@@ -637,6 +652,19 @@ class OverlapArena(ra.TorchArena):
         self.issued_copies = 0
         self.views = None
         self.use_graph = False
+        self.cpool = None                                  # per-copy events, built on first use (level 6)
+        self.cev_on = False
+        self.cev_next = [0, 0]
+        self._mk_event = mk
+
+    def enable_copy_events(self, on: bool) -> None:
+        """Level 6: one event after every enqueued copy. The pool is built once, on first use."""
+        self.cev_on = on
+        if on and self.cpool is None:
+            self.cpool = [[self._mk_event() for _ in range(COPY_EVENT_POOL)] for _ in range(2)]
+
+    def start_token_marks(self, parity: int) -> None:
+        self.cev_next[parity] = 0
 
     def prepare_views(self, on: bool) -> None:
         """Stage B level L3: the arena's slot views are made once, before timing, instead of one view per copy."""
@@ -666,12 +694,24 @@ class OverlapArena(ra.TorchArena):
         if not self.rehearsal and self.stream is not None:
             self.stream.wait_event(ev)
 
-    def enqueue(self, loads: list[tuple[int, tuple[int, int]]]) -> None:
-        """Queue real copies on the copy stream; no event, no wait."""
+    def enqueue(self, loads: list[tuple[int, tuple[int, int]]], marks: list[int] | None = None, parity: int = 0) -> None:
+        """Queue real copies on the copy stream; no event, no wait. With `marks` (level 6) an event is recorded on the copy stream after
+        every copy and its pool index appended to `marks`."""
         ctx = contextlib.nullcontext() if self.stream is None else self.t.cuda.stream(self.stream)
         nb = not self.rehearsal
         with ctx:
-            if self.views is not None:
+            if marks is not None and self.cev_on:
+                views = self.views
+                for slot, key in loads:
+                    src = self.sources[(key[0] * 131 + key[1]) % ra.SOURCE_RECORDS] if views is not None else self.sources[ra.source_index(key)]
+                    (views[slot] if views is not None else self._slot(slot)).copy_(src, non_blocking=nb)
+                    i = self.cev_next[parity]
+                    if i >= COPY_EVENT_POOL:
+                        raise RuntimeError("the per-copy event pool is exhausted: a token issued more copies than COPY_EVENT_POOL")
+                    self.cev_next[parity] = i + 1
+                    self.rec_copy(self.cpool[parity][i])
+                    marks.append(i)
+            elif self.views is not None:
                 views, sources = self.views, self.sources
                 for slot, key in loads:
                     views[slot].copy_(sources[(key[0] * 131 + key[1]) % ra.SOURCE_RECORDS], non_blocking=nb)
@@ -723,6 +763,62 @@ def token_record(arena, parity: int, n: int, had_demand: list[bool], had_pf: lis
     return {"busy_ms": busy, "stall_ms": stall, "gap_ms": gap, "span_ms": busy + stall + gap, "dem_busy_ms": dem, "pf_busy_ms": pf}
 
 
+ROW_FIELDS = ("n_dem", "n_pf", "n_pf_ahead", "pre", "start", "mid", "end", "dem_a", "dem_b", "pf_a", "pf_b")
+COPY_FIELDS = ("row", "kind", "k", "t_done", "dur")
+
+
+def detail_record(arena, parity: int, n: int, had_demand: list[bool], had_pf: list[bool], det: dict) -> dict:
+    """Row timing: every event of a token as a time in ms since the token's first event (`rows`, one list per decode row, `ROW_FIELDS`),
+    and at level 6 the completion time and duration of every copy (`copies`, `COPY_FIELDS`; kind 0 demand, 1 prefetch, k the position in
+    the batch, duration against the previous event on the copy stream: the batch's first event for k = 0)."""
+    ev = arena.pool[parity]
+    ts = arena.tok_start[parity]
+
+    def rel(e) -> float:
+        return round(arena.elapsed(ts, e), 4)
+
+    rows, copies = [], []
+    for i in range(n):
+        da, db = (rel(ev["dem_a"][i]), rel(ev["dem_b"][i])) if had_demand[i] else (None, None)
+        pa, pb = (rel(ev["pf_a"][i]), rel(ev["pf_b"][i])) if had_pf[i] else (None, None)
+        rows.append([det["ndem"][i], det["npf"][i], det["ahead"][i], rel(ev["pre"][i]), rel(ev["start"][i]), rel(ev["mid"][i]),
+                     rel(ev["end"][i]), da, db, pa, pb])
+        if arena.cev_on and arena.cpool is not None:
+            for kind, marks, first in ((0, det["dm"][i], ev["dem_a"][i]), (1, det["pm"][i], ev["pf_a"][i])):
+                prev = first
+                for k, idx in enumerate(marks):
+                    e = arena.cpool[parity][idx]
+                    copies.append([i, kind, k, rel(e), round(arena.elapsed(prev, e), 4)])
+                    prev = e
+    return {"rows": rows, "copies": copies}
+
+
+ROWSUM_TOLERANCE_MS = 0.02                                                # rows are stored rounded to 1e-4 ms: 40 rows a token stay far below this
+
+
+def detail_check(tokens: list[dict]) -> dict:
+    """Gates (h) and (i): per token the per-row records re-add to the token's per-token sums (stall, busy), and at level 6 there is one
+    per-copy record for every copy the bookkeeping issued (rows with `n_dem`/`n_pf`)."""
+    rowsum_ok = copyevents_ok = True
+    worst = 0.0
+    for t in tokens:
+        rows = t.get("rows")
+        if not rows:
+            continue
+        i_pre, i_start, i_end = ROW_FIELDS.index("pre"), ROW_FIELDS.index("start"), ROW_FIELDS.index("end")
+        stall = sum(r[i_start] - r[i_pre] for r in rows)
+        busy = sum(r[i_end] - r[i_start] for r in rows)
+        err = max(abs(stall - t["stall_ms"]), abs(busy - t["busy_ms"]))
+        worst = max(worst, err)
+        if err > ROWSUM_TOLERANCE_MS * max(1, len(rows)) / 10:
+            rowsum_ok = False
+        if t.get("copies"):
+            issued = sum(r[0] + r[1] for r in rows)
+            if len(t["copies"]) != issued:
+                copyevents_ok = False
+    return {"rowsum_ok": rowsum_ok, "copyevents_ok": copyevents_ok, "worst_rowsum_error_ms": worst}
+
+
 def make_book(slots: int, n_layers: int, mode: str, level: int):
     """The bookkeeping object of a level: `L0` digest on, `L1` digest off, `L2` and above the lean book."""
     if level >= 2:
@@ -731,26 +827,32 @@ def make_book(slots: int, n_layers: int, mode: str, level: int):
 
 
 def run_cell(arrays, slots: int, n_layers: int, arena: OverlapArena, arm: str, *, level: int = 0, max_decode_tokens: int | None = None,
-             readback_every: int = ra.READBACK_EVERY, deadline: suite.Deadline | None = None, seed: int = 0) -> dict:
+             readback_every: int = ra.READBACK_EVERY, deadline: suite.Deadline | None = None, seed: int = 0, row_detail: bool = False) -> dict:
     """The timed replay of one arm at one level. `N`: stand-in plus per-layer synchronization only. Otherwise the bookkeeping and
     copies of the arm (N3 record section 3, stage B record section 3 for the levels). Prefill admissions populate the arena untimed.
     Token 0 is a warm-up and is excluded from the timing statistics (not from the counts).
 
     Levels (cumulative): 0 stage A as run; 1 no digest; 2 lean bookkeeping; 3 pre-built slot views; 4 bare (only the events
-    correctness needs, no per-layer breakdown); 5 the layer as one CUDA-graph replay (when `arena.use_graph`)."""
+    correctness needs, no per-layer breakdown); 5 the layer as one CUDA-graph replay (when `arena.use_graph`); 6 level 3 plus an event
+    after every copy (row timing, `docs/CUDA-ROW-TIMING-RECORD.md`: implies `row_detail`).
+    `row_detail` (levels 0 to 3 and 6, arms with a book) also returns every event of every token as a per-row record (`detail_record`)."""
     mode = ARM_MODE.get(arm)
     pred = predicted_lookup(arrays, mode) if mode and mode_parts(mode)[0] == "pred" else {}
     plan = decode_plan(arrays, max_decode_tokens)
     book = make_book(slots, n_layers, mode or "none", level) if arm != "N" else None
-    instr = level < 4
+    instr = level < 4 or level == 6
+    row_detail = (row_detail or level == 6) and book is not None
+    copy_ev = level == 6 and book is not None
+    arena.enable_copy_events(copy_ev)
     arena.prepare_views(level >= 3)
-    arena.use_graph = level >= 5 and arena.standin.graph is not None
+    arena.use_graph = level == 5 and arena.standin.graph is not None
     tokens: list[dict] = []
     readbacks = readback_fail = 0
     next_check = readback_every
     truncated = False
     cur_tok = None
-    pending_records: tuple | None = None                  # (parity, n, had_demand, had_pf, wall_ms, host_ms, tok) of the previous token
+    pending_records: tuple | None = None                  # (parity, n, had_demand, had_pf, wall_ms, host_ms, tok, detail) of the previous token
+    carry_pf = 0                                          # copies the previous token's last row left queued for this token's first row
     parity = 0
     early = arm in ("P0", "O")                            # prefetch issued before the layer's launch
     late_nowait = arm in ("P0L", "L2") or arm in GATE_ARMS
@@ -758,10 +860,18 @@ def run_cell(arrays, slots: int, n_layers: int, arena: OverlapArena, arm: str, *
     late_wait = arm == "P40"                              # after the launch, after the first kernel through an event wait
 
     def flush(rec) -> None:
-        par, n, hd, hp, wall, host, tok = rec
+        par, n, hd, hp, wall, host, tok, det = rec
         r = token_record(arena, par, n, hd, hp)
         r.update(wall_ms=wall, host_ms=host, tok=tok)
+        if det is not None:
+            r.update(detail_record(arena, par, n, hd, hp, det))
         tokens.append(r)
+
+    def enq(loads: list, marks: list | None) -> None:
+        if marks is None:
+            arena.enqueue(loads)                              # the stage A to E call, unchanged
+        else:
+            arena.enqueue(loads, marks, parity)
 
     def prefetch_for(idx: int) -> list:
         """Bookkeeping of the prefetch for plan item `idx` (a D row); loads to copy."""
@@ -795,6 +905,9 @@ def run_cell(arrays, slots: int, n_layers: int, arena: OverlapArena, arm: str, *
             raise ValueError("a token has more layers than the event pool")
         ev = arena.pool[parity]
         had_demand, had_pf = [False] * n, [False] * n
+        det = {"ndem": [0] * n, "npf": [0] * n, "ahead": [0] * n, "dm": [[] for _ in range(n)], "pm": [[] for _ in range(n)]} if row_detail else None
+        if copy_ev:
+            arena.start_token_marks(parity)
         host_s = 0.0
         # no device synchronize here: a prefetch still in flight from the previous token's last boundary (arm `O` only) belongs to this
         # token's first layer and must be waited for by its compute, not hidden outside the timed span
@@ -819,13 +932,16 @@ def run_cell(arrays, slots: int, n_layers: int, arena: OverlapArena, arm: str, *
                 # keys were all prefetched still waits for them (a stall) and never runs ahead of their arrival
                 if instr:
                     arena.rec_copy(ev["dem_a"][pos])
-                arena.enqueue(demand_loads)
+                enq(demand_loads, det["dm"][pos] if copy_ev else None)
                 arena.rec_copy(ev["dem_b"][pos])
                 had_demand[pos] = True
+                if det is not None:
+                    det["ndem"][pos] = len(demand_loads)
+                    det["ahead"][pos] = carry_pf
             if pf_loads and early:
                 if instr:
                     arena.rec_copy(ev["pf_a"][pos])
-                arena.enqueue(pf_loads)
+                enq(pf_loads, det["pm"][pos] if copy_ev else None)
                 if instr:
                     arena.rec_copy(ev["pf_b"][pos])
                 had_pf[pos] = True
@@ -844,7 +960,7 @@ def run_cell(arrays, slots: int, n_layers: int, arena: OverlapArena, arm: str, *
             if pf_loads and late_nowait:
                 if instr:
                     arena.rec_copy(ev["pf_a"][pos])
-                arena.enqueue(pf_loads)
+                enq(pf_loads, det["pm"][pos] if copy_ev else None)
                 if instr:
                     arena.rec_copy(ev["pf_b"][pos])
                 had_pf[pos] = True
@@ -855,10 +971,13 @@ def run_cell(arrays, slots: int, n_layers: int, arena: OverlapArena, arm: str, *
                 arena.rec_copy(ev["pf_b"][pos])
                 had_pf[pos] = True
             host_s += perf() - h0
+            if det is not None:
+                det["npf"][pos] = len(pf_loads)
+            carry_pf = len(pf_loads)
             arena.sync_compute(ev["end"][pos])            # the router synchronization
         wall = (perf() - w0) * 1e3
         if instr:
-            rec = (parity, n, had_demand, had_pf, wall, host_s * 1e3, tok)
+            rec = (parity, n, had_demand, had_pf, wall, host_s * 1e3, tok, det)
             if pending_records is not None:
                 flush(pending_records)
             pending_records = rec
@@ -1011,7 +1130,7 @@ def file_sha(path) -> str:
 
 
 def cmd_plan(args) -> int:
-    for prof in ("smoke", "full", "b-smoke", "b-full", "c-smoke", "c-full", "d-smoke", "d-full", "e-smoke", "e-full"):
+    for prof in ("smoke", "full", "b-smoke", "b-full", "c-smoke", "c-full", "d-smoke", "d-full", "e-smoke", "e-full", "f-smoke", "f-full"):
         for g in cell_defs(prof):
             slots = ra.slots_for(g["percent"])
             cs = cells_of(g)
@@ -1105,7 +1224,7 @@ def run_group(arrays_full, group: dict, expected: dict | None, run_id: str, dl: 
         if not calib_for[c]["ok"]:
             continue
         calib = calib_for[c]
-        if level >= 5:
+        if level == 5:
             if c not in graph_ok:
                 built = arena.standin.build_graph()
                 gc = None
@@ -1145,7 +1264,7 @@ def run_group(arrays_full, group: dict, expected: dict | None, run_id: str, dl: 
                         continue
                 cap = suite.Deadline(min(HARD_CELL_SECONDS, max(1.0, dl.remaining())))
                 res = run_cell(arrays_full, slots, nl, arena, cell["arm"], level=level, max_decode_tokens=cell["tokens"], deadline=cap,
-                               readback_every=readback_every)
+                               readback_every=readback_every, row_detail=cell.get("rows", False))
                 if mode is not None:
                     again = bookkeeping_pass_pf(arrays_full, slots, nl, mode, cell["tokens"])
                     b = res["book"]
@@ -1158,6 +1277,14 @@ def run_group(arrays_full, group: dict, expected: dict | None, run_id: str, dl: 
                         gates.setdefault("chain2", True)
                         gates["chain2"] &= b["chain2"] == first["chain2"]           # slot assignments equal the reference's
                 gates["readback"] &= res["readback_failures"] == 0
+                if any("rows" in t for t in res["tokens"]):
+                    chk = detail_check(res["tokens"])
+                    gates.setdefault("rowsum", True)
+                    gates.setdefault("copyevents", True)
+                    gates["rowsum"] &= chk["rowsum_ok"]
+                    gates["copyevents"] &= chk["copyevents_ok"]
+                    if not (chk["rowsum_ok"] and chk["copyevents_ok"]):
+                        failures.append({"cell": cell["id"], "error": f"row detail inconsistent: {chk}"})
                 cl = closure(res["tokens"])
                 gates["closure"] &= cl["ok"]
                 if res["truncated"]:
@@ -1171,6 +1298,10 @@ def run_group(arrays_full, group: dict, expected: dict | None, run_id: str, dl: 
                         busy[cell["role"]] = p50([t["busy_ms"] for t in toks])
                 raw[cell["id"]] = {"wall_ms": [t["wall_ms"] for t in res["tokens"]], "host_ms": [t["host_ms"] for t in res["tokens"]],
                                    "closure": cl}
+                if any("rows" in t for t in res["tokens"]):
+                    raw[cell["id"]].update({"tok": [t["tok"] for t in res["tokens"]], "row_fields": list(ROW_FIELDS),
+                                            "rows": [t.get("rows") for t in res["tokens"]], "copy_fields": list(COPY_FIELDS),
+                                            "copies": [t.get("copies") for t in res["tokens"]]})
                 if res["tokens"] and "busy_ms" in res["tokens"][0]:
                     raw[cell["id"]].update({"busy_ms": [t["busy_ms"] for t in res["tokens"]],
                                             "stall_ms": [t["stall_ms"] for t in res["tokens"]],
@@ -1210,7 +1341,7 @@ def cmd_run(args) -> int:
     with np.load(args.trace) as data:
         full = {k: data[k] for k in data.files if k != "segments"}
     stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
-    stage = {"e": "n3e", "d": "n3d", "c": "n3c", "b": "n3b"}.get(args.cells[:1] if args.cells[1:2] == "-" else "", "n3a")
+    stage = {"f": "n3f", "e": "n3e", "d": "n3d", "c": "n3c", "b": "n3b"}.get(args.cells[:1] if args.cells[1:2] == "-" else "", "n3a")
     run_id = f"{stamp}-{stage}-{args.cells}-{report['manifest_id'][:6]}"
     out = Path(args.out_dir) / run_id
     out.mkdir(parents=True, exist_ok=True)
@@ -1242,7 +1373,7 @@ def cmd_run(args) -> int:
     manifest = {
         "schema": mf.SCHEMA_NAME, "schema_version": mf.SCHEMA_VERSION, "platform": mf.PLATFORM, "kind": "run",
         "created_utc": mf.utc_now(), "machine_manifest_id": report["manifest_id"], "run_id": run_id,
-        "instrument": {"name": "benchmarks/cuda/overlap_arena.py", "version": {"n3e": "N3E-1", "n3d": "N3D-1", "n3c": "N3C-1", "n3b": "N3B-1"}.get(stage, "N3A-1")}, "code": report["code"], "mode": "timing",
+        "instrument": {"name": "benchmarks/cuda/overlap_arena.py", "version": {"n3f": "N3F-1", "n3e": "N3E-1", "n3d": "N3D-1", "n3c": "N3C-1", "n3b": "N3B-1"}.get(stage, "N3A-1")}, "code": report["code"], "mode": "timing",
         "workload": {"id": f"N3-stage{stage[-1].upper()}-{args.cells}", "class": "N3 layer-ahead prefetch with a stand-in compute and real copies (no model)",
                      "trace_sha256": expected["trace_sha256"], "record_bytes": ra.RECORD_BYTES, "source_records": ra.SOURCE_RECORDS,
                      "policy": "lru", "claims": "overlap mechanics only: exposed copy time against compute window, copy-lane saturation, interference"},
@@ -1272,7 +1403,7 @@ def main(argv=None) -> int:
     r = sub.add_parser("run")
     r.add_argument("--trace", required=True)
     r.add_argument("--expected", required=True)
-    r.add_argument("--cells", choices=("smoke", "full", "b-smoke", "b-full", "c-smoke", "c-full", "d-smoke", "d-full", "e-smoke", "e-full"), required=True)
+    r.add_argument("--cells", choices=("smoke", "full", "b-smoke", "b-full", "c-smoke", "c-full", "d-smoke", "d-full", "e-smoke", "e-full", "f-smoke", "f-full"), required=True)
     r.add_argument("--execute", action="store_true")
     r.add_argument("--max-seconds", type=float, default=1500.0)
     r.add_argument("--out-dir", default=str(Path(__file__).resolve().parents[1] / "results" / "cuda"))

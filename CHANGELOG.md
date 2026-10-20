@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.66.45 (2026-10-20)
+
+HANDOFF "Start here (2026-10-20, 0.66.45)" and section 18.200; record `docs/CUDA-ROW-TIMING-RECORD.md` (seven predictions RT-1 to RT-7, committed first in 6502a50, erratum in 21b65ac before any code), runbook `benchmarks/cuda/SESSION-RUNBOOK-ROW-TIMING.md`. Planning, instruments and tests; nothing was run on a GPU and nothing in `src/` changed except the version string. Hamed resumed the CUDA lane ("continue with online GPUs. prepare the codes and ask me which GPU is needed to be started"); the queue-state results had named per-row timing as the only way to explain the per-miss cost.
+
+### Added
+- `benchmarks/cuda/overlap_arena.py`: per-row event records (`detail_record`: every event of every decode row as a time since the token's first event, with the row's demand and prefetch copy counts and the copies still queued from the previous row), enabled per plan entry with `rows` at level L3; and **level L6** (L3 plus one CUDA event after every enqueued copy, so each copy has its own completion time and duration). Two new gates, `rowsum` (a token's rows re-add to its per-token stall and busy sums) and `copyevents` (one per-copy record for every copy the bookkeeping issued). Profiles `f-smoke` (8 cells) and `f-full` (24 cells a run: L3, L6, L4 at C = 1.0 and 0.3 ms, arms N, D, P0L, N), `plan`, `run --cells f-smoke|f-full`, stage tag `n3f`. Levels 0 to 5 are unchanged (the stage A to E calls and hashes are identical; the 76 existing overlap tests pass).
+- `benchmarks/cuda/row_timing.py`: scores RT-1 to RT-7 from the raw samples of two runs (a copy's cost to an idle queue, the batch overhead, how often a miss waits behind prefetch, the stall per left-behind miss and the share of it that is queue wait, a copy under compute, the cost of the per-copy events, a queue-aware row model fitted on run A and scored on run B) beside the registered intervals; judges nothing beyond inside, outside or past the falsifier.
+- `session.sh n3fsmoke|n3ffull`, `SESSION-RUNBOOK-ROW-TIMING.md`, `tests/test_cuda_row_timing.py` (11 tests: the profiles, level 6 equal to the reference chain, every copy recorded, both new gates tripped on purpose, an exhausted event pool failing loudly, the real run path over the f-rehearsal with every gate, the scoring script on fabricated runs). 897 tests pass.
+
+### Needs Hamed
+An RTX 5090 instance (the card of every earlier stage), a one GPU-hour cap, and his go for the named live instance. The run is not scheduled.
+
 ## 0.66.44 (2026-10-20)
 
 HANDOFF "Start here (2026-10-20, 0.66.44)" and section 18.199; record `docs/CUDA-QUEUE-STATE-RECORD.md` (six predictions, committed first in 372e836), results `docs/CUDA-QUEUE-STATE-RESULTS.md`, raw `docs/cuda-results/queue-state-2026-10-20.json`. Measurement only, Mac only; nothing in `src/` except the version string.

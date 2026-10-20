@@ -598,6 +598,10 @@ N3 stage B ran under `docs/CUDA-N3B-EXPERIMENT-RECORD.md` and is recorded in `do
 
 `docs/CUDA-QUEUE-STATE-RESULTS.md` (Mac only). Three queue-state terms on the row-level window model; best (a cost per row with both prefetch and demand copies) gives a held-out error of 0.0919 against the copy-count screen's 0.0944; lead 2 0.155. The adoption rule is not met; the screen stays at an error of about 0.1. **The CUDA lane is stopped at Hamed's instruction (2026-10-20).** Open items, each needing his go and a GPU: per-row timing, fewer and larger copies, a native issue path, a ROCm port, the V100 or L40S arms, the instance-population question.
 
+### 17.24 Row and per-copy timing prepared (2026-10-20)
+
+Hamed resumed the lane on the card ("continue with online GPUs"). `docs/CUDA-ROW-TIMING-RECORD.md` registers seven predictions (RT-1 to RT-7) for a per-row and per-copy timing of a miss on an RTX 5090, committed before any code; an erratum (RT-5 on prefetch copies, a level-4 cell at both C) is committed before the build. The harness (`overlap_arena.py` level L6 and the `rows` flag, profiles `f-smoke` and `f-full`), the scoring script `row_timing.py` and the runbook are built and rehearsed on the Mac; nothing ran on a GPU. It needs Hamed to create the instance.
+
 ## 18. Honest limits
 
 - This is a plan. No hypothesis in it has been tested; every "expected" device property is vendor-derived and unverified for the rented machine.
