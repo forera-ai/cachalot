@@ -1,0 +1,126 @@
+{
+  "hidden": {
+    "0.3": {
+      "H_measured_L4": 0.2319318037424445,
+      "H_predicted_overlap": 0.23859516118260204,
+      "available": true,
+      "error_predicted": 0.006663357440157558
+    },
+    "1.0": {
+      "H_measured_L4": 0.42259524896418055,
+      "H_predicted_overlap": 0.4683223439998423,
+      "available": true,
+      "error_predicted": 0.04572709503566175
+    }
+  },
+  "level3": {
+    "0.3": {
+      "available": true,
+      "held_out_r2_v1": 0.8726131276003646,
+      "held_out_r2_v3": 0.8711205798421163,
+      "overlap_per_token_ms": {
+        "measured": 7.243894987468673,
+        "v1_predicted": 6.888610776942326,
+        "v2_closed_loop": 7.434897439276536
+      },
+      "overlap_ratio_run_b": 0.9509539810915317,
+      "overlap_row_r_run_b": 0.9964534529128588,
+      "params": {
+        "b0": 0.3042999999999978,
+        "c_dem": 0.20005400744061813,
+        "c_pf": 0.19300000000000006,
+        "gap": 0.028100000000000236,
+        "pre0": 0.0417
+      },
+      "rows": 15960,
+      "s_measured_overlap_run_a": 0.10528715589446386,
+      "s_pred_run_a": 0.11217875774565246,
+      "token_busy": {
+        "measured_diff": 0.748055388471176,
+        "v1_error": 0.024700411079527695,
+        "v1_predicted": 0.7727557995507037,
+        "v3_error": -0.022773151702965677,
+        "v3_predicted": 0.7252822367682104
+      },
+      "v2_over_v1": 1.0793028783340104
+    },
+    "1.0": {
+      "available": true,
+      "held_out_r2_v1": 0.69336530100733,
+      "held_out_r2_v3": 0.696525024740827,
+      "overlap_per_token_ms": {
+        "measured": 9.665861904761904,
+        "v1_predicted": 9.766734586466203,
+        "v2_closed_loop": 9.772679646679524
+      },
+      "overlap_ratio_run_b": 1.010435973811565,
+      "overlap_row_r_run_b": 0.9980577582035631,
+      "params": {
+        "b0": 0.9902999999999977,
+        "c_dem": 0.2008049012687208,
+        "c_pf": 0.19530000000000078,
+        "gap": 0.021699999999999164,
+        "pre0": 0.0423
+      },
+      "rows": 15960,
+      "s_measured_overlap_run_a": 0.06340045315027411,
+      "s_pred_run_a": 0.06238557117303474,
+      "token_busy": {
+        "measured_diff": 0.6349165413533839,
+        "v1_error": -0.02561322568125657,
+        "v1_predicted": 0.6093033156721274,
+        "v3_error": -0.01570114277297152,
+        "v3_predicted": 0.6192153985804124
+      },
+      "v2_over_v1": 1.0006087050037746
+    }
+  },
+  "level6": {
+    "0.3": {
+      "available": true,
+      "error": 0.026204929172140012,
+      "measured_diff": 0.7490854636591475,
+      "params": {
+        "b0": 0.3042999999999978,
+        "c_dem": 0.20028677223441127,
+        "c_pf": 0.1947000000000001,
+        "gap": 0.028600000000000847,
+        "pre0": 0.0468
+      },
+      "predicted": 0.7752903928312875
+    },
+    "1.0": {
+      "available": true,
+      "error": -0.04881562221341218,
+      "measured_diff": 0.6610964912280721,
+      "params": {
+        "b0": 0.9883999999999986,
+        "c_dem": 0.2011246368723966,
+        "c_pf": 0.19626666666666667,
+        "gap": 0.02190000000000225,
+        "pre0": 0.0472
+      },
+      "predicted": 0.61228086901466
+    }
+  },
+  "verdict": {
+    "PO-1@0.3": "in interval",
+    "PO-1@1.0": "in interval",
+    "PO-2@0.3": "in interval",
+    "PO-2@1.0": "in interval",
+    "PO-3@0.3": "in interval",
+    "PO-3@1.0": "in interval",
+    "PO-4@0.3": "in interval",
+    "PO-4@1.0": "in interval",
+    "PO-5@0.3": "in interval",
+    "PO-5@1.0": "in interval",
+    "PO-6@0.3": "in interval",
+    "PO-6@1.0": "in interval",
+    "PO-7@0.3": "in interval",
+    "PO-7@1.0": "in interval",
+    "PO-8@0.3": "in interval",
+    "PO-8@1.0": "in interval",
+    "PO-9@0.3": "in interval",
+    "PO-9@1.0": "in interval"
+  }
+}
