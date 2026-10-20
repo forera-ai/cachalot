@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-20, 0.66.53): on a fast-population card the slope at a 0.15 ms layer is 0.153; four points fit 1/C to 0.003; the predicted-overlap form holds there
+>
+> Section 18.208, results `docs/CUDA-LOW-C-FAST-RESULTS.md`, raw `docs/cuda-results/low-c-fast-2026-10-20.json`, plan section 17.32. The repeat Hamed asked for after 0.66.52, on a second RTX 5090 (`imperfect-duck-7094`, median source copy 0.194 ms, x16): smoke and two runs of 12 cells, every gate true. Slope 0.1534 (replicate 0.1525); four fast points 0.0634, 0.0765, 0.1053, 0.1534 fit `s = 0.0498 + 0.01574 / C` (largest residual 0.003; power law as good, linear in C rejected). Hidden share -0.054. 9 held, 1 missed narrowly (demand exposure 8.84 ms), 0 falsified. The slow instance's 0.223 at the same C shows the slope depends on the population. **Needs Hamed:** terminate both instances, billed hours, delete the `h2`, `h1`, `g1`, `f1` to `f3` ssh configs.
+>
 > ## Start here (2026-10-20, 0.66.52): the slope at a 0.15 ms layer is 0.223, above the 1/C curve, on a slow-population instance; H-continues not supported as registered, confounded with the instance
 >
 > Section 18.207, record `docs/CUDA-LOW-C-RECORD.md` (823aa63), results `docs/CUDA-LOW-C-RESULTS.md`, raw `docs/cuda-results/low-c-2026-10-20.json`, plan section 17.31. One RTX 5090 (`elegant-things-5691`), smoke and two runs of 12 cells, every gate true, the stand-in tuned to 0.15 ms within 1.6 %. Slope 0.2234 (replicate 0.2205) against 0.165 (affine in 1/C), 0.140 (power law), 0.110 (linear): L-1 falsified by 0.003. The instance was slow-population (median source copy 0.349 ms, per-copy cost 0.355 against 0.195); the count-only window model with that copy time gives hidden share -0.286 against measured -0.279 (post hoc). 5 held, 3 missed narrowly, 2 falsified; L-4 to L-10 not used for adoption under the slow rule. **Needs Hamed:** terminate the instance (results are home, hash verified), billed hours, delete the `h1`, `g1`, `f1` to `f3` ssh configs; decide whether to repeat on a fast-class instance.
@@ -9346,6 +9350,26 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.208 The slowdown slope at 0.15 ms on a fast-population instance (0.66.53)
+
+**Goal.** Hamed created a second RTX 5090 ("do your test on that") after 0.66.52's instance was slow-population. Answer the record's question on a fast-class card.
+
+**Baseline (recorded).** The record's section 2 and the slow instance's result (slope 0.2234, copies 0.355 ms).
+
+**Prediction.** L-1 to L-10 of `docs/CUDA-LOW-C-RECORD.md`, unchanged (823aa63); they assumed the fast population.
+
+**Method.** Same code (ec7df8f, `dirty=0`); `n3hsmoke` (source copy median read first: 0.194 ms) then `n3hfull` twice, scored by `low_c_score.py`.
+
+**Result.** All gates true. Slope 0.1534 (B 0.1525); hidden share -0.054; row r 0.9936, overlap ratio 0.888; hidden-share error 0.0434; extrapolated-slope token error +0.050 ms; demand exposure 8.84 ms. 9 held, 1 missed narrowly (L-10), 0 falsified. Four-point affine in 1/C `0.0498 + 0.01574 / C`, residual 0.003; power law rms 0.0027, linear in C 0.015.
+
+**Explanation (hypothesis).** The slope keeps rising as the layer shortens and the copy stream saturates; the slow instance's 1.46 times higher slope at the same C means the slope scales with copy cost or population, not tested directly.
+
+**What did not go well / limits.** L-10 missed low and is unexplained. One fast instance; one trace; a stand-in compute; four points do not separate the 1/C form from a power law of exponent 0.47.
+
+**Open / needs Hamed.** Terminate both instances; billed hours; delete the ssh configs. A point above 1.0 ms, another card, a copy-cost sweep on one instance, fewer and larger copies, a native issue path, ROCm all need his go.
+
+**Kind.** Research (predicted, measured, explained as hypothesis): 9 held, 1 missed narrowly, 0 falsified. No default changed.
 
 ### 18.207 The slowdown slope at a layer time below 0.3 ms: measured (0.66.52)
 

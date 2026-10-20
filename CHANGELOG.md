@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.66.53 (2026-10-20)
+
+HANDOFF "Start here (2026-10-20, 0.66.53)" and section 18.208; the same record (`docs/CUDA-LOW-C-RECORD.md`, 823aa63), results `docs/CUDA-LOW-C-FAST-RESULTS.md`, raw scoring `docs/cuda-results/low-c-fast-2026-10-20.json`. The repeat on a fast-population RTX 5090 (median source copy 0.194 ms; smoke, then two runs of 12 cells, 84 s each, every gate true). Nothing in `src/` but the version string.
+
+### Measured
+- The slowdown slope at a 0.15 ms layer is 0.1534 on measured overlap (replicate 0.1525), between the affine-in-1/C value 0.165 and the power-law value 0.140. Four points on fast instances (0.0634, 0.0765, 0.1053, 0.1534) fit `s = 0.0498 + 0.01574 / C` to a largest residual 0.003; a power law in 1/C is as good (rms 0.0027 against 0.0020), linear in C is rejected. 9 held, 1 missed narrowly (demand exposure 8.84 ms against 9.0 to 11.0), 0 falsified. The predicted-overlap form holds at 0.15 ms (row r 0.994, hidden-share error 0.043 against a measured share of -0.054) and an extrapolated slope predicts the token total to 0.05 ms. The slow-population instance of 0.66.52 gave a slope 1.46 times higher at the same layer time: the slope depends on the card population.
+
+### Needs Hamed
+Terminate the RTX 5090 instance `imperfect-duck-7094` (ssh config `~/cachalot-private/ssh_config_h2`) and `elegant-things-5691` if still up, enter the billed hours, delete `ssh_config_h2`, `known_hosts_h2` with the `h1`, `g1`, `f1`, `f2`, `f3` ones. All runs are home with verified hashes.
+
 ## 0.66.52 (2026-10-20)
 
 HANDOFF "Start here (2026-10-20, 0.66.52)" and section 18.207; record `docs/CUDA-LOW-C-RECORD.md` (ten predictions L-1 to L-10, committed first in 823aa63), results `docs/CUDA-LOW-C-RESULTS.md`, raw scoring `docs/cuda-results/low-c-2026-10-20.json`. Measurement on one RTX 5090 (smoke, then two runs of 12 cells at C = 0.15 ms, 110 s each, every gate true). Nothing in `src/` but the version string.

@@ -630,6 +630,10 @@ Hamed resumed the lane on the card ("continue with online GPUs"). `docs/CUDA-ROW
 
 `docs/CUDA-LOW-C-RESULTS.md` (one RTX 5090, slow population: copies 0.355 ms against 0.195, 12 cells a run, two runs). The stand-in tunes to 0.15 ms; the slope there is 0.2234 on measured overlap, above the 1/C curve (0.165) and past the registered falsifier (0.220), so H-continues is not supported as registered, but the instance class moved at once; the count-only window model with this instance's copy time reproduces the hidden share (-0.286 against -0.279, post hoc). 5 held, 3 missed narrowly, 2 falsified. A fast-class repeat is the open item.
 
+### 17.32 Low layer time, fast-population repeat (2026-10-20)
+
+`docs/CUDA-LOW-C-FAST-RESULTS.md` (second RTX 5090, median source copy 0.194 ms). The slope at C = 0.15 ms is 0.1534; four fast points fit affine in 1/C to 0.003 (a power law of exponent 0.47 as well; linear in C rejected); the predicted-overlap form holds there; the slow instance's 0.223 shows the slope depends on the card population. 9 held, 1 missed narrowly, 0 falsified.
+
 ## 18. Honest limits
 
 - This is a plan. No hypothesis in it has been tested; every "expected" device property is vendor-derived and unverified for the rented machine.
