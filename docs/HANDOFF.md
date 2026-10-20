@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-20, 0.66.48): the slowdown term's overlap is now predicted from the queue, not read from events; adopted without the measured-overlap condition; the CUDA lane has no free offline job left
+>
+> Section 18.203, record `docs/CUDA-PREDICTED-OVERLAP-RECORD.md` (nine predictions, 2777875), results `docs/CUDA-PREDICTED-OVERLAP-RESULTS.md`, plan section 17.27, raw `docs/cuda-results/predicted-overlap-fit-2026-10-20.json`. Mac only, no GPU. The overlap of a `P0L` compute window with prefetch batches, computed from the trace's counts and a first-in first-out copy queue fitted on run A, matches the measured overlap (row r 0.998 and 0.997; totals 1.01 and 0.95 of measured). Hidden-share error 0.0457 (1.0 ms) and 0.0067 (0.3 ms) against 0.045 and 0.008 with measured overlap. 9 held, 0 missed, 0 falsified. The 0.0457 left at 1.0 ms is the rest of the row model, not the overlap. One instance, one trace, a deterministic copy queue. **Needs Hamed:** nothing for this change; the instance, billed hours and the `f1`, `f2`, `f3` ssh configs stand. Everything left in the lane needs a GPU and his go.
+>
 > ## Start here (2026-10-20, 0.66.47): a time-overlap slowdown term closes the row model's token error; adopted conditional on measured overlap; one offline follow-up is named
 >
 > Section 18.202, record `docs/CUDA-SLOWDOWN-RECORD.md` (seven predictions, 35e2d14), results `docs/CUDA-SLOWDOWN-RESULTS.md`, plan section 17.26, raw `docs/cuda-results/slowdown-fit-2026-10-20.json`. Mac only, no GPU. Extra compute per millisecond of overlap with prefetch copies: 0.0634 at a 1.0 ms layer, 0.1053 at 0.3 ms (replicates 4.1 % and 2.5 % apart). Hidden-share error 0.110 and 0.089 without the term, 0.045 and 0.008 with it; held-out R² 0.711 and 0.850 against 0.45 and 0.07 for a copy count. 6 held, 1 missed (the 1.0 ms slope, 0.003 above its interval), 0 falsified. Conditional on measured overlap: the overlap is read from the run's own events and contains the stretch. **Needs Hamed:** nothing for this change; the instance, billed hours and the `f1`, `f2`, `f3` ssh configs from the last session stand. Open and offline: a predicted-overlap version of the term (Hamed's call).
@@ -9326,6 +9330,26 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.203 A predicted-overlap version of the slowdown term (0.66.48)
+
+**Goal.** Hamed: "read the documentations and next session's prompt file and continue with CUDA part" (v252 Job 1, the offline follow-up). Compute the slowdown term's overlap from the queue model instead of from the run's recorded events, so the term is not conditional on measured overlap.
+
+**Baseline (recorded).** Slope 0.0634 and 0.1053 on measured overlap; hidden-share error 0.045 (limit 0.05, called optimistic) and 0.008 with measured overlap.
+
+**Prediction.** PO-1 to PO-9 of `docs/CUDA-PREDICTED-OVERLAP-RECORD.md`, committed before any model existed (2777875); the script and its ten rehearsal tests were committed before the first real fit (80cc65a).
+
+**Method.** `benchmarks/cuda/predicted_overlap_fit.py` on the saved raw samples of runs A and B (and the fix run's cells). Per-copy costs, base compute time and row gap fitted on run A; a first-in first-out copy stream driven by run B's per-row counts only; the slope refitted on run A's predicted overlap; scored on run B (row overlap, token totals, hidden share) and on the level-6 cells. A test proves the prediction reads only the counts.
+
+**Result.** `docs/CUDA-PREDICTED-OVERLAP-RESULTS.md`. Row r 0.998 and 0.997; overlap totals 1.01 and 0.95 of measured; slope 0.0624 and 0.1122; token total errors -0.026 and +0.025 ms; hidden-share error 0.0457 and 0.0067; level 6 -0.049 and +0.026 ms; closed-loop total 1.001 and 1.079 times open-loop. All nine held, none missed or falsified.
+
+**What it means.** The compute stream's slowdown can be predicted from the copy counts and a fitted queue, on this instrument. The term is adopted unconditionally for the `P0L` row model on this card, trace, 17 % resident and the two layer times.
+
+**What did not go well / limits.** PO-1 predicted r 0.85 and got 0.998: the harness's copy stream is a deterministic FIFO with nearly constant copy times, so the agreement is partly by construction. The 0.0457 at 1.0 ms is unchanged by this work (the overlaps agree within 1 %) and belongs to the rest of the row model. One instance, one trace, a stand-in compute.
+
+**Open / needs Hamed.** Nothing offline moves a number. A third C at 0.6 ms, another card, fewer and larger copies, a native issue path, ROCm and instance population need a GPU and his go. Housekeeping from the last session stands.
+
+**Kind.** Research (predicted, measured offline, explained as hypothesis): 9 held, 0 missed, 0 falsified. No default changed.
 
 ### 18.202 A compute-slowdown term for the row model (0.66.47)
 

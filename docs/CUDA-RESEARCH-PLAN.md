@@ -610,6 +610,10 @@ Hamed resumed the lane on the card ("continue with online GPUs"). `docs/CUDA-ROW
 
 `docs/CUDA-SLOWDOWN-RESULTS.md` (Mac only, the saved raw samples of the row-timing session). A time-overlap term (0.0634 ms of extra compute per ms of overlap at a 1.0 ms layer, 0.1053 at 0.3 ms) takes the row model's hidden-share error from 0.110 and 0.089 to 0.045 and 0.008; a copy count explains far less. 6 held, 1 missed, 0 falsified. Adopted for the `P0L` row model on this card, trace and resident fraction, conditional on measured overlap; a predicted-overlap version is the open offline step.
 
+### 17.27 Predicted-overlap outcome (2026-10-20)
+
+`docs/CUDA-PREDICTED-OVERLAP-RESULTS.md` (Mac only). The slowdown term's overlap computed from the trace's counts and a first-in first-out copy queue fitted on run A reproduces the measured overlap (row r 0.998 and 0.997, totals 1.01 and 0.95) and the row model's hidden-share error is 0.0457 and 0.0067 against 0.045 and 0.008 with measured overlap. 9 held, 0 missed, 0 falsified. The term is adopted without the measured-overlap condition for this card, trace, 17 % resident and the two layer times; the 0.0457 left at 1.0 ms belongs to the rest of the row model.
+
 ## 18. Honest limits
 
 - This is a plan. No hypothesis in it has been tested; every "expected" device property is vendor-derived and unverified for the rented machine.

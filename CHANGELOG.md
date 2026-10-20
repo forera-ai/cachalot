@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.66.48 (2026-10-20)
+
+HANDOFF "Start here (2026-10-20, 0.66.48)" and section 18.203; record `docs/CUDA-PREDICTED-OVERLAP-RECORD.md` (nine predictions PO-1 to PO-9, committed first in 2777875, before any model existed), results `docs/CUDA-PREDICTED-OVERLAP-RESULTS.md`, raw scoring `docs/cuda-results/predicted-overlap-fit-2026-10-20.json`. Measurement only, Mac only, on the raw samples already copied home from the row-timing session; nothing in `src/` changed but the version.
+
+### Added
+- `benchmarks/cuda/predicted_overlap_fit.py`: computes the overlap of a `P0L` compute window with prefetch batches from the trace's per-row demand and prefetch counts alone (a first-in first-out copy stream with the per-copy costs, base compute time and row gap fitted on run A), instead of from recorded event times; open-loop (V1), closed-loop (V2) and measured-slope (V3) variants, scored on run B, on the row model's hidden share and on the level-6 cells; `tests/test_cuda_predicted_overlap_fit.py` (10 tests, including one that proves the prediction reads only the counts).
+
+### Measured
+- The predicted overlap reproduces the measured one: per-row correlation 0.998 and 0.997, total overlap per token 1.01 and 0.95 of the measured one. The slowdown slope on predicted overlap is 0.0624 and 0.1122 (measured-overlap slope 0.0634 and 0.1053). The hidden-share error is 0.0457 (C = 1.0 ms) and 0.0067 (0.3 ms) against 0.045 and 0.008 with measured overlap; the token busy total is within 0.026 ms; level 6 within 0.049 and 0.026 ms. 9 held, 0 missed, 0 falsified. The slowdown term is therefore adopted without the "conditional on measured overlap" label for this card, trace, 17 % resident and the two layer times. The 0.0457 left at 1.0 ms is not the overlap (the two overlaps agree within 1 %); it comes from the rest of the row model.
+- Limits: the harness's copy stream is a deterministic FIFO with nearly constant copy times, so a FIFO model places it well by construction; one instance, one trace, a stand-in compute.
+
+### Needs Hamed
+Nothing for this change. Earlier housekeeping stands: terminate the running instance if still up, billed hours, delete the ssh configs and known_hosts of `f1`, `f2`, `f3`.
+
 ## 0.66.47 (2026-10-20)
 
 HANDOFF "Start here (2026-10-20, 0.66.47)" and section 18.202; record `docs/CUDA-SLOWDOWN-RECORD.md` (seven predictions CS-1 to CS-7, committed first in 35e2d14, before the script existed), results `docs/CUDA-SLOWDOWN-RESULTS.md`, raw scoring `docs/cuda-results/slowdown-fit-2026-10-20.json`. Measurement only, Mac only, on the raw samples already copied home from the row-timing session; nothing in `src/` except the version string. Hamed: "continue with CUDA part" (the v251 offline follow-up).
