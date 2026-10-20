@@ -1,10 +1,11 @@
-# Next-session prompt — **v243**, written 2026-10-20
+# Next-session prompt — **v244**, written 2026-10-20
 
 **This is the file to paste.** `docs/NEXT-SESSION-PROMPT.md` is always current; superseded ones live in
 `docs/next-session-prompts/`.
 
 | version | written | produced by | what changed |
 |---|---|---|---|
+| **v244** | 2026-10-20 | Hamed: "Yes: design a lead-2 GPU arm as an exception, new record with predictions first, offline build on the Mac; no instance yet." (v243 offer) | **0.66.39, planning, instruments and tests: `docs/CUDA-N3D-EXPERIMENT-RECORD.md` (10 predictions, committed first, a2335b8); arm `L2` (lead-2 set issued two rows ahead), 23 cells on the new multi-lead trace, `n3d-expected.json`, gate (g) against `prefetch_coverage.py --timed`, `session.sh n3dsmoke|n3dfull`, `SESSION-RUNBOOK-N3D.md`; offline bound 0.535 (lead 1) against 0.412 (lead 2); 877 tests, old hashes unchanged. Never run on a GPU. Nothing in `src/`.** §18.194 |
 | **v243** | 2026-10-20 | Hamed ran the multi-lead recording ("done. check the outcome") (v242 first job) | **0.66.38, measurement, offline: the trace has 1,897 decode tokens and exact predicted rows per lead. Serial bound at 17 %: lead 1 0.492, lead 2 0.366, lead 3 0.270, union 0.519 at 1.54 times the loads. Both registered rules fail: the lead lever is closed offline. The window effect of a lead-2 prediction is the one open hypothesis (GPU stage, new record, Hamed's go). 5 held, 2 missed narrowly, 0 falsified. Nothing in `src/`.** §18.193 |
 | **v242** | 2026-10-20 | Hamed: "Yes: plan a tracer knob (off by default) that records router scores two layers ahead, predictions first; do not run the server until I say." (v241 offer) | **0.66.37, planning and offline instruments: the knob already exists (`CACHALOT_PREDICT_AHEAD=3` + `CACHALOT_PREDICT_SUBMIT=0` + `CACHALOT_ROUTING_TRACE`), so no `src/` change. `docs/CUDA-LEAD-TRACE-RECORD.md` (7 predictions, committed first, 849b8f2) and `docs/CUDA-LEAD-TRACE-RUNBOOK.md`; lead selectors in `prefetch_coverage.py`, `predictor_price.py` (`R2`, `R3`, `R12`), `overlap_arena.py`; old outputs unchanged. No server started.** §18.192 |
 | **v241** | 2026-10-20 | Hamed: "Instance terminated. Next: stay offline and price a better predictor (v240 candidate 1) on the trace, record with predictions first." | **0.66.36, measurement, Mac only: `predictor_price.py` against the recorded predictor on a held-out window. Serial bound at 17 %: recorded 0.465, co-activation 0.024 (10 picks 0.011), previous token 0.000, 4+2 mix 0.344, recorded+4 0.465 at 25 % more copies; none meets the rule (0.05 above recorded). A better predictor needs router scores two layers ahead, not in the trace. 2 held, 3 missed, 3 falsified. Nothing in `src/`.** §18.191 |
@@ -204,6 +205,10 @@
 | v47 | 2026-09-25 | Hamed asked for the v44-v46 levers planned, built, measured and documented | **0.18.0: GLM prefill 60 to 90 tok/s, bit-identical (a store path that never evicts, plus the next layer read early), GLM's missing MLX buffer-cache cap added, GLM disk snapshots (a restart reuses the system block). DeepSeek: an `iostat` trace shows prefill is not read-bound on either drive; the lookahead A/B drowned in a 124-to-200 s drift across back-to-back prefills.** §17.1, §15.13 |
 | v46 | 2026-09-25 | Hamed asked for GLM-5.3-Flash on Cachalot | 0.17.0: GLM through `serve-glm.sh` / `chat-glm.sh`. §17 |
 | v45 | 2026-09-24 | same as v47, one day earlier | 0.16.0: disk snapshot store by last use; lookahead and local compression closed. §15.12 |
+
+## First jobs (v244): N3 stage D is built; running it needs Hamed to create an RTX 5090
+
+Read HANDOFF section 18.194, `docs/CUDA-N3D-EXPERIMENT-RECORD.md` and `benchmarks/cuda/SESSION-RUNBOOK-N3D.md` first; the v243 block below still applies. **Job 1 (needs Hamed's go and an instance):** pack from a clean commit, check `nvidia-smi` and DNS first, copy the NEW trace (`benchmarks/results/routing-trace-deepseek-leads/trace.npz`, 39.8 MB) as `n3d-trace.npz`, run `n3dsmoke` and, only if clean, `MAXS=900 bash benchmarks/cuda/session.sh n3dfull`; score D-P1 to D-P10 by field name, write `docs/CUDA-N3D-RESULTS.md`; a prediction is never edited after its run. The offline lead rule stands as the offline verdict; only a cell with `H_L2` at least 0.05 above `H_P0L` supports the window hypothesis. Hamed's items: the N3, N3-B, N3-C billed hours; delete the ssh configs and key. **Rule added:** a run that needs a different trace than earlier stages names it in its runbook, its expected file and the host check (stage D uses the multi-lead trace, not the 11 MB one).
 
 ## First jobs (v243): the offline CUDA lane is exhausted; every remaining item needs Hamed's go for GPU time
 

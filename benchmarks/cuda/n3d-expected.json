@@ -1,0 +1,159 @@
+{
+  "cells": {
+    "17.40.none": {
+      "arena_equals_reference": true,
+      "demand_per_token": 59.9,
+      "hash": "ba71ae414f15ff8c8bb0478b59291094c59eccb4e51ccb04aea86f73b9be3716",
+      "loads_per_token": 0.0,
+      "slots": 2611,
+      "tokens": 40
+    },
+    "17.40.oracle": {
+      "arena_equals_reference": true,
+      "demand_per_token": 0.0,
+      "hash": "c1b4f0ed9e0c4288769d45702040207851c2be5c99953393913954272d52bbbf",
+      "loads_per_token": 59.9,
+      "slots": 2611,
+      "tokens": 40
+    },
+    "17.40.pred": {
+      "arena_equals_reference": true,
+      "demand_per_token": 29.975,
+      "hash": "18bb9fb68c29079e69b8f8cd7b941bdd3dbfe41450bbed0cca25966de8cab807",
+      "loads_per_token": 58.25,
+      "slots": 2611,
+      "tokens": 40
+    },
+    "17.40.pred@0.10": {
+      "arena_equals_reference": true,
+      "coverage_demand_per_token": 30.525,
+      "coverage_loads_per_token": 56.725,
+      "demand_per_token": 30.525,
+      "equals_coverage_model": true,
+      "hash": "3063ed11b932a08cfa4778ac3f8a533185b33628e549d927d82f1ecdc0b14288",
+      "loads_per_token": 56.725,
+      "slots": 2611,
+      "tokens": 40
+    },
+    "17.40.pred@0.20": {
+      "arena_equals_reference": true,
+      "coverage_demand_per_token": 38.7,
+      "coverage_loads_per_token": 37.025,
+      "demand_per_token": 38.7,
+      "equals_coverage_model": true,
+      "hash": "cda75894032aff66b3166ab240fbac32a2dd183ab4469f078e34b1a6b63d3675",
+      "loads_per_token": 37.025,
+      "slots": 2611,
+      "tokens": 40
+    },
+    "17.40.pred~2": {
+      "arena_equals_reference": true,
+      "coverage_demand_per_token": 36.55,
+      "coverage_loads_per_token": 59.45,
+      "demand_per_token": 36.55,
+      "equals_coverage_model": true,
+      "hash": "486b33834a33f273da6a2243cfbe58d1c312b46061b93ccb76e64d6382b413b8",
+      "loads_per_token": 59.45,
+      "slots": 2611,
+      "tokens": 40
+    },
+    "17.400.none": {
+      "arena_equals_reference": true,
+      "demand_per_token": 47.2025,
+      "hash": "9f1671d7864d00d1d07c410fe4d6b9c3da7f62f7f5d683cea8332a99822d8f12",
+      "loads_per_token": 0.0,
+      "slots": 2611,
+      "tokens": 400
+    },
+    "17.400.oracle": {
+      "arena_equals_reference": true,
+      "demand_per_token": 0.0025,
+      "hash": "e262a5228d3eabdc1935c9b4f5c2bd14ac1d722d189559a8355390e1ca5a5fb2",
+      "loads_per_token": 47.2025,
+      "slots": 2611,
+      "tokens": 400
+    },
+    "17.400.pred": {
+      "arena_equals_reference": true,
+      "demand_per_token": 21.96,
+      "hash": "bc7ea752897ce05c10fb1dd44588fbba36018596b6a1d49e8a3874a070989318",
+      "loads_per_token": 50.355,
+      "slots": 2611,
+      "tokens": 400
+    },
+    "17.400.pred@0.10": {
+      "arena_equals_reference": true,
+      "coverage_demand_per_token": 22.13,
+      "coverage_loads_per_token": 49.895,
+      "demand_per_token": 22.13,
+      "equals_coverage_model": true,
+      "hash": "ee9ed1508bd72687095d05a8d5774b4f52835ff1db143b35942f1d4dadd53365",
+      "loads_per_token": 49.895,
+      "slots": 2611,
+      "tokens": 400
+    },
+    "17.400.pred@0.20": {
+      "arena_equals_reference": true,
+      "coverage_demand_per_token": 28.1,
+      "coverage_loads_per_token": 32.8075,
+      "demand_per_token": 28.1,
+      "equals_coverage_model": true,
+      "hash": "c5c33958a24cdbb9bd045acc6899086f7e956cf79c729dcc8b026ea125d3b90a",
+      "loads_per_token": 32.8075,
+      "slots": 2611,
+      "tokens": 400
+    },
+    "17.400.pred~2": {
+      "arena_equals_reference": true,
+      "coverage_demand_per_token": 27.735,
+      "coverage_loads_per_token": 52.415,
+      "demand_per_token": 27.735,
+      "equals_coverage_model": true,
+      "hash": "5e8989af3f6e5d7f9528301bce1807c4a32032eac925f8eb1ab57265feed0aa6",
+      "loads_per_token": 52.415,
+      "slots": 2611,
+      "tokens": 400
+    },
+    "8.400.none": {
+      "arena_equals_reference": true,
+      "demand_per_token": 84.1225,
+      "hash": "6420fa5d9554bcc4a5b33ffdd80dbf2de417f16db892050417d1390f0bf35e0b",
+      "loads_per_token": 0.0,
+      "slots": 1229,
+      "tokens": 400
+    },
+    "8.400.pred": {
+      "arena_equals_reference": true,
+      "demand_per_token": 37.315,
+      "hash": "a348b9cbfb932250c94c3f2af07aef762f0b3b808782f42b781b7feed02fc1b3",
+      "loads_per_token": 88.815,
+      "slots": 1229,
+      "tokens": 400
+    },
+    "8.400.pred@0.20": {
+      "arena_equals_reference": true,
+      "coverage_demand_per_token": 48.0625,
+      "coverage_loads_per_token": 59.7375,
+      "demand_per_token": 48.0625,
+      "equals_coverage_model": true,
+      "hash": "20235bba543c8b87f3e118b068ac00bb14da432314aeb8317f7b79d7f1bfdac8",
+      "loads_per_token": 59.7375,
+      "slots": 1229,
+      "tokens": 400
+    },
+    "8.400.pred~2": {
+      "arena_equals_reference": true,
+      "coverage_demand_per_token": 47.12,
+      "coverage_loads_per_token": 90.32,
+      "demand_per_token": 47.12,
+      "equals_coverage_model": true,
+      "hash": "cfc688ecefd379e5fdf5d61d9ad9ba3ec4420f39026836a26febd87dd61e1b83",
+      "loads_per_token": 90.32,
+      "slots": 1229,
+      "tokens": 400
+    }
+  },
+  "n_layers": 40,
+  "record_bytes": 9950000,
+  "trace_sha256": "b68aefa4adef11a11aa4b59e5cc29cdca63e9a467c8bd1a1424adc09a3f3e488"
+}

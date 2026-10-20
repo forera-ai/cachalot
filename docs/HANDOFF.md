@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-20, 0.66.39): N3 stage D (a lead-2 GPU arm, the window hypothesis) is registered and built; running it needs Hamed to create an RTX 5090
+>
+> Section 18.194, record `docs/CUDA-N3D-EXPERIMENT-RECORD.md` (ten predictions, a2335b8), runbook `benchmarks/cuda/SESSION-RUNBOOK-N3D.md`, plan section 17.18. An exception Hamed chose to the pre-registered offline lead rule (the rule stands as the offline verdict). Arm `L2` in `overlap_arena.py`; 23 cells on the NEW trace (`routing-trace-deepseek-leads`, copy 39.8 MB as `n3d-trace.npz`); offline price: bound 0.535 (lead 1) against 0.412 (lead 2), copies 72.3 against 80.2 a token. Prediction headline: lead 2 loses 0.05 to 0.18 at C = 1.0 ms and is within -0.05 to +0.04 of lead 1 at 0.3 ms (the window hypothesis not supported, probability 0.6 to 0.7). 877 tests; earlier expected hashes unchanged. Never run on a GPU. **Needs Hamed:** a go and an RTX 5090 instance; the N3, N3-B and N3-C billed hours; the housekeeping (delete the ssh configs and key).
+>
 > ## Start here (2026-10-20, 0.66.38): predictions made one or two layers earlier lose about 0.12 of the serial bound a layer; the lead lever is closed offline by the registered rule
 >
 > Section 18.193, results `docs/CUDA-LEAD-TRACE-RESULTS.md`, plan section 17.17. Hamed recorded the multi-lead trace (1,897 decode tokens; predicted rows exactly layers minus lead per token; 39.8 MB; 11 minutes). At 17 % resident on tokens 1000 to 1399: bound lead 1 **0.492**, lead 2 **0.366**, lead 3 **0.270**, lead 1 plus lead-2 extras **0.519** (1.54 times the loads); recall 0.684 / 0.596 / 0.521. Rules: lead 2 needed 0.442 (not met), the union 0.542 (not met). Scored 5 held, 2 missed narrowly (LT-2, LT-5's loads clause), 0 falsified. Not priced by the bound: the extra window of a lead-2 prediction, which stage B showed matters at 0.3 ms; testing it needs a GPU stage with a lead-2 arm and a new record. **Needs Hamed:** nothing for this item; GPU stages need his go; earlier housekeeping stands (cost-file hours, ssh configs and key).
@@ -9290,6 +9294,20 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.194 CUDA N3 stage D registered and built (0.66.39)
+
+**Goal.** Hamed: "Yes: design a lead-2 GPU arm as an exception, new record with predictions first, offline build on the Mac; no instance yet."
+
+**What was done.** The record (ten predictions) was committed before any harness code (a2335b8). `prefetch_coverage.py --timed` gives the issue-point semantics (a lead-2 set enters the arena right after the demand of the row two ahead, before the next layer's demand) and is the offline price and gate (g) source; for lead 1 it equals the untimed model on both traces. The harness arm `L2` generalizes the bookkeeping passes and the timed loop by `lead` while leaving lead 1 on its old order (all earlier expected hashes unchanged, checked). `n3d-expected.json` is on the new trace; the arena, the independent reference and `coverage_timed` agree at 17 % and 8 %.
+
+**What it means.** Nothing measured. The rule from the lead trace stands as the offline verdict; this tests only the window.
+
+**What did not go well.** I forgot, again, that a stage's cell list must contain a `D` arm per group; this time I carried the lesson over from stage C and registered it.
+
+**Open / needs Hamed.** A go and an RTX 5090 instance for `n3dsmoke` then `n3dfull`; billed hours; housekeeping.
+
+**Kind.** Planning, instruments and tests. No default changed, nothing measured on a GPU.
 
 ### 18.193 Multi-lead trace analysed (0.66.38)
 

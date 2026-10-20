@@ -1,0 +1,15 @@
+# CUDA session N3 stage D runbook: a lead-2 prediction arm (the window hypothesis; RTX 5090)
+
+Predictions, design and stop rules: `docs/CUDA-N3D-EXPERIMENT-RECORD.md` (committed in a2335b8 before any stage D harness code; an exception to the lead rule, chosen by Hamed). Harness: `benchmarks/cuda/overlap_arena.py` (the stage C file with the arm `L2`: the recorded **lead-2** set of the row two layers ahead, issued right after the current row's demand and queued after the layer's launch, no wait). The bookkeeping equals the independent reference and `prefetch_coverage.py --timed` on the NEW trace (`benchmarks/cuda/n3d-expected.json`, gate (g)); lead-1 arms and the old expected files are unchanged. The earlier runbooks apply for the provider, key, private ssh config, cost log and teardown; this file lists what differs. **Nothing here starts an instance.** Hamed creates it and says go for the named live instance; the agent runs over SSH only for that one instance and never runs sudo. Cap: **1 GPU-hour** from Ready, and every run passes an explicit `--max-seconds` below what is left of it.
+
+## Steps
+
+1. Pack from a clean commit on the Mac (`bash benchmarks/cuda/pack.sh`, REVISION `dirty=0`); upload and unpack as before. Copy the **new** trace (39.8 MB, not in the repository; the old 11 MB trace is not used): `scp -F ~/cachalot-private/ssh_config_NAME benchmarks/results/routing-trace-deepseek-leads/trace.npz NAME:~/cachalot-cuda/n3d-trace.npz`. The host refuses to run if its sha256 differs from the one in `n3d-expected.json`.
+2. **First check the instance**: `nvidia-smi` must show the GPU and driver (a GPU whose open-driver probe says "no GSP" is replaced from the console, not debugged), and `getent hosts pypi.org` must resolve. Then `check`, `setup`, `doctor`, `smoke` (all clean).
+3. **`bash benchmarks/cuda/session.sh n3dsmoke`**: group `p17`, 40 decode tokens, `D`, `P0L`, `L2`, `O` at C = 1.0 ms level L5 and `D`, `L2` at C = 0.3 ms level L4 (10 cells). First GPU run of `L2`. Read every gate: `event_hash`, `determinism`, `counts`, `chain2`, `coverage` (gate g), `readback`, `calibration`, `drift`, `closure`, `sanity` all true, no failed cell, not truncated. `graph_unavailable` at L5 is a valid outcome, not a failure.
+4. Only if the smoke is clean: `MAXS=900 bash benchmarks/cuda/session.sh n3dfull` (23 cells: 17 % at C = 1.0 ms L5, 0.6 and 0.3 ms L4, and 8 % at 0.3 ms L4; estimate 6 to 9 minutes of cells plus qualification). A truncated run is reported as truncated.
+5. Copy back with `results`; score by **field name**. Key fields per (level, C): `E_D`, `E_P0L`, `E_L2`, `E_O`, `H_P0L`, `H_L2`, `H_O`, `drift`, `floor_ms`, `per_copy_ms_c`; per cell `wall_ms_token`, `host_issue_ms_token`, `demand_misses_per_token`, `prefetch_loads_per_token`, `covered_per_token`, `wasted_per_token`; and the first cell's `source_copy_ms_*` and `source_records_slow_share`.
+
+## Stop rules
+
+As the record, section 6. Housekeeping stands (delete the S1, S2, V1, N2, B1, B2, N3 and N3-C ssh configs, known_hosts files and the key).

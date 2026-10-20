@@ -574,6 +574,10 @@ N3 stage B ran under `docs/CUDA-N3B-EXPERIMENT-RECORD.md` and is recorded in `do
 
 `docs/CUDA-LEAD-TRACE-RESULTS.md`. Serial bound at 17 % resident: lead 1 0.492, lead 2 0.366, lead 3 0.270; lead 1 plus lead-2 extras 0.519 at 1.54 times the loads. Both registered rules fail, so the lead lever is closed offline. Open hypothesis, not priced by the bound: the extra window of a lead-2 prediction at short layers (stage B: the window decides the hidden share at 0.3 ms); it needs a GPU stage with a lead-2 arm and a new record.
 
+### 17.18 N3 stage D registered and built (2026-10-20)
+
+`docs/CUDA-N3D-EXPERIMENT-RECORD.md` (a2335b8, ten predictions, before any code): an exception, chosen by Hamed, to the offline lead rule. Arm `L2` (lead-2 set issued two rows ahead) against `P0L` on the new multi-lead trace at C = 1.0 ms (L5), 0.6 and 0.3 ms (L4) at 17 % resident and 0.3 ms at 8 %, 23 cells; offline bound 0.535 against 0.412. Never run on a GPU. Needs Hamed: a go and an RTX 5090.
+
 ## 18. Honest limits
 
 - This is a plan. No hypothesis in it has been tested; every "expected" device property is vendor-derived and unverified for the rented machine.

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.66.39 (2026-10-20)
+
+HANDOFF "Start here (2026-10-20, 0.66.39)" and section 18.194; record `docs/CUDA-N3D-EXPERIMENT-RECORD.md` (ten predictions, committed first in a2335b8), runbook `benchmarks/cuda/SESSION-RUNBOOK-N3D.md`, plan section 17.18. Planning, instruments and tests; nothing in `src/` except the version string; nothing run on a GPU.
+
+### Added
+- CUDA N3 stage D is registered and built on the Mac, as an exception Hamed chose to the offline lead rule: does the extra layer of window of a lead-2 prediction beat its lower coverage anywhere? `overlap_arena.py` gains the arm `L2` (the recorded lead-2 set of the row two layers ahead, issued right after the current row's demand, queued after the layer's launch), the profiles `d-smoke` and `d-full` (23 cells: 17 % at C = 1.0 ms L5, 0.6 and 0.3 ms L4; 8 % at 0.3 ms L4, each group with its own `D` arm), `n3d-expected.json` on the new multi-lead trace, gate (g) against the new `prefetch_coverage.py --timed` (`coverage_timed`: issue-point semantics, equal to the untimed model for lead 1), `session.sh n3dsmoke|n3dfull`, `SESSION-RUNBOOK-N3D.md`. Offline price on the new trace, first 400 tokens, 17 % resident: bound 0.535 (lead 1) against 0.412 (lead 2), copies 72.3 against 80.2 a token. 7 new tests, 877 pass; all earlier expected hashes unchanged.
+
 ## 0.66.38 (2026-10-20)
 
 HANDOFF "Start here (2026-10-20, 0.66.38)" and section 18.193; results `docs/CUDA-LEAD-TRACE-RESULTS.md`, raw `docs/cuda-results/lead-trace-price-2026-10-20.json`. Measurement only (Hamed recorded the trace; offline analysis on the Mac); nothing in `src/` except the version string.

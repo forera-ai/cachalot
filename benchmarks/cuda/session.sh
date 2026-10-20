@@ -3,7 +3,7 @@
 # Run from the directory the scaffold archive was unpacked into. No sudo, no system package changes, no downloads other
 # than the pinned Python wheels named below, which `setup` shows before it installs them.
 #
-#   bash benchmarks/cuda/session.sh check|setup|doctor|smoke|baseline|s2|n2smoke|n2full|backing|hugepage|n3smoke|n3full|n3bsmoke|n3bfull|n3csmoke|n3cfull|results
+#   bash benchmarks/cuda/session.sh check|setup|doctor|smoke|baseline|s2|n2smoke|n2full|backing|hugepage|n3smoke|n3full|n3bsmoke|n3bfull|n3csmoke|n3cfull|n3dsmoke|n3dfull|results
 #   (s2 = docs/CUDA-S2-EXPERIMENT-RECORD.md: overlap variants and batched expert copies; needs a clean smoke run first)
 set -euo pipefail
 
@@ -264,6 +264,36 @@ sys.exit(0 if ok else 1)
 EOF6
     SESSION_TAG="${SESSION_TAG:-N3C}" "$PY" "$ROOT/benchmarks/cuda/overlap_arena.py" run --trace "$TRACE" \
       --expected "$ROOT/benchmarks/cuda/n3c-expected.json" --cells c-full --execute --max-seconds "${MAXS:-1200}" --region "$REGION" --note "$(SESSION_TAG="${SESSION_TAG:-N3C}" note n3cfull)"
+    ;;
+
+  n3dsmoke)
+    # N3 stage D (docs/CUDA-N3D-EXPERIMENT-RECORD.md): a short GPU smoke of the lead-2 arm `L2` beside `P0L`. Needs the NEW trace
+    # (routing-trace-deepseek-leads, 39.8 MB) copied to the host as n3d-trace.npz, see SESSION-RUNBOOK-N3D.md.
+    [ -x "$PY" ] || die "run setup first"
+    TRACE="${TRACE:-$ROOT/n3d-trace.npz}"
+    [ -f "$TRACE" ] || die "trace file not found at $TRACE (scp it from the Mac, see SESSION-RUNBOOK-N3D.md)"
+    SESSION_TAG="${SESSION_TAG:-N3D}" "$PY" "$ROOT/benchmarks/cuda/overlap_arena.py" run --trace "$TRACE" \
+      --expected "$ROOT/benchmarks/cuda/n3d-expected.json" --cells d-smoke --execute --max-seconds 300 --region "$REGION" --note "$(SESSION_TAG="${SESSION_TAG:-N3D}" note n3dsmoke)"
+    ;;
+
+  n3dfull)
+    # The cap is explicit and below the 1 GPU-hour session cap: MAXS=seconds overrides (default 1200).
+    [ -x "$PY" ] || die "run setup first"
+    TRACE="${TRACE:-$ROOT/n3d-trace.npz}"
+    [ -f "$TRACE" ] || die "trace file not found at $TRACE"
+    run="$(latest_run n3d-d-smoke)"
+    [ -n "$run" ] || die "no n3dsmoke run found: run n3dsmoke first"
+    "$PY" - "$run/run-manifest.json" <<'EOF7' || die "the latest n3dsmoke run is not clean: do not start n3dfull; bring the files home"
+import json, sys
+m = json.load(open(sys.argv[1]))
+g = m["gates"]
+keys = ("event_hash", "determinism", "counts", "chain2", "coverage", "readback", "calibration", "drift", "closure", "sanity")
+ok = m["status"] == "complete" and not g["failed_cells"] and all(g[k] for k in keys)
+print("n3dsmoke run clean:", ok, "| status", m["status"], "| failed cells", len(g["failed_cells"]))
+sys.exit(0 if ok else 1)
+EOF7
+    SESSION_TAG="${SESSION_TAG:-N3D}" "$PY" "$ROOT/benchmarks/cuda/overlap_arena.py" run --trace "$TRACE" \
+      --expected "$ROOT/benchmarks/cuda/n3d-expected.json" --cells d-full --execute --max-seconds "${MAXS:-1200}" --region "$REGION" --note "$(SESSION_TAG="${SESSION_TAG:-N3D}" note n3dfull)"
     ;;
 
   results)

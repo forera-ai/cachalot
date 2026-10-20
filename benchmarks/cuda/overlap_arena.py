@@ -50,17 +50,23 @@ import replay_arena as ra  # noqa: E402
 import suite  # noqa: E402
 
 GATE_ARMS = {"G00": 0.0, "G10": 0.10, "G20": 0.20}                       # N3 stage C: P0L with a router-weight gate (G00 is P0L by construction)
-ARMS = ("N", "D", "P0", "P0L", "P40", "O") + tuple(GATE_ARMS)
-PRED_ARMS = ("P0", "P0L", "P40") + tuple(GATE_ARMS)
+ARMS = ("N", "D", "P0", "P0L", "P40", "O", "L2") + tuple(GATE_ARMS)
+PRED_ARMS = ("P0", "P0L", "P40", "L2") + tuple(GATE_ARMS)
 LEVELS = (0, 1, 2, 3, 4, 5)                                               # N3 stage B: see the record, section 3
 ARM_MODE = {"D": "none", "P0": "pred", "P0L": "pred", "P40": "pred", "O": "oracle",
+            "L2": "pred~2",                                                       # N3 stage D: the lead-2 recorded set, issued two rows ahead
             **{a: f"pred@{t:.2f}" for a, t in GATE_ARMS.items()}}                  # the bookkeeping each arm uses ('pred@t': gated)
 
 
 def mode_parts(mode: str) -> tuple[str, float | None]:
-    """'pred@0.20' -> ('pred', 0.2); any other mode -> (mode, None)."""
-    base, _, gate = mode.partition("@")
+    """'pred@0.20' -> ('pred', 0.2); 'pred~2' -> ('pred', None); any other mode -> (mode, None)."""
+    base, _, gate = mode.partition("~")[0].partition("@")
     return base, (float(gate) if gate else None)
+
+
+def mode_lead(mode: str) -> int:
+    """'pred~2' -> 2: the lead of the recorded predicted set the arm uses (and the number of rows it is issued ahead); default 1."""
+    return int(mode.partition("~")[2]) if "~" in mode else 1
 SPLIT = 0.4                                                               # first kernel's share of a layer's compute
 DECODE_TOKENS = 400
 CALIBRATION_TOLERANCE = 0.05
@@ -255,8 +261,8 @@ def predicted_lookup(arrays, mode: str = "pred") -> dict[tuple[int, int], list[i
     if "pred_target" not in arrays:
         return {}
     gate = mode_parts(mode)[1]
-    if "pred_source" in arrays:                       # a trace recorded with several leads keeps only the lead-1 records here
-        keep = np.nonzero(arrays["pred_target"].astype(np.int64) - arrays["pred_source"].astype(np.int64) == 1)[0]
+    if "pred_source" in arrays:                       # a trace recorded with several leads keeps only the records of the arm's lead
+        keep = np.nonzero(arrays["pred_target"].astype(np.int64) - arrays["pred_source"].astype(np.int64) == mode_lead(mode))[0]
     else:
         keep = np.arange(len(arrays["pred_target"]))
     if gate is None:
@@ -289,20 +295,34 @@ def row_prefetch_set(mode: str, pred, plan, i: int):
     return pred.get((item[4], item[2]))
 
 
+def issue_ahead_ok(plan, i: int, lead: int) -> bool:
+    """Stage D: the row `lead` ahead exists and every item up to it is a decode row of the same token (a prefill or the next token ends it)."""
+    t = i + lead
+    return t < len(plan) and all(plan[x][0] == "D" and plan[x][1] == plan[i][1] for x in range(i + 1, t + 1))
+
+
 def bookkeeping_pass_pf(arrays, slots: int, n_layers: int, mode: str, max_decode_tokens: int | None) -> dict:
     book = PfBook(slots, n_layers, mode)
     pred = predicted_lookup(arrays, mode) if mode_parts(mode)[0] == "pred" else {}
     plan = decode_plan(arrays, max_decode_tokens)
+    lead = mode_lead(mode)
+    started: set[int] = set()
     for i, item in enumerate(plan):
         if item[0] == "P":
             book.prefill(item[1], item[2])
             continue
         _, tok, layer, experts, _pos = item
-        ahead = row_prefetch_set(mode, pred, plan, i)
-        if ahead:
-            book.prefetch(tok, layer, ahead)
+        if lead == 1 or i not in started:                # lead 1: the set of this row, right before its demand (stage A/B order)
+            ahead = row_prefetch_set(mode, pred, plan, i)
+            if ahead:
+                book.prefetch(tok, layer, ahead)
         book.demand(tok, layer, experts)
         book.end_row(layer)
+        if lead > 1 and issue_ahead_ok(plan, i, lead):   # stage D: the set of the row `lead` ahead, right after this row's demand
+            ahead = row_prefetch_set(mode, pred, plan, i + lead)
+            if ahead:
+                book.prefetch(plan[i + lead][1], plan[i + lead][2], ahead)
+            started.add(i + lead)
     book.arena.check_invariants()
     return book.summary()
 
@@ -332,6 +352,21 @@ def reference_pass_pf(arrays, slots: int, n_layers: int, mode: str, max_decode_t
         ops.append((1, key[0], key[1]))
         return tuple(ops), slot
 
+    lead = mode_lead(mode)
+    started: set[int] = set()
+
+    def fetch(ahead, tok, layer, chain):
+        for e in ahead or []:
+            key = (layer, int(e))
+            loaded = key not in lru
+            ops, slot = load(key) if loaded else ((), -1)
+            ra._digest_feed(h, ("F", tok, layer, key[1], loaded, ops))
+            if loaded:
+                pending.add(key)
+                counts["loads"] += 1
+                chain = chain2_step(chain, 1, tok, layer, key[1], slot)
+        return chain
+
     synced = False
     for i, item in enumerate(plan):
         if item[0] == "P":
@@ -346,16 +381,8 @@ def reference_pass_pf(arrays, slots: int, n_layers: int, mode: str, max_decode_t
             synced = True
         _, tok, layer, experts, _pos = item
         toks.add(tok)
-        ahead = row_prefetch_set(mode, pred, plan, i)
-        for e in ahead or []:
-            key = (layer, int(e))
-            loaded = key not in lru
-            ops, slot = load(key) if loaded else ((), -1)
-            ra._digest_feed(h, ("F", tok, layer, key[1], loaded, ops))
-            if loaded:
-                pending.add(key)
-                counts["loads"] += 1
-                chain2 = chain2_step(chain2, 1, tok, layer, key[1], slot)
+        if lead == 1 or i not in started:
+            chain2 = fetch(row_prefetch_set(mode, pred, plan, i), tok, layer, chain2)
         for e in experts:
             key = (layer, int(e))
             hit = key in lru
@@ -372,6 +399,10 @@ def reference_pass_pf(arrays, slots: int, n_layers: int, mode: str, max_decode_t
                 counts["covered"] += 1
                 pending.discard(key)
         pending = {k for k in pending if k[0] != layer}
+        if lead > 1 and issue_ahead_ok(plan, i, lead):
+            tgt = plan[i + lead]
+            chain2 = fetch(row_prefetch_set(mode, pred, plan, i + lead), tgt[1], tgt[2], chain2)
+            started.add(i + lead)
     n = max(1, len(toks))
     return {"hash": h.hexdigest(), "chain2": chain2, "tokens": len(toks), "demand_misses": counts["demand"], "prefetch_loads": counts["loads"],
             "covered": counts["covered"], "wasted": counts["loads"] - counts["covered"], "demand_per_token": counts["demand"] / n,
@@ -416,6 +447,18 @@ def cell_defs(profile: str) -> list[dict]:
                     {"level": 4, "c": 0.3, "arms": ("N", "D", "P0L", "G10", "G20", "O", "N")}]},
                 {"id": "p8", "percent": 8, "tokens": DECODE_TOKENS, "plan": [
                     {"level": 5, "c": 1.0, "arms": ("N", "D", "P0L", "G20", "N")}]}]
+    if profile == "d-smoke":
+        return [{"id": "p17", "percent": 17, "tokens": 40, "plan": [
+            {"level": 5, "c": 1.0, "arms": ("N", "D", "P0L", "L2", "O", "N")}, {"level": 4, "c": 0.3, "arms": ("N", "D", "L2", "N")}]}]
+    if profile == "d-full":                              # record N3D section 3
+        arms6 = ("N", "D", "P0L", "L2", "O", "N")
+        return [{"id": "p17", "percent": 17, "tokens": DECODE_TOKENS, "plan": [
+                    {"level": 5, "c": 1.0, "arms": arms6}, {"level": 4, "c": 0.6, "arms": arms6}, {"level": 4, "c": 0.3, "arms": arms6}]},
+                {"id": "p8", "percent": 8, "tokens": DECODE_TOKENS, "plan": [
+                    {"level": 4, "c": 0.3, "arms": ("N", "D", "P0L", "L2", "N")}]}]
+    if profile == "d-rehearsal":
+        return [{"id": "p17", "percent": 17, "slots": 40, "tokens": 6, "plan": [
+            {"level": 0, "c": 0.05, "arms": ("N", "D", "P0L", "L2", "O", "N")}, {"level": 4, "c": 0.05, "arms": ("N", "D", "P0L", "L2", "N")}]}]
     if profile == "c-rehearsal":
         return [{"id": "p17", "percent": 17, "slots": 40, "tokens": 6, "plan": [
             {"level": 0, "c": 0.05, "arms": ("N", "D", "P0L", "G00", "G10", "G20", "O", "N")},      # L5 needs a CUDA graph: not on the CPU
@@ -700,7 +743,8 @@ def run_cell(arrays, slots: int, n_layers: int, arena: OverlapArena, arm: str, *
     pending_records: tuple | None = None                  # (parity, n, had_demand, had_pf, wall_ms, host_ms, tok) of the previous token
     parity = 0
     early = arm in ("P0", "O")                            # prefetch issued before the layer's launch
-    late_nowait = arm == "P0L" or arm in GATE_ARMS                         # after the launch, no wait
+    late_nowait = arm in ("P0L", "L2") or arm in GATE_ARMS
+    lead = mode_lead(mode) if mode else 1                         # after the launch, no wait
     late_wait = arm == "P40"                              # after the launch, after the first kernel through an event wait
 
     def flush(rec) -> None:
@@ -757,8 +801,8 @@ def run_cell(arrays, slots: int, n_layers: int, arena: OverlapArena, arm: str, *
                     demand_loads = prefetch_for(idx)      # needed by this row now: the row's compute waits for them like a miss
                 demand_loads = demand_loads + book.demand(tok, layer, experts)
                 book.end_row(layer)
-                nxt = idx + 1
-                if nxt < len(plan) and plan[nxt][0] == "D":
+                nxt = idx + lead
+                if (nxt < len(plan) and plan[nxt][0] == "D") if lead == 1 else issue_ahead_ok(plan, idx, lead):
                     pf_loads = prefetch_for(nxt)
                     started_pf.add(nxt)
                 # the batch event is always recorded and waited for: it completes after every copy queued before it, so a row whose
@@ -864,11 +908,11 @@ def exposed_and_hidden(walls: dict[str, float]) -> dict:
     out = {"floor_ms": floor}
     if len(n_walls) == 2:
         out["drift"] = walls["N1"] / walls["N0"] - 1.0
-    for arm in ("D", "P0", "P0L", "P40", "O", *GATE_ARMS):
+    for arm in ("D", "P0", "P0L", "P40", "O", "L2", *GATE_ARMS):
         if arm in walls:
             out[f"E_{arm}"] = walls[arm] - floor
     if "E_D" in out and out["E_D"] > 0:
-        for arm in ("P0", "P0L", "P40", "O", *GATE_ARMS):
+        for arm in ("P0", "P0L", "P40", "O", "L2", *GATE_ARMS):
             if f"E_{arm}" in out:
                 out[f"H_{arm}"] = 1.0 - out[f"E_{arm}"] / out["E_D"]
     return out
@@ -935,13 +979,13 @@ def group_rows(run_id: str, group_id: str, c: float, walls: dict[str, float], bu
         unit = "ms" if key.startswith(("E_", "floor")) else "fraction"
         rows.append(mf.row(run_id, arm, key, val, unit, "derived", source="p50 token wall times across arms, N controls bracketing"))
     if ed_ref and "E_D" not in eh:
-        for a in ("P0", "P0L", "P40", "O", *GATE_ARMS):
+        for a in ("P0", "P0L", "P40", "O", "L2", *GATE_ARMS):
             if f"E_{a}" in eh:
                 rows.append(mf.row(run_id, arm, f"H_{a}_vs_L0_E_D", 1.0 - eh[f"E_{a}"] / ed_ref, "fraction", "derived",
                                    source="this level's exposed time against the level-0 demand exposure of the same C"))
     if "N0" in busy and "N1" in busy:
         nb = (busy["N0"] + busy["N1"]) / 2
-        for a in ("D", "P0", "P0L", "P40", "O", *GATE_ARMS):
+        for a in ("D", "P0", "P0L", "P40", "O", "L2", *GATE_ARMS):
             if a in busy and nb > 0:
                 rows.append(mf.row(run_id, arm, f"compute_busy_ratio_{a}", busy[a] / nb - 1.0, "fraction", "derived",
                                    source="compute-lane busy p50 against the N controls (interference)"))
@@ -957,7 +1001,7 @@ def file_sha(path) -> str:
 
 
 def cmd_plan(args) -> int:
-    for prof in ("smoke", "full", "b-smoke", "b-full", "c-smoke", "c-full"):
+    for prof in ("smoke", "full", "b-smoke", "b-full", "c-smoke", "c-full", "d-smoke", "d-full"):
         for g in cell_defs(prof):
             slots = ra.slots_for(g["percent"])
             cs = cells_of(g)
@@ -973,7 +1017,7 @@ def cmd_expect(args) -> int:
         full = {k: data[k] for k in data.files if k != "segments"}
     out = {"trace_sha256": file_sha(args.trace), "record_bytes": ra.RECORD_BYTES, "n_layers": ra.trace_layer_count(trace), "cells": {}}
     seen = set()
-    for prof in ("smoke", "full", "c-smoke", "c-full"):
+    for prof in ("smoke", "full", "c-smoke", "c-full", "d-smoke", "d-full"):
         for g in cell_defs(prof):
             nl = out["n_layers"]
             slots = ra.slots_for(g["percent"])
@@ -998,6 +1042,17 @@ def cmd_expect(args) -> int:
                                               "coverage_loads_per_token": cov["prefetch_loads_per_token"], "equals_coverage_model": gok})
                     if not gok:
                         print(f"FAIL: gated bookkeeping {key} differs from prefetch_coverage.py", file=sys.stderr)
+                        return 4
+                elif mode_lead(mode) > 1:                  # gate (g) for the lead-2 arm: the timed coverage model, issue point two rows ahead
+                    import prefetch_coverage as pcov
+
+                    cov = pcov.coverage_timed(full, g["percent"], mode_lead(mode), g["tokens"])
+                    gok = (abs(cov["demand_misses_per_token"] - ref["demand_per_token"]) < 1e-9
+                           and abs(cov["prefetch_loads_per_token"] - ref["loads_per_token"]) < 1e-9)
+                    out["cells"][key].update({"coverage_demand_per_token": cov["demand_misses_per_token"],
+                                              "coverage_loads_per_token": cov["prefetch_loads_per_token"], "equals_coverage_model": gok})
+                    if not gok:
+                        print(f"FAIL: lead-{mode_lead(mode)} bookkeeping {key} differs from prefetch_coverage.py --timed", file=sys.stderr)
                         return 4
                 print(f"{key:14s} slots={slots:5d} demand/token={ref['demand_per_token']:7.2f} loads/token={ref['loads_per_token']:7.2f} "
                       f"hash {ref['hash'][:12]} equal={ok}")
@@ -1145,7 +1200,7 @@ def cmd_run(args) -> int:
     with np.load(args.trace) as data:
         full = {k: data[k] for k in data.files if k != "segments"}
     stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
-    stage = "n3c" if args.cells.startswith("c-") else ("n3b" if args.cells.startswith("b-") else "n3a")
+    stage = {"d": "n3d", "c": "n3c", "b": "n3b"}.get(args.cells[:1] if args.cells[1:2] == "-" else "", "n3a")
     run_id = f"{stamp}-{stage}-{args.cells}-{report['manifest_id'][:6]}"
     out = Path(args.out_dir) / run_id
     out.mkdir(parents=True, exist_ok=True)
@@ -1177,7 +1232,7 @@ def cmd_run(args) -> int:
     manifest = {
         "schema": mf.SCHEMA_NAME, "schema_version": mf.SCHEMA_VERSION, "platform": mf.PLATFORM, "kind": "run",
         "created_utc": mf.utc_now(), "machine_manifest_id": report["manifest_id"], "run_id": run_id,
-        "instrument": {"name": "benchmarks/cuda/overlap_arena.py", "version": {"n3c": "N3C-1", "n3b": "N3B-1"}.get(stage, "N3A-1")}, "code": report["code"], "mode": "timing",
+        "instrument": {"name": "benchmarks/cuda/overlap_arena.py", "version": {"n3d": "N3D-1", "n3c": "N3C-1", "n3b": "N3B-1"}.get(stage, "N3A-1")}, "code": report["code"], "mode": "timing",
         "workload": {"id": f"N3-stage{stage[-1].upper()}-{args.cells}", "class": "N3 layer-ahead prefetch with a stand-in compute and real copies (no model)",
                      "trace_sha256": expected["trace_sha256"], "record_bytes": ra.RECORD_BYTES, "source_records": ra.SOURCE_RECORDS,
                      "policy": "lru", "claims": "overlap mechanics only: exposed copy time against compute window, copy-lane saturation, interference"},
@@ -1207,7 +1262,7 @@ def main(argv=None) -> int:
     r = sub.add_parser("run")
     r.add_argument("--trace", required=True)
     r.add_argument("--expected", required=True)
-    r.add_argument("--cells", choices=("smoke", "full", "b-smoke", "b-full", "c-smoke", "c-full"), required=True)
+    r.add_argument("--cells", choices=("smoke", "full", "b-smoke", "b-full", "c-smoke", "c-full", "d-smoke", "d-full"), required=True)
     r.add_argument("--execute", action="store_true")
     r.add_argument("--max-seconds", type=float, default=1500.0)
     r.add_argument("--out-dir", default=str(Path(__file__).resolve().parents[1] / "results" / "cuda"))
