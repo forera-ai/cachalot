@@ -590,6 +590,10 @@ N3 stage B ran under `docs/CUDA-N3B-EXPERIMENT-RECORD.md` and is recorded in `do
 
 `docs/CUDA-BRIDGE-RESULTS.md`. Old and new trace in one session (old, new, new, old; 48 cells; every gate true): `P0L` hidden share old / new 0.339 / 0.433 at 1.0 ms, 0.305 / 0.407 at 0.6 ms, 0.098 / 0.233 at 0.3 ms; the gap is the trace, with run-to-run spread under 0.01, and the old trace reproduces stages B and C on a different instance and day. The row-level window model gets the sign and overstates the new trace by 0.07 to 0.10 at 0.6 and 1.0 ms. 7 held, 0 missed, 0 falsified.
 
+### 17.22 Window model fit outcome (2026-10-20)
+
+`docs/CUDA-WINDOW-FIT-RESULTS.md` (Mac only). A three-parameter row-level model fitted on `D` and `P0L` cells (stages C, D, bridge): `c` = 0.190 ms, fixed host terms about 0; held-out hidden-share error 0.026 (gated), 0.100 (oracle), 0.187 (lead 2), 0.0986 overall against the copy-count screen's 0.0944. The replacement rule is not met; the screen stays; neither model for multi-layer prefetch or the oracle. 3 held, 2 missed, 2 falsified. Candidate later offline record: a per-miss cost that depends on queue state.
+
 ## 18. Honest limits
 
 - This is a plan. No hypothesis in it has been tested; every "expected" device property is vendor-derived and unverified for the rented machine.

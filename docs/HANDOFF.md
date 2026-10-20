@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-20, 0.66.43): a fitted host-aware window model is no better than the copy-count screen overall; the screen stays
+>
+> Section 18.198, results `docs/CUDA-WINDOW-FIT-RESULTS.md`, plan section 17.22. Mac only. Fitted on 19 `D` and 19 `P0L` group-runs (stages C, D, bridge): `c` = 0.190 ms, both fixed host terms fit to about 0. Hidden-share error: fit cells 0.026; held-out gated arms 0.026 (screen 0.038); oracle 0.100; lead 2 0.187 (up to 0.31 at short layers); all held-out 0.0986 against the screen's 0.0944. Scored 3 held, 2 missed, 2 falsified; the rule (WF-3 and WF-6) to replace the screen is not met, so the copy-count-only screen stays with an error of about 0.1, and neither model is used for multi-layer prefetch or the oracle. The remaining error is a per-miss cost that depends on queue state (the misses left after prefetch cost 0.22 ms each against 0.187 for `D`'s). **Needs Hamed:** nothing; GPU items still need his go; earlier housekeeping stands (the VMs are terminated, per his word).
+>
 > ## Start here (2026-10-20, 0.66.42): the bridge session ran; the higher P0L hidden share on the new trace is the trace, not the instance
 >
 > Section 18.197, results `docs/CUDA-BRIDGE-RESULTS.md` (raw and `score.json` in `docs/cuda-results/bridge-rtx5090-2026-10-20/`), plan section 17.21. Four runs (old, new, new, old; 48 cells; 653 s) on one RTX 5090 in one session, all gates true. **`P0L` hidden share old / new trace:** 1.0 ms 0.339 / 0.433, 0.6 ms 0.305 / 0.407, 0.3 ms 0.098 / 0.233; differences +0.093, +0.101, +0.135; run-to-run spread at most 0.008; the old trace reproduces stages B and C (0.339, 0.096 to 0.100) on a different instance and day. The row-level window model (copy counts only) gets the sign and overstates the new trace by 0.07 to 0.10 at 0.6 and 1.0 ms. 7 held, 0 missed, 0 falsified. Stage D's lead-2 result stands (same trace within each comparison). **Needs Hamed:** terminate the stage D/bridge VM (still up) and the faulty one if not done; billed hours for N3 to N3-D and the bridge; housekeeping; the provider ticket draft is in `~/cachalot-private/provider-ticket-gpu-init.md`.
@@ -9306,6 +9310,20 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.198 Window model fit (0.66.43)
+
+**Goal.** Hamed: "Continue CUDA: pick the next candidate offline (design record, predictions first)." I chose v247 candidate 6 (a host-aware row-level model validated on arms it never saw) because it uses the measured cells the lane already has, costs no GPU time, and tests whether the cheap screen can be improved.
+
+**What was done.** The record (seven predictions, decision rules) was committed before any fitting (5e59faa); the script, tests and fit followed. The three-parameter model was fitted in two steps (the `D` arm, then `P0L`) and frozen before predicting the held-out arms.
+
+**Results.** `docs/CUDA-WINDOW-FIT-RESULTS.md`. Host terms fit to about zero; the fit is good on the fit cells and on gated arms, poor on the oracle (the per-layer synchronization floor) and on lead 2 (cross-layer contention). All held-out 0.0986 against the screen's 0.0944: the registered replacement rule is not met.
+
+**What it means.** The model's structure, not its parameters, is what is missing; a fixed per-row latency does not appear in the data. The useful finding is the per-miss cost: misses that prefetch leaves behind cost more than the misses of the demand-only arm, by 18 % on the new trace.
+
+**What did not go well.** I counted cells wrongly in the record (four oracle cells, there are five) and predicted `L_pf` positive; both host terms were my own premise and the data refused them.
+
+**Kind.** Research (predicted, measured offline, explained as hypothesis): 3 held, 2 missed, 2 falsified. No default changed.
 
 ### 18.197 The bridge session ran (0.66.42)
 

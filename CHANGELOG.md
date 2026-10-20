@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.66.43 (2026-10-20)
+
+HANDOFF "Start here (2026-10-20, 0.66.43)" and section 18.198; record `docs/CUDA-WINDOW-FIT-RECORD.md` (seven predictions, committed first in 5e59faa), results `docs/CUDA-WINDOW-FIT-RESULTS.md`, raw `docs/cuda-results/window-fit-2026-10-20.json`. Measurement only, Mac only; nothing in `src/` except the version string.
+
+### Added
+- `benchmarks/cuda/window_fit.py` (3 tests): a host-aware row-level window model (`c`, a per-row demand latency, a prefetch start lag) fitted on the `D` and `P0L` cells of stages C and D and the bridge (19 group-runs each) and validated on arms it never saw. Fit: `c` = 0.190 ms, both host terms about 0 (0.0 and -0.025 ms), mean hidden-share error 0.026 on the fit cells. Held out: gated arms 0.026 (all within 0.044; the copy-count-only screen 0.038), oracle 0.100, lead 2 0.187 (errors 0.27 and 0.31 at short layers), all held-out cells 0.0986 against the screen's 0.0944. 3 held, 2 missed, 2 falsified; the registered rule to replace the screen is not met, so the screen stays (error about 0.1) and neither model is used for multi-layer prefetch or the oracle. The remaining error is structural, not a fixed host latency: the misses `P0L` leaves behind cost about 0.22 ms each against `D`'s 0.187 on the new trace. Plan section 17.22.
+
 ## 0.66.42 (2026-10-20)
 
 HANDOFF "Start here (2026-10-20, 0.66.42)" and section 18.197; results `docs/CUDA-BRIDGE-RESULTS.md`, raw rows and `score.json` in `docs/cuda-results/bridge-rtx5090-2026-10-20/`. Measurement only; nothing in `src/` except the version string.
