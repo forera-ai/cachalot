@@ -25,6 +25,11 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-20, 0.66.55): the L40S layer-time ends are registered and built; not run; an L40S instance already exists and bills idle
+>
+> Section 18.210, record `docs/CUDA-L40S-C-ENDS-RECORD.md` (J-1 to J-10, committed first in 04a172c; one count erratum, J-10, before any run), plan section 17.34, runbook `benchmarks/cuda/SESSION-RUNBOOK-L40S-C-ENDS.md`. Question: does the 5090's rise of the slope at short layers (0.0634 at 1.0 ms to 0.1534 at 0.15 ms) exist on an L40S, where 0.3 and 0.6 ms gave a flat 0.093? Smoke `n3jsmoke`, then `n3jfull` (two runs of 32 cells). Built and rehearsed on the Mac only; 953 tests pass. **Needs Hamed:** his go to run on the L40S `aquatic-existence-2628` (he created it before the build, so it bills while idle), plus the 0.66.54 housekeeping.
+>
+
 > ## Start here (2026-10-20, 0.66.54): on an L40S the slope does not follow copy time over layer time; it stays near 0.10; the copy-cost explanation of the slow 5090 is not supported
 >
 > Section 18.209, results `docs/CUDA-COPY-COST-RESULTS.md`, raw `docs/cuda-results/copy-cost-2026-10-20.json`, plan section 17.33. The sweep Hamed chose, on one NVIDIA L40S 48 GB (`flat-battle-1078`): copies shortened to 1.0, 0.5, 0.25 of an expert (0.378, 0.192, 0.104 ms), layer times 0.3 and 0.6 ms, smoke and two runs of 48 cells, every gate true. Slope 0.092 to 0.105 at every point (one cell 0.128), flat in the layer time and weakly falling with copy time; line R squared 0.21. 5 held, 3 missed narrowly, 2 falsified (SW-3, SW-4). The setup arch gate was corrected for sm_89. **Needs Hamed:** terminate the L40S (and older instances if up), billed hours (a wait loop of mine kept it about 13 minutes longer), delete the `i1`, `h2`, `h1`, `g1`, `f1` to `f3` ssh configs.
@@ -9354,6 +9359,25 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 **Bottleneck after.** Unchanged: expert reads on misses; of the all-resident floor, CPU graph building, GPU idle, and routed-expert launch granularity.
 
 **Kind.** Engineering (a default on a prior research result).
+
+
+### 18.210 The L40S layer-time ends: registered and built (0.66.55)
+
+**Goal.** Hamed: "/ca read the documentations and next session's prompt file and continue with CUDA part. i am ready to create another GPU types if needed"; Jev's decision call ranked the L40S ends first (0.56 against 0.40 for a new card; confidence 0.49) and Hamed chose it. Find out whether the RTX 5090's rise of the compute-slowdown slope at short layer times exists on an L40S.
+
+**Baseline (recorded).** L40S, full copy, level 3, measured overlap: 0.0929 (C = 0.3) and 0.0931 (C = 0.6), copy 0.378 ms; no value at 1.0 or 0.15 ms. RTX 5090 fast population: 0.0634, 0.0765, 0.1053, 0.1534 at C = 1.0, 0.6, 0.3, 0.15.
+
+**Prediction.** J-1 to J-10 of `docs/CUDA-L40S-C-ENDS-RECORD.md`, committed before any code (04a172c): slope 0.075 to 0.110 at 1.0 ms and 0.085 to 0.140 at 0.15 ms (falsified above 0.200), s(0.15) / s(1.0) between 0.80 and 1.30 (H-flat; falsified above 1.60 in both runs), instrument holds at 0.15 ms (probability 0.45), anchors within 15 % of 0.093, source copy 0.34 to 0.42 ms. Erratum before any run (record section 7): J-10 counted eight points where a run has four; corrected to three of four within 15 %.
+
+**Method.** Not run. Built: profiles `j-smoke` and `j-full` (32 cells a run), `session.sh n3jsmoke|n3jfull`, `l40s_c_ends_score.py`, `SESSION-RUNBOOK-L40S-C-ENDS.md`, `tests/test_cuda_l40s_c_ends.py` (7 tests, the j-rehearsal runs the real path with every gate); 953 tests pass.
+
+**Result.** None: nothing was measured.
+
+**What did not go well / limits.** Hamed created the L40S `aquatic-existence-2628` before the record and the build existed, so it bills idle until he says go (his call to keep or recreate). A 0.15 ms stand-in on a card with half the 5090's memory bandwidth may not be tunable (J-3, probability 0.45); if the smoke fails there, the full profile is reshaped before spending it. One instance of a card, one trace, stand-in compute.
+
+**Open / needs Hamed.** His go on the named live instance (`n3jsmoke` then `n3jfull`, about 20 minutes of GPU time, cap one GPU-hour); housekeeping stands (terminate `flat-battle-1078`, `imperfect-duck-7094` and `elegant-things-5691` if up, billed hours, delete the `i1`, `h2`, `h1`, `g1`, `f1` to `f3` ssh configs).
+
+**Kind.** Planning, instruments and tests (predictions committed first). No default changed, nothing measured on a GPU.
 
 
 ### 18.209 A copy-cost sweep on an L40S: the slope does not follow copy time over layer time (0.66.54)

@@ -59,3 +59,7 @@ All **predicted**; probabilities are my own. "Slope" is the least-squares slope 
 ## 6. Needs Hamed
 
 An L40S instance (exists, `aquatic-existence-2628`, set up before the build), a cap of one GPU-hour from Ready, and his go for the named live instance (the agent runs over SSH only after the harness is rehearsed and tested on the Mac; it never runs sudo). The instance accrues time while this record and the build are written; terminate and recreate is his call. Housekeeping from earlier sessions stands: terminate `flat-battle-1078`, `imperfect-duck-7094` and `elegant-things-5691` if still up, enter the billed hours, delete the ssh configs and known_hosts of `i1`, `h2`, `h1`, `g1`, `f1`, `f2`, `f3`.
+
+## 7. Erratum before any run (found while writing the scorer)
+
+J-10 as registered counts "seven or more of the eight points", but a run has four slope points (one per layer time), not eight; the record's count was wrong in arithmetic, not a change of intent. Corrected before any instance run, with the same proportions: **J-10: run B's slope is within 15 % of run A's at three or more of the four layer times (probability 0.55); falsifier: fewer than two of the four within 30 %.** The scorer and its test use the corrected counts. No other prediction changes.

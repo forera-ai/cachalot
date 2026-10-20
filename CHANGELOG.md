@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.66.55 (2026-10-20)
+
+HANDOFF "Start here (2026-10-20, 0.66.55)" and section 18.210; record `docs/CUDA-L40S-C-ENDS-RECORD.md` (ten predictions J-1 to J-10, committed in 04a172c before any code; one count erratum before any run, record section 7). Planning, instruments and tests for the first open item of 0.66.54: does the RTX 5090's rise of the compute-slowdown slope at short layer times exist on an L40S? Nothing was run on a GPU and nothing is in `src/` but the version string.
+
+### Added (instruments, no runtime effect)
+- `benchmarks/cuda/overlap_arena.py`: profiles `j-smoke` (12 cells, 40 tokens: level 3 at C = 1.0 and 0.15 ms, level 4 at 0.15 ms) and `j-full` (32 cells a run: levels 3 and 4 at C = 1.0, 0.6, 0.3 and 0.15 ms, full copy, 400 decode tokens), stage tag `n3j`, instrument version `N3J-1`; `session.sh n3jsmoke|n3jfull`; `benchmarks/cuda/l40s_c_ends_score.py` (scores J-1 to J-10 on two runs, prints the s(0.15) / s(1.0) ratio, the affine-in-1/C fit and the RTX 5090 form errors); `benchmarks/cuda/SESSION-RUNBOOK-L40S-C-ENDS.md`; `tests/test_cuda_l40s_c_ends.py` (7 tests, including the real run path through the j-rehearsal with every gate). 953 tests pass.
+
+### Needs Hamed
+A fresh L40S instance `aquatic-existence-2628` already exists (created before the build); nothing is run on it until he says go, so it bills while idle (terminate and recreate is his call). Housekeeping from 0.66.54 stands: terminate `flat-battle-1078`, `imperfect-duck-7094` and `elegant-things-5691` if up, enter the billed hours, delete the `i1`, `h2`, `h1`, `g1`, `f1` to `f3` ssh configs and known_hosts.
+
 ## 0.66.54 (2026-10-20)
 
 HANDOFF "Start here (2026-10-20, 0.66.54)" and section 18.209; record `docs/CUDA-COPY-COST-RECORD.md` (ten predictions SW-1 to SW-10, 3e88a1b, committed before any code), results `docs/CUDA-COPY-COST-RESULTS.md`, raw scoring `docs/cuda-results/copy-cost-2026-10-20.json`. A copy-cost sweep on one NVIDIA L40S 48 GB VM (`flat-battle-1078`): smoke and two runs of 48 cells, every gate true, no failed cell.

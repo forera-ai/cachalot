@@ -3,7 +3,7 @@
 # Run from the directory the scaffold archive was unpacked into. No sudo, no system package changes, no downloads other
 # than the pinned Python wheels named below, which `setup` shows before it installs them.
 #
-#   bash benchmarks/cuda/session.sh check|setup|doctor|smoke|baseline|s2|n2smoke|n2full|backing|hugepage|n3smoke|n3full|n3bsmoke|n3bfull|n3csmoke|n3cfull|n3dsmoke|n3dfull|n3esmoke|n3ebridge|n3fsmoke|n3ffull|n3ffix|n3gsmoke|n3gfull|n3hsmoke|n3hfull|n3ismoke|n3ifull|results
+#   bash benchmarks/cuda/session.sh check|setup|doctor|smoke|baseline|s2|n2smoke|n2full|backing|hugepage|n3smoke|n3full|n3bsmoke|n3bfull|n3csmoke|n3cfull|n3dsmoke|n3dfull|n3esmoke|n3ebridge|n3fsmoke|n3ffull|n3ffix|n3gsmoke|n3gfull|n3hsmoke|n3hfull|n3ismoke|n3ifull|n3jsmoke|n3jfull|results
 #   (s2 = docs/CUDA-S2-EXPERIMENT-RECORD.md: overlap variants and batched expert copies; needs a clean smoke run first)
 set -euo pipefail
 
@@ -413,6 +413,27 @@ EOF7
     for rep in A B; do
       SESSION_TAG="${SESSION_TAG:-N3I}" "$PY" "$ROOT/benchmarks/cuda/overlap_arena.py" run --trace "$NEW" --expected "$ROOT/benchmarks/cuda/n3d-expected.json" \
         --cells i-full --execute --max-seconds "${MAXS:-900}" --region "$REGION" --note "$(SESSION_TAG="${SESSION_TAG:-N3I}" note n3ifull-$rep)" || die "n3ifull $rep failed: stop, bring the files home"
+    done
+    ;;
+
+  n3jsmoke)
+    # L40S layer-time ends (docs/CUDA-L40S-C-ENDS-RECORD.md): a short smoke of the j-profile (C = 1.0 and 0.15 ms, full copy) on the NEW trace.
+    # Read every gate of the run manifest before n3jfull (SESSION-RUNBOOK-L40S-C-ENDS.md); the calibration and floor gates at 0.15 ms are prediction J-3.
+    [ -x "$PY" ] || die "run setup first"
+    NEW="${TRACE_NEW:-$ROOT/n3d-trace.npz}"
+    [ -f "$NEW" ] || die "new trace not found at $NEW"
+    SESSION_TAG="${SESSION_TAG:-N3J}" "$PY" "$ROOT/benchmarks/cuda/overlap_arena.py" run --trace "$NEW" --expected "$ROOT/benchmarks/cuda/n3d-expected.json" \
+      --cells j-smoke --execute --max-seconds 300 --region "$REGION" --note "$(SESSION_TAG="${SESSION_TAG:-N3J}" note n3jsmoke)" || die "n3jsmoke failed: stop, bring the files home"
+    ;;
+
+  n3jfull)
+    # Two runs of j-full on the new trace (run A, then run B as the replicate), 32 cells each. MAXS=seconds applies to each run (default 720).
+    [ -x "$PY" ] || die "run setup first"
+    NEW="${TRACE_NEW:-$ROOT/n3d-trace.npz}"
+    [ -f "$NEW" ] || die "new trace not found at $NEW"
+    for rep in A B; do
+      SESSION_TAG="${SESSION_TAG:-N3J}" "$PY" "$ROOT/benchmarks/cuda/overlap_arena.py" run --trace "$NEW" --expected "$ROOT/benchmarks/cuda/n3d-expected.json" \
+        --cells j-full --execute --max-seconds "${MAXS:-720}" --region "$REGION" --note "$(SESSION_TAG="${SESSION_TAG:-N3J}" note n3jfull-$rep)" || die "n3jfull $rep failed: stop, bring the files home"
     done
     ;;
 
