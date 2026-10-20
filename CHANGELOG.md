@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.66.42 (2026-10-20)
+
+HANDOFF "Start here (2026-10-20, 0.66.42)" and section 18.197; results `docs/CUDA-BRIDGE-RESULTS.md`, raw rows and `score.json` in `docs/cuda-results/bridge-rtx5090-2026-10-20/`. Measurement only; nothing in `src/` except the version string.
+
+### Added
+- The bridge session ran on an RTX 5090 (the stage D VM, four runs of 12 cells in the order old, new, new, old, 653 s, every gate true). **The higher `P0L` hidden share of stage D is the trace, not the instance:** old trace 0.339 / 0.305 / 0.098 and new trace 0.433 / 0.407 / 0.233 at C = 1.0 / 0.6 / 0.3 ms (17 % resident), differences +0.093 / +0.101 / +0.135, run-to-run spread at most 0.008. The old trace reproduces stages B and C to about 0.005 on a different instance and day. The row-level window model gets the sign and the old trace within 0.024 at two cells but overstates the new trace by 0.07 to 0.10 at 0.6 and 1.0 ms. 7 held, 0 missed, 0 falsified (the model clause by one cell). Plan section 17.21.
+
 ## 0.66.41 (2026-10-20)
 
 HANDOFF "Start here (2026-10-20, 0.66.41)" and section 18.196; record `docs/CUDA-BRIDGE-EXPERIMENT-RECORD.md` (seven predictions, committed first in baf6a88), runbook `benchmarks/cuda/SESSION-RUNBOOK-BRIDGE.md`, plan section 17.20. Planning, instruments and tests; nothing in `src/` except the version string; nothing run on a GPU.

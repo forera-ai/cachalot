@@ -586,6 +586,10 @@ N3 stage B ran under `docs/CUDA-N3B-EXPERIMENT-RECORD.md` and is recorded in `do
 
 `docs/CUDA-BRIDGE-EXPERIMENT-RECORD.md` (baf6a88, seven predictions, before any code): both traces in one session (old, new, new, old; `P0L` and `D` at C = 1.0 ms L5, 0.6 and 0.3 ms L4, 17 % resident; 48 cells) to separate the trace from the instance. Offline price: a row-level window model puts the new trace +0.22 at 0.3 ms and +0.17 at 1.0 ms above the old from copy counts alone. Never run on a GPU. Needs Hamed: a go and an RTX 5090.
 
+### 17.21 Bridge session outcome (2026-10-20)
+
+`docs/CUDA-BRIDGE-RESULTS.md`. Old and new trace in one session (old, new, new, old; 48 cells; every gate true): `P0L` hidden share old / new 0.339 / 0.433 at 1.0 ms, 0.305 / 0.407 at 0.6 ms, 0.098 / 0.233 at 0.3 ms; the gap is the trace, with run-to-run spread under 0.01, and the old trace reproduces stages B and C on a different instance and day. The row-level window model gets the sign and overstates the new trace by 0.07 to 0.10 at 0.6 and 1.0 ms. 7 held, 0 missed, 0 falsified.
+
 ## 18. Honest limits
 
 - This is a plan. No hypothesis in it has been tested; every "expected" device property is vendor-derived and unverified for the rented machine.

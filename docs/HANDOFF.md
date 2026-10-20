@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-20, 0.66.42): the bridge session ran; the higher P0L hidden share on the new trace is the trace, not the instance
+>
+> Section 18.197, results `docs/CUDA-BRIDGE-RESULTS.md` (raw and `score.json` in `docs/cuda-results/bridge-rtx5090-2026-10-20/`), plan section 17.21. Four runs (old, new, new, old; 48 cells; 653 s) on one RTX 5090 in one session, all gates true. **`P0L` hidden share old / new trace:** 1.0 ms 0.339 / 0.433, 0.6 ms 0.305 / 0.407, 0.3 ms 0.098 / 0.233; differences +0.093, +0.101, +0.135; run-to-run spread at most 0.008; the old trace reproduces stages B and C (0.339, 0.096 to 0.100) on a different instance and day. The row-level window model (copy counts only) gets the sign and overstates the new trace by 0.07 to 0.10 at 0.6 and 1.0 ms. 7 held, 0 missed, 0 falsified. Stage D's lead-2 result stands (same trace within each comparison). **Needs Hamed:** terminate the stage D/bridge VM (still up) and the faulty one if not done; billed hours for N3 to N3-D and the bridge; housekeeping; the provider ticket draft is in `~/cachalot-private/provider-ticket-gpu-init.md`.
+>
 > ## Start here (2026-10-20, 0.66.41): the bridge session (old and new trace in one session) is registered and built; running it needs Hamed to create an RTX 5090
 >
 > Section 18.196, record `docs/CUDA-BRIDGE-EXPERIMENT-RECORD.md` (seven predictions, baf6a88), runbook `benchmarks/cuda/SESSION-RUNBOOK-BRIDGE.md`, plan section 17.20. Question: stage D's `P0L` hid 0.233 at 0.3 ms against 0.096 in stages B and C; trace or instance? A row-level window model on the Mac says the trace alone should give +0.22 at 0.3 ms and +0.17 at 1.0 ms (measured cross-session: +0.135 and +0.101). The session runs both traces on one instance in the order old, new, new, old (48 cells, 10 to 15 minutes), `bridge_score.py` scores it. Falsifier: a difference under 0.05 at 0.3 ms means the gap was the session. Never run on a GPU. **Needs Hamed:** a go and an RTX 5090 (create the replacement before terminating a faulty one); the billed hours; housekeeping.
@@ -9302,6 +9306,20 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.197 The bridge session ran (0.66.42)
+
+**Goal.** Hamed: "Yes, run the bridge session" and, after I asked for the address, gave the stage D VM (ID `32db98a4`, still up); the agent ran over SSH with the existing private config and no sudo.
+
+**Results.** `docs/CUDA-BRIDGE-RESULTS.md`. Trace effect on `P0L`: +0.093, +0.101, +0.135 at 1.0, 0.6, 0.3 ms; spread under 0.01; old trace reproduces stages B and C. 7 held, 0 missed, 0 falsified.
+
+**What it means.** Stage D's baseline difference was real and belongs to the trace; the harness reproduces across instances and days to about 0.005 at these cells, which makes the stage C and D differences (0.015 to 0.15) readable. The row-level model is a usable screen with an error of about 0.1.
+
+**What did not go well.** The row-level model I priced before the run overstated the new trace at 1.0 ms by exactly the margin of my own BR-4 line (0.1004 against 0.10), a close call that happened to land my way. I used the stage D VM again rather than a fresh one; that is fine for this question (both traces share it) but it means this bridge says nothing about instance-to-instance variation beyond the old-trace reproduction of stages B and C.
+
+**Open / needs Hamed.** Terminate the VM; billed hours; housekeeping. CUDA candidates left, each needing his go: fewer and larger copies, a native issue path, ROCm port, V100 or L40S, instance population.
+
+**Kind.** Research (predicted, measured, explained as hypothesis): 7 held, 0 missed, 0 falsified. No default changed.
 
 ### 18.196 Bridge session registered and built (0.66.41)
 

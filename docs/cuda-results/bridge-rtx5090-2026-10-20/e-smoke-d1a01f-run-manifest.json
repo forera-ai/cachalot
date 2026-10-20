@@ -1,0 +1,53 @@
+{
+  "code": {
+    "git": {
+      "dirty": false,
+      "sha": "635f4b6",
+      "source": "REVISION file"
+    }
+  },
+  "created_utc": "2026-10-20T10:22:00Z",
+  "gates": {
+    "calibration": true,
+    "chain2": true,
+    "closure": true,
+    "counts": true,
+    "coverage": true,
+    "determinism": true,
+    "drift": true,
+    "event_hash": true,
+    "failed_cells": [],
+    "readback": true,
+    "sanity": true
+  },
+  "instrument": {
+    "name": "benchmarks/cuda/overlap_arena.py",
+    "version": "N3E-1"
+  },
+  "kind": "run",
+  "limits": {
+    "elapsed_s": 26.05,
+    "hard_cell_seconds": 900,
+    "max_seconds": 300.0
+  },
+  "machine_manifest_id": "d1a01f47ad32c2a5",
+  "manifest_id": "cfdbd5b423ab6f6f",
+  "mode": "timing",
+  "platform": "cuda",
+  "protocol": {
+    "ordering": "per (level, C): N start, the arms, N end; 400 decode tokens after the same prefill; token 0 a warm-up"
+  },
+  "run_id": "20261020T102134Z-n3e-e-smoke-d1a01f",
+  "schema": "cuda-manifest",
+  "schema_version": 1,
+  "status": "complete",
+  "workload": {
+    "claims": "overlap mechanics only: exposed copy time against compute window, copy-lane saturation, interference",
+    "class": "N3 layer-ahead prefetch with a stand-in compute and real copies (no model)",
+    "id": "N3-stageE-e-smoke",
+    "policy": "lru",
+    "record_bytes": 9950000,
+    "source_records": 64,
+    "trace_sha256": "b68aefa4adef11a11aa4b59e5cc29cdca63e9a467c8bd1a1424adc09a3f3e488"
+  }
+}
