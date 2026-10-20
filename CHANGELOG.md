@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.66.40 (2026-10-20)
+
+HANDOFF "Start here (2026-10-20, 0.66.40)" and section 18.195; results `docs/CUDA-N3D-RESULTS.md`, raw rows in `docs/cuda-results/n3d-rtx5090-2026-10-20/`. Measurement only; nothing in `src/` except the version string.
+
+### Added
+- CUDA N3 stage D run on an RTX 5090 (23 cells, 323 s, all gates true including gate (g), 0 failed cells). The lead-2 arm is below the lead-1 predictor in every cell, and by more at short layers: hidden share `P0L` / `L2` 0.440 / 0.334 at C = 1.0 ms, 0.408 / 0.303 at 0.6 ms, **0.233 / 0.079 at 0.3 ms**, 0.137 / 0.019 at 8 % resident, 0.3 ms. The window hypothesis is not supported; the lead lever is closed on the card as well as on the serial bound. 9 held, 1 missed low (D-P3), 0 falsified. Unexplained: the lead-1 predictor hides more on the new trace than on the old (0.233 against 0.096 at 0.3 ms).
+- Two instances had a GPU that did not initialize (no `/dev/nvidia*`) and were replaced; the working one came from creating the new instance before terminating the faulty one (Hamed's method). Plan section 17.19.
+
 ## 0.66.39 (2026-10-20)
 
 HANDOFF "Start here (2026-10-20, 0.66.39)" and section 18.194; record `docs/CUDA-N3D-EXPERIMENT-RECORD.md` (ten predictions, committed first in a2335b8), runbook `benchmarks/cuda/SESSION-RUNBOOK-N3D.md`, plan section 17.18. Planning, instruments and tests; nothing in `src/` except the version string; nothing run on a GPU.
