@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.66.54 (2026-10-20)
+
+HANDOFF "Start here (2026-10-20, 0.66.54)" and section 18.209; record `docs/CUDA-COPY-COST-RECORD.md` (ten predictions SW-1 to SW-10, 3e88a1b, committed before any code), results `docs/CUDA-COPY-COST-RESULTS.md`, raw scoring `docs/cuda-results/copy-cost-2026-10-20.json`. A copy-cost sweep on one NVIDIA L40S 48 GB VM (`flat-battle-1078`): smoke and two runs of 48 cells, every gate true, no failed cell.
+
+### Measured
+- Copying 1.0, 0.5 and 0.25 of each 9.95 MB expert record costs 0.378, 0.192 and 0.104 ms (26.3 GB/s at full size; about 0.02 ms fixed plus 0.036 ms per MB). The slowdown slope on measured overlap is 0.092 to 0.105 in every group at layer times 0.3 and 0.6 ms (one cell, run B f = 0.25 at C = 0.3, reads 0.128), mean 0.100, and falls weakly as copies get dearer: it is not a function of copy time over layer time on this card (line R squared 0.21). 5 held, 3 missed narrowly, 2 falsified (SW-3, SW-4). The 5090 form `0.0498 + 0.0811 r` is within 0.03 at 3 of 6 points. The count-only window model overstates the hidden share by 0.11 to 0.31 at the cheap-copy points. Demand exposure is 6 % to 15 % below 52.15 times the copy time.
+
+### Changed (no runtime effect)
+- `benchmarks/cuda/overlap_arena.py`: profiles `i-smoke` and `i-full`, a copy fraction per cell group (a prefix of each record, views and sources built once), a prefix readback check, source qualification at the copied size, and a sanity gate that uses the bytes actually copied; `copy_cost_score.py`, `SESSION-RUNBOOK-COPY-COST.md`, 13 tests. `suite.arch_supported` accepts an `sm_XY` cubin of the same major and a lower minor (sm_86 runs on an L40S, 8.9); the setup gate had stopped on that card.
+
+### Needs Hamed
+Terminate the L40S instance `flat-battle-1078` (ssh config `~/cachalot-private/ssh_config_i1`) and `imperfect-duck-7094` and `elegant-things-5691` if still up, enter the billed hours (this session's wait loop kept the instance about 13 minutes longer than needed), delete `ssh_config_i1`, `known_hosts_i1` with the `h2`, `h1`, `g1`, `f1`, `f2`, `f3` ones. All runs are home with verified hashes.
+
 ## 0.66.53 (2026-10-20)
 
 HANDOFF "Start here (2026-10-20, 0.66.53)" and section 18.208; the same record (`docs/CUDA-LOW-C-RECORD.md`, 823aa63), results `docs/CUDA-LOW-C-FAST-RESULTS.md`, raw scoring `docs/cuda-results/low-c-fast-2026-10-20.json`. The repeat on a fast-population RTX 5090 (median source copy 0.194 ms; smoke, then two runs of 12 cells, 84 s each, every gate true). Nothing in `src/` but the version string.

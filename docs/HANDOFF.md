@@ -25,6 +25,11 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-20, 0.66.54): on an L40S the slope does not follow copy time over layer time; it stays near 0.10; the copy-cost explanation of the slow 5090 is not supported
+>
+> Section 18.209, results `docs/CUDA-COPY-COST-RESULTS.md`, raw `docs/cuda-results/copy-cost-2026-10-20.json`, plan section 17.33. The sweep Hamed chose, on one NVIDIA L40S 48 GB (`flat-battle-1078`): copies shortened to 1.0, 0.5, 0.25 of an expert (0.378, 0.192, 0.104 ms), layer times 0.3 and 0.6 ms, smoke and two runs of 48 cells, every gate true. Slope 0.092 to 0.105 at every point (one cell 0.128), flat in the layer time and weakly falling with copy time; line R squared 0.21. 5 held, 3 missed narrowly, 2 falsified (SW-3, SW-4). The setup arch gate was corrected for sm_89. **Needs Hamed:** terminate the L40S (and older instances if up), billed hours (a wait loop of mine kept it about 13 minutes longer), delete the `i1`, `h2`, `h1`, `g1`, `f1` to `f3` ssh configs.
+>
+
 > ## Start here (2026-10-20, 0.66.53): on a fast-population card the slope at a 0.15 ms layer is 0.153; four points fit 1/C to 0.003; the predicted-overlap form holds there
 >
 > Section 18.208, results `docs/CUDA-LOW-C-FAST-RESULTS.md`, raw `docs/cuda-results/low-c-fast-2026-10-20.json`, plan section 17.32. The repeat Hamed asked for after 0.66.52, on a second RTX 5090 (`imperfect-duck-7094`, median source copy 0.194 ms, x16): smoke and two runs of 12 cells, every gate true. Slope 0.1534 (replicate 0.1525); four fast points 0.0634, 0.0765, 0.1053, 0.1534 fit `s = 0.0498 + 0.01574 / C` (largest residual 0.003; power law as good, linear in C rejected). Hidden share -0.054. 9 held, 1 missed narrowly (demand exposure 8.84 ms), 0 falsified. The slow instance's 0.223 at the same C shows the slope depends on the population. **Needs Hamed:** terminate both instances, billed hours, delete the `h2`, `h1`, `g1`, `f1` to `f3` ssh configs.
@@ -9350,6 +9355,26 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.209 A copy-cost sweep on an L40S: the slope does not follow copy time over layer time (0.66.54)
+
+**Goal.** Hamed: "continue with CUDA part ... ready to create another GPU types if needed", chose the copy-cost sweep (the last open confound of 0.66.53: is the slope proportional to copy cost) and an NVIDIA L40S. Test, on one instance, whether the slope is a function of copy time over layer time.
+
+**Baseline (recorded).** The record's section 2: fast-population 5090 slopes 0.0634, 0.0765, 0.1053, 0.1534 at C = 1.0, 0.6, 0.3, 0.15 ms (`s = 0.0498 + 0.0811 c / C` with c = 0.194 ms), 0.2234 on the slow instance (that form gives 0.242). No L40S number existed.
+
+**Prediction.** SW-1 to SW-10 of `docs/CUDA-COPY-COST-RECORD.md`, committed first (3e88a1b): copy time 0.36 to 0.50 ms at full size, near-affine in bytes, slope rising with copy cost, one line in r with R squared at least 0.85, equal-r pairs within 25 %, the 5090 form within 0.03 at 4 of 6 points (0.35), count model within 0.10, gates hold, exposure within 15 % of 52.15 x c, replicate within 15 %.
+
+**Method.** New profiles `i-smoke` and `i-full` in `overlap_arena.py`: a copy fraction per cell group (the first 1.0, 0.5, 0.25 of each record; slot assignment, hashes and counts unchanged), levels 3 and 4 at C = 0.3 and 0.6 ms, arms `N`, `D`, `P0L`, `N`, 48 cells a run, 400 tokens; `copy_cost_score.py`. The first setup stopped on the arch gate (`sm_89` not listed, cubin `sm_86` runs): corrected (f9f7f12). `n3ismoke` then `n3ifull` twice on `flat-battle-1078` (driver 580.159.03, PCIe 4.0 x16, torch 2.7.1+cu128), runs of 616 s and 623 s.
+
+**Result.** All gates true in the smoke and both runs. Copy time 0.378 / 0.192 / 0.104 ms at 1.0 / 0.5 / 0.25. Slope on measured overlap 0.092 to 0.105 at all six points (run B f = 0.25, C = 0.3 reads 0.128, 27.5 % from run A), mean 0.100; flat between C = 0.3 and 0.6 (within 0.005) and falling weakly as copies get dearer (0.103, 0.097, 0.093 by copy time). Line `s = 0.111 - 0.0157 r`, R squared 0.205. The 5090 form within 0.03 at 3 of 6 points (mean absolute error 0.031). Count-only hidden-share model within 0.10 at 3 of 6 (overstates by 0.11 to 0.31 at cheap copies). Exposure 6 % to 15 % below 52.15 x c. SW-1, 2, 8, 9, 10 held; SW-5, 6, 7 missed narrowly; SW-3 and SW-4 falsified.
+
+**Explanation (hypothesis).** On this card the slowdown under prefetch copies is close to a constant of about 0.10 ms of compute per ms of overlap, independent of how long the copies are or of the layer time in 0.3 to 0.6 ms; the 5090's rising slope at shorter layers and dearer copies is therefore not a general function of copy time over layer time, and a controlled copy-cost explanation of the slow 5090 instance is not supported (the card is a second difference). The weak fall with copy time may be an overlap-measurement effect at long copies; not examined.
+
+**What did not go well / limits.** One L40S instance, one trace, a stand-in compute (864 GB/s memory, 48 MB L2 against the 5090's 1,792 GB/s and 96 MB), two layer times, time and bytes move together. A wait loop of mine (`pgrep -f` inside an ssh command matched itself) kept reporting the finished runs as up for about 13 minutes, so the instance stayed billed longer than needed; found from Hamed's message. One outlier cell, unexplained.
+
+**Open / needs Hamed.** Terminate `flat-battle-1078` (and the older instances if still up), enter the billed hours, delete the ssh configs (`i1` with `h2`, `h1`, `g1`, `f1` to `f3`). The L40S at C = 1.0 and 0.15 ms; a second L40S instance; another card (RTX 4090, A100); fewer and larger copies; a native issue path; ROCm. No offline CUDA job remains.
+
+**Kind.** Research (predicted, measured, explained as hypothesis): 5 held, 3 missed narrowly, 2 falsified. No default changed.
 
 ### 18.208 The slowdown slope at 0.15 ms on a fast-population instance (0.66.53)
 

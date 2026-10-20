@@ -1,0 +1,195 @@
+{
+  "g_error_run_b": {
+    "f0.25.C0.3": 0.05162589682617548,
+    "f0.25.C0.6": 0.042481965474391856,
+    "f0.5.C0.3": -0.003421958319242649,
+    "f0.5.C0.6": 0.019350891082033417,
+    "f1.0.C0.3": -0.058192617335904195,
+    "f1.0.C0.6": -0.009266079946958952
+  },
+  "gates_run_a": {
+    "calibration": true,
+    "chain2": true,
+    "closure": true,
+    "copyevents": true,
+    "counts": true,
+    "coverage": true,
+    "determinism": true,
+    "drift": true,
+    "event_hash": true,
+    "floor": true,
+    "no_failed_cells": true,
+    "readback": true,
+    "rowsum": true,
+    "sanity": true
+  },
+  "gates_run_b": {
+    "calibration": true,
+    "chain2": true,
+    "closure": true,
+    "copyevents": true,
+    "counts": true,
+    "coverage": true,
+    "determinism": true,
+    "drift": true,
+    "event_hash": true,
+    "floor": true,
+    "no_failed_cells": true,
+    "readback": true,
+    "rowsum": true,
+    "sanity": true
+  },
+  "line_run_b": {
+    "a": 0.11109904824964961,
+    "b": -0.015681315069683767,
+    "r2": 0.20508457766258292
+  },
+  "points_run_a": [
+    {
+      "c_layer": 0.3,
+      "copy_ms": 0.3778879940509796,
+      "exposure_ms": 16.80055250000123,
+      "exposure_predicted_ms": 19.706858889758585,
+      "f": 1.0,
+      "hidden_measured": -0.033333308531808825,
+      "hidden_model": -0.06869666582423273,
+      "r": 1.2596266468365989,
+      "slope": 0.09294459481854779
+    },
+    {
+      "c_layer": 0.6,
+      "copy_ms": 0.3778879940509796,
+      "exposure_ms": 16.800439999883565,
+      "exposure_predicted_ms": 19.706858889758585,
+      "f": 1.0,
+      "hidden_measured": 0.22341319631395984,
+      "hidden_model": 0.22999304889669192,
+      "r": 0.6298133234182994,
+      "slope": 0.093116900274543
+    },
+    {
+      "c_layer": 0.3,
+      "copy_ms": 0.19167999923229218,
+      "exposure_ms": 8.836254499897223,
+      "exposure_predicted_ms": 9.996111959964036,
+      "f": 0.5,
+      "hidden_measured": 0.22713322706704098,
+      "hidden_model": 0.22313238652646084,
+      "r": 0.6389333307743073,
+      "slope": 0.09763142632211619
+    },
+    {
+      "c_layer": 0.6,
+      "copy_ms": 0.19167999923229218,
+      "exposure_ms": 8.779291500104591,
+      "exposure_predicted_ms": 9.996111959964036,
+      "f": 0.5,
+      "hidden_measured": 0.3597201436956651,
+      "hidden_model": 0.4833546740861512,
+      "r": 0.3194666653871536,
+      "slope": 0.096434871518105
+    },
+    {
+      "c_layer": 0.3,
+      "copy_ms": 0.10412800312042236,
+      "exposure_ms": 4.813913999896613,
+      "exposure_predicted_ms": 5.430275362730026,
+      "f": 0.25,
+      "hidden_measured": 0.3275781411613131,
+      "hidden_model": 0.4631806386899373,
+      "r": 0.3470933437347412,
+      "slope": 0.10076370394336107
+    },
+    {
+      "c_layer": 0.6,
+      "copy_ms": 0.10412800312042236,
+      "exposure_ms": 5.105677499841477,
+      "exposure_predicted_ms": 5.430275362730026,
+      "f": 0.25,
+      "hidden_measured": 0.34717468937217033,
+      "hidden_model": 0.5329971161637383,
+      "r": 0.1735466718673706,
+      "slope": 0.10450357231647402
+    }
+  ],
+  "points_run_b": [
+    {
+      "c_layer": 0.3,
+      "copy_ms": 0.380511999130249,
+      "exposure_ms": 16.624726500026554,
+      "exposure_predicted_ms": 19.843700754642487,
+      "f": 1.0,
+      "hidden_measured": -0.037453307875882746,
+      "hidden_model": -0.07190420569870692,
+      "r": 1.2683733304341636,
+      "slope": 0.09447245976230648
+    },
+    {
+      "c_layer": 0.6,
+      "copy_ms": 0.380511999130249,
+      "exposure_ms": 16.766239999924437,
+      "exposure_predicted_ms": 19.843700754642487,
+      "f": 1.0,
+      "hidden_measured": 0.22467875923323388,
+      "hidden_model": 0.22667851306942344,
+      "r": 0.6341866652170818,
+      "slope": 0.09196645860214638
+    },
+    {
+      "c_layer": 0.3,
+      "copy_ms": 0.19164800643920898,
+      "exposure_ms": 8.817742499900305,
+      "exposure_predicted_ms": 9.994443535804749,
+      "f": 0.5,
+      "hidden_measured": 0.22557428956211623,
+      "hidden_model": 0.22321147816145404,
+      "r": 0.6388266881306967,
+      "slope": 0.09818688608815686
+    },
+    {
+      "c_layer": 0.6,
+      "copy_ms": 0.19164800643920898,
+      "exposure_ms": 9.409464500095055,
+      "exposure_predicted_ms": 9.994443535804749,
+      "f": 0.5,
+      "hidden_measured": 0.3704405282467266,
+      "hidden_model": 0.48337691294065455,
+      "r": 0.3194133440653483,
+      "slope": 0.09505531328573316
+    },
+    {
+      "c_layer": 0.3,
+      "copy_ms": 0.09990400075912476,
+      "exposure_ms": 4.785055999946053,
+      "exposure_predicted_ms": 5.2099936395883555,
+      "f": 0.25,
+      "hidden_measured": 0.3238589057079472,
+      "hidden_model": 0.4779354700420497,
+      "r": 0.3330133358637492,
+      "slope": 0.12843327836472554
+    },
+    {
+      "c_layer": 0.6,
+      "copy_ms": 0.09990400075912476,
+      "exposure_ms": 4.620900000190886,
+      "exposure_predicted_ms": 5.2099936395883555,
+      "f": 0.25,
+      "hidden_measured": 0.22125235341595173,
+      "hidden_model": 0.5334543706947188,
+      "r": 0.1665066679318746,
+      "slope": 0.10578565624366688
+    }
+  ],
+  "verdict": {
+    "SW-1": "in interval",
+    "SW-10": "in interval",
+    "SW-2": "in interval",
+    "SW-3": "past falsifier",
+    "SW-4": "past falsifier",
+    "SW-5": "outside interval",
+    "SW-6": "outside interval",
+    "SW-7": "outside interval",
+    "SW-8": "in interval",
+    "SW-9": "in interval"
+  }
+}

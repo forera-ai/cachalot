@@ -634,6 +634,10 @@ Hamed resumed the lane on the card ("continue with online GPUs"). `docs/CUDA-ROW
 
 `docs/CUDA-LOW-C-FAST-RESULTS.md` (second RTX 5090, median source copy 0.194 ms). The slope at C = 0.15 ms is 0.1534; four fast points fit affine in 1/C to 0.003 (a power law of exponent 0.47 as well; linear in C rejected); the predicted-overlap form holds there; the slow instance's 0.223 shows the slope depends on the card population. 9 held, 1 missed narrowly, 0 falsified.
 
+### 17.33 Copy-cost sweep on an L40S (2026-10-20)
+
+`docs/CUDA-COPY-COST-RESULTS.md` (record `docs/CUDA-COPY-COST-RECORD.md`). One NVIDIA L40S 48 GB, copies shortened to 1.0, 0.5 and 0.25 of an expert at layer times 0.3 and 0.6 ms: the slope stays near 0.10 whatever the copy time (0.10 to 0.38 ms) and the layer time, so it is not a function of copy time over layer time on this card and a copy-cost explanation of the slow RTX 5090 instance is not supported. 5 held, 3 missed narrowly, 2 falsified.
+
 ## 18. Honest limits
 
 - This is a plan. No hypothesis in it has been tested; every "expected" device property is vendor-derived and unverified for the rented machine.
