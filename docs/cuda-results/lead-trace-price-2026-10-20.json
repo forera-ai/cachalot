@@ -1,0 +1,112 @@
+[
+ {
+  "percent": 17.0,
+  "predictor": "none",
+  "tokens": 400,
+  "demand_misses": 56.265,
+  "covered": 0.0,
+  "loads": 0.0,
+  "wasted": 0.0,
+  "copies": 56.265,
+  "bound": 0.0
+ },
+ {
+  "percent": 17.0,
+  "predictor": "R",
+  "tokens": 400,
+  "demand_misses": 28.5875,
+  "covered": 30.4525,
+  "loads": 58.8125,
+  "wasted": 28.36,
+  "copies": 87.4,
+  "bound": 0.4919132675730916
+ },
+ {
+  "percent": 17.0,
+  "predictor": "R2",
+  "tokens": 400,
+  "demand_misses": 35.6825,
+  "covered": 24.8875,
+  "loads": 59.325,
+  "wasted": 34.4375,
+  "copies": 95.0075,
+  "bound": 0.3658135608282236
+ },
+ {
+  "percent": 17.0,
+  "predictor": "R3",
+  "tokens": 400,
+  "demand_misses": 41.0875,
+  "covered": 20.8175,
+  "loads": 59.74,
+  "wasted": 38.9225,
+  "copies": 100.8275,
+  "bound": 0.26975028881187246
+ },
+ {
+  "percent": 17.0,
+  "predictor": "R12",
+  "tokens": 400,
+  "demand_misses": 27.0525,
+  "covered": 35.9725,
+  "loads": 90.375,
+  "wasted": 54.4025,
+  "copies": 117.4275,
+  "bound": 0.5191948813649694
+ },
+ {
+  "percent": 8.0,
+  "predictor": "none",
+  "tokens": 400,
+  "demand_misses": 93.8725,
+  "covered": 0.0,
+  "loads": 0.0,
+  "wasted": 0.0,
+  "copies": 93.8725,
+  "bound": 0.0
+ },
+ {
+  "percent": 8.0,
+  "predictor": "R",
+  "tokens": 400,
+  "demand_misses": 44.1525,
+  "covered": 54.065,
+  "loads": 97.525,
+  "wasted": 43.46,
+  "copies": 141.6775,
+  "bound": 0.5296545846760233
+ },
+ {
+  "percent": 8.0,
+  "predictor": "R2",
+  "tokens": 400,
+  "demand_misses": 55.4175,
+  "covered": 44.6525,
+  "loads": 97.345,
+  "wasted": 52.6925,
+  "copies": 152.7625,
+  "bound": 0.4096513888519002
+ },
+ {
+  "percent": 8.0,
+  "predictor": "R3",
+  "tokens": 400,
+  "demand_misses": 64.07,
+  "covered": 37.325,
+  "loads": 96.9725,
+  "wasted": 59.6475,
+  "copies": 161.0425,
+  "bound": 0.3174784947668381
+ },
+ {
+  "percent": 8.0,
+  "predictor": "R12",
+  "tokens": 400,
+  "demand_misses": 40.2475,
+  "covered": 63.2075,
+  "loads": 145.2975,
+  "wasted": 82.09,
+  "copies": 185.545,
+  "bound": 0.5712535620123039
+ }
+]

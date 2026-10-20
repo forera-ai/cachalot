@@ -1,10 +1,11 @@
-# Next-session prompt — **v242**, written 2026-10-20
+# Next-session prompt — **v243**, written 2026-10-20
 
 **This is the file to paste.** `docs/NEXT-SESSION-PROMPT.md` is always current; superseded ones live in
 `docs/next-session-prompts/`.
 
 | version | written | produced by | what changed |
 |---|---|---|---|
+| **v243** | 2026-10-20 | Hamed ran the multi-lead recording ("done. check the outcome") (v242 first job) | **0.66.38, measurement, offline: the trace has 1,897 decode tokens and exact predicted rows per lead. Serial bound at 17 %: lead 1 0.492, lead 2 0.366, lead 3 0.270, union 0.519 at 1.54 times the loads. Both registered rules fail: the lead lever is closed offline. The window effect of a lead-2 prediction is the one open hypothesis (GPU stage, new record, Hamed's go). 5 held, 2 missed narrowly, 0 falsified. Nothing in `src/`.** §18.193 |
 | **v242** | 2026-10-20 | Hamed: "Yes: plan a tracer knob (off by default) that records router scores two layers ahead, predictions first; do not run the server until I say." (v241 offer) | **0.66.37, planning and offline instruments: the knob already exists (`CACHALOT_PREDICT_AHEAD=3` + `CACHALOT_PREDICT_SUBMIT=0` + `CACHALOT_ROUTING_TRACE`), so no `src/` change. `docs/CUDA-LEAD-TRACE-RECORD.md` (7 predictions, committed first, 849b8f2) and `docs/CUDA-LEAD-TRACE-RUNBOOK.md`; lead selectors in `prefetch_coverage.py`, `predictor_price.py` (`R2`, `R3`, `R12`), `overlap_arena.py`; old outputs unchanged. No server started.** §18.192 |
 | **v241** | 2026-10-20 | Hamed: "Instance terminated. Next: stay offline and price a better predictor (v240 candidate 1) on the trace, record with predictions first." | **0.66.36, measurement, Mac only: `predictor_price.py` against the recorded predictor on a held-out window. Serial bound at 17 %: recorded 0.465, co-activation 0.024 (10 picks 0.011), previous token 0.000, 4+2 mix 0.344, recorded+4 0.465 at 25 % more copies; none meets the rule (0.05 above recorded). A better predictor needs router scores two layers ahead, not in the trace. 2 held, 3 missed, 3 falsified. Nothing in `src/`.** §18.191 |
 | **v240** | 2026-10-20 | Hamed: "N3C instance created" with its address (v239 first job) | **0.66.35, measurement: N3 stage C ran on an RTX 5090 (19 cells, 301 s, all gates true). The router-weight gate on the recorded predictor does not pay at 1 ms (hidden share 0.339 to 0.241 at gate 0.20; gate 0.10 inert) and gains 0.015 (0.14 ms) at 0.3 ms; 16 % fewer copies saved only 0.087 ms of host issue (about 6 microseconds a removed copy). 6 held, 2 missed low, 1 not testable, 0 falsified. Nothing in `src/`.** §18.190 |
@@ -203,6 +204,10 @@
 | v47 | 2026-09-25 | Hamed asked for the v44-v46 levers planned, built, measured and documented | **0.18.0: GLM prefill 60 to 90 tok/s, bit-identical (a store path that never evicts, plus the next layer read early), GLM's missing MLX buffer-cache cap added, GLM disk snapshots (a restart reuses the system block). DeepSeek: an `iostat` trace shows prefill is not read-bound on either drive; the lookahead A/B drowned in a 124-to-200 s drift across back-to-back prefills.** §17.1, §15.13 |
 | v46 | 2026-09-25 | Hamed asked for GLM-5.3-Flash on Cachalot | 0.17.0: GLM through `serve-glm.sh` / `chat-glm.sh`. §17 |
 | v45 | 2026-09-24 | same as v47, one day earlier | 0.16.0: disk snapshot store by last use; lookahead and local compression closed. §15.12 |
+
+## First jobs (v243): the offline CUDA lane is exhausted; every remaining item needs Hamed's go for GPU time
+
+Read HANDOFF section 18.193 and `docs/CUDA-LEAD-TRACE-RESULTS.md` first; the v242, v241 and v240 blocks below still apply for housekeeping and runbooks. Closed on this trace: weight gate (GPU, stage C), co-activation and temporal predictors, lead 2 and 3 predictions, the union. Remaining candidates, each with a design record and predictions first, a CPU rehearsal, and Hamed's go: (1) a lead-2 arm on the GPU to test the window hypothesis at 0.3 ms (needs predictions keyed by lead in `overlap_arena.py`; the registered rule says no, so this is an exception Hamed would have to choose); (2) fewer and larger copies (expected under 0.1 ms after stage C); (3) a native issue path; (4) a ROCm port of the harness on the Mac first; (5) the V100 or L40S arms; (6) the instance-population question. Non-CUDA lanes are in the older blocks. **Rules added:** a decision rule written before a recording is kept after it (an exception is a new record, not a reinterpretation); in a release script, read, edit and write a file once, never re-read it between edits (the 0.66.37 script lost a HANDOFF block that way).
 
 ## First jobs (v242): the multi-lead recording is ready to run; it needs Hamed's go
 

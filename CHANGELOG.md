@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.66.38 (2026-10-20)
+
+HANDOFF "Start here (2026-10-20, 0.66.38)" and section 18.193; results `docs/CUDA-LEAD-TRACE-RESULTS.md`, raw `docs/cuda-results/lead-trace-price-2026-10-20.json`. Measurement only (Hamed recorded the trace; offline analysis on the Mac); nothing in `src/` except the version string.
+
+### Added
+- The multi-lead routing trace (1,897 decode tokens, predictions at leads 1, 2 and 3 for the same tokens, 39.8 MB, 11 minutes of replay) analysed under the seven registered predictions: serial bound at 17 % resident, held-out window: lead 1 **0.492**, lead 2 **0.366**, lead 3 **0.270**; recall of the real set 0.684 / 0.596 / 0.521; lead 1 plus lead-2 extras 0.519 at 1.54 times the loads. Each layer of lead costs about 0.12 of bound. Both pre-registered decision rules fail (lead 2 needed 0.442, the union 0.542), so the lead lever is closed offline; the window effect (a lead-2 prediction is a layer earlier) is not priced by the bound and would need a GPU stage and a new record. 5 held, 2 missed narrowly, 0 falsified.
+- Plan section 17.17.
+
 ## 0.66.37 (2026-10-20)
 
 HANDOFF "Start here (2026-10-20, 0.66.37)" and section 18.192; record `docs/CUDA-LEAD-TRACE-RECORD.md` (seven predictions, committed first in 849b8f2), runbook `docs/CUDA-LEAD-TRACE-RUNBOOK.md`. Planning and offline instruments; no server started; nothing in `src/` except the version string.

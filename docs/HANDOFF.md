@@ -25,6 +25,14 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-20, 0.66.38): predictions made one or two layers earlier lose about 0.12 of the serial bound a layer; the lead lever is closed offline by the registered rule
+>
+> Section 18.193, results `docs/CUDA-LEAD-TRACE-RESULTS.md`, plan section 17.17. Hamed recorded the multi-lead trace (1,897 decode tokens; predicted rows exactly layers minus lead per token; 39.8 MB; 11 minutes). At 17 % resident on tokens 1000 to 1399: bound lead 1 **0.492**, lead 2 **0.366**, lead 3 **0.270**, lead 1 plus lead-2 extras **0.519** (1.54 times the loads); recall 0.684 / 0.596 / 0.521. Rules: lead 2 needed 0.442 (not met), the union 0.542 (not met). Scored 5 held, 2 missed narrowly (LT-2, LT-5's loads clause), 0 falsified. Not priced by the bound: the extra window of a lead-2 prediction, which stage B showed matters at 0.3 ms; testing it needs a GPU stage with a lead-2 arm and a new record. **Needs Hamed:** nothing for this item; GPU stages need his go; earlier housekeeping stands (cost-file hours, ssh configs and key).
+>
+> ## Start here (2026-10-20, 0.66.37): the multi-lead trace needs no new knob; recording it needs Hamed's go
+>
+> Section 18.192, record `docs/CUDA-LEAD-TRACE-RECORD.md` (seven predictions, 849b8f2), runbook `docs/CUDA-LEAD-TRACE-RUNBOOK.md`, plan section 17.16. Hamed asked for a tracer knob that records router scores two layers ahead. Reading the runtime showed it exists: the decode path already computes the routers of layers `L+LEAD` to `L+LEAD+AHEAD-1` on layer L's router input and the routing tracer records each prediction (source, target, experts, weights); `CACHALOT_PREDICT_AHEAD=3` with `CACHALOT_PREDICT_SUBMIT=0` records leads 1, 2 and 3 for the same tokens without prefetching. Built offline: lead selectors in `prefetch_coverage.py`, `predictor_price.py` (`R2`, `R3`, `R12`), `overlap_arena.py` (lead 1 explicit); old outputs unchanged; 870 tests. Decision rules fixed: lead 2 justifies a GPU stage if its bound is at least lead 1's minus 0.05; the union only if lead 1's plus 0.05.
+>
 > ## Start here (2026-10-20, 0.66.36): no predictor built from the trace's expert ids beats the recorded one; the next input is a trace with router scores two layers ahead
 >
 > Section 18.191, record `docs/CUDA-PREDICTOR-PRICE-RECORD.md` (eight predictions, 6c072de), results `docs/CUDA-PREDICTOR-PRICE-RESULTS.md`, plan section 17.15. Mac only. Held-out window (tokens 1000 to 1399), 17 % resident, serial bound: recorded `R` **0.465**, co-activation `CO6` 0.024, `CO10` 0.011, previous-token `TP6` -0.001, `MIX6` 0.344, `RCO10` 0.465 (25 % more copies); at 8 %: 0.504, 0.038, 0.037, 0.000, 0.378, 0.512. Co-activation recall of the real set is 0.27 against `R`'s 0.67, but it picks experts the arena already holds. The registered rule (a bound 0.05 above `R`) is met by none. Scored 2 held, 3 missed, 3 falsified (PP-8 by under 0.001). **Needs Hamed:** nothing for this item; earlier stages' housekeeping stands (N3-C instance terminated by him; fill the N3, N3-B, N3-C hours; delete the ssh configs and key).
@@ -9282,6 +9290,18 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.193 Multi-lead trace analysed (0.66.38)
+
+**Goal.** Hamed ran the two runbook commands ("done. check the outcome"); the agent checked the trace and scored LT-1 to LT-7.
+
+**Result.** `docs/CUDA-LEAD-TRACE-RESULTS.md`. The recording was clean (1,897 decode tokens, predicted rows exactly layers minus lead). Bounds 0.492 / 0.366 / 0.270 for leads 1, 2, 3 and 0.519 for lead 1 plus lead-2 extras at 17 % resident; recall 0.684 / 0.596 / 0.521. The registered decision rules fail for both lead 2 and the union, so the lead lever closes offline.
+
+**What it means.** Each layer of lead costs about 0.12 of the serial bound; the earlier offline recall table understated the lead-2 step (8.8 points here against 6.5). The one open argument for lead 2 is the window (a full layer earlier), which matters at short layers according to stage B and which the serial bound cannot price. I registered the rule before the recording and I keep it; an exception would need a new record.
+
+**What did not go well.** The two misses were both by hair (0.126 against 0.12; loads 1.54 against 1.6): my intervals were slightly tight, not wrong in direction. Separately, the 0.66.37 release script overwrote its own HANDOFF "Start here" block (it re-read the file before writing the first edit); found and repaired in this release.
+
+**Kind.** Research (predicted, measured offline, explained as hypothesis): 5 held, 2 missed narrowly, 0 falsified. No default changed.
 
 ### 18.192 Multi-lead routing trace planned (0.66.37)
 

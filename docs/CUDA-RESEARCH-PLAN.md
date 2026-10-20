@@ -570,6 +570,10 @@ N3 stage B ran under `docs/CUDA-N3B-EXPERIMENT-RECORD.md` and is recorded in `do
 
 `docs/CUDA-LEAD-TRACE-RECORD.md`: one recording with `CACHALOT_PREDICT_AHEAD=3` and `CACHALOT_PREDICT_SUBMIT=0` gives the router's predictions at leads 1 to 3 for the same tokens; no `src/` change (the knob exists). Offline lead selectors built. Decision rules: lead 2 is worth a GPU stage if its serial bound is at least lead 1's minus 0.05; the union of leads 1 and 2 only if lead 1's plus 0.05. Needs Hamed's go for the 10 to 15 minute recording.
 
+### 17.17 Multi-lead trace outcome (2026-10-20)
+
+`docs/CUDA-LEAD-TRACE-RESULTS.md`. Serial bound at 17 % resident: lead 1 0.492, lead 2 0.366, lead 3 0.270; lead 1 plus lead-2 extras 0.519 at 1.54 times the loads. Both registered rules fail, so the lead lever is closed offline. Open hypothesis, not priced by the bound: the extra window of a lead-2 prediction at short layers (stage B: the window decides the hidden share at 0.3 ms); it needs a GPU stage with a lead-2 arm and a new record.
+
 ## 18. Honest limits
 
 - This is a plan. No hypothesis in it has been tested; every "expected" device property is vendor-derived and unverified for the rented machine.
