@@ -1,10 +1,11 @@
-# Next-session prompt — **v245**, written 2026-10-20
+# Next-session prompt — **v246**, written 2026-10-20
 
 **This is the file to paste.** `docs/NEXT-SESSION-PROMPT.md` is always current; superseded ones live in
 `docs/next-session-prompts/`.
 
 | version | written | produced by | what changed |
 |---|---|---|---|
+| **v246** | 2026-10-20 | Hamed: "Yes: design the bridge session (P0L and D on both traces in one session) offline, record with predictions first; no instance yet." (v245 offer) | **0.66.41, planning and instruments: `docs/CUDA-BRIDGE-EXPERIMENT-RECORD.md` (7 predictions, committed first, baf6a88); `session.sh n3esmoke|n3ebridge` (old, new, new, old; 48 cells), `SESSION-RUNBOOK-BRIDGE.md`, `window_model.py` (row-level model: new trace +0.22 at 0.3 ms from copy counts alone), `bridge_score.py`; 881 tests. Never run on a GPU. Nothing in `src/`.** §18.196 |
 | **v245** | 2026-10-20 | Hamed created the stage D instance (after two with an uninitialized GPU) (v244 first job) | **0.66.40, measurement: N3 stage D ran on an RTX 5090 (23 cells, 323 s, all gates true). The lead-2 arm loses to the lead-1 predictor in every cell and most at short layers (hidden share 0.233 / 0.079 at 0.3 ms; 0.440 / 0.334 at 1.0 ms): the window hypothesis is not supported, the lead lever is closed on the card. 9 held, 1 missed low, 0 falsified. Unexplained: `P0L` hides more on the new trace than on the old. Nothing in `src/`.** §18.195 |
 | **v244** | 2026-10-20 | Hamed: "Yes: design a lead-2 GPU arm as an exception, new record with predictions first, offline build on the Mac; no instance yet." (v243 offer) | **0.66.39, planning, instruments and tests: `docs/CUDA-N3D-EXPERIMENT-RECORD.md` (10 predictions, committed first, a2335b8); arm `L2` (lead-2 set issued two rows ahead), 23 cells on the new multi-lead trace, `n3d-expected.json`, gate (g) against `prefetch_coverage.py --timed`, `session.sh n3dsmoke|n3dfull`, `SESSION-RUNBOOK-N3D.md`; offline bound 0.535 (lead 1) against 0.412 (lead 2); 877 tests, old hashes unchanged. Never run on a GPU. Nothing in `src/`.** §18.194 |
 | **v243** | 2026-10-20 | Hamed ran the multi-lead recording ("done. check the outcome") (v242 first job) | **0.66.38, measurement, offline: the trace has 1,897 decode tokens and exact predicted rows per lead. Serial bound at 17 %: lead 1 0.492, lead 2 0.366, lead 3 0.270, union 0.519 at 1.54 times the loads. Both registered rules fail: the lead lever is closed offline. The window effect of a lead-2 prediction is the one open hypothesis (GPU stage, new record, Hamed's go). 5 held, 2 missed narrowly, 0 falsified. Nothing in `src/`.** §18.193 |
@@ -206,6 +207,10 @@
 | v47 | 2026-09-25 | Hamed asked for the v44-v46 levers planned, built, measured and documented | **0.18.0: GLM prefill 60 to 90 tok/s, bit-identical (a store path that never evicts, plus the next layer read early), GLM's missing MLX buffer-cache cap added, GLM disk snapshots (a restart reuses the system block). DeepSeek: an `iostat` trace shows prefill is not read-bound on either drive; the lookahead A/B drowned in a 124-to-200 s drift across back-to-back prefills.** §17.1, §15.13 |
 | v46 | 2026-09-25 | Hamed asked for GLM-5.3-Flash on Cachalot | 0.17.0: GLM through `serve-glm.sh` / `chat-glm.sh`. §17 |
 | v45 | 2026-09-24 | same as v47, one day earlier | 0.16.0: disk snapshot store by last use; lookahead and local compression closed. §15.12 |
+
+## First jobs (v246): the bridge session is built; running it needs Hamed to create an RTX 5090
+
+Read HANDOFF section 18.196, `docs/CUDA-BRIDGE-EXPERIMENT-RECORD.md` and `benchmarks/cuda/SESSION-RUNBOOK-BRIDGE.md` first; the v245 block below still applies. **Job 1 (needs Hamed's go and an instance):** pack from a clean commit, check `nvidia-smi` and DNS first (create a replacement before terminating a faulty instance), copy both traces (old as `n3-trace.npz`, new as `n3d-trace.npz`), run `n3esmoke` and, only if both smokes are clean, `MAXS=600 bash benchmarks/cuda/session.sh n3ebridge`; copy back, run `bridge_score.py` and score BR-1 to BR-7 by hand; write `docs/CUDA-BRIDGE-RESULTS.md`. A prediction is never edited after its run. Hamed's items: billed hours for N3 to N3-D, housekeeping, a provider ticket about the GPU init fault (draft in `~/cachalot-private/provider-ticket-gpu-init.md`). **Rule added:** every GPU stage that changes the trace, the instance or the layer-time grid carries a bridge cell (the previous stage's baseline arm on the previous trace) in the same session.
 
 ## First jobs (v245): the lead lever is closed on the card; one bridge cell is open; every remaining item needs Hamed's go
 

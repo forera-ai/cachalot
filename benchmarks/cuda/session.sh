@@ -3,7 +3,7 @@
 # Run from the directory the scaffold archive was unpacked into. No sudo, no system package changes, no downloads other
 # than the pinned Python wheels named below, which `setup` shows before it installs them.
 #
-#   bash benchmarks/cuda/session.sh check|setup|doctor|smoke|baseline|s2|n2smoke|n2full|backing|hugepage|n3smoke|n3full|n3bsmoke|n3bfull|n3csmoke|n3cfull|n3dsmoke|n3dfull|results
+#   bash benchmarks/cuda/session.sh check|setup|doctor|smoke|baseline|s2|n2smoke|n2full|backing|hugepage|n3smoke|n3full|n3bsmoke|n3bfull|n3csmoke|n3cfull|n3dsmoke|n3dfull|n3esmoke|n3ebridge|results
 #   (s2 = docs/CUDA-S2-EXPERIMENT-RECORD.md: overlap variants and batched expert copies; needs a clean smoke run first)
 set -euo pipefail
 
@@ -294,6 +294,32 @@ sys.exit(0 if ok else 1)
 EOF7
     SESSION_TAG="${SESSION_TAG:-N3D}" "$PY" "$ROOT/benchmarks/cuda/overlap_arena.py" run --trace "$TRACE" \
       --expected "$ROOT/benchmarks/cuda/n3d-expected.json" --cells d-full --execute --max-seconds "${MAXS:-1200}" --region "$REGION" --note "$(SESSION_TAG="${SESSION_TAG:-N3D}" note n3dfull)"
+    ;;
+
+  n3esmoke)
+    # The bridge session (docs/CUDA-BRIDGE-EXPERIMENT-RECORD.md): a short smoke of the e-profile on BOTH traces. Needs the old trace
+    # (n3-trace.npz, 11 MB) and the new multi-lead trace (n3d-trace.npz, 39.8 MB) on the host, see SESSION-RUNBOOK-BRIDGE.md.
+    [ -x "$PY" ] || die "run setup first"
+    OLD="${TRACE_OLD:-$ROOT/n3-trace.npz}"; NEW="${TRACE_NEW:-$ROOT/n3d-trace.npz}"
+    [ -f "$OLD" ] || die "old trace not found at $OLD"; [ -f "$NEW" ] || die "new trace not found at $NEW"
+    for kind in old new; do
+      if [ "$kind" = old ]; then T="$OLD"; X="$ROOT/benchmarks/cuda/n3c-expected.json"; else T="$NEW"; X="$ROOT/benchmarks/cuda/n3d-expected.json"; fi
+      SESSION_TAG="${SESSION_TAG:-N3E}" "$PY" "$ROOT/benchmarks/cuda/overlap_arena.py" run --trace "$T" --expected "$X" --cells e-smoke --execute \
+        --max-seconds 300 --region "$REGION" --note "$(SESSION_TAG="${SESSION_TAG:-N3E}" note n3esmoke-$kind)" || die "n3esmoke $kind failed: stop, bring the files home"
+    done
+    ;;
+
+  n3ebridge)
+    # Four runs of e-full in the fixed order old, new, new, old. The cap is explicit and below the 1 GPU-hour session cap:
+    # MAXS=seconds applies to each run (default 600). The trace of each run is identified by its sha256 in the run manifest.
+    [ -x "$PY" ] || die "run setup first"
+    OLD="${TRACE_OLD:-$ROOT/n3-trace.npz}"; NEW="${TRACE_NEW:-$ROOT/n3d-trace.npz}"
+    [ -f "$OLD" ] || die "old trace not found at $OLD"; [ -f "$NEW" ] || die "new trace not found at $NEW"
+    for kind in old new new old; do
+      if [ "$kind" = old ]; then T="$OLD"; X="$ROOT/benchmarks/cuda/n3c-expected.json"; else T="$NEW"; X="$ROOT/benchmarks/cuda/n3d-expected.json"; fi
+      SESSION_TAG="${SESSION_TAG:-N3E}" "$PY" "$ROOT/benchmarks/cuda/overlap_arena.py" run --trace "$T" --expected "$X" --cells e-full --execute \
+        --max-seconds "${MAXS:-600}" --region "$REGION" --note "$(SESSION_TAG="${SESSION_TAG:-N3E}" note n3ebridge-$kind)" || die "n3ebridge $kind failed: stop, bring the files home"
+    done
     ;;
 
   results)

@@ -1,0 +1,15 @@
+# CUDA bridge session runbook: old and new trace in one session (RTX 5090)
+
+Predictions, design and stop rules: `docs/CUDA-BRIDGE-EXPERIMENT-RECORD.md` (committed in baf6a88 before any bridge code). No new arm: the harness is the stage D file with the profiles `e-smoke` and `e-full` (arms `N`, `D`, `P0L`, `N` at 17 % resident: C = 1.0 ms L5, 0.6 and 0.3 ms L4). The question is whether the higher `P0L` hidden share of stage D is the trace or the instance, so **both traces run in one session in the order old, new, new, old**. The earlier runbooks apply for the provider, key, private ssh config, cost log and teardown. **Nothing here starts an instance.** Hamed creates it and says go for the named live instance; the agent runs over SSH only for that one instance and never runs sudo. Cap: **1 GPU-hour** from Ready, and every run passes an explicit `--max-seconds`.
+
+## Steps
+
+1. Pack from a clean commit on the Mac (`bash benchmarks/cuda/pack.sh`, REVISION `dirty=0`); upload and unpack as before. Copy **both** traces (neither is in the repository): the old 11 MB one, `scp -F ~/cachalot-private/ssh_config_NAME benchmarks/results/routing-trace-deepseek-long/trace.npz NAME:~/cachalot-cuda/n3-trace.npz`, and the new 39.8 MB multi-lead one, `... benchmarks/results/routing-trace-deepseek-leads/trace.npz NAME:~/cachalot-cuda/n3d-trace.npz`. Each run refuses a trace whose sha256 differs from its expected file (`n3c-expected.json` for the old, `n3d-expected.json` for the new).
+2. **First check the instance**: `nvidia-smi` must show the GPU and driver, and `getent hosts pypi.org` must resolve. A GPU that does not initialize is replaced, and the replacement is created **before** the faulty instance is terminated (the provider reuses a node otherwise). Then `check`, `setup`, `doctor`, `smoke` (all clean).
+3. **`bash benchmarks/cuda/session.sh n3esmoke`**: `e-smoke` (40 tokens, 8 cells) on the old trace, then on the new. Read every gate in both run manifests (`event_hash`, `determinism`, `counts`, `chain2`, `readback`, `calibration`, `drift`, `closure`, `sanity` true, no failed cell, not truncated).
+4. Only if both smokes are clean: `MAXS=600 bash benchmarks/cuda/session.sh n3ebridge` (four runs of `e-full`, 12 cells each, 48 cells; estimate 10 to 15 minutes plus four arena allocations and calibrations). A truncated run is reported as truncated.
+5. Copy back with `results`, then on the Mac: `~/venvs/deepseek-v41/bin/python benchmarks/cuda/bridge_score.py DIR --old-trace benchmarks/results/routing-trace-deepseek-long/trace.npz --new-trace benchmarks/results/routing-trace-deepseek-leads/trace.npz` (DIR holds the copied run files; the script tells the trace of each run by its sha256, orders the runs by time and prints the table of the record's section 4, with the row-level model beside it). Score BR-1 to BR-7 from it by hand.
+
+## Stop rules
+
+As the record, section 6. Housekeeping stands (delete the ssh configs, known_hosts files and key of every earlier instance; enter the billed hours).

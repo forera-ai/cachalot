@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-20, 0.66.41): the bridge session (old and new trace in one session) is registered and built; running it needs Hamed to create an RTX 5090
+>
+> Section 18.196, record `docs/CUDA-BRIDGE-EXPERIMENT-RECORD.md` (seven predictions, baf6a88), runbook `benchmarks/cuda/SESSION-RUNBOOK-BRIDGE.md`, plan section 17.20. Question: stage D's `P0L` hid 0.233 at 0.3 ms against 0.096 in stages B and C; trace or instance? A row-level window model on the Mac says the trace alone should give +0.22 at 0.3 ms and +0.17 at 1.0 ms (measured cross-session: +0.135 and +0.101). The session runs both traces on one instance in the order old, new, new, old (48 cells, 10 to 15 minutes), `bridge_score.py` scores it. Falsifier: a difference under 0.05 at 0.3 ms means the gap was the session. Never run on a GPU. **Needs Hamed:** a go and an RTX 5090 (create the replacement before terminating a faulty one); the billed hours; housekeeping.
+>
 > ## Start here (2026-10-20, 0.66.40): N3 stage D ran; the lead-2 arm loses in every cell and most at short layers; the lead lever is closed on the card
 >
 > Section 18.195, results `docs/CUDA-N3D-RESULTS.md` (raw in `docs/cuda-results/n3d-rtx5090-2026-10-20/`), plan section 17.19. 23 cells in 323 s on a working RTX 5090 (c = 0.194 ms), all gates true including gate (g). **Hidden share, 17 % resident, `P0L` against `L2`:** C = 1.0 ms 0.440 / 0.334, 0.6 ms 0.408 / 0.303, 0.3 ms **0.233 / 0.079**; 8 %, 0.3 ms 0.137 / 0.019; oracle 0.857 at 1 ms. The window hypothesis is not supported (a window effect would favour `L2` at short layers). 9 held, 1 missed low (D-P3), 0 falsified. Unexplained: `H_P0L` is higher on the new trace than on the old (0.233 against 0.096 at 0.3 ms). Two instances had GPUs that did not initialize; creating the next instance before terminating the faulty one got a working node. **Needs Hamed:** terminate the faulty instance and this one if not done; fill the billed hours (N3, N3-B, N3-C, N3-D); delete the ssh configs, known_hosts files and key; a provider ticket about the GPU init fault is drafted in the chat of this session (not in the repository).
@@ -9298,6 +9302,20 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.196 Bridge session registered and built (0.66.41)
+
+**Goal.** Hamed: "Yes: design the bridge session (P0L and D on both traces in one session) offline, record with predictions first; no instance yet."
+
+**What was done.** The record (seven predictions) was committed before any code (baf6a88). I priced the question with a row-level window model first (derived; it ignores host, events and interference): the new trace's copy counts alone predict a larger hidden share, by more than the measured cross-session gap, so the trace is a sufficient explanation on paper and the session must show whether it is the actual one. The harness needs no new arm: two profiles, a four-run command (old, new, new, old) and a scoring script that identifies each run's trace by its sha256.
+
+**What it means.** Nothing measured. A difference under 0.05 at 0.3 ms would make cross-session comparisons in this lane unsafe without a bridge cell each time.
+
+**What did not go well.** Stage D should have carried a bridge cell; I noticed the baseline difference only after the instance was gone.
+
+**Open / needs Hamed.** A go and an RTX 5090; billed hours; housekeeping.
+
+**Kind.** Planning and instruments (one derived price). No default changed, nothing measured on a GPU.
 
 ### 18.195 CUDA N3 stage D on an RTX 5090 (0.66.40)
 

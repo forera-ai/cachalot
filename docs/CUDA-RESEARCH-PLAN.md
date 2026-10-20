@@ -582,6 +582,10 @@ N3 stage B ran under `docs/CUDA-N3B-EXPERIMENT-RECORD.md` and is recorded in `do
 
 `docs/CUDA-N3D-RESULTS.md` (RTX 5090, fast population, 23 cells, 323 s, all gates true). The lead-2 arm is below the lead-1 predictor in every cell (-0.106 at 1.0 ms, -0.105 at 0.6, -0.154 at 0.3, -0.118 at 8 %): the window hypothesis is not supported and the lead lever is closed on the card. 9 held, 1 missed low, 0 falsified. Open: why `P0L` hides more on the multi-lead trace than on the old one (0.233 against 0.096 at 0.3 ms); a bridge cell would tell trace from instance.
 
+### 17.20 Bridge session registered and built (2026-10-20)
+
+`docs/CUDA-BRIDGE-EXPERIMENT-RECORD.md` (baf6a88, seven predictions, before any code): both traces in one session (old, new, new, old; `P0L` and `D` at C = 1.0 ms L5, 0.6 and 0.3 ms L4, 17 % resident; 48 cells) to separate the trace from the instance. Offline price: a row-level window model puts the new trace +0.22 at 0.3 ms and +0.17 at 1.0 ms above the old from copy counts alone. Never run on a GPU. Needs Hamed: a go and an RTX 5090.
+
 ## 18. Honest limits
 
 - This is a plan. No hypothesis in it has been tested; every "expected" device property is vendor-derived and unverified for the rented machine.

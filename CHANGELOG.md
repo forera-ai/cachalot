@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.66.41 (2026-10-20)
+
+HANDOFF "Start here (2026-10-20, 0.66.41)" and section 18.196; record `docs/CUDA-BRIDGE-EXPERIMENT-RECORD.md` (seven predictions, committed first in baf6a88), runbook `benchmarks/cuda/SESSION-RUNBOOK-BRIDGE.md`, plan section 17.20. Planning, instruments and tests; nothing in `src/` except the version string; nothing run on a GPU.
+
+### Added
+- The bridge session is registered and built: does the higher `P0L` hidden share of stage D (0.233 against 0.096 at 0.3 ms) come from the trace or from the instance? Both traces run in one session on one instance in the order old, new, new, old (`session.sh n3esmoke|n3ebridge`, profiles `e-smoke` and `e-full`, 48 cells, no new arm). A row-level window model (`benchmarks/cuda/window_model.py`, Mac only: per row, prefetch that does not fit in the previous layer plus all demand copies, c = 0.194 ms) prices the question offline: the new trace should hide **0.22 more at 0.3 ms and 0.17 more at 1.0 ms** from copy counts alone (model old / new: 0.3 ms -0.001 / 0.216, 0.6 ms 0.303 / 0.481, 1.0 ms 0.363 / 0.533) against measured cross-session gaps of 0.135 and 0.101. `benchmarks/cuda/bridge_score.py` scores the four runs. 4 new tests (881 pass).
+
 ## 0.66.40 (2026-10-20)
 
 HANDOFF "Start here (2026-10-20, 0.66.40)" and section 18.195; results `docs/CUDA-N3D-RESULTS.md`, raw rows in `docs/cuda-results/n3d-rtx5090-2026-10-20/`. Measurement only; nothing in `src/` except the version string.
