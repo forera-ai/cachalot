@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-20, 0.66.51): the low layer time (C = 0.15 ms) is registered and built; running it needs Hamed to create an RTX 5090
+>
+> Section 18.206, record `docs/CUDA-LOW-C-RECORD.md` (ten predictions L-1 to L-10, 823aa63), runbook `benchmarks/cuda/SESSION-RUNBOOK-LOW-C.md`. Hamed chose "a point below 0.3 ms" from the open GPU items. Mac only, no GPU, no instance. The slope on measured overlap is 0.0634, 0.0765 and 0.1053 at 1.0, 0.6 and 0.3 ms; extrapolated to 0.15 ms it is 0.165 (affine in 1/C), 0.140 (power law) or 0.110 (linear in C), and the count-only window model puts the hidden share at -0.085 (prefetch cannot fit a layer shorter than one copy). Built: profiles `h-smoke` and `h-full`, `session.sh n3hsmoke|n3hfull`, `low_c_score.py`, 11 tests. Prediction L-9 is whether the stand-in can be tuned to 0.15 ms at all; if the calibration or floor gate fails, the run stops at the smoke. **Needs Hamed:** an RTX 5090 instance and his go (estimate 12 to 18 minutes of GPU time, cap one GPU-hour); the 0.66.50 housekeeping stands.
+>
 > ## Start here (2026-10-20, 0.66.50): the slowdown slope at a 0.6 ms layer is on the 1/C curve; the predicted-overlap form holds at a third layer time; interpolation is usable between 0.3 and 1.0 ms
 >
 > Section 18.205, record `docs/CUDA-THIRD-C-RECORD.md` (32bd9e2), results `docs/CUDA-THIRD-C-RESULTS.md`, raw `docs/cuda-results/third-c-2026-10-20.json`, plan section 17.29. One RTX 5090 (fast population), smoke then two runs of 12 cells, all gates true. Slope 0.0765 (replicate 0.0747) against 0.0753 for affine in 1/C and 0.0873 for linear in C; queue model row r 0.997, hidden-share error 0.0186, interpolated token total +0.017 ms, level 6 +0.019 ms. 9 held, 0 missed, 0 falsified. One instance, one trace, a deterministic copy queue; no mechanism. **Needs Hamed:** terminate the instance, enter the billed hours, delete the `g1` (and `f1`, `f2`, `f3`) ssh configs and known_hosts. Nothing offline moves a number; more lane items need a GPU and his go.
@@ -9338,6 +9342,24 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.206 The slowdown slope at a layer time below 0.3 ms: registered and built (0.66.51)
+
+**Goal.** Hamed: "Prepare a point below 0.3 ms (0.15 ms) to test whether the 1/C form continues: record with predictions first, build and rehearse on the Mac, no instance yet." Find whether the compute-slowdown slope keeps rising along the affine-in-1/C curve at a layer time shorter than one copy, where the copy stream is saturated by construction.
+
+**Baseline (recorded).** Slope on measured overlap 0.0634 (C = 1.0 ms), 0.0765 (0.6), 0.1053 (0.3); level-4 hidden share 0.423, 0.407, 0.232; count-only window model 0.533, 0.480, 0.212 and -0.085 at 0.15. Extrapolated slope at 0.15: 0.165 affine in 1/C, 0.140 power law, 0.110 linear in C (derived).
+
+**Prediction.** L-1 to L-10 of `docs/CUDA-LOW-C-RECORD.md`, committed before any code (823aa63): slope 0.140 to 0.185 (falsified outside 0.110 to 0.220), at least 0.153 if the 1/C form continues, replicate within 15 %, hidden share -0.25 to 0.05, queue model row r at least 0.85, hidden-share error at most 0.07, extrapolated slope within 0.30 ms of the token total, the instrument's calibration and floor gates holding at 0.15 ms, demand exposure 9.0 to 11.0 ms a token.
+
+**Method.** Not run. Built: profiles `h-smoke` (8 cells) and `h-full` (12 cells a run: levels 3 with rows, 6 and 4 at C = 0.15 ms, arms `N`, `D`, `P0L`, `N`), `session.sh n3hsmoke|n3hfull` (two runs), `benchmarks/cuda/low_c_score.py`, `SESSION-RUNBOOK-LOW-C.md`, `tests/test_cuda_low_c.py` (11 tests; 934 tests pass). The window model was run at 0.15 ms on the multi-lead trace to anchor L-4.
+
+**Result.** None: nothing was measured.
+
+**What did not go well / limits.** At 0.15 ms the stand-in is about 6 ms a token and each layer is two kernels of tens of microseconds, so the calibration tolerance (5 %) and the floor gate (25 %) are tight; the record makes that a prediction (L-9) and a stop rule rather than assuming it works. The hidden-share prediction is an extrapolation into negative values from three positive points, so its interval is wide. One instance, one trace and a stand-in compute remain the limits; a real layer on this card is longer than 0.15 ms, so the point tests the form, not a deployment.
+
+**Open / needs Hamed.** An RTX 5090 instance and his go to run `n3hsmoke` then `n3hfull` (12 to 18 minutes of GPU time, cap one GPU-hour). Housekeeping stands (terminate `ill-babies-2399` if up, billed hours, delete the `g1`, `f1`, `f2`, `f3` ssh configs).
+
+**Kind.** Planning, instruments and tests (predictions committed first). No default changed, nothing measured on a GPU.
 
 ### 18.205 The slowdown slope at a third layer time: measured (0.66.50)
 

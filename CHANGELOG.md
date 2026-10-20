@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.66.51 (2026-10-20)
+
+HANDOFF "Start here (2026-10-20, 0.66.51)" and section 18.206; record `docs/CUDA-LOW-C-RECORD.md` (ten predictions L-1 to L-10, committed first in 823aa63). Planning, instruments and tests only: nothing was measured and no instance was started. Nothing in `src/` but the version string.
+
+### Added
+- `benchmarks/cuda/overlap_arena.py` profiles `h-smoke` (8 cells, 40 tokens) and `h-full` (12 cells a run: levels 3 with per-row records, 6 and 4 at C = 0.15 ms only, arms `N`, `D`, `P0L`, `N`, 400 decode tokens); `benchmarks/cuda/session.sh` steps `n3hsmoke` and `n3hfull` (two runs, A then B); `benchmarks/cuda/SESSION-RUNBOOK-LOW-C.md`.
+- `benchmarks/cuda/low_c_score.py`: scores L-1 to L-10 on two `h-full` runs (slope on measured overlap at C = 0.15 ms, the affine-in-1/C, power-law and linear-in-C values through the three measured slopes, a four-point refit, the predicted-overlap queue model, the extrapolated V1 slope, demand exposure, and the calibration and floor gates of the run manifests) and prints each beside its registered interval and falsifier. `tests/test_cuda_low_c.py`, 11 tests on planted runs.
+
+### Registered
+- The slope extrapolated to C = 0.15 ms is 0.165 (affine in 1/C), 0.140 (power law) or 0.110 (linear in C); the count-only window model puts the hidden share at -0.085, so the registered hidden-share prediction is -0.25 to 0.05. Prediction L-9 is the instrument itself: whether the stand-in can be tuned to 0.15 ms (calibration within 5 %, floor within 25 %).
+
+### Needs Hamed
+An RTX 5090 instance and his go to run `n3hsmoke` then `n3hfull` (12 to 18 minutes of GPU time, cap one GPU-hour). The housekeeping of 0.66.50 stands (terminate `ill-babies-2399` if still up, billed hours, delete the `g1`, `f1`, `f2`, `f3` ssh configs and known_hosts).
+
 ## 0.66.50 (2026-10-20)
 
 HANDOFF "Start here (2026-10-20, 0.66.50)" and section 18.205; record `docs/CUDA-THIRD-C-RECORD.md` (nine predictions G-1 to G-9, committed first in 32bd9e2), results `docs/CUDA-THIRD-C-RESULTS.md`, raw scoring `docs/cuda-results/third-c-2026-10-20.json`. Measurement on one RTX 5090 (smoke, then two runs of 12 cells at C = 0.6 ms, about 165 s each, every gate true). Nothing in `src/` but the version string.

@@ -622,6 +622,10 @@ Hamed resumed the lane on the card ("continue with online GPUs"). `docs/CUDA-ROW
 
 `docs/CUDA-THIRD-C-RESULTS.md` (one RTX 5090, 12 cells a run, two runs). The slope at C = 0.6 ms is 0.0765 on measured overlap, on the 1/C curve through the slopes at 1.0 and 0.3 ms (0.0753) and 12 % below linear in C; the predicted-overlap form holds there (hidden-share error 0.0186) and an interpolated slope predicts the token total to +0.017 ms. 9 held. One instance, one trace, mechanism unidentified.
 
+### 17.30 Low layer time prepared (2026-10-20)
+
+`docs/CUDA-LOW-C-RECORD.md` (ten predictions L-1 to L-10 committed first, 823aa63): the slowdown slope at C = 0.15 ms, below the 0.196 ms copy time, to say whether the affine-in-1/C form continues into a saturated copy stream and whether the stand-in compute can be tuned that short. Built on the Mac (`h-smoke`, `h-full`, `n3hsmoke|n3hfull`, `low_c_score.py`); not run. Needs an RTX 5090 instance and Hamed's go.
+
 ## 18. Honest limits
 
 - This is a plan. No hypothesis in it has been tested; every "expected" device property is vendor-derived and unverified for the rented machine.

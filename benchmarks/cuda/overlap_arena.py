@@ -488,6 +488,13 @@ def cell_defs(profile: str) -> list[dict]:
         arms4 = ("N", "D", "P0L", "N")
         return [{"id": "p17", "percent": 17, "tokens": DECODE_TOKENS, "plan": [
             {"level": 3, "c": 0.6, "arms": arms4, "rows": True}, {"level": 6, "c": 0.6, "arms": arms4}, {"level": 4, "c": 0.6, "arms": arms4}]}]
+    if profile == "h-smoke":                             # low layer time (record CUDA-LOW-C): a short GPU smoke at C = 0.15 ms
+        return [{"id": "p17", "percent": 17, "tokens": 40, "plan": [
+            {"level": 6, "c": 0.15, "arms": ("N", "D", "P0L", "N")}, {"level": 3, "c": 0.15, "arms": ("N", "D", "P0L", "N"), "rows": True}]}]
+    if profile == "h-full":                              # record CUDA-LOW-C section 3: 12 cells a run, one layer time
+        arms4 = ("N", "D", "P0L", "N")
+        return [{"id": "p17", "percent": 17, "tokens": DECODE_TOKENS, "plan": [
+            {"level": 3, "c": 0.15, "arms": arms4, "rows": True}, {"level": 6, "c": 0.15, "arms": arms4}, {"level": 4, "c": 0.15, "arms": arms4}]}]
     if profile == "f-rehearsal":
         return [{"id": "p17", "percent": 17, "slots": 40, "tokens": 6, "plan": [
             {"level": 3, "c": 0.05, "arms": ("N", "D", "P0L", "N"), "rows": True}, {"level": 6, "c": 0.05, "arms": ("N", "D", "P0L", "N")},
@@ -1142,7 +1149,7 @@ def file_sha(path) -> str:
 
 
 def cmd_plan(args) -> int:
-    for prof in ("smoke", "full", "b-smoke", "b-full", "c-smoke", "c-full", "d-smoke", "d-full", "e-smoke", "e-full", "f-smoke", "f-full", "f-fix", "g-smoke", "g-full"):
+    for prof in ("smoke", "full", "b-smoke", "b-full", "c-smoke", "c-full", "d-smoke", "d-full", "e-smoke", "e-full", "f-smoke", "f-full", "f-fix", "g-smoke", "g-full", "h-smoke", "h-full"):
         for g in cell_defs(prof):
             slots = ra.slots_for(g["percent"])
             cs = cells_of(g)
@@ -1365,7 +1372,7 @@ def cmd_run(args) -> int:
     with np.load(args.trace) as data:
         full = {k: data[k] for k in data.files if k != "segments"}
     stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
-    stage = {"g": "n3g", "f": "n3f", "e": "n3e", "d": "n3d", "c": "n3c", "b": "n3b"}.get(args.cells[:1] if args.cells[1:2] == "-" else "", "n3a")
+    stage = {"h": "n3h", "g": "n3g", "f": "n3f", "e": "n3e", "d": "n3d", "c": "n3c", "b": "n3b"}.get(args.cells[:1] if args.cells[1:2] == "-" else "", "n3a")
     run_id = f"{stamp}-{stage}-{args.cells}-{report['manifest_id'][:6]}"
     out = Path(args.out_dir) / run_id
     out.mkdir(parents=True, exist_ok=True)
@@ -1397,7 +1404,7 @@ def cmd_run(args) -> int:
     manifest = {
         "schema": mf.SCHEMA_NAME, "schema_version": mf.SCHEMA_VERSION, "platform": mf.PLATFORM, "kind": "run",
         "created_utc": mf.utc_now(), "machine_manifest_id": report["manifest_id"], "run_id": run_id,
-        "instrument": {"name": "benchmarks/cuda/overlap_arena.py", "version": {"n3g": "N3G-1", "n3f": "N3F-1", "n3e": "N3E-1", "n3d": "N3D-1", "n3c": "N3C-1", "n3b": "N3B-1"}.get(stage, "N3A-1")}, "code": report["code"], "mode": "timing",
+        "instrument": {"name": "benchmarks/cuda/overlap_arena.py", "version": {"n3h": "N3H-1", "n3g": "N3G-1", "n3f": "N3F-1", "n3e": "N3E-1", "n3d": "N3D-1", "n3c": "N3C-1", "n3b": "N3B-1"}.get(stage, "N3A-1")}, "code": report["code"], "mode": "timing",
         "workload": {"id": f"N3-stage{stage[-1].upper()}-{args.cells}", "class": "N3 layer-ahead prefetch with a stand-in compute and real copies (no model)",
                      "trace_sha256": expected["trace_sha256"], "record_bytes": ra.RECORD_BYTES, "source_records": ra.SOURCE_RECORDS,
                      "policy": "lru", "claims": "overlap mechanics only: exposed copy time against compute window, copy-lane saturation, interference"},
@@ -1427,7 +1434,7 @@ def main(argv=None) -> int:
     r = sub.add_parser("run")
     r.add_argument("--trace", required=True)
     r.add_argument("--expected", required=True)
-    r.add_argument("--cells", choices=("smoke", "full", "b-smoke", "b-full", "c-smoke", "c-full", "d-smoke", "d-full", "e-smoke", "e-full", "f-smoke", "f-full", "f-fix", "g-smoke", "g-full"), required=True)
+    r.add_argument("--cells", choices=("smoke", "full", "b-smoke", "b-full", "c-smoke", "c-full", "d-smoke", "d-full", "e-smoke", "e-full", "f-smoke", "f-full", "f-fix", "g-smoke", "g-full", "h-smoke", "h-full"), required=True)
     r.add_argument("--execute", action="store_true")
     r.add_argument("--max-seconds", type=float, default=1500.0)
     r.add_argument("--out-dir", default=str(Path(__file__).resolve().parents[1] / "results" / "cuda"))
