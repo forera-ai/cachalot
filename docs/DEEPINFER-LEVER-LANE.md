@@ -52,7 +52,7 @@ Read in full, by group: the engine and scheduler (`csrc/engine/scheduler.hpp`, `
 
 Ranked by expected gain x confidence / cost (`SESSION-PROTOCOL.md` section 2). Numbers are labelled. "Hook" names the Cachalot code a build would touch. No lever here is authorised to build; each says what to measure first.
 
-### DI-1. Encoder-only prefill with an exact decoder tail (the CED shortcut) — PRICE FIRST, then build
+### DI-1. Encoder-only prefill with an exact decoder tail (the CED shortcut) — PRICE FIRST, then build (first measurement registered and built 0.66.60: `docs/DI1-SPLIT-RECORD.md`, `benchmarks/prefill_half_split.py`; waits for Hamed's go and the wired-limit sysctl)
 
 **Source.** Report 2.2 and 3.2.2; `doc/inference_deployment_qa.md:183-187`; `deepinfer/model_executor/models/deepseek.py:188-208` (the boundary layer switches metadata to the consumer view), `decoder_layer.py:134-142` (keeps the full-length shared hidden), `attn.py:672-721` (`_store_yoco_full_kv`: the decoder half still writes main KV and index-K for every token from the shared hidden), `v4_modules/cross_layer.py` (shared-KV segments).
 

@@ -208,7 +208,7 @@ def test_plan_and_dry_run_list_every_group(capsys):
     assert pr.main(["plan"]) == 0 and pr.main(["run", "--cells", "k3"]) == 0
     out = capsys.readouterr().out
     assert all(g in out for g in pr.ORDER) and "DRY RUN" not in out.split("\n")[0]
-    assert list(pr.ORDER) == ["k0", "k1", "k2", "k3", "k4", "k5"] and set(pr.ORDER) | set(pr.CONTEXT) == set(pr.GROUPS)
+    assert list(pr.ORDER) == ["k0", "k1", "k2", "k3", "k4", "k5"] and set(pr.ORDER) | set(pr.CONTEXT) | {"m0", "m1", "m4", "m6", "m7", "m8", "m9"} == set(pr.GROUPS)
     assert list(pr.FOLLOWUP_ORDER) == ["k4", "k3", "k2", "k1", "l1", "l2", "l3", "l4", "k4"] and "l4" in out
 
 
@@ -386,3 +386,65 @@ def test_session_sh_runs_the_followup_in_the_registered_order_into_its_own_direc
     loop = next(line for line in block.splitlines() if line.strip().startswith("for g in k4"))
     assert loop.split("in", 1)[1].replace("; do", "").split() == list(pr.FOLLOWUP_ORDER)
     assert "cuda-followup" in block and "--execute" in block
+
+
+# ------------------------------------------------------------------------------------------------ follow-up M
+
+def test_the_m_session_order_and_session_sh_agree():
+    assert list(pr.ORDER_M) == ["m0", "k4", "l1", "m1", "m4", "m6", "m7", "m8", "m9"] and set(pr.ORDER_M) <= set(pr.GROUPS)
+    text = (ROOT / "benchmarks" / "cuda" / "session.sh").read_text()
+    block = text.split("pinroute3)", 1)[1].split("n3ksmoke)", 1)[0]
+    loop = next(line for line in block.splitlines() if line.strip().startswith("for g in m0"))
+    assert loop.split("in", 1)[1].replace("; do", "").split() == list(pr.ORDER_M)
+    assert "cuda-order" in block and "--execute" in block
+
+
+def test_half_copy_half_runs_one_copy_between_two_allocation_batches(bench, monkeypatch):
+    events: list[str] = []
+    orig_pinned = bench.pinned
+    monkeypatch.setattr(bench, "pinned", lambda n, seed: (events.append("alloc"), orig_pinned(n, seed))[1])
+    monkeypatch.setattr(bench, "sync", lambda: events.append("sync"))
+    orig_time = bench.time_copy
+    monkeypatch.setattr(bench, "time_copy", lambda *a, **k: (events.append("time"), orig_time(*a, **k))[1])
+    r = bench.half_copy_half(3, 1 << 16)
+    assert events[:5] == ["alloc"] * 3 + ["sync"] + ["alloc"] and r["split"] == 3 and len(r["ms"]) == 6 and r["roundtrip_ok"]
+    assert events.index("time") > max(i for i, e in enumerate(events) if e == "alloc")        # every allocation before the first timed copy
+    rows = pr.rows_half("r", "a", r)
+    validate(rows)
+    assert {"slow_share_first_half", "slow_share_second_half"} <= {x["field"] for x in rows}
+
+
+def test_copy_first_copies_once_then_allocates_in_batch(bench, monkeypatch):
+    events: list[str] = []
+    orig_pinned = bench.pinned
+    monkeypatch.setattr(bench, "pinned", lambda n, seed: (events.append(f"alloc{n}"), orig_pinned(n, seed))[1])
+    r = bench.copy_first(3, 1 << 16, small_bytes=1 << 12)
+    assert events == ["alloc4096"] + ["alloc65536"] * 3 and len(r["ms"]) == 3 and r["context"]["copy_first_bytes"] == 1 << 12 and r["context"]["batch_first"]
+
+
+def test_the_batch_first_registered_cells_make_every_buffer_before_timing_any(bench, monkeypatch):
+    events: list[str] = []
+    orig_time = bench.time_copy
+    monkeypatch.setattr(bench, "time_copy", lambda *a, **k: (events.append("time"), orig_time(*a, **k))[1])
+    orig_init = bp.MmapBuffer.__init__
+
+    def init(self, *a, **k):
+        events.append("make")
+        orig_init(self, *a, **k)
+
+    monkeypatch.setattr(bp.MmapBuffer, "__init__", init)
+    r = bench.registered_batch_cell("private", "thp", k=3, nbytes=1 << 16)
+    assert events == ["make"] * 3 + ["time"] * 3 and r["pattern"] == "batch_first" and r["advice"] == "thp" and len(r["ms"]) == 3
+    r = bench.registered_batch_cell("ordinary", "none", k=3, nbytes=1 << 16, reg_flags=0)
+    assert r["mapping"] == "ordinary" and r["reg_flags"] == 0 and len(r["ms"]) == 3
+    validate(pr.rows_route("r", "p", r))
+
+
+def test_the_batch_classification_cell_allocates_everything_before_timing(bench, monkeypatch):
+    events: list[str] = []
+    orig_pinned, orig_time = bench.pinned, bench.time_copy
+    monkeypatch.setattr(bench, "pinned", lambda n, seed: (events.append("alloc"), orig_pinned(n, seed))[1])
+    monkeypatch.setattr(bench, "time_copy", lambda *a, **k: (events.append("time"), orig_time(*a, **k))[1])
+    r = bench.classify_batch_cell(4, 2, 1 << 16, 1 << 18, 1 << 18)
+    assert events == ["alloc"] * 6 + ["time"] * 7 and r["pattern"] == "batch_first" and len(r["ms"]) == 4 and len(r["plateau_ms"]) == 2
+    validate(pr.rows_classify("r", "a", r))

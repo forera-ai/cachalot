@@ -650,7 +650,11 @@ Hamed resumed the lane on the card ("continue with online GPUs"). `docs/CUDA-ROW
 
 ### 17.36 Session K results and follow-up L (2026-10-21)
 
-`docs/CUDA-PIN-ROUTE-RESULTS.md` (records `docs/CUDA-PIN-ROUTE-RECORD.md` and `docs/CUDA-PIN-ROUTE-FOLLOWUP-RECORD.md`). On an RTX 5090: no synchronising call in the guarded issue loop; link Gen 5 throughout; allocation order, not the route, destination or stream, sets the pinned copy rate (27.5 against 51.8 GB/s); the earlier slow-class results are read in that light.
+`docs/CUDA-PIN-ROUTE-RESULTS.md` (records `docs/CUDA-PIN-ROUTE-RECORD.md` and `docs/CUDA-PIN-ROUTE-FOLLOWUP-RECORD.md`). On an RTX 5090: no synchronising call in the guarded issue loop; link Gen 5 throughout; on that instance allocation order, not the route, destination or stream, sets the pinned copy rate (27.5 against 51.8 GB/s); the earlier slow-class results are read in that light, with the limits in `docs/CUDA-PIN-PATTERN-AUDIT.md`.
+
+### 17.37 Pattern audit and follow-up M registered (2026-10-21)
+
+`docs/CUDA-PIN-PATTERN-AUDIT.md` (which earlier cells used the allocate-then-copy pattern, and the limits of 17.36) and `docs/CUDA-PIN-ORDER-RECORD.md` (M-1 to M-9, committed first): why the interleaved pattern is slow, and the huge-page, route and classification questions in the fast pattern. Built and rehearsed on the Mac; not run (needs one RTX 5090).
 
 ## 18. Honest limits
 

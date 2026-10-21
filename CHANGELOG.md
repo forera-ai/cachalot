@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.66.60 (2026-10-21)
+
+HANDOFF "Start here (2026-10-21, 0.66.60)" and sections 18.216 and 18.217; new `docs/CUDA-PIN-PATTERN-AUDIT.md`, `docs/CUDA-PIN-ORDER-RECORD.md` (nine predictions M-1 to M-9, committed first in debaddb) and `docs/DI1-SPLIT-RECORD.md` (six predictions D-1 to D-6, committed first in ad72a6e). Mac only, nothing run on a GPU or the model, nothing in `src/` but the version string.
+
+### Corrected
+- **0.66.59's headline was too strong.** An audit of every earlier cell (`docs/CUDA-PIN-PATTERN-AUDIT.md`) shows the allocate-then-copy order is a major cause of the slow pinned-copy rate on the instance measured, but not the only one: the earlier slow-population instance's batch-allocated arena read 0.349 ms, B1's batch-first curve was 17 to 38 % slow, and one slab was 14 % slow. The CHANGELOG entry of 0.66.59 keeps its wording; README, HANDOFF, the results file and the prompt now say "in part" and point to the audit. V1 (PCIe 3) and the L40S (PCIe 4 ceiling) are link-limited and not touched; N2 onward used the batch-first arena and are not affected.
+
+### Added
+- Follow-up M, registered and built (not run): `pin_route.py` groups `m0` to `m9` (the committed classification rule on the batch-first pattern at both ends, a half-copy-half cell, a copy-first cell, huge-page and ordinary registered buffers in the fast pattern), `session.sh pinroute3`, `pin_route_order_score.py`, `SESSION-RUNBOOK-PIN-ORDER.md`, 19 new tests.
+- DI-1 first measurement, registered and built (not run): `benchmarks/prefill_half_split.py` computes the encoder and decoder halves' share of a cold and a warm 4,096-token prefill from the existing per-layer marks, 5 tests on planted marks. It needs Hamed's confirmation of the estimate (about 5 to 8 minutes) and `sudo sysctl iogpu.wired_limit_mb=88064` (the Mac rebooted; the limit reads 0).
+- The ssh configs and known_hosts files of the two session K instances were deleted from `~/cachalot-private`.
+
 ## 0.66.59 (2026-10-21)
 
 HANDOFF "Start here (2026-10-21, 0.66.59)" and sections 18.214 and 18.215; results `docs/CUDA-PIN-ROUTE-RESULTS.md`, follow-up record `docs/CUDA-PIN-ROUTE-FOLLOWUP-RECORD.md` (nine predictions L-1 to L-9 committed first in ae41d43). Measurement on a second-draw RTX 5090 (`hellish-cry-4960`; the first instance had no NVIDIA driver loaded and ran nothing): CUDA session K and its follow-up. Nothing in `src/` changes but the version string.

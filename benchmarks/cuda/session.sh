@@ -3,7 +3,7 @@
 # Run from the directory the scaffold archive was unpacked into. No sudo, no system package changes, no downloads other
 # than the pinned Python wheels named below, which `setup` shows before it installs them.
 #
-#   bash benchmarks/cuda/session.sh check|setup|doctor|smoke|baseline|s2|n2smoke|n2full|backing|hugepage|n3smoke|n3full|n3bsmoke|n3bfull|n3csmoke|n3cfull|n3dsmoke|n3dfull|n3esmoke|n3ebridge|n3fsmoke|n3ffull|n3ffix|n3gsmoke|n3gfull|n3hsmoke|n3hfull|n3ismoke|n3ifull|n3jsmoke|n3jfull|pinroute|pinroute2|n3ksmoke|n3kfull|results
+#   bash benchmarks/cuda/session.sh check|setup|doctor|smoke|baseline|s2|n2smoke|n2full|backing|hugepage|n3smoke|n3full|n3bsmoke|n3bfull|n3csmoke|n3cfull|n3dsmoke|n3dfull|n3esmoke|n3ebridge|n3fsmoke|n3ffull|n3ffix|n3gsmoke|n3gfull|n3hsmoke|n3hfull|n3ismoke|n3ifull|n3jsmoke|n3jfull|pinroute|pinroute2|pinroute3|n3ksmoke|n3kfull|results
 #   (s2 = docs/CUDA-S2-EXPERIMENT-RECORD.md: overlap variants and batched expert copies; needs a clean smoke run first)
 set -euo pipefail
 
@@ -455,6 +455,17 @@ EOF7
     for g in k4 k3 k2 k1 l1 l2 l3 l4 k4; do
       SESSION_TAG="${SESSION_TAG:-L}" "$PY" "$ROOT/benchmarks/cuda/pin_route.py" run --cells "$g" --execute --max-seconds "${MAXS:-150}" \
         --out-dir "$ROOT/benchmarks/results/cuda-followup" --region "$REGION" --note "$(SESSION_TAG="${SESSION_TAG:-L}" note pinroute2-$g)" || die "pinroute2 $g failed: stop, bring the files home"
+    done
+    ;;
+
+  pinroute3)
+    # Follow-up M (docs/CUDA-PIN-ORDER-RECORD.md): the batch-first classification at both ends, the two controls, the half-copy-half and copy-first cells,
+    # huge-page and ordinary registered buffers in the fast pattern; nine fresh processes into $ROOT/benchmarks/results/cuda-order, stopping at the
+    # first failure. Run n3ksmoke afterwards for the arena cross-check (M-8). MAXS=seconds each (default 150).
+    [ -x "$PY" ] || die "run setup first"
+    for g in m0 k4 l1 m1 m4 m6 m7 m8 m9; do
+      SESSION_TAG="${SESSION_TAG:-M}" "$PY" "$ROOT/benchmarks/cuda/pin_route.py" run --cells "$g" --execute --max-seconds "${MAXS:-150}" \
+        --out-dir "$ROOT/benchmarks/results/cuda-order" --region "$REGION" --note "$(SESSION_TAG="${SESSION_TAG:-M}" note pinroute3-$g)" || die "pinroute3 $g failed: stop, bring the files home"
     done
     ;;
 

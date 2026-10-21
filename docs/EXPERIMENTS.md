@@ -1,8 +1,8 @@
 # Experiment index (charter section 7.2 and section 10)
 
-Written 2026-10-09 against runtime 0.66.59; regenerate with `benchmarks/experiment_index.py`. The charter asks for "a file of experiment records whose predictions were written before the build". The records themselves live in `docs/HANDOFF.md` section 18 (each with Baseline, Prediction, Method, Result, Explanation, Limits, Kind); this file is the index: where each record is, whether it carries a written prediction, and what kind of result it is, as its own **Kind** line says. It does not restate results. Sections before 18.75 predate the record format and are not listed; sections without a **Kind** line are listed as unlabelled and have no claim made for them here.
+Written 2026-10-09 against runtime 0.66.60; regenerate with `benchmarks/experiment_index.py`. The charter asks for "a file of experiment records whose predictions were written before the build". The records themselves live in `docs/HANDOFF.md` section 18 (each with Baseline, Prediction, Method, Result, Explanation, Limits, Kind); this file is the index: where each record is, whether it carries a written prediction, and what kind of result it is, as its own **Kind** line says. It does not restate results. Sections before 18.75 predate the record format and are not listed; sections without a **Kind** line are listed as unlabelled and have no claim made for them here.
 
-Counts of the 141 sections listed (18.75-18.215): 69 research, 22 unlabelled, 21 measurement, 15 planning, 13 engineering, 1 pricing.
+Counts of the 143 sections listed (18.75-18.217): 69 research, 22 unlabelled, 21 measurement, 17 planning, 13 engineering, 1 pricing.
 
 Research means predicted, measured and explained (charter section 8.1 rule 6); a falsified prediction is still research and is marked so in its Kind line. Engineering means it works without a written prediction, or an instrument was built.
 
@@ -10,6 +10,8 @@ Research means predicted, measured and explained (charter section 8.1 rule 6); a
 
 | section | title | prediction written | kind (as recorded) |
 |---|---|:---:|---|
+| §18.217 | DI-1 first measurement: the encoder and decoder halves of a cold prefill chunk, registered and built (0.66.60) | yes | Planning, instruments and tests (predictions committed first). No default changed, nothing measured. |
+| §18.216 | CUDA pinned-copy audit and follow-up M, registered and built (0.66.60) | yes | Planning, instruments and tests, plus an audit (predictions committed first). No default changed, nothing measured. |
 | §18.215 | CUDA session K follow-up L: allocation order makes the pinned copy fast or slow (0.66.59) | yes | Research (predicted, measured, explained as hypothesis): 8 held, 1 falsified (L-3). No default changed. |
 | §18.214 | CUDA session K on an RTX 5090: the pinning route, the issue-loop guard and the population class (0.66.59) | yes | Research (predicted, measured, explained as hypothesis): 9 held, 2 missed (K-2, K-7), 1 falsified (K-5). No default changed. |
 | §18.213 | CUDA session K: the pinning route, the issue-loop synchronisation guard and the copy-population class, registered and built (0.66.58) | yes | Planning, instruments and tests (predictions committed first, clarifications before any run). No default changed, nothing measured on a GPU. |

@@ -25,7 +25,12 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
-> ## Start here (2026-10-21, 0.66.59): the slow pinned-copy class was the harness's allocate-then-copy order: the same 24 buffers copy at 0.362 ms one at a time and at 0.192 ms allocated first; the issue loop contains no synchronising call
+> ## Start here (2026-10-21, 0.66.60): the allocation-order finding is audited (a major cause, not the only one); follow-up M and the DI-1 split are registered and built; both need Hamed
+>
+> Sections 18.216 and 18.217. `docs/CUDA-PIN-PATTERN-AUDIT.md` corrects 0.66.59's reach: on the instance measured, allocating all pinned buffers first copies at 51.8 GB/s against 27.5; but a slow-population instance's batch-allocated arena was slow (0.349 ms), B1's batch-first curve 17 to 38 % slow. **Follow-up M** (`docs/CUDA-PIN-ORDER-RECORD.md`, M-1 to M-9) separates "after a copy has run" from "while timing", and re-asks the huge-page, route and classification questions in the fast pattern: built and rehearsed, needs one RTX 5090 (about 2 minutes of GPU time). **DI-1 split** (`docs/DI1-SPLIT-RECORD.md`, D-1 to D-6): how much of a cold 4,096-token chunk is the decoder half; built and tested, **needs Hamed to confirm the estimate (5 to 8 minutes) and run `sudo sysctl iogpu.wired_limit_mb=88064`** (it reads 0 after the reboot). Priority lanes: nothing autonomous is left in Hermes, vision or speed (see the prompt); the DI-1 lever is the one that would shorten the Hermes system block's 205 to 227 s cold prefill.
+>
+
+> ## Start here (2026-10-21, 0.66.59): on this instance the slow pinned-copy rate came from the harness's allocate-then-copy order (an audit shows it is a major but not the only cause): the same 24 buffers copy at 0.362 ms one at a time and at 0.192 ms allocated first; the issue loop contains no synchronising call
 >
 > Sections 18.214 and 18.215, results `docs/CUDA-PIN-ROUTE-RESULTS.md`, records `docs/CUDA-PIN-ROUTE-RECORD.md` (K-1 to K-12) and `docs/CUDA-PIN-ROUTE-FOLLOWUP-RECORD.md` (L-1 to L-9, committed first). RTX 5090 `hellish-cry-4960` (the first instance had no driver loaded). **Measured:** allocation order, not the route, the destination or the stream, sets the rate of a pinned 9.95 MB buffer (27.5 against 51.8 GB/s); registering your own memory is 14 to 26 % faster than `cudaHostAlloc` in the slow pattern; the guarded issue loop counted 0 synchronising calls in 16,000 rows a cell and the planted control 400 of 400; the PCIe link read Gen 5 x16 in every sample. **Consequence (derived):** the "slow class" of S1, B1 and B2 and the huge-page falsification were measured only in the interleaved pattern; the committed DC-6 rule labels any instance slow until it uses the batch-first pattern. **Needs Hamed:** terminate `hellish-cry-4960` (and the first instance `giant-scarf-3095` if it still bills), enter the billed hours, delete the `k1` and `k2` ssh configs and known_hosts. First jobs: why the order matters (allocate half, copy once, allocate the rest), the huge-page and registered-route questions in the batch-first pattern, re-specify DC-6; the DeepInfer lane's Mac jobs are unchanged.
 >
@@ -9381,6 +9386,42 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 **Kind.** Engineering (a default on a prior research result).
 
 
+### 18.217 DI-1 first measurement: the encoder and decoder halves of a cold prefill chunk, registered and built (0.66.60)
+
+**Goal.** Hamed: "go for all 4 in order" (item 3: DI-1). The lane's top lever (an encoder-only prefill, derived -33 to -47 % of a cold prompt's layer passes) needs one number first: what share of a cold chunk's time is the decoder half.
+
+**Baseline (recorded and derived).** Cold prefill runs 40 layers over every 4,096-token call; 4,501 tokens in 52 s (DS-PREFILL-COLD); a Hermes system block 205 to 227 s. Saving `d x (1 - 2541 / n)` (compute-bound) or `d x (1 - 1 / passes)` (pass-bound) for decoder share `d`.
+
+**Prediction.** D-1 to D-6 of `docs/DI1-SPLIT-RECORD.md` (committed first, ad72a6e): `d` 0.40 to 0.60 cold (0.65) and warm (0.60), falsified outside 0.35 to 0.65; the decoder half starts 40 to 60 % of the reads; the marks sum to the wall within 1 %; the cold chunk takes 40 to 56 s; warm 40 to 90 % of cold.
+
+**Method.** Not run. `benchmarks/prefill_half_split.py` (reuses `profile_prefill_timeline.py`'s host-time marks, no added synchronisation) and 5 tests on planted marks. Estimate 5 to 8 minutes under `guarded_run.sh`, one process.
+
+**Result.** None.
+
+**What did not go well / limits.** The marks attribute host-observed time to the layer where the host waited; GPU work overlapping the next layer is attributed there. The wired limit reads 0 after a reboot and load was 5.3 when checked. One prompt, one machine state.
+
+**Open / needs Hamed.** Confirm the estimate; run `sudo sysctl iogpu.wired_limit_mb=88064`; close heavy applications; then the run (the command is in the script's docstring).
+
+**Kind.** Planning, instruments and tests (predictions committed first). No default changed, nothing measured.
+
+### 18.216 CUDA pinned-copy audit and follow-up M, registered and built (0.66.60)
+
+**Goal.** Hamed: "go for all 4 in order" (items 1 and 2): audit every earlier CUDA cell for the allocate-then-copy pattern, then register the next cell and build it on the Mac.
+
+**Baseline (recorded).** 18.215: 27.5 against 51.8 GB/s by allocation order on `hellish-cry-4960`.
+
+**Prediction.** M-1 to M-9 of `docs/CUDA-PIN-ORDER-RECORD.md` (committed first, debaddb): the controls separate on a new instance (0.55); a copy running before an allocation slows it (0.35, rival: all fast 0.35); huge pages and registered routes make no difference in the fast pattern (0.55, 0.50); the batch-first classification reads the instance fast at both ends (0.60) and agrees with the arena within 10 % (0.65).
+
+**Method.** Audit by reading the code and the results files, no run. Built `pin_route.py` groups `m0` to `m9`, `session.sh pinroute3`, `pin_route_order_score.py`, `SESSION-RUNBOOK-PIN-ORDER.md` and 19 tests (1,037 pass).
+
+**Result.** The audit (`docs/CUDA-PIN-PATTERN-AUDIT.md`): S1, S2, B1 `b1`, `rest` (mmap, reroll), B2 `h1` to `h7` and session K's cells used the interleaved pattern; N2 onward, B1's curve and slab used batch-first; V1 and the L40S are link-limited. The reach of 18.215 is corrected: a major cause, not the only one (a slow-population instance's batch-allocated arena was slow). The 0.66.59 wording was softened in the README, HANDOFF, results and prompt.
+
+**What did not go well / limits.** I overstated 18.215 in 0.66.59 and found it from the audit that Hamed's request asked for. The audit used recorded numbers only.
+
+**Open / needs Hamed.** One RTX 5090 (about 2 minutes of GPU time, setup the rest), `lsmod | grep nvidia` first.
+
+**Kind.** Planning, instruments and tests, plus an audit (predictions committed first). No default changed, nothing measured.
+
 ### 18.215 CUDA session K follow-up L: allocation order makes the pinned copy fast or slow (0.66.59)
 
 **Goal.** Hamed: "Register a short follow-up first (reversed order, arena-first context, predictions committed before the run), keep the instance up, then write results." The first run left the arena process's 0.194 ms source copies beside the fresh processes' 0.362 ms unexplained.
@@ -9393,7 +9434,7 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Result.** `l1` (all allocated first) 0.192 ms (51.8 GB/s) slow share 0; `l4` 0.191 ms; `l2` (arena destination) and `l3` (side stream) 0.362 ms slow share 1.0; both controls 0.362 ms; reversed-order routes within 2.0, 3.9 and 5.0 % of the first run's; ranking held. 8 of 9 held, L-3 past its falsifier.
 
-**Explanation (hypothesis).** A pinned buffer allocated after host-to-device copies have run is slower than one allocated before; not tested: page pinning or IOMMU mapping under load, a link or driver state set by the first copy, the allocator's state after a context did DMA.
+**Explanation (hypothesis).** A pinned buffer allocated after host-to-device copies have run is slower than one allocated before on this instance; the audit of 0.66.60 (`docs/CUDA-PIN-PATTERN-AUDIT.md`) adds that batch allocation was not sufficient on the earlier slow-population instance or on B1's curve, so an instance factor also exists; not tested: page pinning or IOMMU mapping under load, a link or driver state set by the first copy, the allocator's state after a context did DMA.
 
 **What did not go well / limits.** The L-2, L-3 and L-5 predictions were hedged and could not all hold; I did not predict the single-factor outcome. One instance, one torch build. The earlier results' readings are revised by derivation, not re-measured.
 
