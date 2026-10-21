@@ -1,0 +1,28 @@
+# CUDA session K runbook: the pinning route (DC-3), the issue-loop synchronisation guard (DC-5) and the committed copy-population class (DC-6) (RTX 5090)
+
+Predictions, design and stop rules: `docs/CUDA-PIN-ROUTE-RECORD.md` (twelve predictions K-1 to K-12, committed first in 735efd8; clarifications of units, the route's slow share and the pooling in its section 8, committed before any run in 3bc8d3d). The instruments are `benchmarks/cuda/pin_route.py` (groups `k0` to `k5`) and two new profiles of `overlap_arena.py` (`k-smoke`, `k-full`), driven by three new `session.sh` commands: `pinroute`, `n3ksmoke`, `n3kfull`. The earlier runbooks apply for the provider, key, private ssh config, cost log and teardown. **Nothing here starts an instance.** Hamed creates it and says go for the named live instance; the agent runs over SSH only for that one instance and never runs sudo. Cap: **1 GPU-hour** from Ready; every run passes an explicit `--max-seconds`. Estimate of GPU time: `pinroute` 3 to 6 minutes (six fresh processes), `n3ksmoke` 1 to 2, `n3kfull` 6 to 9; setup and the trace copy come before it.
+
+Which card: a **new NVIDIA RTX 5090 32 GB** instance (the Korean listing on the provider's page of 2026-10-21: 24 GB RAM, 800 GB disk, PCIe 5.0 x16; the same listing as B1, B2, N2 and the N3 stages). Why this card and not the others on that page is in the record's section 0 (no A100 or 4090 is listed; the question is about the class the RTX 5090 shows). The fallback is the V100 SXM2 16 GB; DC-5 would then need the `p8` arena. The guard profile needs the **new multi-lead trace** only (`n3d-trace.npz`, 39.8 MB, sha256 checked against `n3d-expected.json`).
+
+## Steps
+
+1. Pack from a clean commit on the Mac: `cd /Users/hamedprooshani/Projects/deepseek-v41-mac && bash benchmarks/cuda/pack.sh` (REVISION must say `dirty=0`); upload and unpack as before. Copy the trace: `scp -F ~/cachalot-private/ssh_config_NAME benchmarks/results/routing-trace-deepseek-leads/trace.npz NAME:~/cachalot-cuda/n3d-trace.npz`.
+2. **First check the instance**: `nvidia-smi` must show the GPU and driver, and `getent hosts pypi.org` must resolve. A GPU that does not initialise is replaced, and the replacement is created **before** the faulty instance is terminated. Then `bash benchmarks/cuda/session.sh check`, `setup`, `doctor`, `smoke` (all clean). Note the `nvidia-smi` line of `check` (the link generation and width at rest): the sampler of `k0`, `k4` and `k5` is read against it.
+3. **`bash benchmarks/cuda/session.sh pinroute`**: `k0`, `k1`, `k2`, `k3`, `k4`, `k5` in that order, each its own process, stopping at the first failure. Read the run manifest of each: `roundtrip` and `sanity` true, no failed cell, status complete. A registration that returned an error is reported as `unavailable` in the rows (it is a result, not a failure). Look at the `instance_class_code` row of `k0` first: it says which population this instance has (0 fast, 1 mixed, 2 slow). **If `k0` reads fast (code 0) and `k4` reads fast, the DC-3 question is not testable on this instance (record section 5): say so, finish the guard cells, and the next step is another instance, which is Hamed's call.**
+4. **`bash benchmarks/cuda/session.sh n3ksmoke`**. Read every gate of the run manifest: `event_hash`, `determinism`, `counts`, `chain2`, `readback`, `calibration`, `drift`, `closure`, `sanity`, `floor`, `rowsum` and **`guard_sees_planted`** (true), no failed cell, not truncated. Read the `sync_calls_in_issue` rows: the planted cell must show a count at about one per token; the other guarded cell the K-8 number. Note the `source_copy_ms_median` row: it is a second reading of the instance's class (K-12 and the population note of the results).
+5. Only if the smoke is clean (or a failure is understood and accepted by Hamed): `MAXS=720 bash benchmarks/cuda/session.sh n3kfull` (one run, 27 cells). A truncated run is reported as truncated.
+6. Copy back with `results` (compress the raw samples first: the instance link is about 30 KB/s), then on the Mac, with the six `pinroute` run directories under one folder and the guard run directory(ies):
+   `~/venvs/deepseek-v41/bin/python benchmarks/cuda/pin_route_score.py --pin-root PIN_RESULTS_DIR --guard N3K_RUN_DIR --json docs/cuda-results/pin-route-DATE.json`
+   The script prints K-1 to K-12 beside the registered intervals, the committed class of `k0` and `k5`, both rules' labels, the route cells' slow shares by the committed rule against the session's plateau, the guard's counts by cell with the warning sources, the guard's host cost, and the link samples. Score by hand in `docs/CUDA-PIN-ROUTE-RESULTS.md`.
+
+**Waiting on a run:** never `pgrep -f` inside the ssh command (it matches its own shell). Use `ps aux | grep '[p]in_route'` or `ps aux | grep '[o]verlap_arena'`, or read the run's log and result directory.
+
+## What to say about each outcome
+
+* A **counted synchronisation** in a guarded cell (K-8 falsified) is reported with the warning's source line from the `sources` field; it is a finding about the harness's issue loop and is **not** a statement about the cost, which the guarded and unguarded cells' `host_ms` give (K-9).
+* A **blind guard** (`guard_sees_planted` false, K-10 falsified) voids K-8 completely: report that torch's hook did not see an `.item()` on this build and stop trusting the zero.
+* **Link samples below the maximum generation** are reported with the cell they occurred in and its slow share (K-11); a sampler that reads nothing is `unavailable`, not a result.
+
+## Stop rules
+
+As the record, section 6. Housekeeping stands (delete the ssh configs, known_hosts files and key of every earlier instance; enter the billed hours).

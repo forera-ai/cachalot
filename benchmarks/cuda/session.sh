@@ -3,7 +3,7 @@
 # Run from the directory the scaffold archive was unpacked into. No sudo, no system package changes, no downloads other
 # than the pinned Python wheels named below, which `setup` shows before it installs them.
 #
-#   bash benchmarks/cuda/session.sh check|setup|doctor|smoke|baseline|s2|n2smoke|n2full|backing|hugepage|n3smoke|n3full|n3bsmoke|n3bfull|n3csmoke|n3cfull|n3dsmoke|n3dfull|n3esmoke|n3ebridge|n3fsmoke|n3ffull|n3ffix|n3gsmoke|n3gfull|n3hsmoke|n3hfull|n3ismoke|n3ifull|n3jsmoke|n3jfull|results
+#   bash benchmarks/cuda/session.sh check|setup|doctor|smoke|baseline|s2|n2smoke|n2full|backing|hugepage|n3smoke|n3full|n3bsmoke|n3bfull|n3csmoke|n3cfull|n3dsmoke|n3dfull|n3esmoke|n3ebridge|n3fsmoke|n3ffull|n3ffix|n3gsmoke|n3gfull|n3hsmoke|n3hfull|n3ismoke|n3ifull|n3jsmoke|n3jfull|pinroute|n3ksmoke|n3kfull|results
 #   (s2 = docs/CUDA-S2-EXPERIMENT-RECORD.md: overlap variants and batched expert copies; needs a clean smoke run first)
 set -euo pipefail
 
@@ -435,6 +435,36 @@ EOF7
       SESSION_TAG="${SESSION_TAG:-N3J}" "$PY" "$ROOT/benchmarks/cuda/overlap_arena.py" run --trace "$NEW" --expected "$ROOT/benchmarks/cuda/n3d-expected.json" \
         --cells j-full --execute --max-seconds "${MAXS:-720}" --region "$REGION" --note "$(SESSION_TAG="${SESSION_TAG:-N3J}" note n3jfull-$rep)" || die "n3jfull $rep failed: stop, bring the files home"
     done
+    ;;
+
+  pinroute)
+    # Session K (docs/CUDA-PIN-ROUTE-RECORD.md, SESSION-RUNBOOK-PIN-ROUTE.md): DC-3 and DC-6, six fresh processes in order (k0 classify, the
+    # three registered routes, the cudaHostAlloc control, k5 classify again), stopping at the first failure. Each cell is its own process
+    # because the allocation context is one of the variables. MAXS=seconds applies to each process (default 150).
+    [ -x "$PY" ] || die "run setup first"
+    for g in k0 k1 k2 k3 k4 k5; do
+      SESSION_TAG="${SESSION_TAG:-K}" "$PY" "$ROOT/benchmarks/cuda/pin_route.py" run --cells "$g" --execute --max-seconds "${MAXS:-150}" \
+        --region "$REGION" --note "$(SESSION_TAG="${SESSION_TAG:-K}" note pinroute-$g)" || die "pinroute $g failed: stop, bring the files home"
+    done
+    ;;
+
+  n3ksmoke)
+    # Session K, DC-5 (docs/CUDA-PIN-ROUTE-RECORD.md section 3.4): a short smoke of the k-profile (the guarded issue loop and the planted control) on the NEW trace.
+    # Read every gate of the run manifest, including guard_sees_planted, before n3kfull (SESSION-RUNBOOK-PIN-ROUTE.md).
+    [ -x "$PY" ] || die "run setup first"
+    NEW="${TRACE_NEW:-$ROOT/n3d-trace.npz}"
+    [ -f "$NEW" ] || die "new trace not found at $NEW"
+    SESSION_TAG="${SESSION_TAG:-N3K}" "$PY" "$ROOT/benchmarks/cuda/overlap_arena.py" run --trace "$NEW" --expected "$ROOT/benchmarks/cuda/n3d-expected.json" \
+      --cells k-smoke --execute --max-seconds 300 --region "$REGION" --note "$(SESSION_TAG="${SESSION_TAG:-N3K}" note n3ksmoke)" || die "n3ksmoke failed: stop, bring the files home"
+    ;;
+
+  n3kfull)
+    # One run of k-full on the new trace (27 cells; no replicate: the guard question is a count). MAXS=seconds (default 720).
+    [ -x "$PY" ] || die "run setup first"
+    NEW="${TRACE_NEW:-$ROOT/n3d-trace.npz}"
+    [ -f "$NEW" ] || die "new trace not found at $NEW"
+    SESSION_TAG="${SESSION_TAG:-N3K}" "$PY" "$ROOT/benchmarks/cuda/overlap_arena.py" run --trace "$NEW" --expected "$ROOT/benchmarks/cuda/n3d-expected.json" \
+      --cells k-full --execute --max-seconds "${MAXS:-720}" --region "$REGION" --note "$(SESSION_TAG="${SESSION_TAG:-N3K}" note n3kfull)" || die "n3kfull failed: stop, bring the files home"
     ;;
 
   results)

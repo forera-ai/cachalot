@@ -644,6 +644,10 @@ Hamed resumed the lane on the card ("continue with online GPUs"). `docs/CUDA-ROW
 
 `docs/CUDA-L40S-C-ENDS-RECORD.md` (ten predictions J-1 to J-10, committed first). Layer times 1.0 and 0.15 ms at the full copy on an L40S, with 0.6 and 0.3 ms re-measured as anchors on a second instance (instance stability). Built and rehearsed on the Mac (`j-smoke`, `j-full`, `l40s_c_ends_score.py`, `SESSION-RUNBOOK-L40S-C-ENDS.md`); not run on a GPU. Run on a second L40S (`docs/CUDA-L40S-C-ENDS-RESULTS.md`): 0.15 ms did not calibrate (L2 cliff), 0.2 ms replaced it; the slope is nearly flat (0.086 to 0.108, ratio 1.25 and 1.16 against the 5090's 2.42), so the 5090's C dependence is absent on this card by the registered rule; the two L40S instances agree. 9 held, 1 falsified.
 
+### 17.35 Session K prepared: the pinning route, the issue-loop guard, the population class (2026-10-21)
+
+`docs/CUDA-PIN-ROUTE-RECORD.md` (twelve predictions K-1 to K-12, committed first). DC-3 (does `cudaHostAlloc` against `cudaHostRegister` with the portable flag, with flag 0, and on ordinary allocator memory change the copy class of a 9.95 MB buffer), DC-5 (a torch sync-debug window around the issue part of every row, with a planted control) and DC-6 (a classification rule committed before the run, applied at the start and the end, plus a link-generation sampler). Built and rehearsed on the Mac (`pin_route.py`, `k-smoke`, `k-full`, `pin_route_score.py`); not run. The provider's list of 2026-10-21 has no A100 or RTX 4090, so it needs one RTX 5090 instance.
+
 ## 18. Honest limits
 
 - This is a plan. No hypothesis in it has been tested; every "expected" device property is vendor-derived and unverified for the rented machine.

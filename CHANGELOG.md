@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.66.58 (2026-10-21)
+
+HANDOFF "Start here (2026-10-21, 0.66.58)" and section 18.213; new record `docs/CUDA-PIN-ROUTE-RECORD.md` (twelve predictions K-1 to K-12, committed first in 735efd8, clarifications before any run in 3bc8d3d). Planning, instruments and tests on the Mac for CUDA session K, the three cheapest items of the DeepInfer lane's CUDA techniques (DC-3, DC-5, DC-6). Nothing was run on a GPU, no instance exists, and nothing in `src/` changes but the version string.
+
+### Added
+- `benchmarks/cuda/pin_route.py` (groups `k0` to `k5`, each its own process): DC-3, whether the pinning route sets the copy class of a 9.95 MB host buffer (`cudaHostAlloc` as the control, a self-made aligned mapping registered with the portable flag and with flag 0, ordinary allocator memory registered with flag 0); DC-6, a classification rule committed before the run (a buffer is slow below 0.75 x the 64 MiB plateau rate; the instance is fast, mixed or slow), applied at the start and the end of the session beside a 256 MiB device copy and a read-only `nvidia-smi` link-generation sampler.
+- `benchmarks/cuda/overlap_arena.py`: `SyncGuard` and profiles `k-smoke` and `k-full` (27 cells a run), DC-5: the issue part of every row runs inside torch's sync debug mode (`warn`) with the warnings counted, a planted `.item()` cell as the guard's own control and a gate (`guard_sees_planted`) that fails a blind guard.
+- `benchmarks/cuda/backing_probe.py`: the `cudaHostRegister` flag is a parameter (default unchanged, the portable flag B1 and B2 used).
+- `benchmarks/cuda/pin_route_score.py`, `session.sh pinroute|n3ksmoke|n3kfull`, `SESSION-RUNBOOK-PIN-ROUTE.md`, `tests/test_cuda_pin_route.py` and `tests/test_cuda_pin_route_score.py` (47 tests; 1,000 pass), including a hidden synchronisation planted in the issue loop (counted with its source line), a blind guard tripping its own gate, and every classification and scoring branch on planted runs.
+
+### Decided from the provider's list
+- The list Hamed showed on 2026-10-21 has no A100 or RTX 4090 (L40S, V100 SXM3, V100 SXM2 16 GB, RTX 5090); the three items are about the slow and fast copy classes only the RTX 5090 has shown, so the session is prepared for a new RTX 5090 instance (record section 0).
+
+### Measured, not shipped
+- Nothing. No predicted number was measured; the record's twelve intervals await a go and an instance.
+
 ## 0.66.57 (2026-10-21)
 
 HANDOFF "Start here (2026-10-21, 0.66.57)" and section 18.212; new lane file `docs/DEEPINFER-LEVER-LANE.md`. Documentation only: a full read of `github.com/deepseek-ai/DeepInfer` (commit `774ce24`, Apache-2.0) and of the V4.1 technical report in the checkpoint directory, turned into a lever checklist (DI-1 to DI-9 for the runtime, DM-1 to DM-12 for methods, DC-1 to DC-9 for the CUDA lane). Nothing was run, built or measured, and nothing in `src/` changes but the version string.

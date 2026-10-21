@@ -208,10 +208,12 @@ class MmapBuffer:
     """Anonymous memory this process maps, 2 MiB aligned and rounded up to whole 2 MiB extents, optionally advised, touched,
     and registered as pinned. `advice` is 'thp' (MADV_HUGEPAGE), 'nothp' (MADV_NOHUGEPAGE) or 'default' (none)."""
 
-    def __init__(self, bench, nbytes: int, advice: str, seed_tensor, mapping: str = "shared", populate: bool = False):
+    def __init__(self, bench, nbytes: int, advice: str, seed_tensor, mapping: str = "shared", populate: bool = False,
+                 reg_flags: int = 1):
         """`mapping` 'shared' is what B1 used (Python's default MAP_SHARED: shared anonymous memory, whose huge pages follow
         `shmem_enabled`); 'private' is MAP_PRIVATE|MAP_ANONYMOUS (anonymous memory, whose huge pages follow `enabled`).
-        `populate` makes the pages with madvise(MADV_POPULATE_WRITE) before the content is written."""
+        `populate` makes the pages with madvise(MADV_POPULATE_WRITE) before the content is written. `reg_flags` is the
+        `cudaHostRegister` flag word (1 = portable, what B1 and B2 used; 0 = DeepInfer's call, session K)."""
         torch = bench.torch
         self.bench, self.nbytes, self.advice, self.mapping = bench, nbytes, advice, mapping
         self.registered = ((nbytes + HUGE - 1) // HUGE) * HUGE
@@ -250,7 +252,7 @@ class MmapBuffer:
         self.smaps_register = None
         if not bench.rehearsal:
             try:
-                bench.register(self.address, self.registered)
+                bench.register(self.address, self.registered, reg_flags)
                 self.is_registered = True
             except Exception as exc:                                   # recorded, never fatal for the session
                 self.register_error = f"{type(exc).__name__}: {str(exc)[:120]}"
@@ -308,9 +310,9 @@ class BackingBench:
         if not self.rehearsal:
             self.torch.cuda.synchronize()
 
-    def register(self, address: int, nbytes: int) -> None:
+    def register(self, address: int, nbytes: int, flags: int = 1) -> None:
         fn = self._lib.cudaHostRegister if self._lib is not None else self._cudart.cudaHostRegister
-        r = int(fn(address, nbytes, 1))                                # 1 = cudaHostRegisterPortable
+        r = int(fn(address, nbytes, flags))                            # flags 1 = cudaHostRegisterPortable, 0 = none
         if r != 0:
             raise RuntimeError(f"cudaHostRegister returned {r}")
 
@@ -390,7 +392,7 @@ class BackingBench:
         return {"ms": ms, "huge_fraction": frac, "roundtrip_ok": ok, "errors": sorted(set(errors)), "nbytes": nbytes}
 
     def private_cell(self, advice: str, mapping: str = "private", populate: bool = False, k: int = 16,
-                     nbytes: int = RECORD_BYTES, deadline: suite.Deadline | None = None) -> dict:
+                     nbytes: int = RECORD_BYTES, deadline: suite.Deadline | None = None, reg_flags: int = 1) -> dict:
         """B2 cells H1 to H5: k buffers on a self-made mapping, each timed alone, smaps read after the content is made, after
         registration and after the timed copies (three points per buffer; arrays aligned with `ms`)."""
         dev = self.dev_buffer(nbytes)
@@ -400,7 +402,7 @@ class BackingBench:
         for _ in range(k):
             if deadline is not None and deadline.expired():
                 break
-            mb = MmapBuffer(self, nbytes, advice, seed, mapping=mapping, populate=populate)
+            mb = MmapBuffer(self, nbytes, advice, seed, mapping=mapping, populate=populate, reg_flags=reg_flags)
             bufs.append(mb)
             for e in (mb.advice_error, mb.populate_error, mb.register_error):
                 if e:
@@ -417,7 +419,7 @@ class BackingBench:
         for mb in bufs:
             mb.release()
         return {"ms": ms, "smaps": points, "roundtrip_ok": ok, "errors": sorted(set(errors)), "nbytes": nbytes,
-                "registered": registered, "mapping": mapping, "advice": advice, "populate": populate,
+                "registered": registered, "mapping": mapping, "advice": advice, "populate": populate, "reg_flags": reg_flags,
                 "unavailable": unavailable}
 
     def prefix_cell(self, small_sizes=(MIB, 3 * MIB), k_small: int = 16, k: int = 48, nbytes: int = RECORD_BYTES,

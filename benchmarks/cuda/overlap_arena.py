@@ -38,6 +38,7 @@ import hashlib
 import json
 import sys
 import time
+import warnings
 from collections import OrderedDict
 from pathlib import Path
 
@@ -522,6 +523,24 @@ def cell_defs(profile: str) -> list[dict]:
     if profile == "j-rehearsal":
         return [{"id": "p17j", "percent": 17, "slots": 40, "tokens": 6, "plan": [
             {"level": 3, "c": 0.05, "arms": ("N", "D", "P0L", "N"), "rows": True}, {"level": 4, "c": 0.05, "arms": ("N", "D", "P0L", "N")}]}]
+    if profile == "k-smoke":                             # session K, DC-5 (record CUDA-PIN-ROUTE): a short GPU smoke of the guard, one guarded set and the planted control
+        arms4 = ("N", "D", "P0L", "N")
+        return [{"id": "p17k", "percent": 17, "tokens": 40, "plan": [
+            {"level": 3, "c": 1.0, "arms": arms4, "guard": True},
+            {"level": 4, "c": 0.3, "arms": ("N", "P0L", "N"), "guard": True, "planted": True}]}]
+    if profile == "k-full":                              # record CUDA-PIN-ROUTE section 3.4: 27 cells, one run
+        arms4 = ("N", "D", "P0L", "N")
+        return [{"id": "p17k", "percent": 17, "tokens": DECODE_TOKENS, "plan": [
+            {"level": 3, "c": 1.0, "arms": arms4, "rows": True}, {"level": 3, "c": 1.0, "arms": arms4, "guard": True},
+            {"level": 4, "c": 1.0, "arms": arms4}, {"level": 4, "c": 1.0, "arms": arms4, "guard": True},
+            {"level": 4, "c": 0.3, "arms": arms4}, {"level": 4, "c": 0.3, "arms": arms4, "guard": True},
+            {"level": 4, "c": 0.3, "arms": ("N", "P0L", "N"), "guard": True, "planted": True}]}]
+    if profile == "k-rehearsal":
+        arms4 = ("N", "D", "P0L", "N")
+        return [{"id": "p17k", "percent": 17, "slots": 40, "tokens": 6, "plan": [
+            {"level": 3, "c": 0.05, "arms": arms4, "rows": True}, {"level": 3, "c": 0.05, "arms": arms4, "guard": True},
+            {"level": 4, "c": 0.05, "arms": arms4}, {"level": 4, "c": 0.05, "arms": arms4, "guard": True},
+            {"level": 4, "c": 0.05, "arms": ("N", "P0L", "N"), "guard": True, "planted": True}]}]
     if profile == "f-rehearsal":
         return [{"id": "p17", "percent": 17, "slots": 40, "tokens": 6, "plan": [
             {"level": 3, "c": 0.05, "arms": ("N", "D", "P0L", "N"), "rows": True}, {"level": 6, "c": 0.05, "arms": ("N", "D", "P0L", "N")},
@@ -543,9 +562,11 @@ def cells_of(group: dict) -> list[dict]:
         for entry in group["plan"]:
             for pos, arm in enumerate(entry["arms"]):
                 role = "N0" if (arm == "N" and pos == 0) else ("N1" if arm == "N" else arm)
-                out.append({"id": f"{group['id']}.L{entry['level']}.C{entry['c']}.{role}", "group": group["id"], "percent": group["percent"],
+                tag = (".GP" if entry.get("planted") else ".G") if entry.get("guard") else ""
+                out.append({"id": f"{group['id']}.L{entry['level']}.C{entry['c']}{tag}.{role}", "group": group["id"], "percent": group["percent"],
                             "tokens": group["tokens"], "c": entry["c"], "arm": arm, "role": role, "level": entry["level"],
-                            "rows": bool(entry.get("rows", False))})
+                            "rows": bool(entry.get("rows", False)), "guard": bool(entry.get("guard", False)),
+                            "planted": bool(entry.get("planted", False))})
         return out
     for c in group["c_values"]:
         for pos, arm in enumerate(group["arms"]):
@@ -821,8 +842,91 @@ class OverlapArena(ra.TorchArena):
     def sync_compute(self, ev) -> None:
         ev.synchronize()
 
+    def plant_sync(self) -> None:
+        """The DC-5 control: one deliberate host read of a device scalar (`.item()`), which torch reports as a synchronising operation."""
+        if getattr(self, "_scratch", None) is None:
+            self._scratch = self.t.zeros(1, device=self.dev_name)
+        int(self._scratch.item())
+
     def elapsed(self, a, b) -> float:
         return a.elapsed_time(b)
+
+
+# ------------------------------------------------------------------------------------------------ the issue-loop synchronisation guard (DC-5)
+
+class SyncGuard:
+    """Session K (docs/CUDA-PIN-ROUTE-RECORD.md, DC-5): counts the synchronising CUDA operations that torch reports while the guard's window
+    is open. `open()` and `close()` bracket the issue part of a row (from the row's bookkeeping to just before the router synchronisation);
+    the mode is `warn`, not `error`, so a violation cannot leave a half-issued row. The warnings are captured for the whole cell
+    (`with guard:`). `planted=True` adds one deliberate synchronisation per token inside the window (the guard's own control).
+    `set_mode` is injectable for the Mac tests (the CPU build of torch has no `set_sync_debug_mode`); `rehearsal=True` plants a stand-in
+    synchronisation that warns the same way when the window is open."""
+
+    TEXT = "synchronizing CUDA operation"
+
+    def __init__(self, torch=None, planted: bool = False, rehearsal: bool = False, set_mode=None):
+        self.planted, self.rehearsal = planted, rehearsal
+        self._set = set_mode if set_mode is not None else (lambda mode: torch.cuda.set_sync_debug_mode(mode))
+        self._catch = None
+        self._rec: list = []
+        self._is_open = False
+        self.rows = 0
+        self.planted_calls = 0
+        self._seen = 0
+        self.token_hits: list[int] = []                    # synchronisation warnings in each token's window
+
+    def __enter__(self):
+        self._catch = warnings.catch_warnings(record=True)
+        self._rec = self._catch.__enter__()
+        warnings.simplefilter("always")
+        return self
+
+    def __exit__(self, *exc):
+        try:
+            self._set("default")
+        finally:
+            self._catch.__exit__(*exc)
+        return False
+
+    def open(self) -> None:
+        self._set("warn")
+        self._is_open = True
+        self.rows += 1
+
+    def close(self) -> None:
+        self._set("default")
+        self._is_open = False
+
+    def fake_sync(self) -> None:
+        """A stand-in for a synchronising call on the CPU rehearsal: warns exactly when the window is open."""
+        if self._is_open:
+            warnings.warn(f"called a {self.TEXT}", UserWarning, stacklevel=2)
+
+    def plant(self, arena) -> None:
+        self.planted_calls += 1
+        if self.rehearsal:
+            self.fake_sync()
+        else:
+            arena.plant_sync()
+
+    def _hits(self) -> list:
+        return [w for w in self._rec if self.TEXT in str(w.message)]
+
+    def token_end(self) -> None:
+        hits = self._hits()
+        self.token_hits.append(len(hits) - self._seen)
+        self._seen = len(hits)
+
+    def summary(self) -> dict:
+        hits = self._hits()
+        where = {}
+        for w in hits:
+            key = f"{Path(w.filename).name}:{w.lineno}"
+            where[key] = where.get(key, 0) + 1
+        return {"calls": len(hits), "guarded_rows": self.rows, "tokens": len(self.token_hits),
+                "tokens_with_hit": sum(1 for h in self.token_hits if h > 0), "planted": self.planted, "planted_calls": self.planted_calls,
+                "sources": dict(sorted(where.items(), key=lambda kv: -kv[1])[:8]),
+                "first_message": str(hits[0].message)[:200] if hits else None, "token_hits": self.token_hits[:2000]}
 
 
 # ------------------------------------------------------------------------------------------------ the timed replay
@@ -913,7 +1017,8 @@ def make_book(slots: int, n_layers: int, mode: str, level: int):
 
 
 def run_cell(arrays, slots: int, n_layers: int, arena: OverlapArena, arm: str, *, level: int = 0, max_decode_tokens: int | None = None,
-             readback_every: int = ra.READBACK_EVERY, deadline: suite.Deadline | None = None, seed: int = 0, row_detail: bool = False) -> dict:
+             readback_every: int = ra.READBACK_EVERY, deadline: suite.Deadline | None = None, seed: int = 0, row_detail: bool = False,
+             sync_guard: SyncGuard | None = None) -> dict:
     """The timed replay of one arm at one level. `N`: stand-in plus per-layer synchronization only. Otherwise the bookkeeping and
     copies of the arm (N3 record section 3, stage B record section 3 for the levels). Prefill admissions populate the arena untimed.
     Token 0 is a warm-up and is excluded from the timing statistics (not from the counts).
@@ -921,7 +1026,8 @@ def run_cell(arrays, slots: int, n_layers: int, arena: OverlapArena, arm: str, *
     Levels (cumulative): 0 stage A as run; 1 no digest; 2 lean bookkeeping; 3 pre-built slot views; 4 bare (only the events
     correctness needs, no per-layer breakdown); 5 the layer as one CUDA-graph replay (when `arena.use_graph`); 6 level 3 plus an event
     after every copy (row timing, `docs/CUDA-ROW-TIMING-RECORD.md`: implies `row_detail`).
-    `row_detail` (levels 0 to 3 and 6, arms with a book) also returns every event of every token as a per-row record (`detail_record`)."""
+    `row_detail` (levels 0 to 3 and 6, arms with a book) also returns every event of every token as a per-row record (`detail_record`).
+    `sync_guard` (session K, DC-5): the issue part of every row runs inside the guard's window (its cost is part of those cells)."""
     mode = ARM_MODE.get(arm)
     pred = predicted_lookup(arrays, mode) if mode and mode_parts(mode)[0] == "pred" else {}
     plan = decode_plan(arrays, max_decode_tokens)
@@ -1002,6 +1108,8 @@ def run_cell(arrays, slots: int, n_layers: int, arena: OverlapArena, arm: str, *
             arena.rec_compute(arena.tok_start[parity])
         for pos, idx in enumerate(rows):
             h0 = perf()
+            if sync_guard is not None:
+                sync_guard.open()
             _, _t, layer, experts, _p = plan[idx]
             demand_loads: list = []
             pf_loads: list = []
@@ -1056,12 +1164,18 @@ def run_cell(arrays, slots: int, n_layers: int, arena: OverlapArena, arm: str, *
                 arena.enqueue(pf_loads)
                 arena.rec_copy(ev["pf_b"][pos])
                 had_pf[pos] = True
+            if sync_guard is not None:
+                if sync_guard.planted and pos == 0:
+                    sync_guard.plant(arena)
+                sync_guard.close()
             host_s += perf() - h0
             if det is not None:
                 det["npf"][pos] = len(pf_loads)
             carry_pf = len(pf_loads)
             arena.sync_compute(ev["end"][pos])            # the router synchronization
         wall = (perf() - w0) * 1e3
+        if sync_guard is not None:
+            sync_guard.token_end()
         if instr:
             rec = (parity, n, had_demand, had_pf, wall, host_s * 1e3, tok, det)
             if pending_records is not None:
@@ -1170,6 +1284,13 @@ def cell_rows(run_id: str, cell: dict, res: dict, hash_ok: bool | None, calib: d
             rows.append(mf.row(run_id, arm, field, b[key], "count", "measured", source="replay bookkeeping", n=b["tokens"]))
         if hash_ok is not None:
             rows.append(mf.row(run_id, arm, "event_hash_equals_expected", 1 if hash_ok else 0, "bool", "measured", source="gate (a)"))
+    sg = res.get("sync_guard")
+    if sg is not None:
+        note = f"sources {sg['sources']}; first: {sg['first_message']}" if sg["calls"] else "no synchronising call counted"
+        rows.append(mf.row(run_id, arm, "sync_calls_in_issue", sg["calls"], "count", "measured", source="torch sync debug mode (warn) over the issue window",
+                           n=sg["guarded_rows"], note=note[:300]))
+        rows.append(mf.row(run_id, arm, "sync_tokens_with_hit", sg["tokens_with_hit"], "count", "measured", source="tokens whose issue windows counted a call",
+                           n=sg["tokens"], note="planted control" if sg["planted"] else "guarded"))
     rows.append(mf.row(run_id, arm, "readback_failures", res["readback_failures"], "count", "measured", source="gate (b)", n=res["readbacks"]))
     rows.append(mf.row(run_id, arm, "calibration_error", calib["error"], "fraction", "measured", source="gate (c): stand-in pair alone against C",
                        note=f"{calib['bytes']} weight bytes, capped={calib['capped']}"))
@@ -1216,7 +1337,7 @@ def file_sha(path) -> str:
 
 
 def cmd_plan(args) -> int:
-    for prof in ("smoke", "full", "b-smoke", "b-full", "c-smoke", "c-full", "d-smoke", "d-full", "e-smoke", "e-full", "f-smoke", "f-full", "f-fix", "g-smoke", "g-full", "h-smoke", "h-full", "i-smoke", "i-full", "j-smoke", "j-full"):
+    for prof in ("smoke", "full", "b-smoke", "b-full", "c-smoke", "c-full", "d-smoke", "d-full", "e-smoke", "e-full", "f-smoke", "f-full", "f-fix", "g-smoke", "g-full", "h-smoke", "h-full", "i-smoke", "i-full", "j-smoke", "j-full", "k-smoke", "k-full"):
         for g in cell_defs(prof):
             slots = ra.slots_for(g["percent"])
             cs = cells_of(g)
@@ -1331,7 +1452,8 @@ def run_group(arrays_full, group: dict, expected: dict | None, run_id: str, dl: 
                 rows.append(mf.row(run_id, f"n3.{label}.C{c}", "graph_unavailable", None, "text", "unavailable", source="CUDA graph",
                                    note=(arena.standin.graph_error or "graph replay time outside the calibration tolerance")[:150]))
                 continue
-        cs = [x for x in cells_of(group) if x["c"] == c and x.get("level", 0) == level]
+        cs = [x for x in cells_of(group) if x["c"] == c and x.get("level", 0) == level and x.get("guard", False) == bool(entry.get("guard", False))
+              and x.get("planted", False) == bool(entry.get("planted", False)) and x.get("rows", False) == bool(entry.get("rows", False))]
         walls: dict[str, float] = {}
         busy: dict[str, float] = {}
         for cell in cs:
@@ -1358,8 +1480,23 @@ def run_group(arrays_full, group: dict, expected: dict | None, run_id: str, dl: 
                         failures.append({"cell": cell["id"], "error": "event hash differs from the Mac reference"})
                         continue
                 cap = suite.Deadline(min(HARD_CELL_SECONDS, max(1.0, dl.remaining())))
-                res = run_cell(arrays_full, slots, nl, arena, cell["arm"], level=level, max_decode_tokens=cell["tokens"], deadline=cap,
-                               readback_every=readback_every, row_detail=cell.get("rows", False))
+                if cell.get("guard"):
+                    guard = SyncGuard(arena.t, planted=cell.get("planted", False), rehearsal=rehearsal,
+                                      set_mode=(lambda mode: None) if rehearsal else None)
+                    with guard:
+                        res = run_cell(arrays_full, slots, nl, arena, cell["arm"], level=level, max_decode_tokens=cell["tokens"], deadline=cap,
+                                       readback_every=readback_every, row_detail=cell.get("rows", False), sync_guard=guard)
+                    res["sync_guard"] = guard.summary()
+                    if cell.get("planted") and cell["arm"] != "N":                     # the guard's own control: it must see the planted sync
+                        sg = res["sync_guard"]
+                        gates.setdefault("guard_sees_planted", True)
+                        seen = sg["tokens"] > 0 and sg["tokens_with_hit"] >= 0.95 * sg["tokens"]
+                        gates["guard_sees_planted"] &= seen
+                        if not seen:
+                            failures.append({"cell": cell["id"], "error": f"the guard saw the planted synchronisation in {sg['tokens_with_hit']} of {sg['tokens']} tokens"})
+                else:
+                    res = run_cell(arrays_full, slots, nl, arena, cell["arm"], level=level, max_decode_tokens=cell["tokens"], deadline=cap,
+                                   readback_every=readback_every, row_detail=cell.get("rows", False))
                 if mode is not None:
                     again = bookkeeping_pass_pf(arrays_full, slots, nl, mode, cell["tokens"])
                     b = res["book"]
@@ -1393,6 +1530,8 @@ def run_group(arrays_full, group: dict, expected: dict | None, run_id: str, dl: 
                         busy[cell["role"]] = p50([t["busy_ms"] for t in toks])
                 raw[cell["id"]] = {"wall_ms": [t["wall_ms"] for t in res["tokens"]], "host_ms": [t["host_ms"] for t in res["tokens"]],
                                    "closure": cl}
+                if "sync_guard" in res:
+                    raw[cell["id"]]["sync_guard"] = res["sync_guard"]
                 if any("rows" in t for t in res["tokens"]):
                     raw[cell["id"]].update({"tok": [t["tok"] for t in res["tokens"]], "row_fields": list(ROW_FIELDS),
                                             "rows": [t.get("rows") for t in res["tokens"]], "copy_fields": list(COPY_FIELDS),
@@ -1457,7 +1596,7 @@ def cmd_run(args) -> int:
     with np.load(args.trace) as data:
         full = {k: data[k] for k in data.files if k != "segments"}
     stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
-    stage = {"j": "n3j", "i": "n3i", "h": "n3h", "g": "n3g", "f": "n3f", "e": "n3e", "d": "n3d", "c": "n3c", "b": "n3b"}.get(args.cells[:1] if args.cells[1:2] == "-" else "", "n3a")
+    stage = {"k": "n3k", "j": "n3j", "i": "n3i", "h": "n3h", "g": "n3g", "f": "n3f", "e": "n3e", "d": "n3d", "c": "n3c", "b": "n3b"}.get(args.cells[:1] if args.cells[1:2] == "-" else "", "n3a")
     run_id = f"{stamp}-{stage}-{args.cells}-{report['manifest_id'][:6]}"
     out = Path(args.out_dir) / run_id
     out.mkdir(parents=True, exist_ok=True)
@@ -1487,7 +1626,7 @@ def cmd_run(args) -> int:
     manifest = {
         "schema": mf.SCHEMA_NAME, "schema_version": mf.SCHEMA_VERSION, "platform": mf.PLATFORM, "kind": "run",
         "created_utc": mf.utc_now(), "machine_manifest_id": report["manifest_id"], "run_id": run_id,
-        "instrument": {"name": "benchmarks/cuda/overlap_arena.py", "version": {"n3j": "N3J-1", "n3i": "N3I-1", "n3h": "N3H-1", "n3g": "N3G-1", "n3f": "N3F-1", "n3e": "N3E-1", "n3d": "N3D-1", "n3c": "N3C-1", "n3b": "N3B-1"}.get(stage, "N3A-1")}, "code": report["code"], "mode": "timing",
+        "instrument": {"name": "benchmarks/cuda/overlap_arena.py", "version": {"n3k": "N3K-1", "n3j": "N3J-1", "n3i": "N3I-1", "n3h": "N3H-1", "n3g": "N3G-1", "n3f": "N3F-1", "n3e": "N3E-1", "n3d": "N3D-1", "n3c": "N3C-1", "n3b": "N3B-1"}.get(stage, "N3A-1")}, "code": report["code"], "mode": "timing",
         "workload": {"id": f"N3-stage{stage[-1].upper()}-{args.cells}", "class": "N3 layer-ahead prefetch with a stand-in compute and real copies (no model)",
                      "trace_sha256": expected["trace_sha256"], "record_bytes": ra.RECORD_BYTES, "source_records": ra.SOURCE_RECORDS,
                      "policy": "lru", "claims": "overlap mechanics only: exposed copy time against compute window, copy-lane saturation, interference"},
@@ -1517,7 +1656,7 @@ def main(argv=None) -> int:
     r = sub.add_parser("run")
     r.add_argument("--trace", required=True)
     r.add_argument("--expected", required=True)
-    r.add_argument("--cells", choices=("smoke", "full", "b-smoke", "b-full", "c-smoke", "c-full", "d-smoke", "d-full", "e-smoke", "e-full", "f-smoke", "f-full", "f-fix", "g-smoke", "g-full", "h-smoke", "h-full", "i-smoke", "i-full", "j-smoke", "j-full"), required=True)
+    r.add_argument("--cells", choices=("smoke", "full", "b-smoke", "b-full", "c-smoke", "c-full", "d-smoke", "d-full", "e-smoke", "e-full", "f-smoke", "f-full", "f-fix", "g-smoke", "g-full", "h-smoke", "h-full", "i-smoke", "i-full", "j-smoke", "j-full", "k-smoke", "k-full"), required=True)
     r.add_argument("--execute", action="store_true")
     r.add_argument("--max-seconds", type=float, default=1500.0)
     r.add_argument("--out-dir", default=str(Path(__file__).resolve().parents[1] / "results" / "cuda"))

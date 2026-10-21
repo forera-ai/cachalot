@@ -1,0 +1,337 @@
+"""Session K (Mac only; record docs/CUDA-PIN-ROUTE-RECORD.md): the committed classification rule, the DC-3 route cells and the DC-5 guard,
+every one through the code path the GPU session runs on the CPU rehearsal (never a CUDA number)."""
+import json
+import sys
+import types
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "benchmarks" / "cuda"))
+sys.path.insert(0, str(ROOT / "tests"))
+
+import backing_probe as bp  # noqa: E402
+import manifest as mf  # noqa: E402
+import overlap_arena as oa  # noqa: E402
+import pin_route as pr  # noqa: E402
+import suite  # noqa: E402
+
+from test_cuda_overlap_arena import _gates, synth  # noqa: E402
+
+torch = pytest.importorskip("torch")
+
+
+def validate(rows):
+    assert rows and all(mf.validate_row(r) == [] for r in rows), [mf.validate_row(r) for r in rows if mf.validate_row(r)]
+
+
+# ------------------------------------------------------------------------------------------------ DC-6: the committed rule
+
+def test_the_rule_labels_buffers_against_the_64_mib_plateau():
+    plateau_ms = [64 * 2**20 / 52e9 * 1e3, 64 * 2**20 / 40e9 * 1e3, 64 * 2**20 / 51e9 * 1e3]      # fastest 52 GB/s
+    fast_ms, slow_ms = bp.RECORD_BYTES / 54.6e9 * 1e3, bp.RECORD_BYTES / 27.7e9 * 1e3
+    c = pr.classify_buffers([fast_ms] * 11 + [slow_ms], plateau_ms)
+    assert c["plateau_gbps"] == pytest.approx(52.0, rel=1e-6)
+    assert c["slow"] == [False] * 11 + [True] and c["slow_count"] == 1 and c["instance_class"] == "fast"
+    assert pr.classify_buffers([slow_ms] * 12, plateau_ms)["instance_class"] == "slow"
+    assert pr.classify_buffers([slow_ms] * 11 + [fast_ms], plateau_ms)["instance_class"] == "slow"
+    assert pr.classify_buffers([fast_ms] * 6 + [slow_ms] * 6, plateau_ms)["instance_class"] == "mixed"
+    # exactly at the threshold is not slow (rate below 0.75 x plateau is)
+    edge = bp.RECORD_BYTES / (0.75 * 52e9) * 1e3
+    assert pr.classify_buffers([edge], plateau_ms)["slow"] == [False]
+    assert pr.classify_buffers([edge * 1.001], plateau_ms)["slow"] == [True]
+
+
+def test_no_plateau_or_no_buffers_is_unavailable_not_a_class():
+    assert pr.classify_buffers([0.2] * 12, [])["instance_class"] == "unavailable"
+    assert pr.classify_buffers([], [1.0])["instance_class"] == "unavailable"
+    assert pr.instance_class([]) == "unavailable"
+
+
+def test_the_class_scales_with_the_buffer_count_for_the_mac_rehearsal():
+    assert pr.instance_class([False] * 4) == "fast" and pr.instance_class([True] * 4) == "slow"
+    assert pr.instance_class([True, False, True, False]) == "mixed"
+
+
+def test_label_agreement_between_the_two_rules():
+    assert pr.label_agreement([True, False, False], [True, False, True]) == pytest.approx(2 / 3)
+    assert pr.label_agreement([], []) is None and pr.label_agreement([True], [True, False]) is None
+
+
+def test_the_stream_rule_needs_more_than_15_percent_and_more_than_3_microseconds():
+    # 256 MiB read plus write: 1,517 GB/s is 354 microseconds a copy
+    assert pr.stream_changed(1517.0, 1517.0) is False
+    assert pr.stream_changed(1517.0, 1517.0 * 0.90) is False          # 10 %: below the relative threshold
+    assert pr.stream_changed(1517.0, 1517.0 * 0.80) is True           # 25 % slower, 88 microseconds
+    assert pr.stream_changed(100000.0, 100000.0 * 0.80, nbytes=1 << 10) is False   # a 20 % change of a 20 ns copy is under 3 microseconds
+
+
+def test_the_link_sampler_lines_are_summarised_and_garbage_is_skipped():
+    s = pr.parse_link_lines("pcie.link.gen.current, pcie.link.width.current\n5, 16\n5, 16\n4, 16\nnot a line\n\n")
+    assert s["samples"] == 3 and s["gens"] == {"4": 1, "5": 2} and s["widths"] == {"16": 3} and s["min_gen"] == 4 and s["max_gen"] == 5
+    assert pr.parse_link_lines("")["samples"] == 0 and pr.parse_link_lines("")["max_gen"] is None
+    rows = pr.rows_link("r", "a", s)
+    validate(rows)
+    assert next(r for r in rows if r["field"] == "link_samples_below_max_gen")["value"] == 1
+
+
+def test_the_link_sampler_reports_unavailable_when_nvidia_smi_is_missing(monkeypatch):
+    monkeypatch.setattr(pr.shutil, "which", lambda name: None)
+    sm = pr.LinkSampler()
+    sm.start()
+    out = sm.stop()
+    assert out["samples"] == 0 and "nvidia-smi" in out["unavailable"]
+    rows = pr.rows_link("r", "a", out)
+    validate(rows)
+    assert rows[0]["tag"] == "unavailable" and rows[0].get("value") is None
+
+
+class _FakeProc:
+    def __init__(self, text):
+        self.text = text
+
+    def terminate(self):
+        pass
+
+    def communicate(self, timeout=None):
+        return self.text, ""
+
+
+def test_the_link_sampler_collects_what_the_process_printed(monkeypatch):
+    monkeypatch.setattr(pr.shutil, "which", lambda name: "/usr/bin/nvidia-smi")
+    monkeypatch.setattr(pr.subprocess, "Popen", lambda *a, **k: _FakeProc("5, 16\n5, 16\n"))
+    sm = pr.LinkSampler()
+    sm.start()
+    out = sm.stop()
+    assert out["samples"] == 2 and out["max_gen"] == 5 and "unavailable" not in out
+
+
+# ------------------------------------------------------------------------------------------------ DC-3: routes
+
+@pytest.fixture(scope="module")
+def bench():
+    return pr.PinRouteBench(rehearsal_cpu=True)
+
+
+class _NoSampler:
+    def start(self):
+        pass
+
+    def stop(self):
+        return {"samples": 2, "gens": {"5": 2}, "widths": {"16": 2}, "min_gen": 5, "max_gen": 5, "interval_ms": 100}
+
+
+@pytest.mark.parametrize("group", list(pr.GROUPS))
+def test_every_k_group_runs_through_the_real_run_group_with_every_gate_true(bench, group):
+    gates, failures, raw = {"roundtrip": True, "sanity": True}, [], {}
+    rows = pr.run_group(bench, group, "r", suite.Deadline(120), gates, failures, raw, small=True, sampler_factory=_NoSampler)
+    assert rows and gates == {"roundtrip": True, "sanity": True} and failures == []
+    validate(rows)
+
+
+def test_the_classification_cell_reports_both_rules_the_stream_and_the_link(bench):
+    gates, failures, raw = {"roundtrip": True, "sanity": True}, [], {}
+    rows = pr.run_group(bench, "k0", "r", suite.Deadline(120), gates, failures, raw, small=True, sampler_factory=_NoSampler)
+    fields = {r["field"] for r in rows}
+    assert {"plateau_gbps", "slow_count_relative", "slow_count_absolute", "label_agreement", "stream_d2d_gbps", "stream_d2d_ms",
+            "link_gen_min", "link_gen_max", "slow_share"} <= fields
+    assert "instance_class_code" in fields
+    assert "classify_start" in raw and "classify_end" not in raw
+    gates, failures, raw = {"roundtrip": True, "sanity": True}, [], {}
+    pr.run_group(bench, "k5", "r", suite.Deadline(120), gates, failures, raw, small=True, sampler_factory=_NoSampler)
+    assert "classify_end" in raw
+
+
+def test_the_ordinary_route_registers_what_torch_allocated_and_carries_smaps(bench):
+    res = bench.ordinary_cell(0, k=3, nbytes=1 << 16)
+    assert len(res["ms"]) == 3 and res["roundtrip_ok"] and res["mapping"] == "ordinary" and res["reg_flags"] == 0
+    rows = pr.rows_route("r", "p", res)
+    validate(rows)
+    assert "h2d_gbps_median" in {r["field"] for r in rows}
+
+
+def _stub_bench(calls):
+    return types.SimpleNamespace(torch=torch, rehearsal=False, register=lambda a, n, f: calls.append(("register", f)),
+                                 unregister=lambda a: calls.append(("unregister", None)))
+
+
+def test_the_registration_flag_reaches_cudahostregister_on_both_registered_routes():
+    seed = torch.randint(0, 256, (1 << 21,), dtype=torch.uint8)
+    for flags in (0, 1):
+        calls: list = []
+        mb = bp.MmapBuffer(_stub_bench(calls), 1 << 16, "default", seed, mapping="private", reg_flags=flags)
+        assert ("register", flags) in calls and mb.is_registered
+        mb.release()
+        assert ("unregister", None) in calls
+        calls = []
+        ob = pr.OrdinaryBuffer(_stub_bench(calls), 1 << 16, seed, flags)
+        assert ("register", flags) in calls and ob.is_registered
+        ob.release()
+    calls = []
+    bp.MmapBuffer(_stub_bench(calls), 1 << 16, "default", seed, mapping="private")
+    assert ("register", 1) in calls                                            # B1 and B2's default stays the portable flag
+
+
+def test_a_registration_failure_is_unavailable_never_a_number():
+    seed = torch.randint(0, 256, (1 << 21,), dtype=torch.uint8)
+
+    def boom(a, n, f):
+        raise RuntimeError("cudaHostRegister returned 1")
+
+    stub = types.SimpleNamespace(torch=torch, rehearsal=False, register=boom, unregister=lambda a: None)
+    ob = pr.OrdinaryBuffer(stub, 1 << 16, seed, 0)
+    assert ob.register_error and not ob.is_registered
+    mb = bp.MmapBuffer(stub, 1 << 16, "default", seed, mapping="private", reg_flags=0)
+    assert mb.register_error and not mb.is_registered
+
+
+@pytest.mark.parametrize("group", ["k0", "k1", "k3", "k4"])
+def test_a_failing_byte_check_trips_the_roundtrip_gate(bench, monkeypatch, group):
+    monkeypatch.setattr(bench, "roundtrip_ok", lambda *a, **k: False)
+    gates, failures, raw = {"roundtrip": True, "sanity": True}, [], {}
+    pr.run_group(bench, group, "r", suite.Deadline(120), gates, failures, raw, small=True, sampler_factory=_NoSampler)
+    assert gates["roundtrip"] is False
+
+
+def test_a_cell_that_raises_is_a_failed_cell_not_a_crash(bench, monkeypatch):
+    def boom(*a, **k):
+        raise RuntimeError("no CUDA")
+
+    monkeypatch.setattr(bench, "alloc_order", boom)
+    gates, failures, raw = {"roundtrip": True, "sanity": True}, [], {}
+    rows = pr.run_group(bench, "k4", "r", suite.Deadline(120), gates, failures, raw, small=True, sampler_factory=_NoSampler)
+    assert rows == [] and failures and failures[0]["cell"] == "alloc_control"
+
+
+def test_plan_and_dry_run_list_every_group(capsys):
+    assert pr.main(["plan"]) == 0 and pr.main(["run", "--cells", "k3"]) == 0
+    out = capsys.readouterr().out
+    assert all(g in out for g in pr.ORDER) and "DRY RUN" not in out.split("\n")[0]
+    assert list(pr.ORDER) == ["k0", "k1", "k2", "k3", "k4", "k5"] and set(pr.ORDER) == set(pr.GROUPS)
+
+
+# ------------------------------------------------------------------------------------------------ DC-5: the guard
+
+def test_the_guard_brackets_the_window_and_counts_only_synchronisation_warnings():
+    import warnings
+
+    modes: list[str] = []
+    g = oa.SyncGuard(rehearsal=True, set_mode=modes.append)
+    with g:
+        g.fake_sync()                                              # window closed: nothing
+        g.open()
+        g.fake_sync()
+        warnings.warn("something unrelated", UserWarning, stacklevel=2)
+        g.close()
+        g.token_end()
+        g.open()
+        g.close()
+        g.token_end()
+    assert modes == ["warn", "default", "warn", "default", "default"]
+    s = g.summary()
+    assert s["calls"] == 1 and s["guarded_rows"] == 2 and s["tokens"] == 2 and s["tokens_with_hit"] == 1 and s["token_hits"] == [1, 0]
+    assert any(k.startswith("test_cuda_pin_route.py:") for k in s["sources"]) and "synchronizing CUDA operation" in s["first_message"]
+
+
+def test_the_guard_restores_the_default_mode_even_when_the_cell_raises():
+    modes: list[str] = []
+    g = oa.SyncGuard(rehearsal=True, set_mode=modes.append)
+    with pytest.raises(RuntimeError), g:
+        g.open()
+        raise RuntimeError("boom")
+    assert modes[-1] == "default"
+
+
+def test_the_k_profiles_register_the_guard_cells():
+    full = oa.cells_of(oa.cell_defs("k-full")[0])
+    assert len(full) == 27 and len({c["id"] for c in full}) == 27
+    assert sum(1 for c in full if c["guard"]) == 15 and sum(1 for c in full if c["planted"]) == 3
+    assert {(c["level"], c["c"], c["guard"], c["planted"]) for c in full} == {
+        (3, 1.0, False, False), (3, 1.0, True, False), (4, 1.0, False, False), (4, 1.0, True, False),
+        (4, 0.3, False, False), (4, 0.3, True, False), (4, 0.3, True, True)}
+    assert all(c["arm"] in ("N", "D", "P0L") for c in full) and all(c["tokens"] == 400 for c in full)
+    assert {c["level"] for c in full if c["rows"]} == {3} and not any(c["rows"] and c["guard"] for c in full)
+    smoke = oa.cells_of(oa.cell_defs("k-smoke")[0])
+    assert len(smoke) == 7 and all(c["tokens"] == 40 and c["guard"] for c in smoke)
+
+
+def test_the_expected_file_has_the_cells_the_k_profiles_need():
+    exp = json.loads((ROOT / "benchmarks" / "cuda" / "n3d-expected.json").read_text())
+    for prof in ("k-smoke", "k-full"):
+        for g in oa.cell_defs(prof):
+            for arm in {a for e in g["plan"] for a in e["arms"] if a in oa.ARM_MODE}:
+                assert f"{g['percent']}.{g['tokens']}.{oa.ARM_MODE[arm]}" in exp["cells"]
+
+
+def test_plan_lists_the_k_profile_and_the_tags_know_it(capsys):
+    oa.cmd_plan(None)
+    out = capsys.readouterr().out
+    assert "k-full" in out and "p17k" in out and "cells=27" in out and "cells=7" in out
+    text = (ROOT / "benchmarks" / "cuda" / "overlap_arena.py").read_text()
+    assert '"k": "n3k"' in text and '"n3k": "N3K-1"' in text and text.count('"k-smoke", "k-full"') >= 2
+
+
+def _rehearse_k(arrays, **kw):
+    gates, failures, raw = _gates(), [], {}
+    rows, status = oa.run_group(arrays, oa.cell_defs("k-rehearsal")[0], None, "r", suite.Deadline(300), gates, failures, raw, rehearsal=True,
+                                weight_start=1 << 16, calib_tolerance=50.0, nbytes=8192, readback_every=20, drift_limit=10.0, **kw)
+    return rows, status, gates, failures, raw
+
+
+def test_the_k_rehearsal_runs_the_real_path_with_every_gate_and_a_clean_issue_loop():
+    rows, status, gates, failures, raw = _rehearse_k(synth(tokens=8))
+    assert status == "complete" and failures == [] and all(gates.values()), (gates, failures)
+    assert gates["guard_sees_planted"] is True
+    validate(rows)
+    guarded = [k for k in raw if ".G." in k or ".GP." in k]
+    assert guarded and all("sync_guard" in raw[k] for k in guarded)
+    plain = [k for k in guarded if ".GP." not in k and not k.endswith((".N0", ".N1"))]
+    assert plain and all(raw[k]["sync_guard"]["calls"] == 0 for k in plain)             # nothing hidden in the rehearsal's loop
+    planted = [k for k in guarded if ".GP." in k and k.endswith(".P0L")]
+    assert planted and raw[planted[0]]["sync_guard"]["calls"] == raw[planted[0]]["sync_guard"]["tokens_with_hit"] > 0
+    calls = [r for r in rows if r["field"] == "sync_calls_in_issue"]
+    assert calls and any(r["value"] > 0 for r in calls) and all(r["tag"] == "measured" for r in calls)
+
+
+def test_a_hidden_synchronisation_in_the_issue_loop_is_counted_with_its_source(monkeypatch):
+    live: list = []
+
+    class Tracked(oa.SyncGuard):
+        def __init__(self, *a, **k):
+            super().__init__(*a, **k)
+            live.append(self)
+
+    monkeypatch.setattr(oa, "SyncGuard", Tracked)
+    orig = oa.OverlapArena.enqueue
+
+    def sneaky(self, loads, marks=None, parity=0):
+        orig(self, loads, marks, parity)
+        if live and loads:
+            live[-1].fake_sync()                                    # a hidden blocking call inside the copy issue
+
+    monkeypatch.setattr(oa.OverlapArena, "enqueue", sneaky)
+    rows, status, gates, failures, raw = _rehearse_k(synth(tokens=8))
+    dirty = [k for k in raw if ".G." in k and raw[k]["sync_guard"]["calls"] > 0]
+    assert dirty, "a guarded cell with copies must count the hidden call"
+    s = raw[dirty[0]]["sync_guard"]
+    assert s["sources"] and next(iter(s["sources"])).startswith("test_cuda_pin_route.py:")
+    unguarded = [k for k in raw if "sync_guard" not in raw[k] and k.startswith("p17k.L4.C0.05.") and ".G" not in k]
+    assert unguarded                                                # unguarded cells keep no guard and cannot fail on it
+    assert gates["guard_sees_planted"] is True
+
+
+def test_a_blind_guard_trips_its_own_gate(monkeypatch):
+    monkeypatch.setattr(oa.SyncGuard, "fake_sync", lambda self: None)       # the planted synchronisation is no longer seen
+    rows, status, gates, failures, raw = _rehearse_k(synth(tokens=8))
+    assert gates["guard_sees_planted"] is False
+    assert any("guard saw the planted synchronisation" in f["error"] for f in failures)
+
+
+def test_session_sh_has_the_k_commands_in_the_registered_order():
+    text = (ROOT / "benchmarks" / "cuda" / "session.sh").read_text()
+    assert "pinroute)" in text and "n3ksmoke)" in text and "n3kfull)" in text and "k-smoke" in text and "k-full" in text and "N3K" in text
+    loop = next(line for line in text.splitlines() if line.strip().startswith("for g in k0"))
+    assert loop.split("in", 1)[1].replace("; do", "").split() == list(pr.ORDER)
+    assert "pin_route.py" in text and "--execute" in text.split("pinroute)", 1)[1].split("n3ksmoke)", 1)[0]
+    assert (ROOT / "benchmarks" / "cuda" / "SESSION-RUNBOOK-PIN-ROUTE.md").exists()
