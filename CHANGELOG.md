@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.67.0 (2026-10-21)
+
+HANDOFF "Start here (2026-10-21, 0.67.0)" and sections 18.221 and 18.222; records `docs/DI1-BUILD-RECORD.md` (eight predictions E-1 to E-8 committed first in e1b19c3, a control N-1 to N-3 committed in dfb7615 before it ran), results `docs/DI1-BUILD-RESULTS.md`, analysis `docs/POST-COMPRESSION-PREFILL.md`, Lab brief `docs/lab/briefs/2026-10-21-runtime-0.67.0.md`.
+
+### Added
+- **`CACHALOT_PREFILL_ENCODER_ONLY=1` (default off, DeepSeek): an encoder-only prefill with an exact decoder tail (DI-1).** A text prompt of more than one call runs layers 0 to 19 and layer 20's compressed KV and index keys on every call and the decoder half (layers 20 to 39) once, over the last 2,541 rows with empty window rings, at the requested snapshot boundaries and at the prompt's end. `TextDecodeRuntime.prefill_tokens(..., encoder_only=True)` and `finish_decoder()`; the planner `prefill_tail_plan.py` (the 2,541 is derived from the sliding-window cascade and checked by a row-level brute-force simulation); `compressed_source_kv_only`; the layer loop body of `_prefill_tokens_impl` moved verbatim into `_prefill_layer` (diff-checked, and bit-identical to 0.66.63 on the model). Snapshots are taken only at the boundaries and at the end in this mode.
+- `benchmarks/di1_tail_equality.py`, `benchmarks/prefix_grain_replay.py` (0.66.62), `benchmarks/prefill_half_split.py` (0.66.61), 25 tests (1,062 pass).
+
+### Measured
+- Equality on a 6,100-token prompt: the refactor is bit-identical (B = F); everything the encoder and layer 20 publish is bit-identical between the full and the deferred prefill; the decoder windows and the final logits differ (KL 0.036, same top-1, the 16 greedy tokens equal), by less than a plain re-chunking of the full prefill differs (KL 0.020, windows up to 0.76 against 0.45, decode KL max 0.046 against 0.0079). E-3 missed and E-4 falsified as registered (my intervals assumed near bit-identity); the control reads the difference as the lane's rounding band. Not measured: the saving at 22k tokens, the quality gate.
+- **A Hermes context compression costs 34 % of the server's time in the recorded session** (summary calls 24.9 %, the first request after each 9.4 %); options and what DI-1 does and does not shorten in `docs/POST-COMPRESSION-PREFILL.md`.
+
 ## 0.66.63 (2026-10-21)
 
 HANDOFF "Start here (2026-10-21, 0.66.63)" and section 18.220; results `docs/DI4-GRAIN-RESULTS.md`, `docs/di4-grain-2026-10-21.json`. Measurement on Hamed's recorded Hermes session (142 requests, four compressions), nothing in `src/` but the version string.

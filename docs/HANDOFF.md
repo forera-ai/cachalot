@@ -25,6 +25,11 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-21, 0.67.0): DI-1 is built behind `CACHALOT_PREFILL_ENCODER_ONLY` (off); equal to a full prefill within the re-chunking noise on one prompt; the 22k timing and the quality gate are the next runs
+>
+> Sections 18.221 (DI-1 build) and 18.222 (the post-compression analysis). Equality on 6,100 tokens: refactor bit-identical, encoder and layer-20 state bit-identical, decoder windows and logits within (below) a re-chunking's noise; same top-1 and tokens. **Needs Hamed:** a go on the 22,000-token timing run (about 8 to 10 minutes) and on `pareto.py`; any default; the Hermes-side choices of `docs/POST-COMPRESSION-PREFILL.md` (a hosted `auxiliary.compression` takes 24.9 % of the recorded session's server time off this server; `protect_last_n`). Lab brief written.
+>
+
 > ## Start here (2026-10-21, 0.66.63): DI-4 is priced and closed as a standalone lever (-6.9 % of prefill); 56 % of the session's prefill is post-compression re-prefill and summary calls
 >
 > Section 18.220, results `docs/DI4-GRAIN-RESULTS.md`. Hamed's 142-request session (four compressions): a 128-token grain would save 19,284 of 279,056 tokens; 10 requests diverge inside a chunk; one summary call is 67 % of the saving. The big costs are the four post-compression re-prefills (27.9 %) and the summary calls (28.5 %), which no reuse grid reaches. In-block intermediate snapshots did not serve the session (supports DI-1's policy (a)). **Needs Hamed:** the DI-1 build and snapshot policy, what to do about the post-compression prefill, one RTX 5090 for follow-up M.
@@ -9400,6 +9405,44 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.222 What a Hermes context compression costs on the server, and the options (0.67.0)
+
+**Goal.** Hamed: "continue the both post-compression and DI-1 build".
+
+**Baseline (recorded).** 18.220: 56 % of the recorded session's prefill is post-compression re-prefill and summary calls.
+
+**Prediction.** None registered (an analysis of a recording, no experiment).
+
+**Method.** Server request and reply timestamps and token counts of the 142-request recording; the read-only compression settings of his Hermes config (nothing edited); a char-share split of each rewritten prompt (rough).
+
+**Result.** Compression is 34 % of the server's request time: six summary calls 2,678 s (24.9 %, two at 600 s), four post-compression turns 1,007 s (9.4 %). His `auxiliary.compression` is `provider: auto, timeout: 120`, so the summary runs on this server; `protect_last_n` is 30 and the protected tail is about 19k to 31k tokens of each re-prefill. DI-1 would shorten the re-prefills (derived 37 to 40 %) and not the decode-bound summaries.
+
+**What did not go well / limits.** One session, rough token split, nothing run. The options are his; none is measured.
+
+**Open / needs Hamed.** The hosted-model choice and `protect_last_n` (`docs/POST-COMPRESSION-PREFILL.md`).
+
+**Kind.** Measurement (an analysis of a recording, tagged measured and derived). No default changed.
+
+### 18.221 DI-1 build: an encoder-only prefill with an exact decoder tail, behind a knob (0.67.0)
+
+**Goal.** Hamed: "continue the both post-compression and DI-1 build".
+
+**Baseline (recorded).** 18.218: the decoder half is 46.5 % of a cold chunk; derived saving of a 22.4k block 39 to 42 %.
+
+**Prediction.** E-1 to E-8 of `docs/DI1-BUILD-RECORD.md` (e1b19c3) and the control N-1 to N-3 (dfb7615, before it ran).
+
+**Method.** Built `prefill_tail_plan.py` (2,541 rows, a row-level brute-force check, a correction of the lane's 2,668), moved the layer loop body into `_prefill_layer` (diff-checked), `prefill_tokens(encoder_only=True)`, `finish_decoder()`, `compressed_source_kv_only`, the knob in `prepare_prompt`; four one-process runs (B pre-change, F changed full, D deferred, N re-chunked control) on a 6,100-token prompt.
+
+**Result.** E-1, E-2, E-5, E-6, E-8 held, E-3 missed (KL 0.036), E-4 falsified (windows to 0.45), E-7 not measured as registered; N-1 to N-3 held: the control re-chunking differs from F by more than D does (KL 0.020 at one position but decode KL max 0.046 against 0.0079; windows to 0.76). Encoder and layer-20 state bit-identical.
+
+**Explanation (hypothesis).** The decoder-window and logit differences are the rounding of regrouped MoE and attention amplified by routing near-ties, the band the runtime already treats as noise; no systematic error is excluded by one prompt.
+
+**What did not go well / limits.** My E-3 and E-4 intervals assumed near bit-identity; I launched arm D once with a command line the guardian's process check matched (it aborted before running, and a 15-minute watch waited for nothing). Not measured: the 22k saving, the quality gate. Default off.
+
+**Open / needs Hamed.** The 22k timing run, `pareto.py`, any default, a live session with the knob.
+
+**Kind.** Research (predicted, measured, explained as hypothesis): 5 held, 1 missed, 1 falsified, 1 not measured; control 3 of 3. No default changed.
 
 ### 18.220 DI-4 priced on a real Hermes session: -6.9 % of prefill, one event dominates (0.66.63)
 

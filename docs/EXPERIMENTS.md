@@ -1,8 +1,8 @@
 # Experiment index (charter section 7.2 and section 10)
 
-Written 2026-10-09 against runtime 0.66.63; regenerate with `benchmarks/experiment_index.py`. The charter asks for "a file of experiment records whose predictions were written before the build". The records themselves live in `docs/HANDOFF.md` section 18 (each with Baseline, Prediction, Method, Result, Explanation, Limits, Kind); this file is the index: where each record is, whether it carries a written prediction, and what kind of result it is, as its own **Kind** line says. It does not restate results. Sections before 18.75 predate the record format and are not listed; sections without a **Kind** line are listed as unlabelled and have no claim made for them here.
+Written 2026-10-09 against runtime 0.67.0; regenerate with `benchmarks/experiment_index.py`. The charter asks for "a file of experiment records whose predictions were written before the build". The records themselves live in `docs/HANDOFF.md` section 18 (each with Baseline, Prediction, Method, Result, Explanation, Limits, Kind); this file is the index: where each record is, whether it carries a written prediction, and what kind of result it is, as its own **Kind** line says. It does not restate results. Sections before 18.75 predate the record format and are not listed; sections without a **Kind** line are listed as unlabelled and have no claim made for them here.
 
-Counts of the 146 sections listed (18.75-18.220): 71 research, 22 unlabelled, 21 measurement, 17 planning, 14 engineering, 1 pricing.
+Counts of the 148 sections listed (18.75-18.222): 72 research, 22 measurement, 22 unlabelled, 17 planning, 14 engineering, 1 pricing.
 
 Research means predicted, measured and explained (charter section 8.1 rule 6); a falsified prediction is still research and is marked so in its Kind line. Engineering means it works without a written prediction, or an instrument was built.
 
@@ -10,6 +10,8 @@ Research means predicted, measured and explained (charter section 8.1 rule 6); a
 
 | section | title | prediction written | kind (as recorded) |
 |---|---|:---:|---|
+| §18.222 | What a Hermes context compression costs on the server, and the options (0.67.0) | yes | Measurement (an analysis of a recording, tagged measured and derived). No default changed. |
+| §18.221 | DI-1 build: an encoder-only prefill with an exact decoder tail, behind a knob (0.67.0) | yes | Research (predicted, measured, explained as hypothesis): 5 held, 1 missed, 1 falsified, 1 not measured; control 3 of 3. No default changed. |
 | §18.220 | DI-4 priced on a real Hermes session: -6.9 % of prefill, one event dominates (0.66.63) | yes | Research (predicted, measured, explained as hypothesis): the prediction missed, the lever is closed as standalone. No default changed. |
 | §18.219 | DI-4 instrument built; the repo has no dump that can price it (0.66.62) | yes | Engineering (instrument); the lever is neither priced nor closed. No default changed. |
 | §18.218 | DI-1 first measurement: the decoder half of a cold prefill chunk (0.66.61) | yes | Research (predicted, measured, explained as hypothesis): 5 held, 1 not informative. No default changed. |

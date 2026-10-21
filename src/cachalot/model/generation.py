@@ -302,6 +302,15 @@ class GenerationEvent:
 PREFILL_CHUNK = int(os.environ.get("CACHALOT_PREFILL_CHUNK", "4096"))
 
 
+def encoder_only_enabled() -> bool:
+    """CACHALOT_PREFILL_ENCODER_ONLY=1 (DI-1, default off): a text prompt of more than one call runs the decoder half (layers 20 to 39) over the last
+    rows only, once, instead of over every call (docs/DI1-BUILD-RECORD.md). The final state equals a full prefill's in exact arithmetic; the MoE
+    regrouping moves the rounding, so it is gated by the quality arms and not bit-identical. Snapshots are then taken only at the requested
+    boundaries and at the prompt's end (each costs one decoder pass over up to 2,541 rows); the unpinned and in-block chunk-boundary snapshots are not
+    taken."""
+    return os.environ.get("CACHALOT_PREFILL_ENCODER_ONLY", "0") == "1"
+
+
 def prefill_chunks(
     start: int,
     end: int,
@@ -408,13 +417,23 @@ def prepare_prompt(
     if suffix:
         spans = images.spans if images is not None else ()
         chunks = prefill_chunks(reused, len(prompt_tokens), spans, cuts=boundaries)
+        encoder_only = (
+            encoder_only_enabled()
+            and images is None
+            and len(chunks) > 1
+            and hasattr(runtime, "finish_decoder")
+        )
         for i, (a, b) in enumerate(chunks):
-            if i and use_prefix_cache:
+            if i and use_prefix_cache and (not encoder_only or a in boundaries):
                 # A snapshot at every chunk boundary, not only at the prompt's
                 # end: an agent's next *session* shares the long system
                 # prompt and tool schemas but diverges at the first user
                 # message, which no end-of-prompt snapshot is a prefix of.
                 # Snapshots are tens of MB (HANDOFF section 15.3).
+                # Encoder-only mode (DI-1) takes the requested boundaries only: the
+                # decoder half is finished here, once, so the snapshot is complete.
+                if encoder_only:
+                    runtime.finish_decoder()
                 runtime.prefix_cache.add(
                     runtime.snapshot(logits=None),
                     boundary=a in boundaries,
@@ -435,7 +454,13 @@ def prepare_prompt(
             elif i + 1 < len(chunks):
                 # the next chunk's Engram rows may be read during this one (HANDOFF section 15.12)
                 c, d = chunks[i + 1]
-                result = runtime.prefill_tokens(chunk, next_token_ids=prompt_tokens[c:d])
+                if encoder_only:
+                    result = runtime.prefill_tokens(chunk, next_token_ids=prompt_tokens[c:d], encoder_only=True)
+                else:
+                    result = runtime.prefill_tokens(chunk, next_token_ids=prompt_tokens[c:d])
+            elif encoder_only:
+                runtime.prefill_tokens(chunk, encoder_only=True)
+                result = runtime.finish_decoder()
             else:
                 result = runtime.prefill_tokens(chunk)
     else:

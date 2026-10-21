@@ -32,6 +32,7 @@ from cachalot.model.attention_prefill_batched import (
 )
 from cachalot.model.compressor_mlx import CompressorState
 from cachalot.model.fp4_act_mlx import fp4_act_roundtrip_mlx
+from cachalot.model.hyper_connection_mlx import hc_pre
 from cachalot.model.indexer_mlx import (
     INDEX_HEAD_DIM,
     INDEX_N_HEADS,
@@ -219,6 +220,54 @@ def candidate_masks_chunk(score: mx.array, compress_len: np.ndarray, topk_blocks
 # ---------------------------------------------------------------------------
 # source layer (KV + index source; layer 20 also publishes candidates)
 # ---------------------------------------------------------------------------
+def compressed_source_kv_only(
+    x: mx.array,
+    pre_mix: mx.array,
+    *,
+    start_pos: int,
+    compress_ratio: int,
+    compressed_cache: mx.array,
+    compressor_state: CompressorState | None,
+    indexer_state: IndexerState,
+    attn_norm_weight: mx.array,
+    rope_cos: mx.array,
+    rope_sin: mx.array,
+    compressor_norm_weight: mx.array,
+    compressor_wkv_weight: mx.array,
+    compressor_wgate_weight: mx.array | None,
+    indexer_wk_weight: mx.array,
+    indexer_k_norm_weight: mx.array,
+    rope_head_dim: int = 64,
+    norm_eps: float = 1e-20,
+) -> mx.array:
+    """The part of a source layer the later layers read: the compressor's latents, the indexer's keys and the compressed KV of these rows, with no
+    attention, no query path and no MoE (DI-1's encoder-only prefill runs it for layer 20 on every row). The arithmetic is `compressed_source_chunk`'s first
+    block, applied to `rms_norm(hc_pre(x, pre_mix))` as the full block does. Returns the updated compressed cache; the indexer's key cache is updated as there."""
+    attn_input = rms_norm(hc_pre(x, pre_mix), attn_norm_weight, eps=norm_eps)
+    n_tokens = attn_input.shape[0]
+    positions = np.arange(start_pos, start_pos + n_tokens)
+    latents, ends = compressor_chunk(
+        attn_input, start_pos=start_pos, compress_ratio=compress_ratio, norm_weight=compressor_norm_weight,
+        wkv_weight=compressor_wkv_weight, wgate_weight=compressor_wgate_weight, state=compressor_state, eps=norm_eps,
+    )
+    del positions
+    updated_compressed = compressed_cache
+    if latents is not None and len(ends):
+        slots = (ends + 1) // compress_ratio - 1
+        group_pos = ends + 1 - compress_ratio
+        gp = mx.array(group_pos.astype(np.int32))
+        k_rows = index_keys_chunk(latents, indexer_wk_weight, indexer_k_norm_weight, rope_cos[gp], rope_sin[gp], norm_eps)
+        slot_idx = mx.array(slots.astype(np.int32))
+        k_cache = mx.array(indexer_state.k_cache)
+        k_cache[slot_idx] = k_rows
+        indexer_state.k_cache = k_cache
+        ckv = _rope_rows(latents, rope_cos[gp], rope_sin[gp], rope_head_dim)
+        ckv = fp4_act_roundtrip_mlx(ckv, block_size=16, scale_dtype="e4m3")
+        updated_compressed = mx.array(compressed_cache)
+        updated_compressed[slot_idx] = ckv.astype(compressed_cache.dtype)
+    return updated_compressed
+
+
 def compressed_source_chunk(
     x: mx.array,
     *,

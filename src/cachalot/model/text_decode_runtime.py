@@ -7,6 +7,7 @@ from dataclasses import replace as _replace
 from pathlib import Path
 from threading import Event, Lock, Thread
 from time import perf_counter
+from types import SimpleNamespace
 
 import mlx.core as mx
 from transformers import AutoTokenizer
@@ -90,6 +91,11 @@ from cachalot.model.model_boundary_mlx import (
 from cachalot.model.norm_rope_mlx import (
     precompute_freqs,
 )
+from cachalot.model.prefill_tail_plan import (
+    ENCODER_LAYERS,
+    TAIL_ROWS,
+    tail_start,
+)
 from cachalot.model.prefix_cache import (
     PrefixCache,
     SequenceSnapshot,
@@ -107,6 +113,7 @@ from cachalot.model.router_mlx import (
 from cachalot.model.shared_attention import (
     SharedAttentionRuntime,
 )
+from cachalot.model.source_prefill_batched import compressed_source_kv_only
 from cachalot.model.vision_ablation import ablated
 from cachalot.model.vision_mlx import (
     merge_image_embeddings,
@@ -1050,6 +1057,7 @@ class TextDecodeRuntime:
         self.reset()
 
     def reset(self) -> None:
+        self._deferred = None
         """
         Begin a new independent text sequence.
 
@@ -1173,6 +1181,9 @@ class TextDecodeRuntime:
         implementations, so holding references is safe. Compressor and
         indexer states are mutated in place and must be copied.
         """
+        if self._deferred is not None:
+            raise RuntimeError("finish_decoder() must run before a snapshot")
+
         def copy(a: mx.array) -> mx.array:
             out = mx.array(a)
             return out
@@ -1272,6 +1283,7 @@ class TextDecodeRuntime:
         snap: SequenceSnapshot,
     ) -> None:
         """Rewind the sequence state to a snapshot taken by snapshot()."""
+        self._deferred = None
         self.position = snap.position
         self.tokens = list(snap.tokens)
 
@@ -1897,10 +1909,15 @@ class TextDecodeRuntime:
         image_token_id: int = IMAGE_TOKEN_ID,
         image_spans: tuple[tuple[int, int, str], ...] = (),
         next_token_ids=None,
+        encoder_only: bool = False,
     ) -> DecodeResult:
         """
         Layer-major prompt prefill (see _prefill_tokens_impl); marks the GPU
         busy for the idle heartbeat.
+
+        encoder_only (DI-1, CACHALOT_PREFILL_ENCODER_ONLY in generation.prepare_prompt): run only layers 0 to 19 and layer 20's compressed KV and
+        index keys over these tokens and keep their encoder outputs; the decoder half runs later, over the last rows only, in finish_decoder().
+        The returned DecodeResult has no logits. A text-only call; no snapshot, decode or full prefill may run until finish_decoder().
 
         next_token_ids: the next chunk's tokens, when the caller knows them
         (prepare_prompt does), so their Engram rows are read during this
@@ -1927,6 +1944,7 @@ class TextDecodeRuntime:
                     token_ids,
                     image_rows=image_rows,
                     image_token_id=image_token_id,
+                    encoder_only=encoder_only,
                 )
                 self.image_spans.extend(image_spans)
                 return result
@@ -1964,6 +1982,8 @@ class TextDecodeRuntime:
         token_id: int,
     ) -> DecodeResult:
         """Decode one token (see _decode_token_impl); marks the GPU busy for the idle heartbeat."""
+        if self._deferred is not None:
+            raise RuntimeError("finish_decoder() must run before decoding")
         self._await_hotlist()
         with self._gpu_lock:
             self._gpu_busy = True
@@ -1974,12 +1994,367 @@ class TextDecodeRuntime:
                 self._gpu_idle_since = perf_counter()
                 self._gpu_busy = False
 
+    def _prefill_layer(
+        self,
+        layer_id: int,
+        x: mx.array,
+        pre_mix: mx.array,
+        start_pos: int,
+        st,
+    ):
+        """One decoder-stack layer (2..39) of the layer-major prefill. `st` carries what the layers publish to each other inside one prefill call
+        (the shared top-k, layer 20's candidates, the trace routes, the image mask and Engram inputs). The body is the loop body of
+        `_prefill_tokens_impl` moved here unchanged so the encoder and the decoder half can be run apart (DI-1)."""
+        shared_topk_by_token = st.shared_topk_by_token
+        layer20_candidates_by_token = st.layer20_candidates_by_token
+        main_hiddens = st.main_hiddens
+        hash_rows_by_token = st.hash_rows_by_token
+        engram_mask = st.engram_mask
+        image_mask = st.image_mask
+        routes = st.routes
+        _gate_bias_vl_for = st.gate_bias_vl_for
+
+        if self.verbose:
+            print(
+                f"[prefill] layer {layer_id}"
+            )
+
+        if (
+            main_hiddens is not None
+            and layer_id
+            in MTP_TARGET_LAYERS
+        ):
+            main_hiddens.append(
+                mx.mean(
+                    x,
+                    axis=1,
+                )
+            )
+
+        if layer_id == 14:
+            if self.verbose:
+                print(
+                    "[prefill] layer 14 Engram"
+                )
+
+            x = self._prefill_apply_engram(
+                x,
+                14,
+                hash_rows_by_token,
+                token_mask=engram_mask,
+            )
+
+        if layer_id in SOURCE_LAYERS:
+            ratio = SOURCE_LAYERS[
+                layer_id
+            ]
+
+            common = (
+                self._common_block_kwargs(
+                    layer_id,
+                    compressed=True,
+                )
+            )
+
+            if ratio == 1:
+                compressor_state = None
+                compressor_wgate = None
+            else:
+                compressor_state = (
+                    self.compressor_states[
+                        layer_id
+                    ]
+                )
+
+                compressor_wgate = self._t(
+                    layer_id,
+                    (
+                        "attn.compressor."
+                        "wgate.weight"
+                    ),
+                )
+
+            (
+                x,
+                pre_mix,
+                self.windows[
+                    layer_id
+                ],
+                self.compressed_caches[
+                    layer_id
+                ],
+                route,
+                index_results,
+            ) = compressed_source_block_prefill(
+                layer_id,
+                x,
+                start_pos=start_pos,
+                pre_mix=pre_mix,
+                compress_ratio=ratio,
+                window_cache=(
+                    self.windows[
+                        layer_id
+                    ]
+                ),
+                compressed_cache=(
+                    self.compressed_caches[
+                        layer_id
+                    ]
+                ),
+                compressor_state=(
+                    compressor_state
+                ),
+                indexer_state=(
+                    self.indexer_states[
+                        layer_id
+                    ]
+                ),
+                shared_attn=(
+                    self.shared_attn
+                ),
+                compressor_norm_weight=(
+                    self._t(
+                        layer_id,
+                        (
+                            "attn.compressor."
+                            "norm.weight"
+                        ),
+                    )
+                ),
+                compressor_wkv_weight=(
+                    self._t(
+                        layer_id,
+                        (
+                            "attn.compressor."
+                            "wkv.weight"
+                        ),
+                    )
+                ),
+                compressor_wgate_weight=(
+                    compressor_wgate
+                ),
+                indexer_weights_proj_weight=(
+                    self._t(
+                        layer_id,
+                        (
+                            "attn.indexer."
+                            "weights_proj.weight"
+                        ),
+                    )
+                ),
+                indexer_wq_b_weight=(
+                    self._t(
+                        layer_id,
+                        (
+                            "attn.indexer."
+                            "wq_b.weight"
+                        ),
+                    )
+                ),
+                indexer_wq_b_scales=(
+                    self._t(
+                        layer_id,
+                        (
+                            "attn.indexer."
+                            "wq_b.scale"
+                        ),
+                    )
+                ),
+                indexer_wk_weight=(
+                    self._t(
+                        layer_id,
+                        (
+                            "attn.indexer."
+                            "wk.weight"
+                        ),
+                    )
+                ),
+                indexer_k_norm_weight=(
+                    self._t(
+                        layer_id,
+                        (
+                            "attn.indexer."
+                            "k_norm.weight"
+                        ),
+                    )
+                ),
+                index_topk=INDEX_TOPK,
+                expert_prefetcher=(
+                    self.expert_prefetcher
+                ),
+                gate_bias_vl=_gate_bias_vl_for(layer_id),
+                image_mask=image_mask,
+                **common,
+            )
+
+            shared_topk_by_token = tuple(
+                result.topk_idxs
+                for result in index_results
+            )
+
+            if layer_id == 20:
+                layer20_candidates_by_token = tuple(
+                    result.candidates
+                    for result in index_results
+                )
+
+                if any(
+                    candidate is None
+                    for candidate
+                    in layer20_candidates_by_token
+                ):
+                    raise RuntimeError(
+                        "Layer 20 prefill did not publish "
+                        "candidate snapshots"
+                    )
+
+        elif (
+            layer_id
+            in INDEX_ONLY_SOURCE_LAYERS
+        ):
+            if (
+                layer20_candidates_by_token
+                is None
+            ):
+                raise RuntimeError(
+                    "Index-only source reached before "
+                    "layer 20 candidate publication"
+                )
+
+            (
+                x,
+                pre_mix,
+                self.windows[
+                    layer_id
+                ],
+                route,
+                index_results,
+            ) = compressed_index_source_block_prefill(
+                layer_id,
+                x,
+                start_pos=start_pos,
+                pre_mix=pre_mix,
+                compress_ratio=1,
+                window_cache=(
+                    self.windows[
+                        layer_id
+                    ]
+                ),
+                shared_attn=(
+                    self.shared_attn
+                ),
+                shared_candidates_by_token=(
+                    layer20_candidates_by_token
+                ),
+                indexer_weights_proj_weight=(
+                    self._t(
+                        layer_id,
+                        (
+                            "attn.indexer."
+                            "weights_proj.weight"
+                        ),
+                    )
+                ),
+                indexer_wq_b_weight=(
+                    self._t(
+                        layer_id,
+                        (
+                            "attn.indexer."
+                            "wq_b.weight"
+                        ),
+                    )
+                ),
+                indexer_wq_b_scales=(
+                    self._t(
+                        layer_id,
+                        (
+                            "attn.indexer."
+                            "wq_b.scale"
+                        ),
+                    )
+                ),
+                index_topk=INDEX_TOPK,
+                expert_prefetcher=(
+                    self.expert_prefetcher
+                ),
+                gate_bias_vl=_gate_bias_vl_for(layer_id),
+                image_mask=image_mask,
+                **self._common_block_kwargs(
+                    layer_id,
+                    compressed=True,
+                ),
+            )
+
+            shared_topk_by_token = tuple(
+                result.topk_idxs
+                for result in index_results
+            )
+
+        else:
+            if shared_topk_by_token is None:
+                raise RuntimeError(
+                    "Reuse layer reached before a source "
+                    "published per-token top-k state"
+                )
+
+            (
+                x,
+                pre_mix,
+                self.windows[
+                    layer_id
+                ],
+                route,
+            ) = compressed_reuse_block_prefill(
+                layer_id,
+                x,
+                start_pos=start_pos,
+                pre_mix=pre_mix,
+                compress_ratio=(
+                    COMPRESS_RATIO[
+                        layer_id
+                    ]
+                ),
+                window_cache=(
+                    self.windows[
+                        layer_id
+                    ]
+                ),
+                shared_attn=(
+                    self.shared_attn
+                ),
+                shared_topk_by_token=(
+                    shared_topk_by_token
+                ),
+                expert_prefetcher=(
+                    self.expert_prefetcher
+                ),
+                gate_bias_vl=_gate_bias_vl_for(layer_id),
+                image_mask=image_mask,
+                **self._common_block_kwargs(
+                    layer_id,
+                    compressed=True,
+                ),
+            )
+
+        routes.append(
+            self._trace_prefill_route(
+                layer_id,
+                start_pos,
+                route,
+            )
+        )
+
+        st.shared_topk_by_token = shared_topk_by_token
+        st.layer20_candidates_by_token = layer20_candidates_by_token
+        return x, pre_mix
+
     def _prefill_tokens_impl(
         self,
         token_ids,
         *,
         image_rows: mx.array | None = None,
         image_token_id: int = IMAGE_TOKEN_ID,
+        encoder_only: bool = False,
     ) -> DecodeResult:
         """
         Layer-major prompt prefill.
@@ -2011,6 +2386,11 @@ class TextDecodeRuntime:
             )
 
         start_pos = self.position
+
+        if encoder_only and (image_rows is not None or self.capture_main_hidden):
+            raise ValueError("encoder_only prefill is text-only and does not capture the MTP hidden")
+        if not encoder_only and self._deferred is not None:
+            raise RuntimeError("finish_decoder() must run before another full prefill")
 
         if (
             start_pos
@@ -2231,343 +2611,38 @@ class TextDecodeRuntime:
         #       consumed by 24/28/32/36.
         # --------------------------------------------------------
 
-        shared_topk_by_token = None
-        layer20_candidates_by_token = None
-
-        main_hiddens = [] if self.capture_main_hidden else None
+        st = SimpleNamespace(
+            shared_topk_by_token=None,
+            layer20_candidates_by_token=None,
+            main_hiddens=[] if self.capture_main_hidden else None,
+            hash_rows_by_token=hash_rows_by_token,
+            engram_mask=engram_mask,
+            image_mask=image_mask,
+            routes=routes,
+            gate_bias_vl_for=_gate_bias_vl_for,
+        )
+        main_hiddens = st.main_hiddens
 
         for layer_id in range(
             2,
-            N_LAYERS,
+            ENCODER_LAYERS if encoder_only else N_LAYERS,
         ):
-            if self.verbose:
-                print(
-                    f"[prefill] layer {layer_id}"
-                )
+            x, pre_mix = self._prefill_layer(
+                layer_id,
+                x,
+                pre_mix,
+                start_pos,
+                st,
+            )
 
-            if (
-                main_hiddens is not None
-                and layer_id
-                in MTP_TARGET_LAYERS
-            ):
-                main_hiddens.append(
-                    mx.mean(
-                        x,
-                        axis=1,
-                    )
-                )
-
-            if layer_id == 14:
-                if self.verbose:
-                    print(
-                        "[prefill] layer 14 Engram"
-                    )
-
-                x = self._prefill_apply_engram(
-                    x,
-                    14,
-                    hash_rows_by_token,
-                    token_mask=engram_mask,
-                )
-
-            if layer_id in SOURCE_LAYERS:
-                ratio = SOURCE_LAYERS[
-                    layer_id
-                ]
-
-                common = (
-                    self._common_block_kwargs(
-                        layer_id,
-                        compressed=True,
-                    )
-                )
-
-                if ratio == 1:
-                    compressor_state = None
-                    compressor_wgate = None
-                else:
-                    compressor_state = (
-                        self.compressor_states[
-                            layer_id
-                        ]
-                    )
-
-                    compressor_wgate = self._t(
-                        layer_id,
-                        (
-                            "attn.compressor."
-                            "wgate.weight"
-                        ),
-                    )
-
-                (
-                    x,
-                    pre_mix,
-                    self.windows[
-                        layer_id
-                    ],
-                    self.compressed_caches[
-                        layer_id
-                    ],
-                    route,
-                    index_results,
-                ) = compressed_source_block_prefill(
-                    layer_id,
-                    x,
-                    start_pos=start_pos,
-                    pre_mix=pre_mix,
-                    compress_ratio=ratio,
-                    window_cache=(
-                        self.windows[
-                            layer_id
-                        ]
-                    ),
-                    compressed_cache=(
-                        self.compressed_caches[
-                            layer_id
-                        ]
-                    ),
-                    compressor_state=(
-                        compressor_state
-                    ),
-                    indexer_state=(
-                        self.indexer_states[
-                            layer_id
-                        ]
-                    ),
-                    shared_attn=(
-                        self.shared_attn
-                    ),
-                    compressor_norm_weight=(
-                        self._t(
-                            layer_id,
-                            (
-                                "attn.compressor."
-                                "norm.weight"
-                            ),
-                        )
-                    ),
-                    compressor_wkv_weight=(
-                        self._t(
-                            layer_id,
-                            (
-                                "attn.compressor."
-                                "wkv.weight"
-                            ),
-                        )
-                    ),
-                    compressor_wgate_weight=(
-                        compressor_wgate
-                    ),
-                    indexer_weights_proj_weight=(
-                        self._t(
-                            layer_id,
-                            (
-                                "attn.indexer."
-                                "weights_proj.weight"
-                            ),
-                        )
-                    ),
-                    indexer_wq_b_weight=(
-                        self._t(
-                            layer_id,
-                            (
-                                "attn.indexer."
-                                "wq_b.weight"
-                            ),
-                        )
-                    ),
-                    indexer_wq_b_scales=(
-                        self._t(
-                            layer_id,
-                            (
-                                "attn.indexer."
-                                "wq_b.scale"
-                            ),
-                        )
-                    ),
-                    indexer_wk_weight=(
-                        self._t(
-                            layer_id,
-                            (
-                                "attn.indexer."
-                                "wk.weight"
-                            ),
-                        )
-                    ),
-                    indexer_k_norm_weight=(
-                        self._t(
-                            layer_id,
-                            (
-                                "attn.indexer."
-                                "k_norm.weight"
-                            ),
-                        )
-                    ),
-                    index_topk=INDEX_TOPK,
-                    expert_prefetcher=(
-                        self.expert_prefetcher
-                    ),
-                    gate_bias_vl=_gate_bias_vl_for(layer_id),
-                    image_mask=image_mask,
-                    **common,
-                )
-
-                shared_topk_by_token = tuple(
-                    result.topk_idxs
-                    for result in index_results
-                )
-
-                if layer_id == 20:
-                    layer20_candidates_by_token = tuple(
-                        result.candidates
-                        for result in index_results
-                    )
-
-                    if any(
-                        candidate is None
-                        for candidate
-                        in layer20_candidates_by_token
-                    ):
-                        raise RuntimeError(
-                            "Layer 20 prefill did not publish "
-                            "candidate snapshots"
-                        )
-
-            elif (
-                layer_id
-                in INDEX_ONLY_SOURCE_LAYERS
-            ):
-                if (
-                    layer20_candidates_by_token
-                    is None
-                ):
-                    raise RuntimeError(
-                        "Index-only source reached before "
-                        "layer 20 candidate publication"
-                    )
-
-                (
-                    x,
-                    pre_mix,
-                    self.windows[
-                        layer_id
-                    ],
-                    route,
-                    index_results,
-                ) = compressed_index_source_block_prefill(
-                    layer_id,
-                    x,
-                    start_pos=start_pos,
-                    pre_mix=pre_mix,
-                    compress_ratio=1,
-                    window_cache=(
-                        self.windows[
-                            layer_id
-                        ]
-                    ),
-                    shared_attn=(
-                        self.shared_attn
-                    ),
-                    shared_candidates_by_token=(
-                        layer20_candidates_by_token
-                    ),
-                    indexer_weights_proj_weight=(
-                        self._t(
-                            layer_id,
-                            (
-                                "attn.indexer."
-                                "weights_proj.weight"
-                            ),
-                        )
-                    ),
-                    indexer_wq_b_weight=(
-                        self._t(
-                            layer_id,
-                            (
-                                "attn.indexer."
-                                "wq_b.weight"
-                            ),
-                        )
-                    ),
-                    indexer_wq_b_scales=(
-                        self._t(
-                            layer_id,
-                            (
-                                "attn.indexer."
-                                "wq_b.scale"
-                            ),
-                        )
-                    ),
-                    index_topk=INDEX_TOPK,
-                    expert_prefetcher=(
-                        self.expert_prefetcher
-                    ),
-                    gate_bias_vl=_gate_bias_vl_for(layer_id),
-                    image_mask=image_mask,
-                    **self._common_block_kwargs(
-                        layer_id,
-                        compressed=True,
-                    ),
-                )
-
-                shared_topk_by_token = tuple(
-                    result.topk_idxs
-                    for result in index_results
-                )
-
-            else:
-                if shared_topk_by_token is None:
-                    raise RuntimeError(
-                        "Reuse layer reached before a source "
-                        "published per-token top-k state"
-                    )
-
-                (
-                    x,
-                    pre_mix,
-                    self.windows[
-                        layer_id
-                    ],
-                    route,
-                ) = compressed_reuse_block_prefill(
-                    layer_id,
-                    x,
-                    start_pos=start_pos,
-                    pre_mix=pre_mix,
-                    compress_ratio=(
-                        COMPRESS_RATIO[
-                            layer_id
-                        ]
-                    ),
-                    window_cache=(
-                        self.windows[
-                            layer_id
-                        ]
-                    ),
-                    shared_attn=(
-                        self.shared_attn
-                    ),
-                    shared_topk_by_token=(
-                        shared_topk_by_token
-                    ),
-                    expert_prefetcher=(
-                        self.expert_prefetcher
-                    ),
-                    gate_bias_vl=_gate_bias_vl_for(layer_id),
-                    image_mask=image_mask,
-                    **self._common_block_kwargs(
-                        layer_id,
-                        compressed=True,
-                    ),
-                )
-
-            routes.append(
-                self._trace_prefill_route(
-                    layer_id,
-                    start_pos,
-                    route,
-                )
+        if encoder_only:
+            return self._prefill_encoder_only_end(
+                x,
+                pre_mix,
+                start_pos,
+                n_tokens,
+                token_ids,
+                routes,
             )
 
         # --------------------------------------------------------
@@ -2634,6 +2709,122 @@ class TextDecodeRuntime:
             position=final_position,
             main_hidden=main_hidden,
         )
+
+    def _prefill_encoder_only_end(
+        self,
+        x: mx.array,
+        pre_mix: mx.array,
+        start_pos: int,
+        n_tokens: int,
+        token_ids,
+        routes: list,
+    ) -> DecodeResult:
+        """End of an encoder-only call (DI-1): layer 20's compressed KV and index keys for these rows, then keep the encoder outputs of the last
+        TAIL_ROWS rows for finish_decoder(). The decoder layers' windows are not touched."""
+        common = self._common_block_kwargs(20, compressed=True)
+        self.compressed_caches[20] = compressed_source_kv_only(
+            x,
+            pre_mix,
+            start_pos=start_pos,
+            compress_ratio=1,
+            compressed_cache=self.compressed_caches[20],
+            compressor_state=None,
+            indexer_state=self.indexer_states[20],
+            attn_norm_weight=common["attn_norm_weight"],
+            rope_cos=common["rope_cos"],
+            rope_sin=common["rope_sin"],
+            compressor_norm_weight=self._t(20, "attn.compressor.norm.weight"),
+            compressor_wkv_weight=self._t(20, "attn.compressor.wkv.weight"),
+            compressor_wgate_weight=None,
+            indexer_wk_weight=self._t(20, "attn.indexer.wk.weight"),
+            indexer_k_norm_weight=self._t(20, "attn.indexer.k_norm.weight"),
+            norm_eps=NORM_EPS,
+        )
+        d = self._deferred
+        if d is None:
+            d = self._deferred = {"start": start_pos, "x": x, "pre_mix": pre_mix}
+        else:
+            d["x"] = mx.concatenate([d["x"], x], axis=0)
+            d["pre_mix"] = mx.concatenate([d["pre_mix"], pre_mix], axis=0)
+        if d["x"].shape[0] > TAIL_ROWS:
+            d["x"] = d["x"][-TAIL_ROWS:]
+            d["pre_mix"] = d["pre_mix"][-TAIL_ROWS:]
+        mx.eval(
+            d["x"],
+            d["pre_mix"],
+            self.compressed_caches[20],
+            self.indexer_states[20].k_cache,
+            *(self.windows[k] for k in range(ENCODER_LAYERS)),
+            *(self.compressed_caches[k] for k in (2, 8, 14)),
+            *(self.indexer_states[k].k_cache for k in (2, 8, 14)),
+            *(
+                a
+                for st in self.compressor_states.values()
+                for a in (st.kv_state, st.score_state)
+            ),
+        )
+        self.position = start_pos + n_tokens
+        self.tokens.extend(token_ids)
+        return DecodeResult(
+            logits=None,
+            hidden=None,
+            routes=tuple(routes),
+            position=self.position - 1,
+        )
+
+    def finish_decoder(self) -> DecodeResult:
+        """Run the decoder half (layers 20 to 39) over the rows an encoder-only prefill kept and return the result of the last prompt token.
+
+        The rows are the last TAIL_ROWS (or every row since the decoder state was last exact, when that is fewer); the decoder windows start empty when rows
+        are left out, which leaves the final state equal to a full prefill's (prefill_tail_plan). Takes the GPU lock like prefill_tokens."""
+        d = self._deferred
+        if d is None:
+            raise RuntimeError("finish_decoder() without an encoder-only prefill")
+        self._await_hotlist()
+        with self._gpu_lock:
+            self._gpu_busy = True
+            try:
+                end = self.position
+                p0, truncated = tail_start(d["start"], end)
+                rows = end - p0
+                x = d["x"][-rows:]
+                pre_mix = d["pre_mix"][-rows:]
+                if truncated:
+                    for layer_id in range(ENCODER_LAYERS, N_LAYERS):
+                        self.windows[layer_id] = mx.zeros((WINDOW_SIZE, HEAD_DIM), dtype=mx.bfloat16)
+                routes: list = []
+                st = SimpleNamespace(
+                    shared_topk_by_token=None,
+                    layer20_candidates_by_token=None,
+                    main_hiddens=None,
+                    hash_rows_by_token=None,
+                    engram_mask=None,
+                    image_mask=None,
+                    routes=routes,
+                    gate_bias_vl_for=lambda layer_id: None,
+                )
+                for layer_id in range(ENCODER_LAYERS, N_LAYERS):
+                    x, pre_mix = self._prefill_layer(layer_id, x, pre_mix, p0, st)
+                hidden, logits = final_logits_decode(
+                    x[-1],
+                    pre_mix[-1],
+                    self._global("norm.weight"),
+                    self._global("head.weight"),
+                    norm_eps=NORM_EPS,
+                    head_chunk_size=self.head_chunk_size,
+                )
+                mx.eval(hidden, logits)
+                self._deferred = None
+                return DecodeResult(
+                    logits=logits,
+                    hidden=hidden,
+                    routes=tuple(routes),
+                    position=end - 1,
+                    main_hidden=None,
+                )
+            finally:
+                self._gpu_idle_since = perf_counter()
+                self._gpu_busy = False
 
     def _decode_token_impl(
         self,
