@@ -38,3 +38,15 @@ E-1 false means the move of the loop body changed numerics (a revert, not a resu
 ## 5. Stop rules
 
 The three runs are about 100 s each; stop on a guardian kill, a swap increase, an exception, or E-1 false. Not a release if E-1 is false.
+
+## 6. A control arm added after the first three results (written before it is run)
+
+The first three runs gave: F equals B bit for bit (E-1 holds); D equals F bit for bit on the encoder windows, the compressed caches of layers 2, 8, 14 and 20, layer 20's index keys, the candidates and the top-k (E-2 holds, E-5 beaten); but the decoder windows of layers 21 to 39 differ by a relative max of 0.10 to 0.45 (E-4's falsifier, 0.2, fired), the final logits by KL 0.0359 with the same top-1 (E-3's 0.001 missed, under its 0.05 falsifier), and the 16 greedy tokens are equal (E-6 holds; per-token decode KL max 0.0079). Whether that is the known rounding of regrouping the MoE (the lane's Q-NOISE: KL mean 0.0144 for a chunking change) or a semantic error in the tail is not decided by those numbers alone. The control is **N**: the changed code, mode `full`, `CACHALOT_PREFILL_CHUNK=3050` (calls of 3,050 + 3,050 instead of 4,096 + 2,004), compared with F by the same script.
+
+| id | quantity | prediction | falsifier |
+|---|---|---|---|
+| N-1 | N against F is a noise reference of the same size as D against F | N's decoder-window relative max (layers 21 to 39) is at least 0.1 and its logits KL lies between 0.003 and 0.1 (probability 0.60) | N's window relative max below 0.02 (regrouping alone is nearly exact: then D's difference is a defect) |
+| N-2 | the decoder windows | D's relative max per layer is within a factor of 3 of N's at 15 of the 19 layers (probability 0.55) | D above 3 x N at more than 10 layers: D is noisier than a regrouping |
+| N-3 | the greedy tokens | N's 16 greedy tokens equal F's (probability 0.70) | the first 4 differ |
+
+Reading: N-1 and N-2 holding make D's differences a regrouping effect (Q-NOISE-class), and the quality gate (`pareto.py` against that band) the next step; N-1's falsifier firing, or N-2's, makes the tail suspect and the build is not released until the cause is found.
