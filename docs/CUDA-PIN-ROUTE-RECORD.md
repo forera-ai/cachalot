@@ -105,3 +105,12 @@ Stop and bring the files home on a failed cell, a false gate, truncation, or 80 
 ## 7. Needs Hamed
 
 A go and one **RTX 5090** instance (the Korean listing, as before; the runbook says when to create it and the instance takes about seven minutes to initialise), then the usual SSH arrangement for that one instance, no sudo. If an instance has a GPU that does not initialise, a replacement is created before the faulty one is terminated. Housekeeping from earlier sessions stands: terminate `aquatic-existence-2628`, `flat-battle-1078`, `imperfect-duck-7094`, `elegant-things-5691` if still up, enter the billed hours, delete the ssh configs and known_hosts of `j1`, `i1`, `h2`, `h1`, `g1`, `f1`, `f2`, `f3`.
+
+## 8. Clarifications written after the instruments were built and before any instance run
+
+Three terms of sections 3 and 4 were left undefined and are fixed here, with no prediction, interval or falsifier changed (no run exists).
+
+* **K-4, the unit.** The stream baseline's GB/s counts read plus write, `2 x bytes / p50`, as session S1's 1,517 GB/s did (its 512 MiB copy); the interval 1,300 to 1,700 GB/s and the 15 % and 3 microsecond rule apply to that number. The copy is 256 MiB.
+* **K-5 and K-7, "slow share" of a route cell.** The route cells have no plateau of their own, so a route buffer is slow by the committed rule against the **higher of the two plateau rates of `k0` and `k5`** (the session's measured link plateau). The absolute 0.28 ms rule's share is reported beside it and is not scored.
+* **K-3, the buffers pooled.** The agreement is over the 24 buffers of `k0` and `k5` together (12 each).
+* **Field names.** The instance class is the row `instance_class_code` (0 fast, 1 mixed, 2 slow). Scoring is by field name, never by column position. The scorer is `benchmarks/cuda/pin_route_score.py`.
