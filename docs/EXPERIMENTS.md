@@ -1,8 +1,8 @@
 # Experiment index (charter section 7.2 and section 10)
 
-Written 2026-10-09 against runtime 0.66.61; regenerate with `benchmarks/experiment_index.py`. The charter asks for "a file of experiment records whose predictions were written before the build". The records themselves live in `docs/HANDOFF.md` section 18 (each with Baseline, Prediction, Method, Result, Explanation, Limits, Kind); this file is the index: where each record is, whether it carries a written prediction, and what kind of result it is, as its own **Kind** line says. It does not restate results. Sections before 18.75 predate the record format and are not listed; sections without a **Kind** line are listed as unlabelled and have no claim made for them here.
+Written 2026-10-09 against runtime 0.66.62; regenerate with `benchmarks/experiment_index.py`. The charter asks for "a file of experiment records whose predictions were written before the build". The records themselves live in `docs/HANDOFF.md` section 18 (each with Baseline, Prediction, Method, Result, Explanation, Limits, Kind); this file is the index: where each record is, whether it carries a written prediction, and what kind of result it is, as its own **Kind** line says. It does not restate results. Sections before 18.75 predate the record format and are not listed; sections without a **Kind** line are listed as unlabelled and have no claim made for them here.
 
-Counts of the 144 sections listed (18.75-18.218): 70 research, 22 unlabelled, 21 measurement, 17 planning, 13 engineering, 1 pricing.
+Counts of the 145 sections listed (18.75-18.219): 70 research, 22 unlabelled, 21 measurement, 17 planning, 14 engineering, 1 pricing.
 
 Research means predicted, measured and explained (charter section 8.1 rule 6); a falsified prediction is still research and is marked so in its Kind line. Engineering means it works without a written prediction, or an instrument was built.
 
@@ -10,6 +10,7 @@ Research means predicted, measured and explained (charter section 8.1 rule 6); a
 
 | section | title | prediction written | kind (as recorded) |
 |---|---|:---:|---|
+| §18.219 | DI-4 instrument built; the repo has no dump that can price it (0.66.62) | yes | Engineering (instrument); the lever is neither priced nor closed. No default changed. |
 | §18.218 | DI-1 first measurement: the decoder half of a cold prefill chunk (0.66.61) | yes | Research (predicted, measured, explained as hypothesis): 5 held, 1 not informative. No default changed. |
 | §18.217 | DI-1 first measurement: the encoder and decoder halves of a cold prefill chunk, registered and built (0.66.60) | yes | Planning, instruments and tests (predictions committed first). No default changed, nothing measured. |
 | §18.216 | CUDA pinned-copy audit and follow-up M, registered and built (0.66.60) | yes | Planning, instruments and tests, plus an audit (predictions committed first). No default changed, nothing measured. |

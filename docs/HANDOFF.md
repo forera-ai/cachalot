@@ -25,6 +25,11 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-21, 0.66.62): DI-4's instrument is built; it cannot be priced until Hamed records a long Hermes session
+>
+> Section 18.219. `benchmarks/prefix_grain_replay.py` ready; the repo's only dumps are one 8-request session (0 of 8 diverge inside a chunk). Command for him: `mkdir -p benchmarks/results/hermes-live-di4 && CACHALOT_SERVER_DUMP=$PWD/benchmarks/results/hermes-live-di4/requests.jsonl ./serve.sh`, a long Hermes session with compression or subagents, then the replay. Follow-up M still needs one RTX 5090.
+>
+
 > ## Start here (2026-10-21, 0.66.61): the decoder half is 46.5 % of a cold prefill chunk; the exact-tail lever would cut a 22.4k block's layer time by about 39 to 42 % (derived); nothing built
 >
 > Section 18.218, results `docs/DI1-SPLIT-RESULTS.md`. Cold 4,096 tokens in 42.86 s (encoder 22.85, decoder 19.87), warm 38.35 s, share 0.465 and 0.46; 5 of 6 predictions held (D-4 vacuous). A chunk reads about 92 % of each layer's experts, so one decoder pass over the 2,541-row tail costs 12.3 to 19.9 s and a 22.4k block falls from about 257 s to 149 to 157 s of layer time. **Needs Hamed:** whether to build it (L1 metadata matrix, exact tail, `pareto.py` gate), and the snapshot policy (DI-3), which decides whether intermediate in-block snapshots survive. Open: layer 1's unexplained 3.9 s; DI-4's hit counts need a longer Hermes dump; follow-up M needs an RTX 5090.
@@ -9390,6 +9395,23 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.219 DI-4 instrument built; the repo has no dump that can price it (0.66.62)
+
+**Goal.** Hamed: "first DI-4 then Follow-up M".
+
+**Baseline (recorded).** 18.212 and the 0.66.58 look: 8 requests, grain adds 0 tokens.
+
+**Prediction.** The lane's draft: at least a quarter of mid-session requests diverge inside a chunk recovering a median of 1,000+ tokens; falsified if 80 % or more diverge at a snapshot point or the end.
+
+**Method.** Searched the repo for request dumps: every dump is the same 8-request Hermes session (DeepSeek `c28659db`, GLM `e64d81bc`; the blind-sample files are independent prompts, not sessions). Built `benchmarks/prefix_grain_replay.py` (the real cache, no model) and 2 tests; ran it on the DeepSeek dump.
+
+**Result.** 8 requests, cache prefilled 25,974, grain would prefill 25,974, 0 of 8 diverged inside a chunk. Not a verdict: no compression event or subagent in the session.
+
+**Open / needs Hamed.** Record a long Hermes session with compression or subagents:
+`mkdir -p benchmarks/results/hermes-live-di4 && CACHALOT_SERVER_DUMP=$PWD/benchmarks/results/hermes-live-di4/requests.jsonl ./serve.sh` (his Hermes against it), then I run `prefix_grain_replay.py` on it.
+
+**Kind.** Engineering (instrument); the lever is neither priced nor closed. No default changed.
 
 ### 18.218 DI-1 first measurement: the decoder half of a cold prefill chunk (0.66.61)
 

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.66.62 (2026-10-21)
+
+HANDOFF "Start here (2026-10-21, 0.66.62)" and section 18.219. Instrument only, nothing in `src/` but the version string: `benchmarks/prefix_grain_replay.py` (DI-4's price: replays a `CACHALOT_SERVER_DUMP` through the real cache and compares tokens prefilled with a 128-token-grain reuse; prints the share of requests that diverged inside a chunk, against the lane's 80 % falsifier) and 2 tests. On the only dump in the repo (one 8-request Hermes session stored under several names; the GLM copies are one more session on another tokenizer) the grain adds 0 tokens, 0 of 8 requests diverge inside a chunk: not a verdict, the session has no compression event. DI-4 needs a recorded long Hermes session (Hamed's).
+
 ## 0.66.61 (2026-10-21)
 
 HANDOFF "Start here (2026-10-21, 0.66.61)" and section 18.218; results `docs/DI1-SPLIT-RESULTS.md` (record `docs/DI1-SPLIT-RECORD.md`, six predictions committed first in ad72a6e). Measurement on the Mac, nothing in `src/` but the version string.
