@@ -648,6 +648,10 @@ Hamed resumed the lane on the card ("continue with online GPUs"). `docs/CUDA-ROW
 
 `docs/CUDA-PIN-ROUTE-RECORD.md` (twelve predictions K-1 to K-12, committed first). DC-3 (does `cudaHostAlloc` against `cudaHostRegister` with the portable flag, with flag 0, and on ordinary allocator memory change the copy class of a 9.95 MB buffer), DC-5 (a torch sync-debug window around the issue part of every row, with a planted control) and DC-6 (a classification rule committed before the run, applied at the start and the end, plus a link-generation sampler). Built and rehearsed on the Mac (`pin_route.py`, `k-smoke`, `k-full`, `pin_route_score.py`); not run. The provider's list of 2026-10-21 has no A100 or RTX 4090, so it needs one RTX 5090 instance.
 
+### 17.36 Session K results and follow-up L (2026-10-21)
+
+`docs/CUDA-PIN-ROUTE-RESULTS.md` (records `docs/CUDA-PIN-ROUTE-RECORD.md` and `docs/CUDA-PIN-ROUTE-FOLLOWUP-RECORD.md`). On an RTX 5090: no synchronising call in the guarded issue loop; link Gen 5 throughout; allocation order, not the route, destination or stream, sets the pinned copy rate (27.5 against 51.8 GB/s); the earlier slow-class results are read in that light.
+
 ## 18. Honest limits
 
 - This is a plan. No hypothesis in it has been tested; every "expected" device property is vendor-derived and unverified for the rented machine.

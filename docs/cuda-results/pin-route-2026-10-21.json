@@ -1,0 +1,344 @@
+{
+  "guard": {
+    "cells": {
+      "L3.C1.0.guard.D": {
+        "host_p50_ms": 2.081605000171294,
+        "sources": {},
+        "sync_calls": 0,
+        "tokens": 400,
+        "tokens_with_hit": 0
+      },
+      "L3.C1.0.guard.N0": {
+        "host_p50_ms": 0.9049869997852511,
+        "sources": {},
+        "sync_calls": 0,
+        "tokens": 400,
+        "tokens_with_hit": 0
+      },
+      "L3.C1.0.guard.N1": {
+        "host_p50_ms": 0.895348000199192,
+        "sources": {},
+        "sync_calls": 0,
+        "tokens": 400,
+        "tokens_with_hit": 0
+      },
+      "L3.C1.0.guard.P0L": {
+        "host_p50_ms": 2.5224279996791665,
+        "sources": {},
+        "sync_calls": 0,
+        "tokens": 400,
+        "tokens_with_hit": 0
+      },
+      "L3.C1.0.plain.D": {
+        "host_p50_ms": 2.0732420001081664
+      },
+      "L3.C1.0.plain.N0": {
+        "host_p50_ms": 0.8596160000706732
+      },
+      "L3.C1.0.plain.N1": {
+        "host_p50_ms": 0.8522310000103062
+      },
+      "L3.C1.0.plain.P0L": {
+        "host_p50_ms": 2.52411799993979
+      },
+      "L4.C0.3.guard.D": {
+        "host_p50_ms": 1.6990420002684914,
+        "sources": {},
+        "sync_calls": 0,
+        "tokens": 400,
+        "tokens_with_hit": 0
+      },
+      "L4.C0.3.guard.N0": {
+        "host_p50_ms": 0.672475000101258,
+        "sources": {},
+        "sync_calls": 0,
+        "tokens": 400,
+        "tokens_with_hit": 0
+      },
+      "L4.C0.3.guard.N1": {
+        "host_p50_ms": 0.6664730001375574,
+        "sources": {},
+        "sync_calls": 0,
+        "tokens": 400,
+        "tokens_with_hit": 0
+      },
+      "L4.C0.3.guard.P0L": {
+        "host_p50_ms": 2.0461079997176057,
+        "sources": {},
+        "sync_calls": 0,
+        "tokens": 400,
+        "tokens_with_hit": 0
+      },
+      "L4.C0.3.plain.D": {
+        "host_p50_ms": 1.6860400000950904
+      },
+      "L4.C0.3.plain.N0": {
+        "host_p50_ms": 0.635661000046639
+      },
+      "L4.C0.3.plain.N1": {
+        "host_p50_ms": 0.6380810000337078
+      },
+      "L4.C0.3.plain.P0L": {
+        "host_p50_ms": 2.0029260000455906
+      },
+      "L4.C0.3.planted.N0": {
+        "host_p50_ms": 0.9718510000311653,
+        "sources": {
+          "overlap_arena.py:849": 400
+        },
+        "sync_calls": 400,
+        "tokens": 400,
+        "tokens_with_hit": 400
+      },
+      "L4.C0.3.planted.N1": {
+        "host_p50_ms": 0.9741890000896092,
+        "sources": {
+          "overlap_arena.py:849": 400
+        },
+        "sync_calls": 400,
+        "tokens": 400,
+        "tokens_with_hit": 400
+      },
+      "L4.C0.3.planted.P0L": {
+        "host_p50_ms": 2.7198009998983252,
+        "sources": {
+          "overlap_arena.py:849": 400
+        },
+        "sync_calls": 400,
+        "tokens": 400,
+        "tokens_with_hit": 400
+      },
+      "L4.C1.0.guard.D": {
+        "host_p50_ms": 1.8600870001819203,
+        "sources": {},
+        "sync_calls": 0,
+        "tokens": 400,
+        "tokens_with_hit": 0
+      },
+      "L4.C1.0.guard.N0": {
+        "host_p50_ms": 0.7135509997624467,
+        "sources": {},
+        "sync_calls": 0,
+        "tokens": 400,
+        "tokens_with_hit": 0
+      },
+      "L4.C1.0.guard.N1": {
+        "host_p50_ms": 0.7056709999915256,
+        "sources": {},
+        "sync_calls": 0,
+        "tokens": 400,
+        "tokens_with_hit": 0
+      },
+      "L4.C1.0.guard.P0L": {
+        "host_p50_ms": 2.2344479997400413,
+        "sources": {},
+        "sync_calls": 0,
+        "tokens": 400,
+        "tokens_with_hit": 0
+      },
+      "L4.C1.0.plain.D": {
+        "host_p50_ms": 1.8253650000588095
+      },
+      "L4.C1.0.plain.N0": {
+        "host_p50_ms": 0.6641630003514365
+      },
+      "L4.C1.0.plain.N1": {
+        "host_p50_ms": 0.6700129996488613
+      },
+      "L4.C1.0.plain.P0L": {
+        "host_p50_ms": 2.18776100030027
+      }
+    },
+    "elapsed_s": [
+      415.019
+    ],
+    "gates": [
+      {
+        "calibration": true,
+        "chain2": true,
+        "closure": true,
+        "copyevents": true,
+        "counts": true,
+        "coverage": true,
+        "determinism": true,
+        "drift": true,
+        "event_hash": true,
+        "floor": true,
+        "guard_sees_planted": true,
+        "no_failed_cells": true,
+        "readback": true,
+        "rowsum": true,
+        "sanity": true
+      }
+    ],
+    "guard_host_cost": {
+      "L4.C0.3": 0.02155945834795303,
+      "L4.C1.0": 0.02134008213573758
+    },
+    "guard_sync_calls": {
+      "L3.C1.0.guard.D": 0,
+      "L3.C1.0.guard.P0L": 0,
+      "L4.C0.3.guard.D": 0,
+      "L4.C0.3.guard.P0L": 0,
+      "L4.C1.0.guard.D": 0,
+      "L4.C1.0.guard.P0L": 0
+    },
+    "planted": {
+      "host_p50_ms": 2.7198009998983252,
+      "sources": {
+        "overlap_arena.py:849": 400
+      },
+      "sync_calls": 400,
+      "tokens": 400,
+      "tokens_with_hit": 400
+    },
+    "status": [
+      "complete"
+    ]
+  },
+  "pin": {
+    "cells": {
+      "k1": {
+        "errors": [],
+        "median_gbps": 33.84814288143477,
+        "n": 24,
+        "slow_share_absolute": 0.75,
+        "slow_share_relative": 0.0
+      },
+      "k2": {
+        "errors": [],
+        "median_gbps": 34.5208028445754,
+        "n": 24,
+        "slow_share_absolute": 0.75,
+        "slow_share_relative": 0.08333333333333333
+      },
+      "k3": {
+        "errors": [],
+        "median_gbps": 31.2602113177921,
+        "n": 24,
+        "slow_share_absolute": 0.9583333333333334,
+        "slow_share_relative": 0.4166666666666667
+      },
+      "k4": {
+        "errors": null,
+        "median_gbps": 27.46615785160086,
+        "n": 24,
+        "slow_share_absolute": 1.0,
+        "slow_share_relative": 1.0
+      }
+    },
+    "elapsed_s": {
+      "k0": 1.421,
+      "k1": 0.976,
+      "k2": 1.009,
+      "k3": 1.04,
+      "k4": 1.022,
+      "k5": 1.423
+    },
+    "gates": {
+      "k0": {
+        "no_failed_cells": true,
+        "roundtrip": true,
+        "sanity": true
+      },
+      "k1": {
+        "no_failed_cells": true,
+        "roundtrip": true,
+        "sanity": true
+      },
+      "k2": {
+        "no_failed_cells": true,
+        "roundtrip": true,
+        "sanity": true
+      },
+      "k3": {
+        "no_failed_cells": true,
+        "roundtrip": true,
+        "sanity": true
+      },
+      "k4": {
+        "no_failed_cells": true,
+        "roundtrip": true,
+        "sanity": true
+      },
+      "k5": {
+        "no_failed_cells": true,
+        "roundtrip": true,
+        "sanity": true
+      }
+    },
+    "instance_class_k0": "slow",
+    "instance_class_k5": "slow",
+    "label_agreement_pooled": 1.0,
+    "link": {
+      "k0": {
+        "gens": {
+          "5": 14
+        },
+        "interval_ms": 100,
+        "max_gen": 5,
+        "min_gen": 5,
+        "samples": 14,
+        "widths": {
+          "16": 14
+        }
+      },
+      "k4": {
+        "gens": {
+          "5": 10
+        },
+        "interval_ms": 100,
+        "max_gen": 5,
+        "min_gen": 5,
+        "samples": 10,
+        "widths": {
+          "16": 10
+        }
+      },
+      "k5": {
+        "gens": {
+          "5": 14
+        },
+        "interval_ms": 100,
+        "max_gen": 5,
+        "min_gen": 5,
+        "samples": 14,
+        "widths": {
+          "16": 14
+        }
+      }
+    },
+    "plateau_gbps_k0": 41.27642551487567,
+    "plateau_gbps_session": 41.27642551487567,
+    "slow_share_by_cell": {
+      "k0": 1.0,
+      "k4": 1.0,
+      "k5": 1.0
+    },
+    "status": {
+      "k0": "complete",
+      "k1": "complete",
+      "k2": "complete",
+      "k3": "complete",
+      "k4": "complete",
+      "k5": "complete"
+    },
+    "stream_changed": false,
+    "stream_gbps_k0": 1525.4788247096853,
+    "stream_gbps_k5": 1518.1626870330574
+  },
+  "verdict": {
+    "K-1": "in interval",
+    "K-10": "in interval",
+    "K-11": "in interval",
+    "K-12": "in interval",
+    "K-2": "outside interval",
+    "K-3": "in interval",
+    "K-4": "in interval",
+    "K-5": "past falsifier",
+    "K-6": "in interval",
+    "K-7": "outside interval",
+    "K-8": "in interval",
+    "K-9": "in interval"
+  }
+}

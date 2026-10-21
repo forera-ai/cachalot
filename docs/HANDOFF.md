@@ -25,6 +25,11 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-21, 0.66.59): the slow pinned-copy class was the harness's allocate-then-copy order: the same 24 buffers copy at 0.362 ms one at a time and at 0.192 ms allocated first; the issue loop contains no synchronising call
+>
+> Sections 18.214 and 18.215, results `docs/CUDA-PIN-ROUTE-RESULTS.md`, records `docs/CUDA-PIN-ROUTE-RECORD.md` (K-1 to K-12) and `docs/CUDA-PIN-ROUTE-FOLLOWUP-RECORD.md` (L-1 to L-9, committed first). RTX 5090 `hellish-cry-4960` (the first instance had no driver loaded). **Measured:** allocation order, not the route, the destination or the stream, sets the rate of a pinned 9.95 MB buffer (27.5 against 51.8 GB/s); registering your own memory is 14 to 26 % faster than `cudaHostAlloc` in the slow pattern; the guarded issue loop counted 0 synchronising calls in 16,000 rows a cell and the planted control 400 of 400; the PCIe link read Gen 5 x16 in every sample. **Consequence (derived):** the "slow class" of S1, B1 and B2 and the huge-page falsification were measured only in the interleaved pattern; the committed DC-6 rule labels any instance slow until it uses the batch-first pattern. **Needs Hamed:** terminate `hellish-cry-4960` (and the first instance `giant-scarf-3095` if it still bills), enter the billed hours, delete the `k1` and `k2` ssh configs and known_hosts. First jobs: why the order matters (allocate half, copy once, allocate the rest), the huge-page and registered-route questions in the batch-first pattern, re-specify DC-6; the DeepInfer lane's Mac jobs are unchanged.
+>
+
 > ## Start here (2026-10-21, 0.66.58): CUDA session K (the pinning route, the issue-loop synchronisation guard, the committed copy-population class) is registered, built and rehearsed on the Mac; it needs Hamed to create one RTX 5090
 >
 > Section 18.213, record `docs/CUDA-PIN-ROUTE-RECORD.md` (twelve predictions K-1 to K-12 committed first in 735efd8; clarifications of units, the route's slow share and the pooling in 3bc8d3d, before any run). Hamed asked for DC-3, DC-5 and DC-6 of the DeepInfer lane on a third GPU type; his provider list has no A100 or RTX 4090, so it is a new RTX 5090 (the card whose slow and fast copy classes DC-3 and DC-6 are about). Built: `benchmarks/cuda/pin_route.py`, `SyncGuard` and profiles `k-smoke` and `k-full` in `overlap_arena.py`, `pin_route_score.py`, `session.sh pinroute|n3ksmoke|n3kfull`, `SESSION-RUNBOOK-PIN-ROUTE.md`, 47 tests (1,000 pass). Never run on a GPU. Nothing in `src/` but the version. **Needs Hamed:** one RTX 5090 instance (the Korean listing), his go for the named live instance, the usual SSH arrangement (no sudo); GPU time about 15 minutes, cap one GPU-hour. The DeepInfer lane's Mac-side jobs (DI-4 needs a longer Hermes request dump: the repo's only DeepSeek dump is 8 requests and shows no gain from a 128-token grain; DI-1 split; DI-2 curve) are unchanged.
@@ -9375,6 +9380,46 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.215 CUDA session K follow-up L: allocation order makes the pinned copy fast or slow (0.66.59)
+
+**Goal.** Hamed: "Register a short follow-up first (reversed order, arena-first context, predictions committed before the run), keep the instance up, then write results." The first run left the arena process's 0.194 ms source copies beside the fresh processes' 0.362 ms unexplained.
+
+**Baseline (recorded).** Fresh-process `cudaHostAlloc` buffers (`k0`, `k4`, `k5`) 0.362 ms; the arena's 64 pinned sources 0.194 ms in the same session; registered routes 0.27 to 0.31 ms; four differences between the two contexts (a 24 GiB device buffer first, a slot as the destination, all pinned buffers allocated before timing, a non-default stream).
+
+**Prediction.** L-1 to L-9 of `docs/CUDA-PIN-ROUTE-FOLLOWUP-RECORD.md` (committed first, ae41d43): the arena analogue `l4` reproduces the fast copy (0.75); batch allocation alone (0.45), the destination alone (0.35) and the stream alone (0.40 that it matters) each tested; at most one factor suffices alone (0.55); the reversed-order routes reproduce the first run within 8 % (0.75); both controls 0.362 ms within 1 % (0.85); the route ranking survives (0.70); completion under 300 s (0.80). The set is hedged (L-2, L-3 and L-5 cannot all hold).
+
+**Method.** `pin_route.py` groups `l1` to `l4` (24 `cudaHostAlloc` buffers of 9.95 MB, each timed alone; the three factors one at a time and together), `session.sh pinroute2` (order k4, k3, k2, k1, l1, l2, l3, l4, k4, nine fresh processes), `pin_route_followup_score.py`, 14 tests (1,014 pass). Run on `hellish-cry-4960` in 9.0 s.
+
+**Result.** `l1` (all allocated first) 0.192 ms (51.8 GB/s) slow share 0; `l4` 0.191 ms; `l2` (arena destination) and `l3` (side stream) 0.362 ms slow share 1.0; both controls 0.362 ms; reversed-order routes within 2.0, 3.9 and 5.0 % of the first run's; ranking held. 8 of 9 held, L-3 past its falsifier.
+
+**Explanation (hypothesis).** A pinned buffer allocated after host-to-device copies have run is slower than one allocated before; not tested: page pinning or IOMMU mapping under load, a link or driver state set by the first copy, the allocator's state after a context did DMA.
+
+**What did not go well / limits.** The L-2, L-3 and L-5 predictions were hedged and could not all hold; I did not predict the single-factor outcome. One instance, one torch build. The earlier results' readings are revised by derivation, not re-measured.
+
+**Open / needs Hamed.** Terminate the instance when done; the cell that separates "allocated after a copy" from "allocated while others are timed".
+
+**Kind.** Research (predicted, measured, explained as hypothesis): 8 held, 1 falsified (L-3). No default changed.
+
+### 18.214 CUDA session K on an RTX 5090: the pinning route, the issue-loop guard and the population class (0.66.59)
+
+**Goal.** Run the registered session K (18.213) on a new RTX 5090: DC-3, DC-5 and DC-6.
+
+**Baseline (recorded).** 18.213. A first instance, `giant-scarf-3095`, came up with no NVIDIA kernel module; no cell ran on it.
+
+**Prediction.** K-1 to K-12 of `docs/CUDA-PIN-ROUTE-RECORD.md` (735efd8; clarifications 3bc8d3d before any run).
+
+**Method.** `smoke`, `pinroute` (six fresh processes), `n3ksmoke`, `n3kfull` (27 cells, 415 s) on `hellish-cry-4960` (driver 580.159.03); scored with `pin_route_score.py`; results home with verified hashes.
+
+**Result.** K-1, K-3, K-4, K-6, K-8, K-9, K-10, K-11, K-12 in interval; K-2 (plateau 41.3 GB/s) and K-7 (ordinary memory 13.8 % faster than the control) outside, K-5 past its falsifier by the registered rule (confounded: the 64 MiB plateau was degraded). Zero synchronising calls in the guarded issue loop; planted control 400 of 400; link Gen 5 x16 in every sample, so H-link is not supported; registered routes 14 to 26 % faster than `cudaHostAlloc` in the interleaved pattern, flag 0 and 1 within 2 %.
+
+**Explanation (hypothesis).** The follow-up (18.215) shows the dominant variable is allocation order; the route effect is secondary. The committed classification rule (a fresh process, interleaved) read the instance slow while the arena in the same session read it fast.
+
+**What did not go well / limits.** The record's rule was built on the interleaved pattern, which turned out to decide the answer; the plateau used by the relative rule came from the same pattern. The guard sees only what torch routes through its hook.
+
+**Open / needs Hamed.** As in the Start-here block.
+
+**Kind.** Research (predicted, measured, explained as hypothesis): 9 held, 2 missed (K-2, K-7), 1 falsified (K-5). No default changed.
 
 ### 18.213 CUDA session K: the pinning route, the issue-loop synchronisation guard and the copy-population class, registered and built (0.66.58)
 

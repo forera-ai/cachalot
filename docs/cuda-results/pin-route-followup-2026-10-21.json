@@ -1,0 +1,172 @@
+{
+  "cells": {
+    "k1": {
+      "fast_share": 0.0,
+      "group": "k1",
+      "median_gbps": 33.17020517834333,
+      "median_ms": 0.299967996776104,
+      "n": 24,
+      "slow_share": 1.0
+    },
+    "k2": {
+      "fast_share": 0.0,
+      "group": "k2",
+      "median_gbps": 33.15782443047552,
+      "median_ms": 0.30008000135421753,
+      "n": 24,
+      "slow_share": 0.8333333333333334
+    },
+    "k3": {
+      "fast_share": 0.0,
+      "group": "k3",
+      "median_gbps": 29.697946902915426,
+      "median_ms": 0.33503999561071396,
+      "n": 24,
+      "slow_share": 1.0
+    },
+    "k4_first": {
+      "fast_share": 0.0,
+      "group": "k4",
+      "median_gbps": 27.46191223988386,
+      "median_ms": 0.3623199984431267,
+      "n": 24,
+      "slow_share": 1.0
+    },
+    "k4_last": {
+      "fast_share": 0.0,
+      "group": "k4",
+      "median_gbps": 27.46312473446161,
+      "median_ms": 0.3623040020465851,
+      "n": 24,
+      "slow_share": 1.0
+    },
+    "l1": {
+      "fast_share": 1.0,
+      "group": "l1",
+      "median_gbps": 51.79054838457414,
+      "median_ms": 0.1921199969947338,
+      "n": 24,
+      "slow_share": 0.0
+    },
+    "l2": {
+      "fast_share": 0.0,
+      "group": "l2",
+      "median_gbps": 27.46191223988386,
+      "median_ms": 0.3623199984431267,
+      "n": 24,
+      "slow_share": 1.0
+    },
+    "l3": {
+      "fast_share": 0.0,
+      "group": "l3",
+      "median_gbps": 27.467976913566563,
+      "median_ms": 0.3622400015592575,
+      "n": 24,
+      "slow_share": 1.0
+    },
+    "l4": {
+      "fast_share": 1.0,
+      "group": "l4",
+      "median_gbps": 51.98971732356741,
+      "median_ms": 0.1913839988410473,
+      "n": 24,
+      "slow_share": 0.0
+    }
+  },
+  "elapsed_s": [
+    1.022,
+    1.039,
+    1.024,
+    1.015,
+    0.913,
+    1.03,
+    1.013,
+    0.915,
+    1.021
+  ],
+  "gates": [
+    {
+      "no_failed_cells": true,
+      "roundtrip": true,
+      "sanity": true
+    },
+    {
+      "no_failed_cells": true,
+      "roundtrip": true,
+      "sanity": true
+    },
+    {
+      "no_failed_cells": true,
+      "roundtrip": true,
+      "sanity": true
+    },
+    {
+      "no_failed_cells": true,
+      "roundtrip": true,
+      "sanity": true
+    },
+    {
+      "no_failed_cells": true,
+      "roundtrip": true,
+      "sanity": true
+    },
+    {
+      "no_failed_cells": true,
+      "roundtrip": true,
+      "sanity": true
+    },
+    {
+      "no_failed_cells": true,
+      "roundtrip": true,
+      "sanity": true
+    },
+    {
+      "no_failed_cells": true,
+      "roundtrip": true,
+      "sanity": true
+    },
+    {
+      "no_failed_cells": true,
+      "roundtrip": true,
+      "sanity": true
+    }
+  ],
+  "order": [
+    "k4",
+    "k3",
+    "k2",
+    "k1",
+    "l1",
+    "l2",
+    "l3",
+    "l4",
+    "k4"
+  ],
+  "route_rate_change_vs_first_run": {
+    "k1": 0.020024663840010337,
+    "k2": 0.03948829899262707,
+    "k3": 0.04996970879989049
+  },
+  "status": [
+    "complete",
+    "complete",
+    "complete",
+    "complete",
+    "complete",
+    "complete",
+    "complete",
+    "complete",
+    "complete"
+  ],
+  "verdict": {
+    "L-1": "in interval",
+    "L-2": "in interval",
+    "L-3": "past falsifier",
+    "L-4": "in interval",
+    "L-5": "in interval",
+    "L-6": "in interval",
+    "L-7": "in interval",
+    "L-8": "in interval",
+    "L-9": "in interval"
+  }
+}

@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.66.59 (2026-10-21)
+
+HANDOFF "Start here (2026-10-21, 0.66.59)" and sections 18.214 and 18.215; results `docs/CUDA-PIN-ROUTE-RESULTS.md`, follow-up record `docs/CUDA-PIN-ROUTE-FOLLOWUP-RECORD.md` (nine predictions L-1 to L-9 committed first in ae41d43). Measurement on a second-draw RTX 5090 (`hellish-cry-4960`; the first instance had no NVIDIA driver loaded and ran nothing): CUDA session K and its follow-up. Nothing in `src/` changes but the version string.
+
+### Measured
+- **Allocation order sets the copy rate of a pinned 9.95 MB buffer.** Buffers allocated one at a time with a copy timed after each (the pattern of B1, B2 and the first run's cells) copied at 0.362 ms (27.5 GB/s, 48 of 48 within 0.001 ms); the same kind of buffers all allocated before the first copy copied at 0.192 ms (51.8 GB/s, 24 of 24). The destination (a slot of a 24 GiB device buffer) and a non-default stream did nothing. This reads the earlier "slow class is a property of the buffer, set below the guest" results (S1, B1, B2) as largely an artifact of the harness's allocate-then-copy order; why the order matters is untested.
+- **The issue loop contains no synchronising call torch reports** (DC-5): 0 counted in 16,000 guarded rows in each of six `D` and `P0L` cells at levels 3 and 4 (torch 2.7.1), the guard costs 2.1 % of host time, and a planted `.item()` was counted in 400 of 400 tokens.
+- **The pinning route is a smaller effect:** registering your own memory (flag 1 or flag 0 identical to 2 %) beat `cudaHostAlloc` by 14 to 26 % in the interleaved pattern; none reached the batch-first rate; no registered buffer was huge-page backed.
+- **H-link is not supported:** the PCIe link read generation 5, width 16 in all 38 samples, in the slow cells too.
+- K-1 to K-12 and L-1 to L-9 scored: K: 9 in interval, K-2 and K-7 outside, K-5 past its falsifier (confounded by a degraded 64 MiB plateau); L: 8 in interval, L-3 past its falsifier.
+
+### Added
+- `benchmarks/cuda/pin_route_followup_score.py`, follow-up cells `l1` to `l4` in `pin_route.py` (the three factors of the arena process, one at a time and together), `session.sh pinroute2`, 14 tests (1,014 pass).
+- Corrections noted in `docs/CUDA-BACKING-RESULTS.md` and `docs/CUDA-HUGEPAGE-RETEST-RESULTS.md` (the slow readings there were all interleaved; the huge-page question is untested in the batch-first pattern).
+
+### Closed
+- H-link (lower link generation as the cause of the slow class), at 10 Hz sampling, on this instance.
+- DC-5 as a question about torch-visible synchronisation in the issue loop (answered clean; a driver-level block is invisible to the hook).
+
 ## 0.66.58 (2026-10-21)
 
 HANDOFF "Start here (2026-10-21, 0.66.58)" and section 18.213; new record `docs/CUDA-PIN-ROUTE-RECORD.md` (twelve predictions K-1 to K-12, committed first in 735efd8, clarifications before any run in 3bc8d3d). Planning, instruments and tests on the Mac for CUDA session K, the three cheapest items of the DeepInfer lane's CUDA techniques (DC-3, DC-5, DC-6). Nothing was run on a GPU, no instance exists, and nothing in `src/` changes but the version string.
