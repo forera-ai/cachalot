@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.66.63 (2026-10-21)
+
+HANDOFF "Start here (2026-10-21, 0.66.63)" and section 18.220; results `docs/DI4-GRAIN-RESULTS.md`, `docs/di4-grain-2026-10-21.json`. Measurement on Hamed's recorded Hermes session (142 requests, four compressions), nothing in `src/` but the version string.
+
+### Measured
+- **DI-4 priced: a 128-token-grain reuse would have prefilled 259,772 tokens instead of 279,056 (-6.9 %).** 10 of 142 requests diverged inside a chunk (median saving 256 tokens); one summary call is 67 % of the saving (-2.3 % without it). The draft prediction (a quarter of requests, 1,000+ tokens) missed. DI-4 is closed as a standalone lever.
+- **Where the session's prefill went:** the four post-compression re-prefills are 27.9 % (the history is rewritten, only the 17,217-token system block is shared) and the seven auxiliary summary calls 28.5 %; a finer reuse grid cannot reach either.
+- In-block intermediate snapshots of the 4,096 grid did not serve this session (25 reuses at 191 tokens, 4 at exactly the system block): support for dropping unpinned in-block snapshots in a cold prefill (DI-1's policy (a)), to confirm on a second session.
+
 ## 0.66.62 (2026-10-21)
 
 HANDOFF "Start here (2026-10-21, 0.66.62)" and section 18.219. Instrument only, nothing in `src/` but the version string: `benchmarks/prefix_grain_replay.py` (DI-4's price: replays a `CACHALOT_SERVER_DUMP` through the real cache and compares tokens prefilled with a 128-token-grain reuse; prints the share of requests that diverged inside a chunk, against the lane's 80 % falsifier) and 2 tests. On the only dump in the repo (one 8-request Hermes session stored under several names; the GLM copies are one more session on another tokenizer) the grain adds 0 tokens, 0 of 8 requests diverge inside a chunk: not a verdict, the session has no compression event. DI-4 needs a recorded long Hermes session (Hamed's).

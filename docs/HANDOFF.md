@@ -25,6 +25,11 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-21, 0.66.63): DI-4 is priced and closed as a standalone lever (-6.9 % of prefill); 56 % of the session's prefill is post-compression re-prefill and summary calls
+>
+> Section 18.220, results `docs/DI4-GRAIN-RESULTS.md`. Hamed's 142-request session (four compressions): a 128-token grain would save 19,284 of 279,056 tokens; 10 requests diverge inside a chunk; one summary call is 67 % of the saving. The big costs are the four post-compression re-prefills (27.9 %) and the summary calls (28.5 %), which no reuse grid reaches. In-block intermediate snapshots did not serve the session (supports DI-1's policy (a)). **Needs Hamed:** the DI-1 build and snapshot policy, what to do about the post-compression prefill, one RTX 5090 for follow-up M.
+>
+
 > ## Start here (2026-10-21, 0.66.62): DI-4's instrument is built; it cannot be priced until Hamed records a long Hermes session
 >
 > Section 18.219. `benchmarks/prefix_grain_replay.py` ready; the repo's only dumps are one 8-request session (0 of 8 diverge inside a chunk). Command for him: `mkdir -p benchmarks/results/hermes-live-di4 && CACHALOT_SERVER_DUMP=$PWD/benchmarks/results/hermes-live-di4/requests.jsonl ./serve.sh`, a long Hermes session with compression or subagents, then the replay. Follow-up M still needs one RTX 5090.
@@ -9395,6 +9400,26 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.220 DI-4 priced on a real Hermes session: -6.9 % of prefill, one event dominates (0.66.63)
+
+**Goal.** Hamed recorded a Hermes session with `CACHALOT_SERVER_DUMP` (142 requests, four compressions: he had not noticed them, Hermes compresses silently) and stopped the server; price DI-4 with the 0.66.62 replay.
+
+**Baseline (recorded).** 18.219: the only earlier dump was 8 requests, 0 diverging.
+
+**Prediction.** The lane draft: at least a quarter of requests diverge inside a chunk recovering a median of 1,000+ tokens; falsified if 80 % or more diverge exactly at a snapshot point or at the end.
+
+**Method.** `benchmarks/prefix_grain_replay.py` on `benchmarks/results/hermes-live-di4/requests.jsonl` (57 MB, gitignored), the real cache, no model.
+
+**Result.** Cache prefilled 279,056 tokens; a grain 259,772 (-19,284, -6.9 %); 10 of 142 diverged inside a chunk, median saving 256; request 106 is 12,928 of it (without it -2.3 %). Post-compression re-prefills are 77,764 tokens (27.9 %), summary calls 79,403 (28.5 %).
+
+**Explanation (hypothesis).** The shared prefix after a compression is only the system block, and summary prompts share nothing; a finer grid cannot reach either.
+
+**What did not go well / limits.** One session, one task mix; the replay does not price the SWA-rebuild quality risk. The draft prediction missed.
+
+**Open / needs Hamed.** What to do about the post-compression and summary prefill (56 %): Hermes-side or a server policy; a second session for the in-block snapshot finding; the DI-1 build and DI-3 policy (v266).
+
+**Kind.** Research (predicted, measured, explained as hypothesis): the prediction missed, the lever is closed as standalone. No default changed.
 
 ### 18.219 DI-4 instrument built; the repo has no dump that can price it (0.66.62)
 

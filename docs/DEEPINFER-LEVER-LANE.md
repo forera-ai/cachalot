@@ -105,7 +105,7 @@ The asymptote is -50 %. Prefill is partly read-bound and partly compute-bound (D
 
 Store, with an intermediate snapshot, the encoder outputs of its last 2,668 rows (104 MiB, derived) instead of the decoder state, and finish the decoder tail only when a request hits that snapshot. A cold prefill then pays no decoder passes for snapshots nobody hits; a hit pays one 20-layer tail pass over 2,541 rows (the decoder half of one chunk, about the cost the cold prefill saved). Disk cost 6 x 104 MiB for a 22k block (derived) against the 1.5 GiB snapshot budget (README `prefix_cache_bytes`). Price with DI-4's hit counts first. Needs a new "partial snapshot" type in `snapshot_store.py` and `prefix_cache.py`; bump `NUMERICS_VERSION` only if KV bits can move (they should not, in exact arithmetic).
 
-### DI-4. Token-granular (128) global-KV prefix reuse with bounded replay — PRICE FIRST, offline from request dumps, no GPU
+### DI-4. Token-granular (128) global-KV prefix reuse with bounded replay — PRICED 0.66.63 (`docs/DI4-GRAIN-RESULTS.md`): -6.9 % of a real session's prefill, one event dominates; closed as a standalone lever; was: PRICE FIRST, offline from request dumps, no GPU
 
 **Source.** Report 3.2.1; `doc/inference_deployment_qa.md:163-191` (store only at multiples of 128; hit length from the block KV; back off one block when the SWA state is missing); `worker/cache_engine.py:32,113-117,221-306` (`KVSTORE_GRAIN = 128`, the dropped region for decoder SWA and compression state: "compression windows end at the grain, so only SWA is persisted").
 
