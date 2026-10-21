@@ -3,7 +3,7 @@
 # Run from the directory the scaffold archive was unpacked into. No sudo, no system package changes, no downloads other
 # than the pinned Python wheels named below, which `setup` shows before it installs them.
 #
-#   bash benchmarks/cuda/session.sh check|setup|doctor|smoke|baseline|s2|n2smoke|n2full|backing|hugepage|n3smoke|n3full|n3bsmoke|n3bfull|n3csmoke|n3cfull|n3dsmoke|n3dfull|n3esmoke|n3ebridge|n3fsmoke|n3ffull|n3ffix|n3gsmoke|n3gfull|n3hsmoke|n3hfull|n3ismoke|n3ifull|n3jsmoke|n3jfull|pinroute|n3ksmoke|n3kfull|results
+#   bash benchmarks/cuda/session.sh check|setup|doctor|smoke|baseline|s2|n2smoke|n2full|backing|hugepage|n3smoke|n3full|n3bsmoke|n3bfull|n3csmoke|n3cfull|n3dsmoke|n3dfull|n3esmoke|n3ebridge|n3fsmoke|n3ffull|n3ffix|n3gsmoke|n3gfull|n3hsmoke|n3hfull|n3ismoke|n3ifull|n3jsmoke|n3jfull|pinroute|pinroute2|n3ksmoke|n3kfull|results
 #   (s2 = docs/CUDA-S2-EXPERIMENT-RECORD.md: overlap variants and batched expert copies; needs a clean smoke run first)
 set -euo pipefail
 
@@ -445,6 +445,16 @@ EOF7
     for g in k0 k1 k2 k3 k4 k5; do
       SESSION_TAG="${SESSION_TAG:-K}" "$PY" "$ROOT/benchmarks/cuda/pin_route.py" run --cells "$g" --execute --max-seconds "${MAXS:-150}" \
         --region "$REGION" --note "$(SESSION_TAG="${SESSION_TAG:-K}" note pinroute-$g)" || die "pinroute $g failed: stop, bring the files home"
+    done
+    ;;
+
+  pinroute2)
+    # Session K follow-up L (docs/CUDA-PIN-ROUTE-FOLLOWUP-RECORD.md): the routes in reverse order, the four context cells, the control again, nine
+    # fresh processes into their own directory ($ROOT/benchmarks/results/cuda-followup), stopping at the first failure. MAXS=seconds each (default 150).
+    [ -x "$PY" ] || die "run setup first"
+    for g in k4 k3 k2 k1 l1 l2 l3 l4 k4; do
+      SESSION_TAG="${SESSION_TAG:-L}" "$PY" "$ROOT/benchmarks/cuda/pin_route.py" run --cells "$g" --execute --max-seconds "${MAXS:-150}" \
+        --out-dir "$ROOT/benchmarks/results/cuda-followup" --region "$REGION" --note "$(SESSION_TAG="${SESSION_TAG:-L}" note pinroute2-$g)" || die "pinroute2 $g failed: stop, bring the files home"
     done
     ;;
 

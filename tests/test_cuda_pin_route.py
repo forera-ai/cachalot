@@ -208,7 +208,8 @@ def test_plan_and_dry_run_list_every_group(capsys):
     assert pr.main(["plan"]) == 0 and pr.main(["run", "--cells", "k3"]) == 0
     out = capsys.readouterr().out
     assert all(g in out for g in pr.ORDER) and "DRY RUN" not in out.split("\n")[0]
-    assert list(pr.ORDER) == ["k0", "k1", "k2", "k3", "k4", "k5"] and set(pr.ORDER) == set(pr.GROUPS)
+    assert list(pr.ORDER) == ["k0", "k1", "k2", "k3", "k4", "k5"] and set(pr.ORDER) | set(pr.CONTEXT) == set(pr.GROUPS)
+    assert list(pr.FOLLOWUP_ORDER) == ["k4", "k3", "k2", "k1", "l1", "l2", "l3", "l4", "k4"] and "l4" in out
 
 
 # ------------------------------------------------------------------------------------------------ DC-5: the guard
@@ -335,3 +336,53 @@ def test_session_sh_has_the_k_commands_in_the_registered_order():
     assert loop.split("in", 1)[1].replace("; do", "").split() == list(pr.ORDER)
     assert "pin_route.py" in text and "--execute" in text.split("pinroute)", 1)[1].split("n3ksmoke)", 1)[0]
     assert (ROOT / "benchmarks" / "cuda" / "SESSION-RUNBOOK-PIN-ROUTE.md").exists()
+
+
+# ------------------------------------------------------------------------------------------------ follow-up L
+
+def test_the_context_cells_switch_the_three_factors_one_at_a_time_and_together():
+    assert pr.CONTEXT == {"l1": (True, False, False), "l2": (False, True, False), "l3": (False, False, True), "l4": (True, True, True)}
+
+
+def test_the_context_cell_allocates_in_the_requested_order_and_reports_its_context(bench, monkeypatch):
+    events: list[str] = []
+    orig_pinned, orig_time = bench.pinned, bench.time_copy_on
+
+    def pinned(n, seed):
+        events.append("alloc")
+        return orig_pinned(n, seed)
+
+    def timed(dst, src, stream, **k):
+        events.append("time")
+        return orig_time(dst, src, stream, **k)
+
+    monkeypatch.setattr(bench, "pinned", pinned)
+    monkeypatch.setattr(bench, "time_copy_on", timed)
+    r = bench.context_cell(True, False, False, k=3, nbytes=1 << 16)
+    assert events == ["alloc"] * 3 + ["time"] * 3 and r["context"]["batch_first"] and r["roundtrip_ok"] and r["kept"] == 3
+    events.clear()
+    r = bench.context_cell(False, True, True, k=3, nbytes=1 << 16, arena_bytes=1 << 20)
+    assert events == ["alloc", "time"] * 3 and r["context"] == {"batch_first": False, "arena": True, "arena_bytes": 1 << 20, "side_stream": True}
+
+
+def test_the_arena_destination_is_a_slice_of_the_big_buffer(bench, monkeypatch):
+    seen = {}
+    orig = bench.time_copy_on
+
+    def timed(dst, src, stream, **k):
+        seen["storage"] = dst.untyped_storage().nbytes()
+        return orig(dst, src, stream, **k)
+
+    monkeypatch.setattr(bench, "time_copy_on", timed)
+    bench.context_cell(False, True, False, k=1, nbytes=1 << 16, arena_bytes=1 << 20)
+    assert seen["storage"] == 1 << 20
+    bench.context_cell(False, False, False, k=1, nbytes=1 << 16)
+    assert seen["storage"] == 1 << 16
+
+
+def test_session_sh_runs_the_followup_in_the_registered_order_into_its_own_directory():
+    text = (ROOT / "benchmarks" / "cuda" / "session.sh").read_text()
+    block = text.split("pinroute2)", 1)[1].split("n3ksmoke)", 1)[0]
+    loop = next(line for line in block.splitlines() if line.strip().startswith("for g in k4"))
+    assert loop.split("in", 1)[1].replace("; do", "").split() == list(pr.FOLLOWUP_ORDER)
+    assert "cuda-followup" in block and "--execute" in block

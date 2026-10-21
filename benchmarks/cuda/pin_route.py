@@ -16,9 +16,16 @@ buffers; the instance is `fast` with at most 1 slow of 12, `slow` with at least 
 torch; `PinRouteBench` extends `backing_probe.BackingBench` (which imports torch lazily and has a CPU rehearsal path for the Mac tests,
 never a CUDA number).
 
+Follow-up L (docs/CUDA-PIN-ROUTE-FOLLOWUP-RECORD.md, what makes the arena process's pinned copies fast): groups l1 to l4, each its own
+fresh process, 24 `cudaHostAlloc` buffers of 9.95 MB timed alone, varying three factors of the arena process one at a time and together:
+  l1      all buffers allocated first, then timed (a 9.95 MB destination, default stream)
+  l2      interleaved, the destination is slot 0 of a 24 GiB device buffer allocated first
+  l3      interleaved, timed on a non-default stream
+  l4      all three together (the analogue of the arena's source qualification)
+
 Usage:
     ~/venvs/deepseek-v41/bin/python benchmarks/cuda/pin_route.py plan
-GPU host: `run --cells k0|k1|k2|k3|k4|k5 [--execute] [--tag NAME]`.
+GPU host: `run --cells k0|k1|k2|k3|k4|k5|l1|l2|l3|l4 [--execute] [--tag NAME] [--out-dir DIR]`.
 """
 
 from __future__ import annotations
@@ -54,8 +61,15 @@ GROUPS = {"k0": "DC-6 start: classify the instance (12 x 9.95 MB, 3 x 64 MiB, de
           "k3": "DC-3: 24 x 9.95 MB ordinary allocator memory (torch.empty), cudaHostRegister flag 0",
           "k4": "DC-3 control: 24 x 9.95 MB cudaHostAlloc (torch pin_memory), with the link sampler",
           "k5": "DC-6 end: classify again (the same cell as k0, a fresh process)"}
+GROUPS.update({"l1": "follow-up L: 24 pinned buffers allocated first, then timed (small destination, default stream)",
+               "l2": "follow-up L: interleaved, destination is slot 0 of a 24 GiB device buffer allocated first",
+               "l3": "follow-up L: interleaved, timed on a non-default stream",
+               "l4": "follow-up L: all of l1, l2 and l3 together (the arena's source-qualification pattern)"})
 ORDER = ("k0", "k1", "k2", "k3", "k4", "k5")
-SMALL = {"k_classify": 4, "k_plateau": 2, "k_route": 3, "nbytes": 1 << 16, "plateau_bytes": 1 << 18, "stream_bytes": 1 << 18}
+FOLLOWUP_ORDER = ("k4", "k3", "k2", "k1", "l1", "l2", "l3", "l4", "k4")     # reversed routes, the four new cells, the control again
+ARENA_BYTES = 24 * 2**30
+CONTEXT = {"l1": (True, False, False), "l2": (False, True, False), "l3": (False, False, True), "l4": (True, True, True)}   # batch_first, arena, side stream
+SMALL = {"arena_bytes": 1 << 20, "k_classify": 4, "k_plateau": 2, "k_route": 3, "nbytes": 1 << 16, "plateau_bytes": 1 << 18, "stream_bytes": 1 << 18}
 
 
 # ------------------------------------------------------------------------------------------------ pure helpers (no torch)
@@ -208,6 +222,54 @@ class PinRouteBench(bp.BackingBench):
         return {"ms": ms, "smaps": points, "roundtrip_ok": ok, "errors": sorted(set(errors)), "nbytes": nbytes, "registered": nbytes,
                 "mapping": "ordinary", "advice": "none", "populate": False, "reg_flags": reg_flags, "unavailable": None}
 
+    def time_copy_on(self, dst, src, stream, iters: int = 20, warm: int = 5) -> float:
+        """`time_copy` with the copy and its events on `stream` (None: the current stream)."""
+        if stream is None:
+            return self.time_copy(dst, src, iters=iters, warm=warm)
+        a, b = self._events()
+        out = []
+        for i in range(warm + iters):
+            self.sync()
+            with self.torch.cuda.stream(stream):
+                a.record(stream)
+                dst.copy_(src, non_blocking=True)
+                b.record(stream)
+            b.synchronize()
+            if i >= warm:
+                out.append(a.elapsed_time(b))
+        return bp.p50(out)
+
+    def context_cell(self, batch_first: bool, arena: bool, side_stream: bool, k: int = K_ROUTE, nbytes: int = RECORD_BYTES,
+                     arena_bytes: int = ARENA_BYTES, deadline: suite.Deadline | None = None) -> dict:
+        """Follow-up L: `k` `cudaHostAlloc` buffers, each timed alone, with the arena process's three differences switched on one at a
+        time. `arena` allocates a big device buffer first and copies into its slot 0; `side_stream` times on a non-default stream;
+        `batch_first` allocates every pinned buffer before timing any (otherwise each is timed right after it is allocated)."""
+        big = self.dev_buffer(arena_bytes) if arena else None
+        dev = big[:nbytes] if big is not None else self.dev_buffer(nbytes)
+        stream = self.torch.cuda.Stream(device=self.dev) if (side_stream and not self.rehearsal) else None
+        keep, ms, ok = [], [], True
+
+        def time_one(buf):
+            nonlocal ok
+            ms.append(self.time_copy_on(dev, buf, stream))
+            ok &= self.roundtrip_ok(dev, buf, nbytes)
+
+        if batch_first:
+            keep = [self.pinned(nbytes, SEED + i) for i in range(k)]
+            for buf in keep:
+                if deadline is not None and deadline.expired():
+                    break
+                time_one(buf)
+        else:
+            for i in range(k):
+                if deadline is not None and deadline.expired():
+                    break
+                buf = self.pinned(nbytes, SEED + i)
+                keep.append(buf)
+                time_one(buf)
+        return {"ms": ms, "roundtrip_ok": ok, "nbytes": nbytes, "kept": len(keep),
+                "context": {"batch_first": batch_first, "arena": arena, "arena_bytes": arena_bytes if arena else 0, "side_stream": side_stream}}
+
     def stream_gbps(self, nbytes: int = STREAM_BYTES, iters: int = 20) -> dict:
         """One device-to-device copy of `nbytes`, p50 of `iters` after 5 warm-up; the rate counts read plus write (2 x bytes / time)."""
         src = self.dev_buffer(nbytes)
@@ -313,6 +375,7 @@ def rows_route(run_id: str, arm: str, res: dict) -> list[dict]:
 def cmd_plan(args) -> int:
     for g, what in GROUPS.items():
         print(f"{g:3s} {what}")
+    print(f"follow-up order {list(FOLLOWUP_ORDER)}")
     print(f"order {list(ORDER)}; record bytes {RECORD_BYTES}, plateau {PLATEAU_BYTES}, stream {STREAM_BYTES}; slow below {SLOW_FRACTION} x plateau")
     return 0
 
@@ -320,7 +383,7 @@ def cmd_plan(args) -> int:
 def run_group(bench: PinRouteBench, group: str, run_id: str, dl: suite.Deadline, gates: dict, failures: list, raw: dict,
               small: bool = False, sampler_factory=LinkSampler) -> list[dict]:
     cfg = SMALL if small else {"k_classify": K_CLASSIFY, "k_plateau": K_PLATEAU, "k_route": K_ROUTE, "nbytes": RECORD_BYTES,
-                               "plateau_bytes": PLATEAU_BYTES, "stream_bytes": STREAM_BYTES}
+                               "plateau_bytes": PLATEAU_BYTES, "stream_bytes": STREAM_BYTES, "arena_bytes": ARENA_BYTES}
     rows: list[dict] = []
 
     def guarded(name, fn, row_fn):
@@ -347,6 +410,10 @@ def run_group(bench: PinRouteBench, group: str, run_id: str, dl: suite.Deadline,
         guarded("ordinary_flag0", lambda: bench.ordinary_cell(0, cfg["k_route"], nb, deadline=dl), rows_route)
     elif group == "k4":
         guarded("alloc_control", lambda: bench.alloc_cell(cfg["k_route"], nb, sampler=sampler_factory(), deadline=dl), rows_route)
+    elif group in CONTEXT:
+        bf, ar, st = CONTEXT[group]
+        guarded({"l1": "batch_first", "l2": "arena_dest", "l3": "side_stream", "l4": "arena_full"}[group],
+                lambda: bench.context_cell(bf, ar, st, cfg["k_route"], nb, cfg.get("arena_bytes", ARENA_BYTES), deadline=dl), rows_route)
     return rows
 
 
