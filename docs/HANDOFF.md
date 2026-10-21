@@ -25,6 +25,11 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-21, 0.66.61): the decoder half is 46.5 % of a cold prefill chunk; the exact-tail lever would cut a 22.4k block's layer time by about 39 to 42 % (derived); nothing built
+>
+> Section 18.218, results `docs/DI1-SPLIT-RESULTS.md`. Cold 4,096 tokens in 42.86 s (encoder 22.85, decoder 19.87), warm 38.35 s, share 0.465 and 0.46; 5 of 6 predictions held (D-4 vacuous). A chunk reads about 92 % of each layer's experts, so one decoder pass over the 2,541-row tail costs 12.3 to 19.9 s and a 22.4k block falls from about 257 s to 149 to 157 s of layer time. **Needs Hamed:** whether to build it (L1 metadata matrix, exact tail, `pareto.py` gate), and the snapshot policy (DI-3), which decides whether intermediate in-block snapshots survive. Open: layer 1's unexplained 3.9 s; DI-4's hit counts need a longer Hermes dump; follow-up M needs an RTX 5090.
+>
+
 > ## Start here (2026-10-21, 0.66.60): the allocation-order finding is audited (a major cause, not the only one); follow-up M and the DI-1 split are registered and built; both need Hamed
 >
 > Sections 18.216 and 18.217. `docs/CUDA-PIN-PATTERN-AUDIT.md` corrects 0.66.59's reach: on the instance measured, allocating all pinned buffers first copies at 51.8 GB/s against 27.5; but a slow-population instance's batch-allocated arena was slow (0.349 ms), B1's batch-first curve 17 to 38 % slow. **Follow-up M** (`docs/CUDA-PIN-ORDER-RECORD.md`, M-1 to M-9) separates "after a copy has run" from "while timing", and re-asks the huge-page, route and classification questions in the fast pattern: built and rehearsed, needs one RTX 5090 (about 2 minutes of GPU time). **DI-1 split** (`docs/DI1-SPLIT-RECORD.md`, D-1 to D-6): how much of a cold 4,096-token chunk is the decoder half; built and tested, **needs Hamed to confirm the estimate (5 to 8 minutes) and run `sudo sysctl iogpu.wired_limit_mb=88064`** (it reads 0 after the reboot). Priority lanes: nothing autonomous is left in Hermes, vision or speed (see the prompt); the DI-1 lever is the one that would shorten the Hermes system block's 205 to 227 s cold prefill.
@@ -9385,6 +9390,26 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.218 DI-1 first measurement: the decoder half of a cold prefill chunk (0.66.61)
+
+**Goal.** Run the registered DI-1 split (18.217) after Hamed applied the sysctl and confirmed the estimate.
+
+**Baseline (recorded).** 4,501 tokens in 52 s (DS-PREFILL-COLD); a Hermes block 205 to 227 s.
+
+**Prediction.** D-1 to D-6 of `docs/DI1-SPLIT-RECORD.md` (ad72a6e): decoder share 0.40 to 0.60 cold and warm, 40 to 60 % of reads, marks tile the wall, 40 to 56 s, warm 40 to 90 % of cold.
+
+**Method.** `benchmarks/prefill_half_split.py 4096 2` under `guarded_run.sh` at a 34 GiB budget (44 refused), the server's environment and the internal 2-bit bank; exit 0 in 99 s. Two launches before it were stopped (a session end, and the X10Pro FP4 bank loaded by mistake).
+
+**Result.** Cold 42.86 s: encoder 22.85, decoder 19.87, share 0.465; warm 38.35 s, share 0.46; reads 7,088 / 7,070; layer 1 costs 3.9 s. 5 held (D-4 vacuous). Derived: exact-tail saving of a 22.4k block about 39 to 42 % of layer time.
+
+**Explanation (hypothesis).** The decoder half is about half the work because a chunk reads nearly every expert of every layer (a pass-bound prefill); layer 1's spike is untested.
+
+**What did not go well / limits.** D-4 could not fail; I launched with the wrong bank twice before reading the bank line. One prompt, 34 GiB, host-time marks.
+
+**Open / needs Hamed.** Build go, snapshot policy (DI-3), layer 1's cost, DI-4 dump.
+
+**Kind.** Research (predicted, measured, explained as hypothesis): 5 held, 1 not informative. No default changed.
 
 ### 18.217 DI-1 first measurement: the encoder and decoder halves of a cold prefill chunk, registered and built (0.66.60)
 

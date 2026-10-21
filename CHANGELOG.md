@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.66.61 (2026-10-21)
+
+HANDOFF "Start here (2026-10-21, 0.66.61)" and section 18.218; results `docs/DI1-SPLIT-RESULTS.md` (record `docs/DI1-SPLIT-RECORD.md`, six predictions committed first in ad72a6e). Measurement on the Mac, nothing in `src/` but the version string.
+
+### Measured
+- **DI-1 first measurement: the decoder half (layers 20 to 39) is 46.5 % of a cold 4,096-token prefill chunk** (cold 42.86 s: encoder 22.85 s, decoder 19.87 s; warm 38.35 s, share 0.46; internal 2-bit bank, 34 GiB budget, one prompt). The decoder half starts 49.9 % of the SSD reads; a chunk reads about 354 of a layer's 384 experts. Layer 1 alone costs 3.9 s (unexplained). D-1, D-2, D-3, D-5, D-6 in interval; D-4 holds vacuously (the marks tile the call by construction).
+- **Derived:** an encoder-only prefill with an exact 2,541-row decoder tail would cut the layer time of a 22.4k-token block from about 257 s to about 149 to 157 s (-39 to -42 %), inside the lane's bracket; unbuilt, output equality and the snapshot policy (DI-3, Hamed's call) are open.
+
+### Added
+- `docs/DI1-SPLIT-RESULTS.md`, `docs/di1-split-2026-10-21.json`.
+
 ## 0.66.60 (2026-10-21)
 
 HANDOFF "Start here (2026-10-21, 0.66.60)" and sections 18.216 and 18.217; new `docs/CUDA-PIN-PATTERN-AUDIT.md`, `docs/CUDA-PIN-ORDER-RECORD.md` (nine predictions M-1 to M-9, committed first in debaddb) and `docs/DI1-SPLIT-RECORD.md` (six predictions D-1 to D-6, committed first in ad72a6e). Mac only, nothing run on a GPU or the model, nothing in `src/` but the version string.
