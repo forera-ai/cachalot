@@ -3,7 +3,7 @@
 # Run from the directory the scaffold archive was unpacked into. No sudo, no system package changes, no downloads other
 # than the pinned Python wheels named below, which `setup` shows before it installs them.
 #
-#   bash benchmarks/cuda/session.sh check|setup|doctor|smoke|baseline|s2|n2smoke|n2full|backing|hugepage|n3smoke|n3full|n3bsmoke|n3bfull|n3csmoke|n3cfull|n3dsmoke|n3dfull|n3esmoke|n3ebridge|n3fsmoke|n3ffull|n3ffix|n3gsmoke|n3gfull|n3hsmoke|n3hfull|n3ismoke|n3ifull|n3jsmoke|n3jfull|pinroute|pinroute2|pinroute3|pinroute4|pinroute5|n3ksmoke|n3kfull|results
+#   bash benchmarks/cuda/session.sh check|setup|doctor|smoke|baseline|s2|n2smoke|n2full|backing|hugepage|n3smoke|n3full|n3bsmoke|n3bfull|n3csmoke|n3cfull|n3dsmoke|n3dfull|n3esmoke|n3ebridge|n3fsmoke|n3ffull|n3ffix|n3gsmoke|n3gfull|n3hsmoke|n3hfull|n3ismoke|n3ifull|n3jsmoke|n3jfull|pinroute|pinroute2|pinroute3|pinroute4|pinroute5|pinroute6|n3ksmoke|n3kfull|results
 #   (s2 = docs/CUDA-S2-EXPERIMENT-RECORD.md: overlap variants and batched expert copies; needs a clean smoke run first)
 set -euo pipefail
 
@@ -488,6 +488,17 @@ EOF7
     for g in k4 l1 o1 o2 o3 o4 k4; do
       SESSION_TAG="${SESSION_TAG:-O}" "$PY" "$ROOT/benchmarks/cuda/pin_route.py" run --cells "$g" --execute --max-seconds "${MAXS:-150}" \
         --out-dir "$ROOT/benchmarks/results/cuda-flush" --region "$REGION" --note "$(SESSION_TAG="${SESSION_TAG:-O}" note pinroute5-$g)" || die "pinroute5 $g failed: stop, bring the files home"
+    done
+    ;;
+
+  pinroute6)
+    # Follow-up P (docs/CUDA-PIN-PIPELINE-RECORD.md): the two controls, the copy-period trains, the staging pipeline (compiles cache_touch.c
+    # with the system cc), the interleaved control again; five fresh processes into $ROOT/benchmarks/results/cuda-pipeline, stopping at the first
+    # failure. MAXS=seconds each (default 150).
+    [ -x "$PY" ] || die "run setup first"
+    for g in k4 l1 p1 p2 k4; do
+      SESSION_TAG="${SESSION_TAG:-P}" "$PY" "$ROOT/benchmarks/cuda/pin_route.py" run --cells "$g" --execute --max-seconds "${MAXS:-150}" \
+        --out-dir "$ROOT/benchmarks/results/cuda-pipeline" --region "$REGION" --note "$(SESSION_TAG="${SESSION_TAG:-P}" note pinroute6-$g)" || die "pinroute6 $g failed: stop, bring the files home"
     done
     ;;
 

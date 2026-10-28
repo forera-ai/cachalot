@@ -208,7 +208,7 @@ def test_plan_and_dry_run_list_every_group(capsys):
     assert pr.main(["plan"]) == 0 and pr.main(["run", "--cells", "k3"]) == 0
     out = capsys.readouterr().out
     assert all(g in out for g in pr.ORDER) and "DRY RUN" not in out.split("\n")[0]
-    assert list(pr.ORDER) == ["k0", "k1", "k2", "k3", "k4", "k5"] and set(pr.ORDER) | set(pr.CONTEXT) | {"m0", "m1", "m4", "m6", "m7", "m8", "m9", "n1", "n2", "n3", "n4", "o1", "o2", "o3", "o4"} == set(pr.GROUPS)
+    assert list(pr.ORDER) == ["k0", "k1", "k2", "k3", "k4", "k5"] and set(pr.ORDER) | set(pr.CONTEXT) | {"m0", "m1", "m4", "m6", "m7", "m8", "m9", "n1", "n2", "n3", "n4", "o1", "o2", "o3", "o4", "p1", "p2"} == set(pr.GROUPS)
     assert list(pr.FOLLOWUP_ORDER) == ["k4", "k3", "k2", "k1", "l1", "l2", "l3", "l4", "k4"] and "l4" in out
 
 
@@ -344,6 +344,90 @@ def test_gap_summary_reads_both_halves_and_the_tail_after_the_first_copy():
                                                           "trains": [{"ms": [0.36] * 30, "t_ms": [float(i) for i in range(30)], "gap_ms": 1}]})
     validate(rows)
     assert any(r["field"] == "gap_settle_ms_b0" and r["tag"] == "unavailable" and r["note"] for r in rows)
+
+
+# ------------------------------------------------------------------------------------------------ follow-up P
+
+def test_follow_up_p_order_and_lists_are_as_registered():
+    assert list(pr.ORDER_P) == ["k4", "l1", "p1", "p2", "k4"]
+    assert len(pr.PERIODS_MS) == 18 and all(pr.PERIODS_MS.count(t) == 3 for t in (1.4, 1.6, 1.8, 2.0, 2.2, 2.4))
+    assert pr.PIPE_ORDER == ("aged", "memcpy", "flush", "nt", "nt", "flush", "memcpy", "aged", "aged", "memcpy", "flush", "nt")
+    assert all(pr.PIPE_ORDER.count(m) == 3 for m in pr.PIPE_OPS)
+    assert (pr.PIPE_SOURCES, pr.PIPE_RECORDS, pr.PIPE_STAGES, pr.PIPE_SLOTS) == (16, 64, 2, 4)
+    assert pr.PIPE_SOURCES * pr.RECORD_BYTES > 96 * 2**20                  # the sources do not fit the 7800X3D's L3
+
+
+def test_follow_up_p_cells_report_their_keys_and_their_unavailable_modes(bench, tmp_path):
+    gates, failures, raw = {"roundtrip": True, "sanity": True}, [], {}
+    rows = []
+    for g in ("p1", "p2"):
+        rows += pr.run_group(bench, g, "r", suite.Deadline(120), gates, failures, raw, small=True, sampler_factory=_NoSampler, work_dir=str(tmp_path))
+    validate(rows)
+    assert gates == {"roundtrip": True, "sanity": True} and failures == []
+    fields = {r["field"] for r in rows}
+    assert {"period_target_ms_b0", "period_realised_ms_b1", "period_held_b0", "period_settle_ms_b1", "wall_per_record_ms_aged_serial",
+            "wall_per_record_ms_aged_pipelined", "copy_fast_share_memcpy_pipelined", "fill_ms_memcpy_serial", "content_ok"} <= fields
+    assert [t["period_ms"] for t in raw["period_train"]["trains"]] == [0.5, 1.0]
+    passes = raw["fill_pipeline"]["passes"]
+    assert [(ps["mode"], ps["kind"]) for ps in passes[:2]] == [("aged", "serial"), ("aged", "pipelined")]
+    assert all(len(ps["copy_ms"]) == ps["records"] == 6 and ps["content_ok"] for ps in passes)
+    assert all(not ps["fill_ms"] for ps in passes if ps["mode"] == "aged") and all(ps["fill_ms"] for ps in passes if ps["mode"] == "memcpy")
+    un = {r["field"]: r for r in rows if r["tag"] == "unavailable" and r["field"].startswith("wall_per_record_ms_")}
+    for mode in raw["fill_pipeline"]["unavailable"]:
+        assert un[f"wall_per_record_ms_{mode}"]["note"] and "value" not in un[f"wall_per_record_ms_{mode}"]
+
+
+def test_the_pipeline_without_a_compiler_runs_only_the_aged_bound(bench, monkeypatch):
+    import cache_touch as ct
+    monkeypatch.setattr(ct, "compiler", lambda: None)
+    res = bench.fill_pipeline(("aged", "memcpy", "flush", "nt"), n_sources=2, records=3, nbytes=1 << 12, settle_ms=0.0)
+    assert {ps["mode"] for ps in res["passes"]} == {"aged"} and set(res["unavailable"]) == {"memcpy", "flush", "nt"} and res["roundtrip_ok"]
+    validate(pr.rows_pipeline("r", "pinroute.fill_pipeline", res))
+
+
+def test_a_fill_that_writes_nothing_trips_the_pipeline_content_gate(bench):
+    lazy = types.SimpleNamespace(run=lambda mode, dst, src, n: None)             # a helper whose fill does not write the staging buffer
+    srcs = [torch.randint(0, 256, (1 << 12,), dtype=torch.uint8) for _ in range(3)]
+    stage = [torch.zeros(1 << 12, dtype=torch.uint8) for _ in range(2)]
+    dev = [torch.zeros(1 << 12, dtype=torch.uint8) for _ in range(4)]
+    res = bench._pipe_pass("memcpy", False, lazy, srcs, stage, dev, None, 5, 1 << 12, 0)
+    assert res["content_ok"] is False
+
+
+def test_the_pipeline_compares_the_last_slots_with_their_sources(bench):
+    import cache_touch as ct
+    helper, why = ct.CacheTouch.load()
+    if helper is None:
+        pytest.skip(why)
+    srcs = [torch.randint(0, 256, (1 << 12,), dtype=torch.uint8) for _ in range(3)]
+    stage = [torch.zeros(1 << 12, dtype=torch.uint8) for _ in range(2)]
+    dev = [torch.zeros(1 << 12, dtype=torch.uint8) for _ in range(4)]
+    res = bench._pipe_pass("memcpy", True, helper, srcs, stage, dev, None, 5, 1 << 12, 1)
+    assert res["content_ok"] and torch.equal(dev[4 % 4], srcs[(1 + 4) % 3]) and len(res["fill_ms"]) == 5 and not res["flush_ms"]
+
+
+def test_period_summary_holds_and_settles_and_a_held_train_writes_valid_rows():
+    s = pr.period_summary({"ms": [0.36] * 5 + [0.22] * 5, "t_ms": [2.0 * i for i in range(10)], "period_ms": 2.0})
+    assert not s["held"] and s["settle_ms"] == 10.0 and s["realised_period_ms"] == 2.0 and s["slow_share"] == 0.5
+    held = {"ms": [0.36] * 30, "t_ms": [1.4 * i for i in range(30)], "period_ms": 1.4}
+    assert pr.period_summary(held)["held"] and pr.period_summary(held)["settle_ms"] is None
+    rows = pr.rows_period_train("r", "pinroute.period_train", {"ms": [0.36], "roundtrip_ok": True, "nbytes": 1, "kept": 1, "train_ms": 1.0,
+                                                               "trains": [held, {"ms": [0.36], "t_ms": [0.0], "period_ms": 2.4}]})
+    validate(rows)
+    assert any(r["field"] == "period_settle_ms_b0" and r["tag"] == "unavailable" and r["note"] for r in rows)
+    assert any(r["field"] == "period_realised_ms_b1" and r["tag"] == "unavailable" and r["note"] for r in rows)
+
+
+def test_pipe_summary_takes_medians_over_passes_per_mode_and_kind():
+    def ps(mode, kind, wall, copy, fill=(), flush=()):
+        return {"mode": mode, "kind": kind, "records": 4, "wall_ms": wall, "copy_ms": [copy] * 4, "fill_ms": list(fill), "flush_ms": list(flush),
+                "content_ok": True}
+    s = pr.pipe_summary([ps("memcpy", "pipelined", 1.6, 0.36, [0.4] * 4), ps("memcpy", "pipelined", 2.0, 0.36, [0.5] * 4),
+                         ps("memcpy", "pipelined", 1.8, 0.36, [0.45] * 4), ps("flush", "serial", 4.0, 0.18, [0.4] * 4, [0.38] * 4)])
+    m = s[("memcpy", "pipelined")]
+    assert m["passes"] == 3 and abs(m["wall_per_record_ms"] - 0.45) < 1e-9 and m["copy_slow_share"] == 1.0 and m["fill_ms"] == 0.45
+    f = s[("flush", "serial")]
+    assert f["copy_fast_share"] == 1.0 and f["flush_ms"] == 0.38 and f["wall_per_record_ms"] == 1.0
 
 
 # ------------------------------------------------------------------------------------------------ DC-5: the guard
