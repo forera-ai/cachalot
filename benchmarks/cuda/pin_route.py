@@ -41,9 +41,13 @@ Follow-up P (docs/CUDA-PIN-PIPELINE-RECORD.md, the copy period that holds a buff
 trains on a fixed schedule of 1.4 to 2.4 ms) and p2 (a staging pipeline filled from cold sources by memcpy, memcpy plus clflushopt or
 non-temporal stores, serial and overlapped, against an aged copy-only bound).
 
+Follow-up Q (docs/CUDA-PIN-IDLE-RECORD.md, does the host's continuous idle clear the dirty lines, and do a deeper or two-thread pipeline
+help): groups q1 (copy trains at a fixed 3.0 ms period, the sleep after each copy varied, the rest spun), q2 (allocate, then sleep or spin
+the host with no copy, then time) and q3 (P's overlapped pipeline at 2 to 4 staging buffers and with one or two filling threads).
+
 Usage:
     ~/venvs/deepseek-v41/bin/python benchmarks/cuda/pin_route.py plan
-GPU host: `run --cells k0|k1|k2|k3|k4|k5|l1|l2|l3|l4|m0|m1|m4|m6|m7|m8|m9|n1|n2|n3|n4|o1|o2|o3|o4|p1|p2 [--execute] [--tag NAME] [--out-dir DIR]`.
+GPU host: `run --cells k0|k1|k2|k3|k4|k5|l1|l2|l3|l4|m0|m1|m4|m6|m7|m8|m9|n1|n2|n3|n4|o1|o2|o3|o4|p1|p2|q1|q2|q3 [--execute] [--tag NAME] [--out-dir DIR]`.
 """
 
 from __future__ import annotations
@@ -102,6 +106,9 @@ GROUPS.update({"o1": "follow-up O: 36 buffers, each allocated, left idle for T m
                "o4": "follow-up O: 24 buffers aged 500 ms, then each untouched or filled by an O_DIRECT or an ordinary file read, then timed"})
 GROUPS.update({"p1": "follow-up P: 18 trains of 300 ms, single timed copies every P ms (P 1.4 to 2.4), each after a fresh allocation",
                "p2": "follow-up P: a 2-buffer staging pipeline from 16 cold sources (aged, memcpy, memcpy + clflushopt, nt), serial and overlapped"})
+GROUPS.update({"q1": "follow-up Q: 18 trains of 300 ms at a 3.0 ms copy period, sleeping L ms after each copy (L 1.0 to 2.5) and spinning the rest",
+               "q2": "follow-up Q: 18 buffers, each allocated, then the host sleeps 30 ms or spins 30 or 60 ms with no copy, then timed",
+               "q3": "follow-up Q: P's overlapped staging pipeline at 2, 3 and 4 buffers and with one or two filling threads (nt, memcpy, aged)"})
 ORDER = ("k0", "k1", "k2", "k3", "k4", "k5")
 ORDER_N = ("k4", "l1", "n1", "n2", "n3", "n4", "k4")
 WAITS_MS = (0, 500, 5, 100, 20, 200, 50, 0, 500, 100, 5, 50, 200, 20, 500, 0, 50, 5, 200, 20, 100, 0, 500, 20, 5, 100, 200, 50)   # four of each T, fixed shuffle
@@ -119,6 +126,12 @@ PERIODS_MS = (2.4, 1.4, 2.4, 2.0, 2.0, 2.2, 2.2, 2.0, 1.6, 1.8, 2.2, 1.8, 1.8, 1
 PIPE_ORDER = ("aged", "memcpy", "flush", "nt", "nt", "flush", "memcpy", "aged", "aged", "memcpy", "flush", "nt")
 PIPE_OPS = {"aged": (), "memcpy": ("memcpy",), "flush": ("memcpy", "clflushopt"), "nt": ("nt",)}
 PIPE_SOURCES, PIPE_RECORDS, PIPE_STAGES, PIPE_SLOTS = 16, 64, 2, 4
+ORDER_Q = ("k4", "l1", "q1", "q2", "q3", "k4")
+Q_PERIOD_MS = 3.0
+SLEEPS_MS = (2.5, 1.0, 2.5, 2.0, 2.0, 2.2, 2.2, 2.0, 1.5, 1.8, 2.2, 1.8, 1.8, 1.5, 1.0, 1.0, 1.5, 2.5)   # three of each, random.Random(20261028)
+BUSY_MODES = ("sleep30", "spin30", "spin60")
+Q_ARMS = (("nt", 2, 1), ("nt", 3, 1), ("nt", 4, 1), ("nt", 2, 2), ("memcpy", 2, 1), ("memcpy", 3, 1), ("memcpy", 2, 2), ("aged", 2, 1))
+Q_ARM_ORDER = tuple(range(8)) + tuple(reversed(range(8))) + tuple(range(8))   # arms 1 to 8, 8 to 1, 1 to 8
 PAD_BYTES = -(-RECORD_BYTES // BLOCK) * BLOCK   # 9,953,280: whole blocks for O_DIRECT; only RECORD_BYTES are timed
 ORDER_M = ("m0", "k4", "l1", "m1", "m4", "m6", "m7", "m8", "m9")
 FOLLOWUP_ORDER = ("k4", "k3", "k2", "k1", "l1", "l2", "l3", "l4", "k4")     # reversed routes, the four new cells, the control again
@@ -128,7 +141,8 @@ SMALL = {"arena_bytes": 1 << 20, "k_classify": 4, "k_plateau": 2, "k_route": 3, 
          "k_train": 2, "train_ms": 5.0, "waits_ms": (0, 2, 0, 2), "evict_bytes": (0, 1 << 16, 1 << 18), "evict_reps": 2, "age_ms": 2.0,
          "fine_waits_ms": (0, 0.5, 0, 0.5), "gaps_ms": (0.5, 1.0), "gap_train_ms": 5.0, "flush_reps": 1, "read_reps": 1, "pad_bytes": 1 << 16,
          "periods_ms": (0.5, 1.0), "period_train_ms": 5.0, "pipe_sources": 3, "pipe_records": 6, "pipe_order": ("aged", "memcpy", "flush", "nt"),
-         "pipe_settle_ms": 1.0}
+         "pipe_settle_ms": 1.0, "q_period_ms": 1.5, "sleeps_ms": (0.2, 1.0), "q_train_ms": 6.0, "busy_reps": 1, "busy_scale": 0.05,
+         "q_arm_order": tuple(range(8))}
 
 
 # ------------------------------------------------------------------------------------------------ pure helpers (no torch)
@@ -697,9 +711,10 @@ class PinRouteBench(bp.BackingBench):
                 "kept": len(keep), "train_ms": train_ms}
 
     def _pipe_pass(self, mode: str, overlap: bool, helper, srcs: list, stage: list, dev: list, stream, records: int, nbytes: int,
-                   start: int) -> dict:
+                   start: int, pool=None) -> dict:
         """One pass of `records` records through the staging buffers `stage` into the device slots `dev`. `overlap` False waits for each
-        copy before the next fill; True refills a staging buffer as soon as its previous copy's end event has completed."""
+        copy before the next fill; True refills a staging buffer as soon as its previous copy's end event has completed. With `pool` (a
+        one-worker executor) each fill is split in two halves, the second filled on the worker while this thread fills the first."""
         done = [None] * len(stage)
         fill_ms, flush_ms, pairs, used = [], [], [], []
         self.sync()
@@ -711,7 +726,14 @@ class PinRouteBench(bp.BackingBench):
             buf, j = stage[s], (start + r) % len(srcs)
             if mode != "aged":
                 t = time.perf_counter()
-                helper.run("nt" if mode == "nt" else "memcpy", buf.data_ptr(), srcs[j].data_ptr(), nbytes)
+                op, dst, src = ("nt" if mode == "nt" else "memcpy"), buf.data_ptr(), srcs[j].data_ptr()
+                if pool is None:
+                    helper.run(op, dst, src, nbytes)
+                else:
+                    half = (nbytes // 2) & ~63
+                    fut = pool.submit(helper.run, op, dst + half, src + half, nbytes - half)
+                    helper.run(op, dst, src, half)
+                    fut.result()
                 fill_ms.append((time.perf_counter() - t) * 1e3)
                 if mode == "flush":
                     t = time.perf_counter()
@@ -783,6 +805,105 @@ class PinRouteBench(bp.BackingBench):
                 passes.append(res)
         return {"passes": passes, "roundtrip_ok": bool(ok), "nbytes": nbytes, "records": records, "sources": n_sources, "stages": stages,
                 "slots": slots, "unavailable": unavailable, "helper": None if helper is None else {"cc": helper.cc, "features": helper.features}}
+
+    # -- follow-up Q (docs/CUDA-PIN-IDLE-RECORD.md): the host's continuous idle, a busy host with no copies, pipeline variants
+    def idle_stretch(self, sleeps_ms: tuple = SLEEPS_MS, period_ms: float = Q_PERIOD_MS, train_ms: float = 300.0, nbytes: int = RECORD_BYTES,
+                     deadline: suite.Deadline | None = None) -> dict:
+        """Group q1: each buffer allocated, then every period_ms one single timed copy, a sleep of L ms, and a spin to the next period start.
+        Every copy's ms, its start, the host time its call returned and the measured sleep are kept."""
+        dev = self.dev_buffer(nbytes)
+        keep, trains, ok = [], [], True
+        for i, sleep in enumerate(sleeps_ms):
+            if deadline is not None and deadline.expired():
+                break
+            buf = self.pinned(nbytes, SEED + i)
+            keep.append(buf)
+            t0 = nxt = time.perf_counter()
+            ms, at, back, slept = [], [], [], []
+            while (nxt - t0) * 1e3 < train_ms:
+                while time.perf_counter() < nxt:
+                    pass
+                at.append((time.perf_counter() - t0) * 1e3)
+                ms.append(self.one_copy_ms(dev, buf))
+                t1 = time.perf_counter()
+                back.append((t1 - t0) * 1e3)
+                time.sleep(sleep / 1e3)
+                slept.append((time.perf_counter() - t1) * 1e3)
+                nxt += period_ms / 1e3
+            ok &= self.roundtrip_ok(dev, buf, nbytes)
+            trains.append({"ms": ms, "t_ms": at, "back_ms": back, "slept_ms": slept, "sleep_ms": sleep, "period_ms": period_ms})
+        return {"trains": trains, "ms": [bp.p50(t["ms"][:25]) for t in trains if t["ms"]], "roundtrip_ok": ok, "nbytes": nbytes,
+                "kept": len(keep), "train_ms": train_ms}
+
+    def busy_wait(self, reps: int = 6, nbytes: int = RECORD_BYTES, modes: tuple = BUSY_MODES, scale: float = 1.0,
+                  deadline: suite.Deadline | None = None) -> dict:
+        """Group q2: each buffer allocated (written by the CPU), then the host sleeps or spins for the mode's ms (times `scale`) with no
+        copy, then the buffer is timed at once."""
+        dev = self.dev_buffer(nbytes)
+        keep, ms, done, waited, ok = [], [], [], [], True
+        for i in range(reps * len(modes)):
+            if deadline is not None and deadline.expired():
+                break
+            mode = modes[i % len(modes)]
+            wait = float(mode[-2:]) * scale / 1e3
+            buf = self.pinned(nbytes, SEED + i)
+            keep.append(buf)
+            self.sync()
+            t0 = time.perf_counter()
+            if mode.startswith("sleep"):
+                time.sleep(wait)
+            else:
+                while time.perf_counter() - t0 < wait:
+                    pass
+            waited.append((time.perf_counter() - t0) * 1e3)
+            ms.append(self.time_copy(dev, buf))
+            ok &= self.roundtrip_ok(dev, buf, nbytes)
+            done.append(mode)
+        return {"ms": ms, "mode": done, "waited_ms": waited, "roundtrip_ok": ok, "nbytes": nbytes, "kept": len(keep), "unavailable": {},
+                "content_ok": True}
+
+    def pipe_variants(self, arm_order: tuple = Q_ARM_ORDER, arms: tuple = Q_ARMS, n_sources: int = PIPE_SOURCES, records: int = PIPE_RECORDS,
+                      slots: int = PIPE_SLOTS, nbytes: int = RECORD_BYTES, settle_ms: float = 200.0, work_dir: str | None = None,
+                      deadline: suite.Deadline | None = None) -> dict:
+        """Group q3: P's overlapped pipeline for each arm (mode, staging buffers, filling threads) in `arm_order`. `aged` has its own
+        staging buffers, filled once and never rewritten."""
+        from concurrent.futures import ThreadPoolExecutor
+
+        helper, why = ct.CacheTouch.load(work_dir=work_dir)
+        unavailable = {}
+        for mode in dict.fromkeys(a[0] for a in arms):
+            for op in PIPE_OPS[mode]:
+                reason = why if helper is None else helper.available(op)
+                if reason:
+                    unavailable[mode] = reason
+                    break
+        srcs = []
+        for j in range(n_sources):
+            g = self.torch.Generator().manual_seed(SEED + 9000 + j)
+            srcs.append(self.torch.randint(0, 256, (nbytes,), dtype=self.torch.uint8, generator=g))
+        depth = max(a[1] for a in arms)
+        stage = [self.pinned(nbytes, SEED + 9500 + s) for s in range(depth)]
+        aged = [self.pinned(nbytes, SEED + 9600 + s) for s in range(depth)]
+        dev = [self.dev_buffer(nbytes) for _ in range(slots)]
+        stream = self.torch.cuda.Stream(device=self.dev) if not self.rehearsal else None
+        self.sync()
+        time.sleep(settle_ms / 1e3)
+        passes, ok, cursor = [], True, 0
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            for k, a in enumerate(arm_order):
+                if deadline is not None and deadline.expired():
+                    break
+                mode, stages, threads = arms[a]
+                if mode in unavailable:
+                    continue
+                res = self._pipe_pass(mode, True, helper, srcs, (aged if mode == "aged" else stage)[:stages], dev, stream, records, nbytes,
+                                      cursor, pool=pool if threads == 2 and mode != "aged" else None)
+                cursor += records
+                res.update({"pass": k, "arm": a, "stages": stages, "threads": threads})
+                ok &= res["content_ok"]
+                passes.append(res)
+        return {"passes": passes, "roundtrip_ok": bool(ok), "nbytes": nbytes, "records": records, "sources": n_sources, "slots": slots,
+                "arms": [list(a) for a in arms], "unavailable": unavailable, "helper": None if helper is None else {"cc": helper.cc, "features": helper.features}}
 
     def alloc_cell(self, k: int = K_ROUTE, nbytes: int = RECORD_BYTES, sampler: LinkSampler | None = None,
                    deadline: suite.Deadline | None = None) -> dict:
@@ -1043,6 +1164,64 @@ def rows_pipeline(run_id: str, arm: str, res: dict) -> list[dict]:
     return rows
 
 
+def idle_summary(train: dict) -> dict:
+    """q1: `period_summary` plus the measured sleep and the host's continuous idle (the sleep) per period."""
+    s = period_summary({"ms": train["ms"], "t_ms": train["t_ms"], "period_ms": train["period_ms"]})
+    s["sleep_ms"] = train["sleep_ms"]
+    s["slept_ms_median"] = bp.p50(train["slept_ms"]) if train["slept_ms"] else None
+    return s
+
+
+def rows_idle_stretch(run_id: str, arm: str, res: dict) -> list[dict]:
+    rows = bp.rows_alloc_order(run_id, arm, res)
+    for i, t in enumerate(res["trains"]):
+        s = idle_summary(t)
+        rows += [_row(run_id, arm, f"idle_sleep_ms_b{i}", s["sleep_ms"], "ms", "measured", "registered sleep after each copy"),
+                 _row(run_id, arm, f"idle_slept_ms_b{i}", s["slept_ms_median"], "ms", "measured" if s["slept_ms_median"] is not None
+                      else "unavailable", "median measured sleep", note=None if s["slept_ms_median"] is not None else "no copy"),
+                 _row(run_id, arm, f"idle_held_b{i}", int(s["held"]), "bool", "measured", "1 if no copy of the train was fast", n=s["copies"]),
+                 _row(run_id, arm, f"idle_settle_ms_b{i}", s["settle_ms"], "ms", "measured" if s["settle_ms"] is not None else "unavailable",
+                      "host ms since allocation of the first fast copy", note=None if s["settle_ms"] is not None else "the train held: no fast copy")]
+    return rows
+
+
+def rows_busy_wait(run_id: str, arm: str, res: dict) -> list[dict]:
+    rows = bp.rows_alloc_order(run_id, arm, res) + _slow_share_rows(run_id, arm, res["ms"], res["mode"], "mode", "")
+    for mode in dict.fromkeys(res["mode"]):
+        part = [x for x, m in zip(res["waited_ms"], res["mode"], strict=True) if m == mode]
+        rows.append(_row(run_id, arm, f"waited_ms_{mode}", bp.p50(part), "ms", "measured", "host ms of the sleep or spin", n=len(part)))
+    return rows
+
+
+def arm_key(mode: str, stages: int, threads: int) -> str:
+    return f"{mode}_s{stages}_t{threads}"
+
+
+def variants_summary(passes: list[dict]) -> dict:
+    """q3: `pipe_summary` per arm (mode, staging buffers, threads)."""
+    out: dict = {}
+    for ps in passes:
+        out.setdefault(arm_key(ps["mode"], ps["stages"], ps["threads"]), []).append({**ps, "mode": ps["mode"], "kind": "pipelined"})
+    return {k: pipe_summary(v)[(v[0]["mode"], "pipelined")] for k, v in out.items()}
+
+
+def rows_variants(run_id: str, arm: str, res: dict) -> list[dict]:
+    rows = []
+    for key, s in variants_summary(res["passes"]).items():
+        rows += [_row(run_id, arm, f"wall_per_record_ms_{key}", s["wall_per_record_ms"], "ms", "measured",
+                      "median over passes of wall ms over records, overlapped", n=s["passes"]),
+                 _row(run_id, arm, f"copy_ms_{key}", s["copy_ms"], "ms", "measured", "median CUDA-event ms of a record's copy"),
+                 _row(run_id, arm, f"copy_slow_share_{key}", s["copy_slow_share"], "fraction", "measured", "copies at or above 0.28 ms")]
+        if s["fill_ms"] is not None:
+            rows.append(_row(run_id, arm, f"fill_ms_{key}", s["fill_ms"], "ms", "measured", "median host ms of a record's fill"))
+    for mode, why in res["unavailable"].items():
+        rows.append(_row(run_id, arm, f"wall_per_record_ms_{mode}", None, "ms", "unavailable", "cell", note=why[:150]))
+    if not res["passes"]:
+        rows.append(_row(run_id, arm, "passes", None, "count", "unavailable", "cell", note="no pass ran"))
+    rows.append(_row(run_id, arm, "content_ok", int(res["roundtrip_ok"]), "bool", "measured", "the last device slots of every pass equal their sources"))
+    return rows
+
+
 def rows_direct_read(run_id: str, arm: str, res: dict) -> list[dict]:
     return _mode_rows(run_id, arm, res, "read_ms", "host ms of the read into the pinned buffer (none: 0)")
 
@@ -1125,6 +1304,15 @@ def run_group(bench: PinRouteBench, group: str, run_id: str, dl: suite.Deadline,
         guarded("fill_pipeline", lambda: bench.fill_pipeline(cfg.get("pipe_order", PIPE_ORDER), cfg.get("pipe_sources", PIPE_SOURCES),
                                                              cfg.get("pipe_records", PIPE_RECORDS), PIPE_STAGES, PIPE_SLOTS, nb,
                                                              cfg.get("pipe_settle_ms", 200.0), work_dir=work_dir, deadline=dl), rows_pipeline)
+    elif group == "q1":
+        guarded("idle_stretch", lambda: bench.idle_stretch(cfg.get("sleeps_ms", SLEEPS_MS), cfg.get("q_period_ms", Q_PERIOD_MS),
+                                                           cfg.get("q_train_ms", 300.0), nb, deadline=dl), rows_idle_stretch)
+    elif group == "q2":
+        guarded("busy_wait", lambda: bench.busy_wait(cfg.get("busy_reps", 6), nb, scale=cfg.get("busy_scale", 1.0), deadline=dl), rows_busy_wait)
+    elif group == "q3":
+        guarded("pipe_variants", lambda: bench.pipe_variants(cfg.get("q_arm_order", Q_ARM_ORDER), Q_ARMS, cfg.get("pipe_sources", PIPE_SOURCES),
+                                                             cfg.get("pipe_records", PIPE_RECORDS), PIPE_SLOTS, nb, cfg.get("pipe_settle_ms", 200.0),
+                                                             work_dir=work_dir, deadline=dl), rows_variants)
     elif group in CONTEXT:
         bf, ar, st = CONTEXT[group]
         guarded({"l1": "batch_first", "l2": "arena_dest", "l3": "side_stream", "l4": "arena_full"}[group],

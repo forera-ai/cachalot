@@ -208,7 +208,7 @@ def test_plan_and_dry_run_list_every_group(capsys):
     assert pr.main(["plan"]) == 0 and pr.main(["run", "--cells", "k3"]) == 0
     out = capsys.readouterr().out
     assert all(g in out for g in pr.ORDER) and "DRY RUN" not in out.split("\n")[0]
-    assert list(pr.ORDER) == ["k0", "k1", "k2", "k3", "k4", "k5"] and set(pr.ORDER) | set(pr.CONTEXT) | {"m0", "m1", "m4", "m6", "m7", "m8", "m9", "n1", "n2", "n3", "n4", "o1", "o2", "o3", "o4", "p1", "p2"} == set(pr.GROUPS)
+    assert list(pr.ORDER) == ["k0", "k1", "k2", "k3", "k4", "k5"] and set(pr.ORDER) | set(pr.CONTEXT) | {"m0", "m1", "m4", "m6", "m7", "m8", "m9", "n1", "n2", "n3", "n4", "o1", "o2", "o3", "o4", "p1", "p2", "q1", "q2", "q3"} == set(pr.GROUPS)
     assert list(pr.FOLLOWUP_ORDER) == ["k4", "k3", "k2", "k1", "l1", "l2", "l3", "l4", "k4"] and "l4" in out
 
 
@@ -428,6 +428,73 @@ def test_pipe_summary_takes_medians_over_passes_per_mode_and_kind():
     assert m["passes"] == 3 and abs(m["wall_per_record_ms"] - 0.45) < 1e-9 and m["copy_slow_share"] == 1.0 and m["fill_ms"] == 0.45
     f = s[("flush", "serial")]
     assert f["copy_fast_share"] == 1.0 and f["flush_ms"] == 0.38 and f["wall_per_record_ms"] == 1.0
+
+
+# ------------------------------------------------------------------------------------------------ follow-up Q
+
+def test_follow_up_q_order_and_lists_are_as_registered():
+    assert list(pr.ORDER_Q) == ["k4", "l1", "q1", "q2", "q3", "k4"] and pr.Q_PERIOD_MS == 3.0
+    assert len(pr.SLEEPS_MS) == 18 and all(pr.SLEEPS_MS.count(t) == 3 for t in (1.0, 1.5, 1.8, 2.0, 2.2, 2.5))
+    assert pr.BUSY_MODES == ("sleep30", "spin30", "spin60")
+    assert pr.Q_ARMS[0] == ("nt", 2, 1) and pr.Q_ARMS[3] == ("nt", 2, 2) and pr.Q_ARMS[7] == ("aged", 2, 1) and len(pr.Q_ARMS) == 8
+    assert pr.Q_ARM_ORDER == tuple(range(8)) + tuple(range(7, -1, -1)) + tuple(range(8))
+
+
+def test_follow_up_q_cells_report_their_keys_and_their_unavailable_modes(bench, tmp_path):
+    gates, failures, raw = {"roundtrip": True, "sanity": True}, [], {}
+    rows = []
+    for g in ("q1", "q2", "q3"):
+        rows += pr.run_group(bench, g, "r", suite.Deadline(120), gates, failures, raw, small=True, sampler_factory=_NoSampler, work_dir=str(tmp_path))
+    validate(rows)
+    assert gates == {"roundtrip": True, "sanity": True} and failures == []
+    fields = {r["field"] for r in rows}
+    assert {"idle_sleep_ms_b0", "idle_slept_ms_b1", "idle_held_b0", "slow_share_mode_spin30", "waited_ms_spin60",
+            "wall_per_record_ms_aged_s2_t1", "wall_per_record_ms_memcpy_s2_t2", "wall_per_record_ms_memcpy_s3_t1", "content_ok"} <= fields
+    trains = raw["idle_stretch"]["trains"]
+    assert [t["sleep_ms"] for t in trains] == [0.2, 1.0] and all(len(t["ms"]) == len(t["back_ms"]) == len(t["slept_ms"]) > 0 for t in trains)
+    assert raw["busy_wait"]["mode"] == ["sleep30", "spin30", "spin60"]
+    assert all(w >= 0.9 * 1.5 * (60 if m == "spin60" else 30) / 30 for w, m in zip(raw["busy_wait"]["waited_ms"], raw["busy_wait"]["mode"], strict=True))
+    passes = raw["pipe_variants"]["passes"]
+    assert {(ps["mode"], ps["stages"], ps["threads"]) for ps in passes} == {("aged", 2, 1), ("memcpy", 2, 1), ("memcpy", 3, 1), ("memcpy", 2, 2)}
+    assert all(ps["content_ok"] and len(ps["copy_ms"]) == 6 for ps in passes)
+    un = {r["field"]: r for r in rows if r["tag"] == "unavailable" and r["field"].startswith("wall_per_record_ms_")}
+    for mode in raw["pipe_variants"]["unavailable"]:
+        assert un[f"wall_per_record_ms_{mode}"]["note"]
+
+
+def test_a_two_thread_fill_writes_both_halves(bench):
+    from concurrent.futures import ThreadPoolExecutor
+
+    import cache_touch as ct
+    helper, why = ct.CacheTouch.load()
+    if helper is None:
+        pytest.skip(why)
+    n = (1 << 12) + 37                                                       # odd size: the halves split on a 64-byte boundary
+    srcs = [torch.randint(0, 256, (n,), dtype=torch.uint8) for _ in range(3)]
+    stage = [torch.zeros(n, dtype=torch.uint8) for _ in range(3)]
+    dev = [torch.zeros(n, dtype=torch.uint8) for _ in range(4)]
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        res = bench._pipe_pass("memcpy", True, helper, srcs, stage, dev, None, 7, n, 2, pool=pool)
+    assert res["content_ok"] and torch.equal(dev[6 % 4], srcs[(2 + 6) % 3])
+
+
+def test_idle_summary_and_a_held_idle_train_write_valid_rows():
+    held = {"ms": [0.36] * 20, "t_ms": [3.0 * i for i in range(20)], "back_ms": [3.0 * i + 0.4 for i in range(20)],
+            "slept_ms": [1.06] * 20, "sleep_ms": 1.0, "period_ms": 3.0}
+    s = pr.idle_summary(held)
+    assert s["held"] and s["slept_ms_median"] == 1.06 and s["realised_period_ms"] == 3.0 and s["sleep_ms"] == 1.0
+    rows = pr.rows_idle_stretch("r", "pinroute.idle_stretch", {"ms": [0.36], "roundtrip_ok": True, "nbytes": 1, "kept": 1, "train_ms": 1.0,
+                                                               "trains": [held]})
+    validate(rows)
+    assert any(r["field"] == "idle_settle_ms_b0" and r["tag"] == "unavailable" and r["note"] for r in rows)
+
+
+def test_variants_summary_keys_arms_by_mode_depth_and_threads():
+    def ps(mode, stages, threads, wall):
+        return {"mode": mode, "kind": "pipelined", "records": 4, "wall_ms": wall, "copy_ms": [0.26] * 4, "fill_ms": [0.4] * 4, "flush_ms": [],
+                "content_ok": True, "stages": stages, "threads": threads}
+    s = pr.variants_summary([ps("nt", 2, 1, 1.68), ps("nt", 2, 1, 1.70), ps("nt", 2, 2, 1.2), ps("nt", 4, 1, 1.6)])
+    assert set(s) == {"nt_s2_t1", "nt_s2_t2", "nt_s4_t1"} and s["nt_s2_t1"]["passes"] == 2 and abs(s["nt_s2_t2"]["wall_per_record_ms"] - 0.3) < 1e-9
 
 
 # ------------------------------------------------------------------------------------------------ DC-5: the guard
