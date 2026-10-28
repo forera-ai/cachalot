@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-28, 0.68.3): CUDA follow-up P is registered and built; it needs one RTX 5090; DI-1 at 22k is still the Mac's first job
+>
+> Section 18.226. Follow-up P (`docs/CUDA-PIN-PIPELINE-RECORD.md`, P-1 to P-11 committed first in 9ad8518, built in 2b4550a, pack `cuda-scaffold-2b4550a`): p1 locates the copy period between 1.44 ms (held slow in O) and 2.34 ms (settled) and asks whether the threshold is sharp; p2 times a two-buffer staging pipeline from cold sources with `memcpy`, `memcpy` plus `clflushopt` and non-temporal fills, serial and overlapped, against an aged copy-only bound. Never run on a GPU. **Needs Hamed:** an RTX 5090 of the fast population and his go for `session.sh pinroute6` (`benchmarks/cuda/SESSION-RUNBOOK-PIN-PIPELINE.md`); the v270 jobs stand.
+
 > ## Start here (2026-10-28, 0.68.2): the CUDA lane's half-rate pinned copy is the CPU's dirty cache lines (flush or stream the fill); DI-1 at 22k is still the Mac's first job
 >
 > Section 18.225. Follow-up O on a second RTX 5090 (`pricey-voice-4663`, the same AMD Ryzen 7 7800X3D host model) held 12 of 15: `clflushopt`, `clwb` or a non-temporal rewrite right before the copy makes a just-written 9.95 MB buffer fast (0.182 ms), an ordinary `memcpy` rewrite leaves it slow (0.359 ms); the dirty lines clear in one step 10 to 22 ms after the write (T50 15.0 ms) unless the device copies the buffer every ~1.4 ms or more often; an `O_DIRECT` read into the buffer is slow too on this VM (O-12 falsified, so 0.68.1's "fill by DMA" note is withdrawn there). **Needs Hamed:** any further GPU cell (`docs/CUDA-PIN-FLUSH-RESULTS.md` section 6); terminating `pricey-voice-4663` if not done; the v270 jobs stand (DI-1 at 22k, its pareto run, a live session, the two reference ports).
@@ -9417,6 +9421,23 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 **Bottleneck after.** Unchanged: expert reads on misses; of the all-resident floor, CPU graph building, GPU idle, and routed-expert launch granularity.
 
 **Kind.** Engineering (a default on a prior research result).
+
+
+### 18.226 CUDA follow-up P registered and built: the copy-period threshold and a fill-then-flush staging pipeline (0.68.3)
+
+**Goal.** Hamed, after 0.68.2: "Register follow-up P for the CUDA lane: the 1-2 ms copy-frequency threshold and a fill-then-flush pipeline timed end to end. Predictions first, build and rehearse on the Mac, no instance yet."
+
+**Baseline (recorded).** Follow-up O (§18.225): `time.sleep(1 ms)` between copies gave a 1.44 ms period and held a just-written buffer slow for 400 ms (2 of 2 trains); `time.sleep(2 ms)` gave 2.34 ms and settled (2 of 2). On the 7800X3D host a cache-hot 9.95 MB `memcpy` took 0.18 to 0.21 ms, a non-temporal rewrite 0.37 to 0.44 ms, a `clflushopt` pass 0.38 ms; no cold-source fill and no overlapped pipeline were measured.
+
+**Prediction.** P-1 to P-11 in `docs/CUDA-PIN-PIPELINE-RECORD.md`, committed first in 9ad8518 before any code: the threshold P50 between 1.6 and 2.2 ms, sharp (at most one mixed period); serial copies slow after `memcpy` and fast after `flush`, `nt` and `aged`; a cold `memcpy` fill 0.25 to 0.60 ms, the flush 0.30 to 0.50 ms, `nt` no slower than `memcpy`; the aged pipeline 0.18 to 0.23 ms a record; `nt` the fastest pipelined fill and `flush` slower than `memcpy`; the pipelined wall within 25 % of max(serial host, serial copy); `memcpy` over `aged` 1.5 to 2.5.
+
+**Method.** `pin_route.py` groups p1 (18 trains, three each at 1.4, 1.6, 1.8, 2.0, 2.2, 2.4 ms in a fixed shuffle; a copy scheduled every P ms, the wait slept but its last 0.2 ms) and p2 (16 pageable sources of 9.95 MB, two staging buffers per fill kind and two for `aged`, four device slots, a copy stream; twelve passes of 64 records in a fixed order, each serial then overlapped); `session.sh pinroute6` (k4, l1, p1, p2, k4); `pin_route_pipeline_score.py`; `SESSION-RUNBOOK-PIN-PIPELINE.md`; 17 tests. The CPU rehearsal ran p2 at full size in about 1 s (the `flush` and `nt` modes unavailable on arm64 with their reasons) and a p1 train held its 1.4 ms schedule to 1.398 ms.
+
+**Result.** None on a GPU. 1,111 tests pass.
+
+**Kind.** Planning, instruments and tests (predictions committed first). No default changed, nothing measured on a GPU.
+
+**Open / needs Hamed.** One RTX 5090 of the fast population and his go to run `session.sh pinroute6`.
 
 
 ### 18.225 CUDA follow-up O on an RTX 5090: the half-rate pinned copy is the CPU's dirty cache lines, cleared in one step, not avoided by O_DIRECT on this VM (0.68.2)

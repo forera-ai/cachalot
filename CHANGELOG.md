@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.68.3 (2026-10-28)
+
+HANDOFF "Start here (2026-10-28, 0.68.3)" and section 18.226; record `docs/CUDA-PIN-PIPELINE-RECORD.md` (P-1 to P-11, committed first in 9ad8518; the build in 2b4550a). Planning, instruments and tests: nothing ran on a GPU. No runtime change.
+
+### Added
+- **CUDA follow-up P, registered and built (needs one RTX 5090 and Hamed's go).** `benchmarks/cuda/pin_route.py` group `p1` (18 copy trains of 300 ms on a fixed schedule, three each at periods 1.4 to 2.4 ms: where between O's 1.44 ms, which held a just-written buffer slow, and 2.34 ms, which did not, is the threshold, and is it sharp) and group `p2` (a two-buffer staging pipeline from 16 cold pageable sources, 159 MB: an aged copy-only bound, `memcpy`, `memcpy` plus `clflushopt`, and non-temporal fills through O's `cache_touch` helper, each serial and with fill and copy overlapped on a copy stream, every pass's last device slots checked against their sources); `session.sh pinroute6`; `benchmarks/cuda/pin_route_pipeline_score.py`; `SESSION-RUNBOOK-PIN-PIPELINE.md`; 17 tests. A full-size CPU rehearsal of p2 runs in about 1 s and of a p1 train holds its schedule to within 0.003 ms.
+
 ## 0.68.2 (2026-10-28)
 
 HANDOFF "Start here (2026-10-28, 0.68.2)" and section 18.225; record `docs/CUDA-PIN-FLUSH-RECORD.md` (O-1 to O-15, committed first in 8f8b9ff, the build in d6f9f68 before any run); results `docs/CUDA-PIN-FLUSH-RESULTS.md`. No runtime change.
