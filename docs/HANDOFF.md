@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-28, 0.68.5): a busy host thread alone holds a just-written pinned buffer slow; the non-temporal two-buffer pipeline (0.42 ms a record) is the CUDA staging answer; DI-1 at 22k is still the Mac's first job
+>
+> Section 18.228. Follow-up Q on `pricey-voice-4663` (the instance of O and P): 7 of 10 held, Q-2 and Q-3 outside, Q-8 falsified. Spinning the host 30 or 60 ms after a write with no copy keeps the buffer slow (12 of 12), sleeping 30 ms clears it; at a fixed 3.0 ms period only sleeps of 2.29 ms and more per period settled (L50 2.35 ms); across O, P and Q the host's idle fraction orders every train (derived). Depth 3 or 4 and a second filling thread do not speed the non-temporal fill. **Needs Hamed:** terminate `pricey-voice-4663` (told; files home); any next cell (`docs/CUDA-PIN-IDLE-RESULTS.md` section 6); the v270 jobs stand.
+
 > ## Start here (2026-10-28, 0.68.4): in a cold-source staging pipeline the non-temporal fill wins (0.42 ms a record); no 1.4-2.4 ms copy schedule lets a dirty buffer settle; DI-1 at 22k is still the Mac's first job
 >
 > Section 18.227. Follow-up P ran on `pricey-voice-4663` (O's instance, still up): 6 of 11 held (one vacuously), P-6 and P-10 outside, P-2, P-3, P-9 falsified. Per 9.95 MB record overlapped: copy-only 0.182 ms, non-temporal fill 0.420, `memcpy` 0.598 (copies at half rate, and the fill itself slows 2.3 times beside the device's reads of the other dirty buffer), `memcpy` + `clflushopt` 0.776. Copy trains at 1.4 to 2.4 ms with a 0.2 ms spin before each copy all held slow; O's 2.34 ms trains slept 2 ms at a stretch and settled, so the variable is likely the host's continuous idle (about 2 ms, derived; hypothesis: a deep core-complex idle state writes the L3 back). **Needs Hamed:** terminate `pricey-voice-4663` (told; the files are home); any next cell (`docs/CUDA-PIN-PIPELINE-RESULTS.md` section 6); the v270 jobs stand.
@@ -9425,6 +9429,37 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 **Bottleneck after.** Unchanged: expert reads on misses; of the all-resident floor, CPU graph building, GPU idle, and routed-expert launch granularity.
 
 **Kind.** Engineering (a default on a prior research result).
+
+
+### 18.228 CUDA follow-up Q on an RTX 5090: a busy host holds the slow state; the clear follows the host's idle fraction; depth and a second thread do not help the staging pipeline (0.68.5)
+
+**Goal.** Hamed: "the same instance is up, continue with what remains" (the four next cells of `docs/CUDA-PIN-PIPELINE-RESULTS.md` section 6 on `pricey-voice-4663`).
+
+**Baseline (recorded).** §18.225 and §18.227 on the same instance: O's trains with a whole `time.sleep(2 ms)` per 2.34 ms period settled, with `time.sleep(1 ms)` per 1.44 ms held; P's trains sleeping all but 0.2 ms of each 1.4 to 2.4 ms period held; P's pipeline: non-temporal fill 0.420 ms a record, `memcpy` 0.598, copy-only 0.182.
+
+**Prediction.** Q-1 to Q-10, `docs/CUDA-PIN-IDLE-RECORD.md`, committed first in a668cc4 (H-idle: about 2 ms of continuous host idle clears the lines; H-freq: the device's reads hold them; the pipeline is bound by one filling thread).
+
+**Method.** `pin_route.py` groups q1 (18 trains of 300 ms at a fixed 3.0 ms period, three each with L in {1.0, 1.5, 1.8, 2.0, 2.2, 2.5} ms of sleep after the copy and a spin for the rest; measured sleeps kept), q2 (18 buffers: allocate, then `sleep30`, `spin30` or `spin60` with no copy, then time), q3 (P's overlapped pipeline, eight arms of fill mode, 2 to 4 staging buffers and 1 or 2 filling threads, three passes each); `session.sh pinroute7`; `pin_route_idle_score.py`; 14 tests. Built in 2346580, pack hash equal on both ends; `doctor` and `smoke` clean; run 20:17:07 to 20:17:49 UTC, every gate true, 12.2 s, one attempt; archive `82a3dec0…aa6ace` under `~/cachalot-private/cuda-results/q1/`.
+
+**Result (measured).**
+- q2: `spin30` 6 of 6 slow (0.359 ms), `spin60` 6 of 6 slow, `sleep30` 0 of 6 (0.182 ms).
+- q1: hold share 1.0 at L = 1.0, 1.5, 1.8, 2.0 ms (measured sleeps 1.06 to 2.07 ms); 0.67 at 2.2 (2.29 ms measured; one settled at 21.0 ms); 0.33 at 2.5 (2.59 ms; settled at 20.0 and 80.4 ms); L50 2.35 ms.
+- q3 per record: (`nt`, 2, 1) 0.426, (`nt`, 3, 1) 0.422, (`nt`, 4, 1) 0.422, (`nt`, 2, 2) 0.455 (fill 0.401, copy 0.299, 81 % slow), (`memcpy`, 2, 1) 0.589, (`memcpy`, 3, 1) 0.598, (`memcpy`, 2, 2) 0.540 (fill 0.482), (`aged`, 2, 1) 0.182.
+- Held: Q-1, Q-4, Q-5, Q-6, Q-7, Q-9, Q-10. Outside: Q-2 (one 2.5 ms train held), Q-3 (L50 2.35 against 1.8 to 2.2). Past its falsifier: Q-8.
+
+**Intervention.** None in the runtime. Results `docs/CUDA-PIN-IDLE-RESULTS.md`, `docs/cuda-results/pin-idle-2026-10-28.json`.
+
+**Explanation (hypothesis).** The dirty lines are cleared by a deep host idle state (on Zen, a core complex in CC6 writes its L3 back) that a power-management governor enters only when the cores have recently been mostly idle; across O, P and Q the idle fraction per period orders every train (held at or below about 0.75, mixed at 0.76 and 0.86, settled at 0.88 and above; O's and P's fractions derived), while one continuous idle stretch does not (q1 at 2.07 ms in 3.0 ms held, O at about 2.0 ms in 2.34 ms settled). The non-temporal fill is bandwidth-bound at about 25 GB/s, which a second thread cannot raise and the device copy shares.
+
+**Corrections.** §18.227's "continuous host idle of about 2 ms" is restated as the idle fraction (derived).
+
+**What did not go well / limits.** The idle-fraction reading is a post-hoc fit across three sessions, not a registered test; the record's H-idle was framed as a continuous stretch. One instance and host CPU model; a guest cannot read the host's C-state residency.
+
+**Closed.** The device copy frequency as what holds the slow state (q2: no copies, still slow). Staging depth and a second Python filling thread as levers on the non-temporal pipeline (Q-7, Q-8).
+
+**Open / needs Hamed.** `docs/CUDA-PIN-IDLE-RESULTS.md` section 6 (a registered idle-fraction sweep separating stretch from fraction; another listing or a whole-machine rental; other record sizes). Terminate `pricey-voice-4663`. The v270 jobs stand.
+
+**Kind.** Research (predicted, measured, explained as hypothesis): 7 held, 2 outside, 1 falsified. No default changed.
 
 
 ### 18.227 CUDA follow-up P on an RTX 5090: a non-temporal fill wins the staging pipeline; no fixed 1.4-2.4 ms copy schedule lets a dirty buffer settle (0.68.4)

@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.68.5 (2026-10-28)
+
+HANDOFF "Start here (2026-10-28, 0.68.5)" and section 18.228; record `docs/CUDA-PIN-IDLE-RECORD.md` (Q-1 to Q-10, committed first in a668cc4; the build in 2346580); results `docs/CUDA-PIN-IDLE-RESULTS.md`. No runtime change.
+
+### Measured
+- **CUDA follow-up Q on an RTX 5090 (`pricey-voice-4663`, the instance of O and P): 7 held, Q-2 and Q-3 outside their intervals, Q-8 falsified.**
+- With no copy at all, a just-written 9.95 MB pinned buffer whose host thread spins for 30 or 60 ms copies at 0.359 ms (12 of 12); one whose thread sleeps 30 ms at 0.182 ms (6 of 6). A busy host, not the device's reads, holds the slow state.
+- At a fixed 3.0 ms copy period, sleeping up to 2.07 ms (measured) per period held 12 of 12 trains; 2.29 ms settled 1 of 3, 2.59 ms 2 of 3 (L50 2.35 ms). Across O, P and Q on this instance, the host's idle fraction per period (held at or below about 0.75, settled at 0.88 and above) orders every train; the continuous idle stretch does not (derived, a post-hoc fit).
+- The overlapped staging pipeline does not speed up with depth or a second filling thread: non-temporal fill 0.426 ms a record at two buffers, 0.422 at three and four, 0.455 with two threads (the fill stays at 0.401 ms, about 25 GB/s, and the copy beside it slows); `memcpy` with two threads 0.540 against 0.589.
+
+### Added
+- `benchmarks/cuda/pin_route.py` groups `q1` to `q3`, `session.sh pinroute7`, `benchmarks/cuda/pin_route_idle_score.py`, 14 tests (two-thread fills split on a 64-byte boundary).
+
 ## 0.68.4 (2026-10-28)
 
 HANDOFF "Start here (2026-10-28, 0.68.4)" and section 18.227; record `docs/CUDA-PIN-PIPELINE-RECORD.md` (P-1 to P-11, committed first in 9ad8518); results `docs/CUDA-PIN-PIPELINE-RESULTS.md`. No runtime change.
