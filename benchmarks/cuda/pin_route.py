@@ -28,9 +28,13 @@ fast pattern): groups m0 and m9 (the committed classification rule on the batch-
 copy, 12 more, all timed afterwards), m4 (one copy of another buffer first, then 24 buffers allocated and timed), m6 and m7 (24 private
 mappings made before any is timed, huge-page advice and its opposite, registered), m8 (24 ordinary buffers made first, registered with flag 0).
 
+Follow-up N (docs/CUDA-PIN-SETTLE-RECORD.md, is a just-allocated buffer slow for a time, or while its bytes are in the CPU's caches): groups
+n1 (a 1,000 ms train of single timed copies after each allocation), n2 (allocate, idle T ms, time; T swept), n3 (allocate, E bytes of
+unrelated CPU writes, time) and n4 (buffers aged 500 ms, then untouched, read or rewritten by the CPU, then timed).
+
 Usage:
     ~/venvs/deepseek-v41/bin/python benchmarks/cuda/pin_route.py plan
-GPU host: `run --cells k0|k1|k2|k3|k4|k5|l1|l2|l3|l4|m0|m1|m4|m6|m7|m8|m9 [--execute] [--tag NAME] [--out-dir DIR]`.
+GPU host: `run --cells k0|k1|k2|k3|k4|k5|l1|l2|l3|l4|m0|m1|m4|m6|m7|m8|m9|n1|n2|n3|n4 [--execute] [--tag NAME] [--out-dir DIR]`.
 """
 
 from __future__ import annotations
@@ -77,12 +81,21 @@ GROUPS.update({"m0": "follow-up M: the committed classification rule, batch-firs
                "m7": "follow-up M: the same with MADV_NOHUGEPAGE (control for m6)",
                "m8": "follow-up M: 24 ordinary allocator buffers registered with flag 0, all made before timing",
                "m9": "follow-up M: the committed classification rule, batch-first pattern (session end)"})
+GROUPS.update({"n1": "follow-up N: 6 buffers, each allocated then copied back to back for 1,000 ms, every copy timed",
+               "n2": "follow-up N: 28 buffers, each allocated, left idle for T ms, then timed (T swept 0 to 500)",
+               "n3": "follow-up N: 24 buffers, each allocated, E bytes of unrelated CPU writes, then timed (E 0, 64, 256 MiB)",
+               "n4": "follow-up N: 24 buffers allocated first and left 500 ms, then each untouched, read or rewritten by the CPU, then timed"})
 ORDER = ("k0", "k1", "k2", "k3", "k4", "k5")
+ORDER_N = ("k4", "l1", "n1", "n2", "n3", "n4", "k4")
+WAITS_MS = (0, 500, 5, 100, 20, 200, 50, 0, 500, 100, 5, 50, 200, 20, 500, 0, 50, 5, 200, 20, 100, 0, 500, 20, 5, 100, 200, 50)   # four of each T, fixed shuffle
+EVICT_BYTES = (0, 64 * MIB, 256 * MIB)
+RETOUCH = ("none", "read", "write")
 ORDER_M = ("m0", "k4", "l1", "m1", "m4", "m6", "m7", "m8", "m9")
 FOLLOWUP_ORDER = ("k4", "k3", "k2", "k1", "l1", "l2", "l3", "l4", "k4")     # reversed routes, the four new cells, the control again
 ARENA_BYTES = 24 * 2**30
 CONTEXT = {"l1": (True, False, False), "l2": (False, True, False), "l3": (False, False, True), "l4": (True, True, True)}   # batch_first, arena, side stream
-SMALL = {"arena_bytes": 1 << 20, "k_classify": 4, "k_plateau": 2, "k_route": 3, "nbytes": 1 << 16, "plateau_bytes": 1 << 18, "stream_bytes": 1 << 18}
+SMALL = {"arena_bytes": 1 << 20, "k_classify": 4, "k_plateau": 2, "k_route": 3, "nbytes": 1 << 16, "plateau_bytes": 1 << 18, "stream_bytes": 1 << 18,
+         "k_train": 2, "train_ms": 5.0, "waits_ms": (0, 2, 0, 2), "evict_bytes": (0, 1 << 16, 1 << 18), "evict_reps": 2, "age_ms": 2.0}
 
 
 # ------------------------------------------------------------------------------------------------ pure helpers (no torch)
@@ -397,6 +410,97 @@ class PinRouteBench(bp.BackingBench):
             res["link"] = link
         return res
 
+    # -- follow-up N (docs/CUDA-PIN-SETTLE-RECORD.md): what happens between a buffer's allocation and its timing
+    def one_copy_ms(self, dst, src) -> float:
+        """One copy timed alone with events, the GPU synchronised first (a single sample of `time_copy`'s loop)."""
+        a, b = self._events()
+        self.sync()
+        a.record()
+        dst.copy_(src, non_blocking=True)
+        b.record()
+        b.synchronize()
+        return a.elapsed_time(b)
+
+    def settle_train(self, k: int = 6, train_ms: float = 1000.0, nbytes: int = RECORD_BYTES, deadline: suite.Deadline | None = None) -> dict:
+        """Group n1: each buffer allocated, then copied back to back for train_ms, every copy's ms and host ms since allocation kept."""
+        dev = self.dev_buffer(nbytes)
+        keep, trains, ok = [], [], True
+        for i in range(k):
+            if deadline is not None and deadline.expired():
+                break
+            buf = self.pinned(nbytes, SEED + i)
+            t0 = time.perf_counter()
+            keep.append(buf)
+            ms, at = [], []
+            while (time.perf_counter() - t0) * 1e3 < train_ms:
+                at.append((time.perf_counter() - t0) * 1e3)
+                ms.append(self.one_copy_ms(dev, buf))
+            ok &= self.roundtrip_ok(dev, buf, nbytes)
+            trains.append({"ms": ms, "t_ms": at})
+        return {"trains": trains, "ms": [bp.p50(t["ms"][:25]) for t in trains if t["ms"]], "roundtrip_ok": ok, "nbytes": nbytes,
+                "kept": len(keep), "train_ms": train_ms}
+
+    def wait_sweep(self, waits_ms: tuple = WAITS_MS, nbytes: int = RECORD_BYTES, deadline: suite.Deadline | None = None) -> dict:
+        """Group n2: each buffer allocated, left idle for T ms (the GPU idle, nothing else running), then timed."""
+        dev = self.dev_buffer(nbytes)
+        keep, ms, gap, done, ok = [], [], [], [], True
+        for i, w in enumerate(waits_ms):
+            if deadline is not None and deadline.expired():
+                break
+            buf = self.pinned(nbytes, SEED + i)
+            t0 = time.perf_counter()
+            keep.append(buf)
+            self.sync()
+            time.sleep(w / 1e3)
+            gap.append((time.perf_counter() - t0) * 1e3)
+            ms.append(self.time_copy(dev, buf))
+            ok &= self.roundtrip_ok(dev, buf, nbytes)
+            done.append(w)
+        return {"ms": ms, "wait_ms": done, "gap_ms": gap, "roundtrip_ok": ok, "nbytes": nbytes, "kept": len(keep)}
+
+    def evict_cell(self, sizes: tuple = EVICT_BYTES, reps: int = 8, nbytes: int = RECORD_BYTES, deadline: suite.Deadline | None = None) -> dict:
+        """Group n3: each buffer allocated, E bytes written into one unrelated pageable buffer, then timed at once."""
+        dev = self.dev_buffer(nbytes)
+        junk = self.torch.empty(max(sizes), dtype=self.torch.uint8)
+        keep, ms, ev, fill_ms, ok = [], [], [], [], True
+        for i in range(reps * len(sizes)):
+            if deadline is not None and deadline.expired():
+                break
+            e = sizes[i % len(sizes)]
+            buf = self.pinned(nbytes, SEED + i)
+            keep.append(buf)
+            t0 = time.perf_counter()
+            if e:
+                junk[:e].fill_(i & 0xFF)
+            fill_ms.append((time.perf_counter() - t0) * 1e3)
+            ms.append(self.time_copy(dev, buf))
+            ok &= self.roundtrip_ok(dev, buf, nbytes)
+            ev.append(e)
+        return {"ms": ms, "evict_bytes": ev, "fill_ms": fill_ms, "roundtrip_ok": ok, "nbytes": nbytes, "kept": len(keep)}
+
+    def retouch_cell(self, k: int = K_ROUTE, age_ms: float = 500.0, nbytes: int = RECORD_BYTES, deadline: suite.Deadline | None = None) -> dict:
+        """Group n4: k buffers allocated first and left age_ms, then each untouched, read (sum) or rewritten by the CPU, then timed."""
+        dev = self.dev_buffer(nbytes)
+        bufs = [self.pinned(nbytes, SEED + i) for i in range(k)]
+        self.sync()
+        time.sleep(age_ms / 1e3)
+        ms, modes, touch_ms, ok = [], [], [], True
+        for i, buf in enumerate(bufs):
+            if deadline is not None and deadline.expired():
+                break
+            mode = RETOUCH[i % len(RETOUCH)]
+            t0 = time.perf_counter()
+            if mode == "read":
+                int(buf.sum())
+            elif mode == "write":
+                g = self.torch.Generator().manual_seed(SEED + 5000 + i)
+                buf.copy_(self.torch.randint(0, 256, (nbytes,), dtype=self.torch.uint8, generator=g))
+            touch_ms.append((time.perf_counter() - t0) * 1e3)
+            ms.append(self.time_copy(dev, buf))
+            ok &= self.roundtrip_ok(dev, buf, nbytes)
+            modes.append(mode)
+        return {"ms": ms, "mode": modes, "touch_ms": touch_ms, "roundtrip_ok": ok, "nbytes": nbytes, "kept": len(bufs), "age_ms": age_ms}
+
     def alloc_cell(self, k: int = K_ROUTE, nbytes: int = RECORD_BYTES, sampler: LinkSampler | None = None,
                    deadline: suite.Deadline | None = None) -> dict:
         """Group k4: the `cudaHostAlloc` control, optionally beside the link sampler."""
@@ -477,6 +581,59 @@ def rows_route(run_id: str, arm: str, res: dict) -> list[dict]:
     return rows
 
 
+def _slow_share_rows(run_id: str, arm: str, ms: list[float], keys: list, name: str, unit_note: str) -> list[dict]:
+    rows = []
+    for key in dict.fromkeys(keys):
+        part = [x for x, k in zip(ms, keys, strict=True) if k == key]
+        rows.append(_row(run_id, arm, f"slow_share_{name}_{key}", bp.share(bp.slow_flags(part, bp.SLOW_MS_9_95MB)), "fraction", "measured",
+                         f"slow share of the buffers with {name} {key}{unit_note}", n=len(part)))
+        rows.append(_row(run_id, arm, f"median_ms_{name}_{key}", bp.p50(part), "ms", "measured", "median of the buffers' p50", n=len(part)))
+    return rows
+
+
+def train_summary(train: dict, run: int = 10, last: int = 100) -> dict:
+    """n1: whether the last `last` copies are slow, and the settle time: host ms of the first copy of `run` fast copies in a row."""
+    ms, at = train["ms"], train["t_ms"]
+    fast = [x <= 0.25 for x in ms]
+    settle = None
+    for i in range(len(ms) - run + 1):
+        if all(fast[i:i + run]):
+            settle = at[i]
+            break
+    tail = ms[-last:]
+    return {"copies": len(ms), "first_ms": ms[0] if ms else None, "settle_ms": settle,
+            "tail_slow_share": bp.share(bp.slow_flags(tail, bp.SLOW_MS_9_95MB)) if tail else None}
+
+
+def rows_train(run_id: str, arm: str, res: dict) -> list[dict]:
+    rows = bp.rows_alloc_order(run_id, arm, res)
+    for i, t in enumerate(res["trains"]):
+        s = train_summary(t)
+        rows += [_row(run_id, arm, f"train_copies_b{i}", s["copies"], "count", "measured", "copies in the train"),
+                 _row(run_id, arm, f"train_first_ms_b{i}", s["first_ms"], "ms", "measured", "first copy after allocation"),
+                 _row(run_id, arm, f"train_tail_slow_share_b{i}", s["tail_slow_share"], "fraction", "measured", "slow share of the last 100 copies"),
+                 _row(run_id, arm, f"train_settle_ms_b{i}", s["settle_ms"], "ms", "measured" if s["settle_ms"] is not None else "unavailable",
+                      "host ms since allocation of the first of 10 fast copies in a row")]
+    return rows
+
+
+def rows_wait(run_id: str, arm: str, res: dict) -> list[dict]:
+    return bp.rows_alloc_order(run_id, arm, res) + _slow_share_rows(run_id, arm, res["ms"], res["wait_ms"], "wait", " ms")
+
+
+def rows_evict(run_id: str, arm: str, res: dict) -> list[dict]:
+    keys = [e // 1024 for e in res["evict_bytes"]]
+    rows = bp.rows_alloc_order(run_id, arm, res) + _slow_share_rows(run_id, arm, res["ms"], keys, "evict", " KiB")
+    for key in dict.fromkeys(keys):
+        part = [f for f, k in zip(res["fill_ms"], keys, strict=True) if k == key]
+        rows.append(_row(run_id, arm, f"fill_ms_evict_{key}", bp.p50(part), "ms", "measured", "host ms of the unrelated write", n=len(part)))
+    return rows
+
+
+def rows_retouch(run_id: str, arm: str, res: dict) -> list[dict]:
+    return bp.rows_alloc_order(run_id, arm, res) + _slow_share_rows(run_id, arm, res["ms"], res["mode"], "touch", "")
+
+
 # ------------------------------------------------------------------------------------------------ CLI
 
 def cmd_plan(args) -> int:
@@ -530,6 +687,14 @@ def run_group(bench: PinRouteBench, group: str, run_id: str, dl: suite.Deadline,
                 lambda: bench.registered_batch_cell("private", "thp" if group == "m6" else "nothp", cfg["k_route"], nb, 1, deadline=dl), rows_route)
     elif group == "m8":
         guarded("ordinary_batch", lambda: bench.registered_batch_cell("ordinary", "none", cfg["k_route"], nb, 0, deadline=dl), rows_route)
+    elif group == "n1":
+        guarded("settle_train", lambda: bench.settle_train(cfg.get("k_train", 6), cfg.get("train_ms", 1000.0), nb, deadline=dl), rows_train)
+    elif group == "n2":
+        guarded("wait_sweep", lambda: bench.wait_sweep(cfg.get("waits_ms", WAITS_MS), nb, deadline=dl), rows_wait)
+    elif group == "n3":
+        guarded("evict", lambda: bench.evict_cell(cfg.get("evict_bytes", EVICT_BYTES), cfg.get("evict_reps", 8), nb, deadline=dl), rows_evict)
+    elif group == "n4":
+        guarded("retouch", lambda: bench.retouch_cell(cfg["k_route"], cfg.get("age_ms", 500.0), nb, deadline=dl), rows_retouch)
     elif group in CONTEXT:
         bf, ar, st = CONTEXT[group]
         guarded({"l1": "batch_first", "l2": "arena_dest", "l3": "side_stream", "l4": "arena_full"}[group],

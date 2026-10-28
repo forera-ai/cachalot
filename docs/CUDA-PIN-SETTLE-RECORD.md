@@ -30,6 +30,8 @@ All buffers 9.95 MB through `cudaHostAlloc` (torch `pin_memory`), kept alive to 
 
 Session order (`session.sh pinroute4`, output directory `benchmarks/results/cuda-settle`): `k4`, `l1`, `n1`, `n2`, `n3`, `n4`, `k4`, seven fresh processes. Gates: the byte round trip of every buffer (n4's rewritten buffers are checked against their new bytes); no copy rate above the PCIe sanity bound; no failed cell; not truncated.
 
+**Erratum before any run (committed with the build, nothing run yet):** the n2 row above is inconsistent (27 buffers against "three of every value plus 0 and 500 again"). As built, n2 has **28 buffers, four of each T** in {0, 5, 20, 50, 100, 200, 500} ms, in the fixed shuffled order `WAITS_MS` of `pin_route.py`. No prediction changes: N-2 scores the T = 0 and T = 500 ms buffers, now four each.
+
 ## 3. Predictions (registered before any code)
 
 All **predicted**; probabilities mine. "Slow" is the absolute rule of M (p50 at or above 0.28 ms), "fast" at or below 0.25 ms; a copy in n1's train is classed the same way by its own time. The predictions are written so that H-time and H-cache predict opposite outcomes in N-2, N-3 and N-4.

@@ -208,8 +208,42 @@ def test_plan_and_dry_run_list_every_group(capsys):
     assert pr.main(["plan"]) == 0 and pr.main(["run", "--cells", "k3"]) == 0
     out = capsys.readouterr().out
     assert all(g in out for g in pr.ORDER) and "DRY RUN" not in out.split("\n")[0]
-    assert list(pr.ORDER) == ["k0", "k1", "k2", "k3", "k4", "k5"] and set(pr.ORDER) | set(pr.CONTEXT) | {"m0", "m1", "m4", "m6", "m7", "m8", "m9"} == set(pr.GROUPS)
+    assert list(pr.ORDER) == ["k0", "k1", "k2", "k3", "k4", "k5"] and set(pr.ORDER) | set(pr.CONTEXT) | {"m0", "m1", "m4", "m6", "m7", "m8", "m9", "n1", "n2", "n3", "n4"} == set(pr.GROUPS)
     assert list(pr.FOLLOWUP_ORDER) == ["k4", "k3", "k2", "k1", "l1", "l2", "l3", "l4", "k4"] and "l4" in out
+
+
+
+# ------------------------------------------------------------------------------------------------ follow-up N
+
+def test_follow_up_n_order_and_the_wait_list_are_as_registered():
+    assert list(pr.ORDER_N) == ["k4", "l1", "n1", "n2", "n3", "n4", "k4"]
+    assert len(pr.WAITS_MS) == 28 and all(pr.WAITS_MS.count(t) == 4 for t in (0, 5, 20, 50, 100, 200, 500))
+    assert pr.EVICT_BYTES == (0, 64 * pr.MIB, 256 * pr.MIB) and pr.RETOUCH == ("none", "read", "write")
+
+
+def test_follow_up_n_cells_report_their_keys(bench):
+    gates, failures, raw = {"roundtrip": True, "sanity": True}, [], {}
+    fields = set()
+    for g in ("n1", "n2", "n3", "n4"):
+        fields |= {r["field"] for r in pr.run_group(bench, g, "r", suite.Deadline(120), gates, failures, raw, small=True, sampler_factory=_NoSampler)}
+    assert gates == {"roundtrip": True, "sanity": True} and failures == []
+    assert {"slow_share_wait_0", "slow_share_wait_2", "slow_share_evict_0", "slow_share_evict_256", "fill_ms_evict_64",
+            "slow_share_touch_none", "slow_share_touch_read", "slow_share_touch_write", "train_copies_b0", "train_first_ms_b1"} <= fields
+    assert raw["retouch"]["mode"] == ["none", "read", "write"] and raw["wait_sweep"]["wait_ms"] == [0, 2, 0, 2]
+    assert all(len(t["ms"]) == len(t["t_ms"]) > 0 for t in raw["settle_train"]["trains"])
+
+
+def test_the_rewritten_buffer_is_checked_against_its_new_bytes(bench):
+    res = bench.retouch_cell(k=3, age_ms=0.0, nbytes=1 << 12)
+    assert res["roundtrip_ok"] and res["mode"] == ["none", "read", "write"]
+
+
+def test_train_summary_finds_the_settle_point_and_the_tail():
+    t = {"ms": [0.36] * 20 + [0.18] * 120, "t_ms": [float(i) for i in range(140)]}
+    s = pr.train_summary(t)
+    assert s["settle_ms"] == 20.0 and s["tail_slow_share"] == 0.0 and s["first_ms"] == 0.36 and s["copies"] == 140
+    s = pr.train_summary({"ms": [0.36] * 150, "t_ms": [float(i) for i in range(150)]})
+    assert s["settle_ms"] is None and s["tail_slow_share"] == 1.0
 
 
 # ------------------------------------------------------------------------------------------------ DC-5: the guard
