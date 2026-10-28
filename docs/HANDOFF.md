@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-28, 0.68.4): in a cold-source staging pipeline the non-temporal fill wins (0.42 ms a record); no 1.4-2.4 ms copy schedule lets a dirty buffer settle; DI-1 at 22k is still the Mac's first job
+>
+> Section 18.227. Follow-up P ran on `pricey-voice-4663` (O's instance, still up): 6 of 11 held (one vacuously), P-6 and P-10 outside, P-2, P-3, P-9 falsified. Per 9.95 MB record overlapped: copy-only 0.182 ms, non-temporal fill 0.420, `memcpy` 0.598 (copies at half rate, and the fill itself slows 2.3 times beside the device's reads of the other dirty buffer), `memcpy` + `clflushopt` 0.776. Copy trains at 1.4 to 2.4 ms with a 0.2 ms spin before each copy all held slow; O's 2.34 ms trains slept 2 ms at a stretch and settled, so the variable is likely the host's continuous idle (about 2 ms, derived; hypothesis: a deep core-complex idle state writes the L3 back). **Needs Hamed:** terminate `pricey-voice-4663` (told; the files are home); any next cell (`docs/CUDA-PIN-PIPELINE-RESULTS.md` section 6); the v270 jobs stand.
+
 > ## Start here (2026-10-28, 0.68.3): CUDA follow-up P is registered and built; it needs one RTX 5090; DI-1 at 22k is still the Mac's first job
 >
 > Section 18.226. Follow-up P (`docs/CUDA-PIN-PIPELINE-RECORD.md`, P-1 to P-11 committed first in 9ad8518, built in 2b4550a, pack `cuda-scaffold-2b4550a`): p1 locates the copy period between 1.44 ms (held slow in O) and 2.34 ms (settled) and asks whether the threshold is sharp; p2 times a two-buffer staging pipeline from cold sources with `memcpy`, `memcpy` plus `clflushopt` and non-temporal fills, serial and overlapped, against an aged copy-only bound. Never run on a GPU. **Needs Hamed:** an RTX 5090 of the fast population and his go for `session.sh pinroute6` (`benchmarks/cuda/SESSION-RUNBOOK-PIN-PIPELINE.md`); the v270 jobs stand.
@@ -9421,6 +9425,38 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 **Bottleneck after.** Unchanged: expert reads on misses; of the all-resident floor, CPU graph building, GPU idle, and routed-expert launch granularity.
 
 **Kind.** Engineering (a default on a prior research result).
+
+
+### 18.227 CUDA follow-up P on an RTX 5090: a non-temporal fill wins the staging pipeline; no fixed 1.4-2.4 ms copy schedule lets a dirty buffer settle (0.68.4)
+
+**Goal.** Hamed: "RTX 5090 is up. Go: run pinroute6 per the runbook, score it, write it up and release." No new address was given; `pricey-voice-4663` (O's instance) answered over the existing private config with 25 minutes of uptime, so it was the instance used.
+
+**Baseline (recorded).** §18.225 and §18.226: O's trains with `time.sleep(1 ms)` (period 1.44 ms) held a just-written buffer slow, with `time.sleep(2 ms)` (2.34 ms) settled at 17 to 43 ms; hot-source `memcpy` 0.18 to 0.21 ms, non-temporal rewrite 0.37 to 0.44 ms, `clflushopt` 0.38 ms; no pipeline measured.
+
+**Prediction.** P-1 to P-11, `docs/CUDA-PIN-PIPELINE-RECORD.md`, committed first in 9ad8518.
+
+**Method.** Pack `cuda-scaffold-9d3b317` (dirty 0; `benchmarks/cuda` as built in 2b4550a; hash equal on both ends), unpacked over O's checkout; `check`, `setup`, `doctor`, `smoke` clean; `session.sh pinroute6` 20:07:31 to 20:08:10 UTC (k4, l1, p1, p2, k4; every gate true; 10.7 s; one attempt); archive `23dec09f…6205f8` under `~/cachalot-private/cuda-results/p1/`; scored by `pin_route_pipeline_score.py`.
+
+**Result (measured).**
+- Controls: k4 24 of 24 slow twice, l1 0 of 24 (0.182 ms).
+- p1: 18 of 18 trains held at every period 1.4 to 2.4 ms (125 to 215 copies each, every copy 0.361 to 0.402 ms); realised periods equal to target within 0.000005 ms.
+- p2 serial (median of three passes): `memcpy` fill 0.248 ms, copy 0.361 (0.99 slow); `flush` fill 0.412 + flush 0.280, copy 0.185; `nt` fill 0.375, copy 0.185; `aged` copy 0.182.
+- p2 overlapped per record: `aged` 0.182, `nt` 0.420 (fill 0.398, copy 0.262), `memcpy` 0.598 (fill 0.573, copy 0.359), `flush` 0.776 (fill 0.481, flush 0.281, copy 0.207). Passes repeat within 0.003 ms a record.
+- Scores: P-1, P-4 (vacuous), P-5, P-7, P-8, P-11 held; P-6 outside (0.248 against 0.25; 0.280 against 0.30; `nt` fill above `memcpy`); P-10 outside (3.28 against 1.5 to 2.5); P-2, P-3, P-9 past their falsifiers (`memcpy` pipelined +66 % over max(host, copy)).
+
+**Intervention.** None in the runtime. Results `docs/CUDA-PIN-PIPELINE-RESULTS.md`, `docs/cuda-results/pin-pipeline-2026-10-28.json`; a correction note in `docs/CUDA-PIN-FLUSH-RESULTS.md` section 3.
+
+**Explanation (hypothesis).** p1 against O: what clears the dirty lines needs the host thread idle for about 2 ms at a stretch (p1's longest stretch about 1.8 ms, O's settling trains about 2.0 ms; derived), consistent with a deep core-complex idle state that writes the L3 back, which would also explain O's one-step drop. p2: the device reading a staging buffer the CPU holds dirty slows the CPU's concurrent ordinary stores into the other buffer (coherence traffic), while non-temporal stores bypass it and only share DRAM bandwidth with the copy.
+
+**Corrections.** §18.225's "copies every ~1.4 ms hold the state, every ~2.4 ms do not" is restated: the trains differed in the host's continuous idle, which P suggests is the variable.
+
+**What did not go well / limits.** p1's schedule changed two things against O at once (the spin and the period), so the idle threshold is derived, not measured; p1 did not record host busy time per period. P-4 was vacuous. One instance, one host CPU model, 9.95 MB, two staging buffers; source coldness assumed from sizes, not measured.
+
+**Closed.** The copy frequency as the variable that holds the slow state (P-2, P-3 against O). A `clflushopt` pass as the best fix in an overlapped pipeline on this host (P-8: non-temporal fill 0.420 against 0.776 ms).
+
+**Open / needs Hamed.** `docs/CUDA-PIN-PIPELINE-RESULTS.md` section 6 (the idle stretch at a fixed period; a spinning host with no copies; pipeline depth 3 and 4; two filler threads) needs a record and an instance. Terminate `pricey-voice-4663`. The v270 jobs stand.
+
+**Kind.** Research (predicted, measured, explained as hypothesis): 6 held (one vacuously), 2 outside, 3 falsified. No default changed.
 
 
 ### 18.226 CUDA follow-up P registered and built: the copy-period threshold and a fill-then-flush staging pipeline (0.68.3)

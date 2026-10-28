@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.68.4 (2026-10-28)
+
+HANDOFF "Start here (2026-10-28, 0.68.4)" and section 18.227; record `docs/CUDA-PIN-PIPELINE-RECORD.md` (P-1 to P-11, committed first in 9ad8518); results `docs/CUDA-PIN-PIPELINE-RESULTS.md`. No runtime change.
+
+### Measured
+- **CUDA follow-up P on an RTX 5090 (`pricey-voice-4663`, AMD Ryzen 7 7800X3D host): 6 held (one vacuously), 2 outside their intervals, 3 falsified (P-2, P-3, P-9).**
+- Copy trains on a fixed schedule (sleep, then a 0.2 ms spin before each copy) at periods 1.4 to 2.4 ms: all 18 trains held a just-written buffer slow for 300 ms (2,949 copies, all 0.361 to 0.402 ms). Follow-up O's 2.34 ms trains, which slept a whole 2 ms at a stretch, settled; the likelier variable is the host thread's continuous idle (about 1.8 against 2.0 ms, derived), not the copy frequency.
+- A two-buffer staging pipeline from cold sources, 9.95 MB records, per record overlapped: copy-only bound 0.182 ms, non-temporal fill 0.420 ms, `memcpy` fill 0.598 ms (its copies slow at 0.359 ms), `memcpy` plus `clflushopt` 0.776 ms. Overlapped with the device reading the other dirty staging buffer, the `memcpy` fill slows from 0.248 to 0.573 ms; the non-temporal fill barely moves (0.375 to 0.398 ms), and the copy beside it slows from 0.185 to 0.262 ms. Every fill arm is host-bound.
+
 ## 0.68.3 (2026-10-28)
 
 HANDOFF "Start here (2026-10-28, 0.68.3)" and section 18.226; record `docs/CUDA-PIN-PIPELINE-RECORD.md` (P-1 to P-11, committed first in 9ad8518; the build in 2b4550a). Planning, instruments and tests: nothing ran on a GPU. No runtime change.
