@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.68.2 (2026-10-28)
+
+HANDOFF "Start here (2026-10-28, 0.68.2)" and section 18.225; record `docs/CUDA-PIN-FLUSH-RECORD.md` (O-1 to O-15, committed first in 8f8b9ff, the build in d6f9f68 before any run); results `docs/CUDA-PIN-FLUSH-RESULTS.md`. No runtime change.
+
+### Measured
+- **CUDA follow-up O on an RTX 5090 (`pricey-voice-4663`, AMD Ryzen 7 7800X3D host): 12 of 15 held, O-4, O-5 and O-12 falsified.** A just-written pinned 9.95 MB buffer copies at 0.359 ms; with its lines flushed by `clflushopt` (0.38 ms) or written back by `clwb`, or with its new bytes written by non-temporal stores, at 0.182 ms; an ordinary `memcpy` rewrite stays at 0.359 ms. The half-rate copy is the CPU's dirty cache lines (H-page, a write-keyed state outside the caches, falsified as registered).
+- Idle sweep in 2.5 ms steps: slow share 1.0 up to 10 ms, 0.75 at 12.5, 0.5 at 15, 0.25 at 17.5, 0 at 20 ms (T50 15.0 ms); every buffer is in one mode or the other, and in copy trains a buffer drops from 0.365 to 0.225 ms between two consecutive copies (a step, not a gradual eviction).
+- Copy trains with idle gaps: a copy every ~1.4 ms (1 ms gap) keeps a buffer slow for the whole 400 ms; every ~2.4 ms or sparser it settles at the usual 17 to 22 ms (once 10.8 ms, once 42.7 ms).
+- An `O_DIRECT` read into an aged pinned buffer copied at once is slow (0.358 ms; the read moved 9.95 MB in 0.88 ms, from the host's cache); 50 ms after the read it is fast; an ordinary read is slow (0.346 ms). The 0.68.1 note "fill by `O_DIRECT`" does not hold on this VM.
+
+### Added
+- `benchmarks/cuda/pin_route.py` groups `o1` to `o4`, `benchmarks/cuda/cache_touch.c` and `cache_touch.py` (a CPUID-gated `clflush`/`clflushopt`/`clwb`/non-temporal helper compiled on the instance; every missing piece is an `unavailable` row), `session.sh pinroute5` (and a C-compiler line in `check`), `benchmarks/cuda/pin_route_flush_score.py`, `SESSION-RUNBOOK-PIN-FLUSH.md`, 19 tests (10 rehearsal, 9 scorer).
+
 ## 0.68.1 (2026-10-28)
 
 HANDOFF "Start here (2026-10-28, 0.68.1)" and section 18.224; records `docs/CUDA-PIN-ORDER-RECORD.md` (M-1 to M-9, committed first in debaddb) and `docs/CUDA-PIN-SETTLE-RECORD.md` (N-1 to N-8, committed first in 8f2077e, an erratum on a buffer count in 6afe0bb before any run); results `docs/CUDA-PIN-ORDER-RESULTS.md` and `docs/CUDA-PIN-SETTLE-RESULTS.md`. No runtime change.

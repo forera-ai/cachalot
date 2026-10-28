@@ -1,0 +1,295 @@
+{
+  "controls": {
+    "k4_slow_share": [
+      1.0,
+      1.0
+    ],
+    "l1_median_ms": 0.18218399584293365,
+    "l1_slow_share": 0.0
+  },
+  "elapsed_s": [
+    1.024,
+    0.887,
+    1.994,
+    4.405,
+    1.782,
+    2.955,
+    1.023
+  ],
+  "gates": [
+    {
+      "failed_cells": [],
+      "roundtrip": true,
+      "sanity": true
+    },
+    {
+      "failed_cells": [],
+      "roundtrip": true,
+      "sanity": true
+    },
+    {
+      "failed_cells": [],
+      "roundtrip": true,
+      "sanity": true
+    },
+    {
+      "failed_cells": [],
+      "roundtrip": true,
+      "sanity": true
+    },
+    {
+      "failed_cells": [],
+      "roundtrip": true,
+      "sanity": true
+    },
+    {
+      "failed_cells": [],
+      "roundtrip": true,
+      "sanity": true
+    },
+    {
+      "failed_cells": [],
+      "roundtrip": true,
+      "sanity": true
+    }
+  ],
+  "gpu_s": 14.07,
+  "o1": {
+    "0": {
+      "median_ms": 0.35890400409698486,
+      "n": 4,
+      "slow_share": 1.0
+    },
+    "10": {
+      "median_ms": 0.35897600650787354,
+      "n": 4,
+      "slow_share": 1.0
+    },
+    "12p5": {
+      "median_ms": 0.3588480055332184,
+      "n": 4,
+      "slow_share": 0.75
+    },
+    "15": {
+      "median_ms": 0.2704399973154068,
+      "n": 4,
+      "slow_share": 0.5
+    },
+    "17p5": {
+      "median_ms": 0.1822960004210472,
+      "n": 4,
+      "slow_share": 0.25
+    },
+    "20": {
+      "median_ms": 0.18228799849748611,
+      "n": 4,
+      "slow_share": 0.0
+    },
+    "5": {
+      "median_ms": 0.3591200038790703,
+      "n": 4,
+      "slow_share": 1.0
+    },
+    "50": {
+      "median_ms": 0.182328000664711,
+      "n": 4,
+      "slow_share": 0.0
+    },
+    "7p5": {
+      "median_ms": 0.35891199856996536,
+      "n": 4,
+      "slow_share": 1.0
+    }
+  },
+  "o1_mid_between": 0,
+  "o1_t50_ms": 15.0,
+  "o2": [
+    {
+      "after_first_fast_share": 0.0,
+      "copies": 278,
+      "first_ms": 0.4111039936542511,
+      "gap_ms": 1,
+      "second_half_slow_share": 1.0,
+      "settle_ms": null,
+      "tail_slow_share": 1.0
+    },
+    {
+      "after_first_fast_share": 1.0,
+      "copies": 20,
+      "first_ms": 0.366239994764328,
+      "gap_ms": 20,
+      "second_half_slow_share": 0.0,
+      "settle_ms": 21.11718399999063,
+      "tail_slow_share": 0.05
+    },
+    {
+      "after_first_fast_share": 0.9154929577464789,
+      "copies": 72,
+      "first_ms": 0.36931198835372925,
+      "gap_ms": 5,
+      "second_half_slow_share": 0.0,
+      "settle_ms": 22.349232999999913,
+      "tail_slow_share": 0.05555555555555555
+    },
+    {
+      "after_first_fast_share": 0.9588235294117647,
+      "copies": 171,
+      "first_ms": 0.37040001153945923,
+      "gap_ms": 2,
+      "second_half_slow_share": 0.0,
+      "settle_ms": 20.70023900000706,
+      "tail_slow_share": 0.0
+    },
+    {
+      "after_first_fast_share": 0.9459459459459459,
+      "copies": 38,
+      "first_ms": 0.36687999963760376,
+      "gap_ms": 10,
+      "second_half_slow_share": 0.0,
+      "settle_ms": 95.92339399998195,
+      "tail_slow_share": 0.02631578947368421
+    },
+    {
+      "after_first_fast_share": 0.972972972972973,
+      "copies": 38,
+      "first_ms": 0.3703039884567261,
+      "gap_ms": 10,
+      "second_half_slow_share": 0.0,
+      "settle_ms": 21.308580000010124,
+      "tail_slow_share": 0.05263157894736842
+    },
+    {
+      "after_first_fast_share": 0.9053254437869822,
+      "copies": 170,
+      "first_ms": 0.37119999527931213,
+      "gap_ms": 2,
+      "second_half_slow_share": 0.0,
+      "settle_ms": 42.674969999978885,
+      "tail_slow_share": 0.0
+    },
+    {
+      "after_first_fast_share": 0.971830985915493,
+      "copies": 72,
+      "first_ms": 0.36716800928115845,
+      "gap_ms": 5,
+      "second_half_slow_share": 0.0,
+      "settle_ms": 16.804227999983823,
+      "tail_slow_share": 0.041666666666666664
+    },
+    {
+      "after_first_fast_share": 1.0,
+      "copies": 20,
+      "first_ms": 0.36985599994659424,
+      "gap_ms": 20,
+      "second_half_slow_share": 0.0,
+      "settle_ms": 20.789505999999847,
+      "tail_slow_share": 0.05
+    },
+    {
+      "after_first_fast_share": 0.0,
+      "copies": 277,
+      "first_ms": 0.37059199810028076,
+      "gap_ms": 1,
+      "second_half_slow_share": 1.0,
+      "settle_ms": null,
+      "tail_slow_share": 1.0
+    }
+  ],
+  "o3": {
+    "clflushopt": {
+      "median_ms": 0.18228799849748611,
+      "n": 5,
+      "slow_share": 0.0
+    },
+    "clwb": {
+      "median_ms": 0.1823519989848137,
+      "n": 5,
+      "slow_share": 0.0
+    },
+    "memcpy": {
+      "median_ms": 0.3588480055332184,
+      "n": 5,
+      "slow_share": 1.0
+    },
+    "none": {
+      "median_ms": 0.3586080074310303,
+      "n": 5,
+      "slow_share": 1.0
+    },
+    "nt": {
+      "median_ms": 0.18227200210094452,
+      "n": 5,
+      "slow_share": 0.0
+    }
+  },
+  "o3_unavailable": {},
+  "o4": {
+    "buffered": {
+      "median_ms": 0.34649600088596344,
+      "n": 6,
+      "read_ms_median": 2.717154500004426,
+      "slow_share": 1.0
+    },
+    "direct": {
+      "median_ms": 0.35840800404548645,
+      "n": 6,
+      "read_ms_median": 0.8830979999743249,
+      "slow_share": 1.0
+    },
+    "direct_wait": {
+      "median_ms": 0.1823519952595234,
+      "n": 6,
+      "read_ms_median": 0.7916415000011057,
+      "slow_share": 0.0
+    },
+    "none": {
+      "median_ms": 0.18212799727916718,
+      "n": 6,
+      "read_ms_median": 0.00029099999210302485,
+      "slow_share": 0.0
+    }
+  },
+  "o4_unavailable": {},
+  "order": [
+    "k4",
+    "l1",
+    "o1",
+    "o2",
+    "o3",
+    "o4",
+    "k4"
+  ],
+  "slow_over_fast": {
+    "k4": 1.9691740931597417,
+    "o1": 1.9702718621159987,
+    "o2": 1.9918324321101284,
+    "o3": 1.969525348144851,
+    "o4": 1.9574496442505542
+  },
+  "status": [
+    "complete",
+    "complete",
+    "complete",
+    "complete",
+    "complete",
+    "complete",
+    "complete"
+  ],
+  "verdict": {
+    "O-1": "in interval",
+    "O-10": "in interval",
+    "O-11": "in interval",
+    "O-12": "past falsifier",
+    "O-13": "in interval",
+    "O-14": "in interval",
+    "O-15": "in interval",
+    "O-2": "in interval",
+    "O-3": "in interval",
+    "O-4": "past falsifier",
+    "O-5": "past falsifier",
+    "O-6": "in interval",
+    "O-7": "in interval",
+    "O-8": "in interval",
+    "O-9": "in interval"
+  }
+}

@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-28, 0.68.2): the CUDA lane's half-rate pinned copy is the CPU's dirty cache lines (flush or stream the fill); DI-1 at 22k is still the Mac's first job
+>
+> Section 18.225. Follow-up O on a second RTX 5090 (`pricey-voice-4663`, the same AMD Ryzen 7 7800X3D host model) held 12 of 15: `clflushopt`, `clwb` or a non-temporal rewrite right before the copy makes a just-written 9.95 MB buffer fast (0.182 ms), an ordinary `memcpy` rewrite leaves it slow (0.359 ms); the dirty lines clear in one step 10 to 22 ms after the write (T50 15.0 ms) unless the device copies the buffer every ~1.4 ms or more often; an `O_DIRECT` read into the buffer is slow too on this VM (O-12 falsified, so 0.68.1's "fill by DMA" note is withdrawn there). **Needs Hamed:** any further GPU cell (`docs/CUDA-PIN-FLUSH-RESULTS.md` section 6); terminating `pricey-voice-4663` if not done; the v270 jobs stand (DI-1 at 22k, its pareto run, a live session, the two reference ports).
+
 > ## Start here (2026-10-28, 0.68.1): the CUDA lane's pinned-copy "slow class" is a buffer copied right after a CPU write; follow-ups M and N ran; DI-1 at 22k is still the Mac's first job
 >
 > Section 18.224. On one RTX 5090 (`calm-tongue-6106`) follow-up M scored 7 of 9 (an earlier copy does not slow later allocations; huge pages, page size and route do not matter in the fast pattern; the classification rule works when buffers are allocated first) and follow-up N found the variable: a pinned 9.95 MB buffer copies at half rate (0.359 against 0.182 ms) within about 5 ms of a CPU write, is fast after 20 ms idle, stays slow under back-to-back copies for 1,000 ms, and is slow again after a CPU rewrite (not after a read). Hypothesis, untested: the device reads the CPU's dirty cache lines slowly. MLX PR 4775 does not touch the shipped banks. **Needs Hamed:** an instance for the next cells if he wants them (`docs/CUDA-PIN-SETTLE-RESULTS.md` section 6); the v270 jobs stand (DI-1 at 22k, its pareto run, a live session, the two reference ports).
@@ -9413,6 +9417,42 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 **Bottleneck after.** Unchanged: expert reads on misses; of the all-resident floor, CPU graph building, GPU idle, and routed-expert launch granularity.
 
 **Kind.** Engineering (a default on a prior research result).
+
+
+### 18.225 CUDA follow-up O on an RTX 5090: the half-rate pinned copy is the CPU's dirty cache lines, cleared in one step, not avoided by O_DIRECT on this VM (0.68.2)
+
+**Goal.** Hamed: "/ca read the documentations and next session's prompt file and continue with CUDA part if needed"; v271 had no autonomous CUDA job, so the agent asked which next cells to register; Hamed chose all four of `docs/CUDA-PIN-SETTLE-RESULTS.md` section 6 (a `clflushopt` or non-temporal fill, an `O_DIRECT` fill, a finer idle sweep, a train with idle gaps) on a fast-population RTX 5090, then created `pricey-voice-4663` and said "instance is ready".
+
+**Baseline (recorded).** Follow-up N (§18.224) on `calm-tongue-6106`: a pinned 9.95 MB buffer copies at 0.359 ms within 5 ms of a CPU write and at 0.182 ms after 20 ms idle; back-to-back copies keep it slow for 1,000 ms; a CPU rewrite makes an aged buffer slow, a CPU read does not. Hypothesis H-dirty (dirty CPU cache lines), untested.
+
+**Prediction.** O-1 to O-15 in `docs/CUDA-PIN-FLUSH-RECORD.md`, committed first in 8f8b9ff before any code; the competitors H-page (a write-keyed state outside the caches) and H-accumulate (idle time adds up across copies) each given a falsifier.
+
+**Method.**
+1. Build (d6f9f68, Mac, never run on a GPU before): `pin_route.py` groups o1 (36 buffers, idle T in {0, 5, 7.5, 10, 12.5, 15, 17.5, 20, 50} ms, four each, then time), o2 (10 trains of 400 ms, single timed copies each followed by G in {1, 2, 5, 10, 20} ms of idle, two each), o3 (25 buffers, just written, then none, `memcpy` rewrite, non-temporal rewrite, `clflushopt` or `clwb` through `cache_touch.c`, five each, then time), o4 (24 buffers of 9,953,280 bytes aged 500 ms, then none, `O_DIRECT` read, ordinary read, or `O_DIRECT` read and 50 ms idle, six each, then time the first 9.95 MB); `session.sh pinroute5`; `pin_route_flush_score.py`; 19 tests, including rehearsal of every `unavailable` branch and the x86 helper run under Rosetta.
+2. Instance `pricey-voice-4663` (id 3ff4b372, RTX 5090 32 GB, driver 580.159.03, module loaded, PCIe Gen 5 x16, AMD Ryzen 7 7800X3D, `/usr/bin/cc`), Ready about 19:39 UTC; SSH with a private config outside the repository, no sudo. Pack `cuda-scaffold-d6f9f68` (dirty 0, hash equal on both ends); `check`, `setup`, `doctor`, `smoke` clean.
+3. `session.sh pinroute5` 19:43:14 to 19:44:06 UTC: k4, l1, o1, o2, o3, o4, k4, every status complete, every gate true, 14.1 s; one attempt. Archive `6a466fc7…cf56c6` under `~/cachalot-private/cuda-results/o1/`.
+
+**Result (measured).**
+- Controls: both k4 24 of 24 slow, l1 0 of 24 (0.182 ms). The helper reported CPUID features 15 (all four); `O_DIRECT` accepted.
+- o3: `none` and `memcpy` 5 of 5 slow (0.359 ms); `nt`, `clflushopt`, `clwb` 0 of 5 slow (0.182 ms); the flush 0.38 ms, the non-temporal rewrite 0.37 to 0.44 ms.
+- o1: slow share 1.0 at T = 0 to 10 ms, 0.75 at 12.5, 0.5 at 15, 0.25 at 17.5, 0 at 20 and 50; T50 15.0 ms; no buffer between 0.20 and 0.28 ms.
+- o2: G = 1 ms both trains slow throughout (277 and 278 copies, 0.361 to 0.411 ms); G = 2, 5, 10, 20 ms all settle, the first fast copy at 20.7 / 42.7 (G 2), 22.3 / 16.8 (G 5), 10.8 / 21.3 (G 10), 21.1 / 20.8 ms (G 20), each a step from about 0.365 to 0.225 ms between two copies (0.225 rather than 0.182 because a lone copy after idle carries about 0.04 ms; the G = 2 trains settle at 0.193 to 0.197).
+- o4: `none` and `direct_wait` 0 of 6 slow (0.182 ms), `buffered` 6 of 6 (0.346 ms, read 2.7 ms), `direct` 6 of 6 (0.358 ms, read 0.88 ms, 11.3 GB/s).
+- Slow over fast 1.96 to 1.99 in every cell. Held: O-1, 2, 3, 6, 7, 8, 9, 10, 11, 13, 14, 15. Past their falsifiers: O-4 (no intermediate buffers), O-5 (G = 2 ms trains settle), O-12 (the `O_DIRECT` fill is slow).
+
+**Intervention.** None in the runtime. Instruments listed in Method; results `docs/CUDA-PIN-FLUSH-RESULTS.md`, `docs/cuda-results/pin-flush-2026-10-28.json`; a note added to `docs/CUDA-PIN-SETTLE-RESULTS.md` section 3.
+
+**Explanation (hypothesis, except where marked measured).** The half-rate copy is the device reading lines the CPU holds dirty (measured: removing the dirty lines by flush, write-back or non-temporal stores removes the slowness; a non-temporal write is still a write, so H-page is falsified as registered). The lines leave in one step, 10 to 22 ms after the write (measured); what triggers the step is not identified (hypothesis H-step: a bulk eviction or write-back on the host, for example another tenant's traffic through the shared 96 MB L3). Device reads every ~1.4 ms prevent it, every ~2.4 ms do not (measured); neither one-idle-window nor accumulated idle fits. The `O_DIRECT` read's 11.3 GB/s says its bytes came from the host's cache through a host CPU copy (hypothesis), which leaves them dirty like a guest write.
+
+**Corrections.** §18.224 and its results file proposed "fill by `O_DIRECT`" to avoid the slow copy; on this VM it does not (O-12). N's "5 to 20 ms of idle" is a time after the write that frequent copies prevent, not a required idle window.
+
+**What did not go well / limits.** O-4 was registered on per-buffer p50s, which hide a step inside a buffer's timing; the per-copy trains settle the question better. Two instances of one listing and one host CPU model; the step's trigger and the 1 to 2 ms frequency threshold are unresolved; whether Zen 4's `clwb` keeps the line is not established, so `clwb` does not separate clean-resident from evicted here.
+
+**Closed.** H-page as registered (O-9, O-14). `O_DIRECT` as a way round the slow copy on this VM (O-12). Gradual line-by-line eviction as the settle mechanism (O-4, o2's per-copy step).
+
+**Open / needs Hamed.** `docs/CUDA-PIN-FLUSH-RESULTS.md` section 6 (the 1 to 2 ms threshold, the flush cells at other sizes, a fill-then-flush pipeline timed end to end, `O_DIRECT` on bare metal, an Intel host) needs an instance and his go. Terminate `pricey-voice-4663` (he was told the files are home). The v270 jobs stand.
+
+**Kind.** Research (predicted, measured, explained as hypothesis): 12 held, 3 falsified (O-4, O-5, O-12). No default changed.
 
 
 ### 18.224 CUDA follow-ups M and N on an RTX 5090: a pinned buffer is slow when copied right after a CPU write; and the MLX quantize audit (0.68.1)

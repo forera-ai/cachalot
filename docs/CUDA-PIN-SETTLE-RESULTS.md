@@ -40,6 +40,8 @@ Measured on this instance:
 
 **Hypothesis (H-dirty-resident, not tested here).** The device reads a buffer at half rate while the CPU's recent writes to it are still held dirty in the host's caches, served through the coherence path. With the buffer idle, other traffic on the host (other tenants of a shared last-level cache, the hypervisor) evicts those lines within 5 to 20 ms. Back-to-back device reads keep the lines resident (an I/O read that hits refreshes them). A CPU read leaves lines clean, so they do not slow the copy. This explains every cell of K, L, M and N; it is the reading, not a measurement. A direct test needs a cache-line flush (`clflushopt` over the buffer) or non-temporal stores in the fill, and a second instance or card.
 
+**Note added 2026-10-28 (0.68.2):** follow-up O (`docs/CUDA-PIN-FLUSH-RESULTS.md`) confirmed the dirty-line hypothesis on a second instance (`clflushopt`, `clwb` and non-temporal fills are fast) and found that an `O_DIRECT` fill is slow on that VM, so the `O_DIRECT` advice below does not hold there; flushing or streaming the fill does.
+
 **For a CUDA expert-streaming design (derived from the above; not measured in a streaming loop).** A host tier filled by a CPU copy (a page-cache read, a decompressor) and sent to the device at once moves at half rate. Filling by DMA (an `O_DIRECT` read into the pinned buffer, which the CPU never writes), or leaving 20 ms or more between the fill and the copy (a staging ring), should avoid it. The N2 and N3 arenas wrote their sources once and timed them later, so they measured the fast mode. Every "slow class" of S1, B1, B2, K and M was a buffer copied right after the CPU wrote it.
 
 ## 4. Corrections to earlier sections
