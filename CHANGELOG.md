@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.68.0 (2026-10-28)
+
+HANDOFF "Start here (2026-10-28, 0.68.0)" and section 18.223. The runtime now requires MLX 0.32.4.
+
+### Changed
+- **MLX 0.32.4 (`mlx>=0.32.4`).** MLX 0.32.4 sums the activation in float inside the affine 2/3/4-bit `quantized_matmul` at one row and at 16 to 33 rows, and in `gather_qmm`, so every routed expert's decode GEMV rounds once less: relative rms error against a float64 reference 2.3 to 2.5e-3 against 2.5 to 3.2e-3 on 0.32.2, speed within noise. It also fixes two Metal fence deadlocks under `MLX_METAL_FAST_SYNCH=1`, which the runtime ships on. Outputs are not bit-identical to 0.32.2.
+- **Snapshot numerics tags bumped:** `NUMERICS_VERSION` 0.13.0 to 0.68.0 (DeepSeek) and `GLM_NUMERICS_VERSION` glm-0.17.0 to glm-0.68.0 (GLM and MiniMax). The first request after upgrading re-prefills a saved system block once per model.
+
+### Measured
+- **DeepSeek quality, `pareto.py`, 0.32.4 against 0.32.2:** dNLL +0.0044 [-0.0142, +0.0221] nats, KL mean 0.0146 / max 0.270, top-1 93.1 %, tasks 20 of 21 on both, 159 against 158 ms a teacher-forced token (32 GiB budget). The 0.56.1 rounding band (re-chunked prefill: dNLL +0.0081, KL 0.0144 / 0.230, top-1 92.4 %) applies because the new 0.32.2 reference equals the 0.56.1 reference bit for bit on the same texts; the harness's verdict is "outside noise" by 0.0002 of mean KL.
+- An op battery of 106 outputs at model shapes: 89 identical across the two builds (8-bit qmm, qmm at 4 to 8 and 128+ rows, bf16 matmuls, SDPA, norms, FP8, sorting, `mx.quantize`, the repo's Metal kernels), 17 changed (the affine qmv and `gather_qmm` rows above, a compiled float32 silu by one ulp). 1,062 tests pass on both.
+- **`MLX_METAL_RESIDENCY_REFRESH_INTERVAL_MS` is not adopted:** with 40 GiB wired and idle gaps of 3 to 30 s, the first pass after the gap costs +399 ms with nothing, +5 ms with the runtime's 0.5 s idle heartbeat, +16 ms with the knob at 1,000 ms and +19 ms at 250 ms (ABBA, no memory pressure).
+- Upstream drift recorded, not ported: the DeepSeek reference's FP8 `act_quant(o)` before the `wo_a` einsum (2026-10-12) and its tool-result image order in `encoding.py` (2026-10-16); the reference's indexer fix of 2026-10-12 is already present here.
+
+### Added
+- `benchmarks/mlx_xver_ops.py` and `benchmarks/mlx_xver_compare.py` (an MLX build-to-build bitwise op battery), `benchmarks/mlx_qmv_accuracy.py`, `benchmarks/idle_unwire.py`.
+
 ## 0.67.0 (2026-10-21)
 
 HANDOFF "Start here (2026-10-21, 0.67.0)" and sections 18.221 and 18.222; records `docs/DI1-BUILD-RECORD.md` (eight predictions E-1 to E-8 committed first in e1b19c3, a control N-1 to N-3 committed in dfb7615 before it ran), results `docs/DI1-BUILD-RESULTS.md`, analysis `docs/POST-COMPRESSION-PREFILL.md`, Lab brief `docs/lab/briefs/2026-10-21-runtime-0.67.0.md`.

@@ -25,6 +25,11 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-28, 0.68.0): the runtime is on MLX 0.32.4; snapshots re-prefill once; DI-1 at 22k is still the first job
+>
+> Section 18.223. MLX 0.32.4 sums the activation in float inside the affine qmv: decode GEMVs are more accurate (rel rms 2.3-2.5e-3 against 2.5-3.2e-3) and not bit-identical to 0.32.2; DeepSeek pareto against the 0.56.1 band: dNLL +0.0044 [-0.0142, +0.0221], KL 0.0146 (band 0.0144), tasks 20/21 unchanged, speed unchanged. NUMERICS_VERSION 0.68.0 and glm-0.68.0. The residency refresh knob is no better than the idle heartbeat. Upstream DeepSeek reference drift: `act_quant(o)` before `wo_a` and the tool-image `encoding.py` fix are not ported. **Needs Hamed:** those two ports, the DI-1 runs of v269.
+>
+
 > ## Start here (2026-10-21, 0.67.0): DI-1 is built behind `CACHALOT_PREFILL_ENCODER_ONLY` (off); equal to a full prefill within the re-chunking noise on one prompt; the 22k timing and the quality gate are the next runs
 >
 > Sections 18.221 (DI-1 build) and 18.222 (the post-compression analysis). Equality on 6,100 tokens: refactor bit-identical, encoder and layer-20 state bit-identical, decoder windows and logits within (below) a re-chunking's noise; same top-1 and tokens. **Needs Hamed:** a go on the 22,000-token timing run (about 8 to 10 minutes) and on `pareto.py`; any default; the Hermes-side choices of `docs/POST-COMPRESSION-PREFILL.md` (a hosted `auxiliary.compression` takes 24.9 % of the recorded session's server time off this server; `protect_last_n`). Lab brief written.
@@ -9405,6 +9410,40 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.223 MLX 0.32.4: what changed upstream, what it changes here, and the upgrade (0.68.0)
+
+**Goal.** Hamed: "check the metal-mlx and any other resources we used previously for any new changes or updates which can help cachalot", then "test MLX 0.32.4 in a scratch venv for bit-identity, then price the residency refresh knob on idle-then-request follow-ups", then "run pareto.py for MLX 0.32.4 against 0.32.2 on DeepSeek", then "upgrade the runtime venv to MLX 0.32.4, bump NUMERICS_VERSION, pin mlx>=0.32.4".
+
+**Baseline (recorded).** MLX 0.32.2 in `~/venvs/deepseek-v41` since August; the idle heartbeat (0.5 s, `RuntimeConfig.idle_heartbeat_seconds`, measured 2026-09-16) is the runtime's answer to macOS un-wiring an idle Metal working set; Q-NOISE (prefill in 96-token chunks, 0.56.1): dNLL +0.0081 [-0.0071, +0.0243], KL mean 0.0144 / max 0.230, top-1 92.4 %.
+
+**Upstream sweep (2026-10-28, read, nothing run).** MLX 0.32.3 (2026-09-29) and 0.32.4 (2026-10-14) were released. Relevant here: `MLX_METAL_RESIDENCY_REFRESH_INTERVAL_MS` (PR 4633, re-requests residency of wired allocations on a timer), two Metal fence deadlock fixes under `MLX_METAL_FAST_SYNCH=1` (PRs 4552, 4689; the runtime ships fast synch on), split-K qmm partial sums kept in float32 (PR 4641), faster `gather_qmm` (PR 4572, possibly NAX only), and on unreleased main 8-row `qmv_wide` tiles (4728), native sliding-window SDPA (4734), `qmv_mma` for 6 to 16 rows (4712) and a fix of affine `mx.quantize` for all-negative groups (4775; `benchmarks/build_affine_bank.py` quantizes on the GPU). The DeepSeek-V4.1-Flash repository moved past the local checkpoint's revision `dba1be0` (2026-09-10): on 2026-10-12 the reference adds an FP8 `act_quant(o)` before the `wo_a` einsum in the main and DSpark attention (this runtime runs that einsum in bf16 without it), and fixes an indexer that did not publish `index_k` on incomplete compression steps (this runtime already publishes it unconditionally: `attention_compressed.py` near line 408, `block_compressed_source_prefill.py` near line 297); on 2026-10-16 `encoding/encoding.py` keeps tool-result images in prompt order (the server loads `encoding.py` from the local checkpoint, so it has the old behaviour). Checked and not applicable: MLX's bf16 decay rounding in `gated_delta_update` (PR 4760; the vendored GLM path computes `g` in float32 itself), mlx-lm's MiniMax M3 long-generation crash (PR 1958; this runtime runs MiniMax's sparse attention as dense causal attention). Elsewhere: ds4 fixed a Metal compressed-attention causality leak on its visual prefill path (PR 1135) and orders expert reads for SSD-streamed CUDA prefill; Splash 1.4.0 added SSD expert streaming and 1.4.1 fixed request stalls under memory pressure; DeepInfer has two commits after `774ce24`, neither relevant.
+
+**Prediction.** None registered before the op battery (a characterisation). For the pareto run, the expectation stated to Hamed was "inside or near the rounding band", not an interval.
+
+**Method.**
+1. Op battery `benchmarks/mlx_xver_ops.py` (new): 106 outputs from seeded, version-independent inputs at model shapes (affine 2/3/4/8-bit `quantized_matmul` at M = 1 to 2,048, `gather_qmm` sorted and unsorted, the grouped `wo_a` matmul, the 129,280-row head, SDPA vector and prefill shapes, norms, elementwise ops eager and compiled, sort and top-k, FP8, `mx.quantize`, the repo's FP8 Metal kernels, MiniMax `codes_qmv.self_check`), run twice per build in a scratch venv, compared bitwise with `benchmarks/mlx_xver_compare.py` (new). Accuracy of the changed GEMV against a float64 reference: `benchmarks/mlx_qmv_accuracy.py` (new). Speed: 120 distinct-weight matmuls chained, best of 9, two alternations.
+2. Repo tests: full `pytest` on both builds.
+3. Residency knob: `benchmarks/idle_unwire.py` (new), no model: 40 GiB wired in 8 MiB buffers under `mx.set_wired_limit`, idle gaps of 3, 10 and 30 s, the first read pass after the gap against the second; arms none, the runtime's 0.5 s heartbeat, the knob at 1,000 ms and at 250 ms, in ABBA order, one process each, MLX 0.32.4. No memory pressure (compressor about 2.5 GiB throughout).
+4. Quality: `pareto.py`, one arm per venv (`ref` on 0.32.2, `mlx0324` on 0.32.4), both through `guarded_run.sh` from a script file with `settle.sh` between. The texts were rebuilt from git `74e1345` so they hash to the 0.56.1 run's `946d91fae782129e`, which lets the 0.56.1 noise arm serve as the band if the new reference equals the old one. Budget 32 GiB: the guard refused 48 (it needs 77 GiB available, 64.9 were); in 0.56.1 budget 36 was bit-identical to 48.
+
+**Result.**
+- Each build is deterministic run to run (106 of 106 identical). Across builds 89 of 106 are identical: 8-bit qmm, qmm at M = 4 to 8 and M >= 128, bf16 matmuls including `wo_a` and the head, SDPA, norms, FP8, sorting, `mx.quantize` and the repo's own kernels. 17 differ: affine 2/3/4-bit `quantized_matmul` at M = 1 and M = 16 to 33 and `gather_qmm` (about half of the outputs, by about one bf16 ulp), and a compiled float32 silu (one float32 ulp). Cause, read in the source: `load_vector` in `quantized.h` now sums the activation in float, not in the input dtype. Measured accuracy against float64: relative rms error 2.3 to 2.5e-3 on 0.32.4 against 2.5 to 3.2e-3 on 0.32.2. Speed within noise. `codes_qmv.self_check` passes on both (it includes MLX's own header).
+- `pytest`: 1,062 passed on each build.
+- Residency (first-pass excess over the second pass, mean of 6, min to max): none +399 ms (367 to 433; wired 48 to about 8 GiB within 3 s), heartbeat +5.3 ms (2.6 to 9.0), knob 1,000 ms +15.6 ms (7.1 to 22.5), knob 250 ms +18.9 ms (16.5 to 21.9). The knob keeps the set wired but leaves about 10 ms more than the heartbeat.
+- Pareto: the new reference (0.67.0, 0.32.2, 32 GiB) equals the 0.56.1 reference (48 GiB) bit for bit on all 576 positions and all tasks, so the band applies. `mlx0324`: dNLL +0.0044 [-0.0142, +0.0221] nats, KL mean 0.0146 / max 0.270, top-1 93.1 %, tasks 20 of 21 (the same `reverse-word` failure on every arm), 159 against 158 ms a teacher-forced token. Per text dNLL +0.0077 / +0.0052 / +0.0002 (noise arm -0.0046 / +0.0129 / +0.0159). The harness classifies it "outside noise" only because the mean KL is 0.0002 above the band's 0.0144; its dNLL is half the noise arm's and its interval contains zero.
+
+**Intervention (shipped, Hamed's decision).** `~/venvs/deepseek-v41` upgraded to MLX 0.32.4 (re-running the op battery there reproduces the scratch venv's 106 outputs bit for bit); `pyproject.toml` requires `mlx>=0.32.4`; `snapshot_store.NUMERICS_VERSION` 0.13.0 to 0.68.0 and `GLM_NUMERICS_VERSION` glm-0.17.0 to glm-0.68.0 (MiniMax shares it), because prefill KV bits move: the first request after upgrading re-prefills a saved system block once per model. The residency knob is not set anywhere.
+
+**Explanation.** The decode GEMV of every routed expert (DeepSeek's 2-bit bank, MiniMax's 3-bit slots, GLM's banks) now rounds once less; the change is smaller than a prefill re-chunking on DeepSeek.
+
+**What did not go well / limits.** The first pareto launch asked for 48 GiB without reading the guard's arithmetic first and was refused (no harm, two minutes). The 22k long-context shape, the server path, MiniMax and GLM quality, the residency knob under memory pressure and the knob together with the heartbeat were not measured. `pip check` reports a stale editable install named `deepseek-v41-mac 0.1.0` pinning `mlx==0.32.2` in the runtime venv; the runtime runs from `PYTHONPATH=src`, so it was left alone.
+
+**Closed.** `MLX_METAL_RESIDENCY_REFRESH_INTERVAL_MS` as a replacement for the idle heartbeat (no pressure). The upstream indexer fix as a missing piece (already present).
+
+**Open / needs Hamed.** Whether to port the reference's `act_quant(o)` before `wo_a` (output-changing; a knob and `pareto.py` first); whether to update the checkpoint's `encoding.py` to the 2026-10-16 revision (prompt-changing for tool results with images; diff recorded Hermes prompts first); an audit of the bank for all-negative groups (offline, minutes); the v269 first jobs (DI-1 at 22k, its pareto run, a live session).
+
+**Kind.** Engineering (a dependency upgrade on measured evidence) with a measurement; no `CACHALOT_*` knob or default changed.
 
 ### 18.222 What a Hermes context compression costs on the server, and the options (0.67.0)
 

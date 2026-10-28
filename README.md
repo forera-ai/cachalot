@@ -6,7 +6,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-f5de53.svg)](LICENSE)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](pyproject.toml)
-[![MLX](https://img.shields.io/badge/MLX-0.32%2B-black.svg)](https://github.com/ml-explore/mlx)
+[![MLX](https://img.shields.io/badge/MLX-0.32.4%2B-black.svg)](https://github.com/ml-explore/mlx)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Apple%20Silicon-lightgrey.svg)](#hardware)
 [![CI](https://github.com/forera-ai/cachalot/actions/workflows/ci.yml/badge.svg)](https://github.com/forera-ai/cachalot/actions/workflows/ci.yml)
 
@@ -150,6 +150,7 @@ Requirements:
   ~14 GiB of experts on 64 GB, ~50 GiB on 96 GB, ~73 GiB on 128 GB, the full 270 GiB on 512 GB
   (at which point the SSD is only touched at load time).
 - macOS 14+ with Metal 3 or newer.
+- MLX 0.32.4 or newer (`pip install -e ".[server]"` pulls it); 0.32.2 rounds the decode GEMV differently, and snapshots are keyed on it (0.68.0).
 - **~480 GB** of storage for the checkpoint. Storage speed is the single largest performance factor;
   `cachalot doctor` measures yours:
 
@@ -297,6 +298,8 @@ frequency penalty. Launch it with `./chat.sh`.
 The same configuration as a benchmark, with a colder working set than a conversation builds: **170 ms per
 token (5.90 tok/s)** at an 83.5 % hit rate, reading 627 MiB per token, drive busy 55 % of decode,
 reproducible to ±0.3 %.
+
+**0.68.0 (2026-10-28): MLX 0.32.4.** MLX 0.32.4 sums the activation in float inside the affine 2/3/4-bit decode GEMV, so every routed expert rounds once less (relative rms error 2.3-2.5e-3 against 2.5-3.2e-3 on 0.32.2) at the same speed; DeepSeek on `pareto.py` against the 0.56.1 rounding band: dNLL +0.0044 nats [-0.0142, +0.0221], KL 0.0146 (band 0.0144), tasks 20 of 21 unchanged, 159 against 158 ms a teacher-forced token. Saved system blocks re-prefill once after the upgrade (numerics tags 0.68.0 and glm-0.68.0). MLX's new residency refresh knob was measured against the runtime's idle heartbeat and not adopted (+16 ms against +5 ms on the first pass after an idle gap). HANDOFF section 18.223.
 
 **0.60.7 (2026-10-06): review fixes.** The run manifest no longer records credentials such as `CACHALOT_API_KEY` by value, and its Hermes Desktop check needs one process line. HANDOFF section 18.73.
 

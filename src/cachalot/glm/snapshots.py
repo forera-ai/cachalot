@@ -27,7 +27,8 @@ from cachalot.model.snapshot_store import SnapshotStore, runtime_identity
 # What a GLM snapshot's numbers depend on in the code. Bump with any change that can move a GLM prefill's
 # cache bits (the vendored model code, quantization, the prefill chunk size is part of the identity already).
 # Scheduling changes (the scan-resistant expert path, 0.18.0) are bit-identical and do not bump it.
-GLM_NUMERICS_VERSION = "glm-0.17.0"
+# glm-0.68.0: MLX 0.32.4's affine qmv and gather_qmm round differently (HANDOFF section 18.223); MiniMax shares it.
+GLM_NUMERICS_VERSION = "glm-0.68.0"
 
 # Only these modules' classes are rebuilt from a file.
 _ALLOWED_MODULES = ("cachalot.third_party.mlx_vlm.models.cache", "cachalot.glm.model")

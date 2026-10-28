@@ -39,7 +39,8 @@ FORMAT = 1
 # (~6-7 minutes at Hermes Desktop's 22k tokens). Bump this, and only this, with any change that can move a
 # prefill's KV bits: kernels, quantization, attention, Engram, the tokenizer path, chunk sizes. A scheduling
 # change (the Darwin role, MLX_METAL_FAST_SYNCH) is bit-identical and does not bump it. HANDOFF section 15.9.
-NUMERICS_VERSION = "0.13.0"
+# 0.68.0: MLX 0.32.4 sums the activation in float inside the affine 2/3/4-bit qmv (HANDOFF section 18.223).
+NUMERICS_VERSION = "0.68.0"
 
 
 def _stat_key(path: Path) -> str:
