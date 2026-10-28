@@ -3,7 +3,7 @@
 # Run from the directory the scaffold archive was unpacked into. No sudo, no system package changes, no downloads other
 # than the pinned Python wheels named below, which `setup` shows before it installs them.
 #
-#   bash benchmarks/cuda/session.sh check|setup|doctor|smoke|baseline|s2|n2smoke|n2full|backing|hugepage|n3smoke|n3full|n3bsmoke|n3bfull|n3csmoke|n3cfull|n3dsmoke|n3dfull|n3esmoke|n3ebridge|n3fsmoke|n3ffull|n3ffix|n3gsmoke|n3gfull|n3hsmoke|n3hfull|n3ismoke|n3ifull|n3jsmoke|n3jfull|pinroute|pinroute2|pinroute3|pinroute4|n3ksmoke|n3kfull|results
+#   bash benchmarks/cuda/session.sh check|setup|doctor|smoke|baseline|s2|n2smoke|n2full|backing|hugepage|n3smoke|n3full|n3bsmoke|n3bfull|n3csmoke|n3cfull|n3dsmoke|n3dfull|n3esmoke|n3ebridge|n3fsmoke|n3ffull|n3ffix|n3gsmoke|n3gfull|n3hsmoke|n3hfull|n3ismoke|n3ifull|n3jsmoke|n3jfull|pinroute|pinroute2|pinroute3|pinroute4|pinroute5|n3ksmoke|n3kfull|results
 #   (s2 = docs/CUDA-S2-EXPERIMENT-RECORD.md: overlap variants and batched expert copies; needs a clean smoke run first)
 set -euo pipefail
 
@@ -38,6 +38,7 @@ case "$cmd" in
     nvidia-smi --query-gpu=name,driver_version,memory.total,pcie.link.gen.current,pcie.link.width.current --format=csv || die "nvidia-smi failed: no usable NVIDIA driver"
     echo "locked-memory limit: $(ulimit -l)"
     df -h "$ROOT" | tail -1
+    { command -v cc || command -v gcc || command -v clang; } >/dev/null 2>&1 && echo "C compiler: $({ command -v cc || command -v gcc || command -v clang; } | head -1)" || echo "C compiler: none (follow-up O's o3 cell will be unavailable)"
     ;;
 
   setup)
@@ -476,6 +477,17 @@ EOF7
     for g in k4 l1 n1 n2 n3 n4 k4; do
       SESSION_TAG="${SESSION_TAG:-N}" "$PY" "$ROOT/benchmarks/cuda/pin_route.py" run --cells "$g" --execute --max-seconds "${MAXS:-150}" \
         --out-dir "$ROOT/benchmarks/results/cuda-settle" --region "$REGION" --note "$(SESSION_TAG="${SESSION_TAG:-N}" note pinroute4-$g)" || die "pinroute4 $g failed: stop, bring the files home"
+    done
+    ;;
+
+  pinroute5)
+    # Follow-up O (docs/CUDA-PIN-FLUSH-RECORD.md): the two controls, the fine wait sweep, the gap trains, the cache-operation cell (compiles
+    # cache_touch.c with the system cc) and the O_DIRECT cell, the interleaved control again; seven fresh processes into
+    # $ROOT/benchmarks/results/cuda-flush, stopping at the first failure. MAXS=seconds each (default 150).
+    [ -x "$PY" ] || die "run setup first"
+    for g in k4 l1 o1 o2 o3 o4 k4; do
+      SESSION_TAG="${SESSION_TAG:-O}" "$PY" "$ROOT/benchmarks/cuda/pin_route.py" run --cells "$g" --execute --max-seconds "${MAXS:-150}" \
+        --out-dir "$ROOT/benchmarks/results/cuda-flush" --region "$REGION" --note "$(SESSION_TAG="${SESSION_TAG:-O}" note pinroute5-$g)" || die "pinroute5 $g failed: stop, bring the files home"
     done
     ;;
 

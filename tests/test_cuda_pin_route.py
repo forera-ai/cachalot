@@ -208,7 +208,7 @@ def test_plan_and_dry_run_list_every_group(capsys):
     assert pr.main(["plan"]) == 0 and pr.main(["run", "--cells", "k3"]) == 0
     out = capsys.readouterr().out
     assert all(g in out for g in pr.ORDER) and "DRY RUN" not in out.split("\n")[0]
-    assert list(pr.ORDER) == ["k0", "k1", "k2", "k3", "k4", "k5"] and set(pr.ORDER) | set(pr.CONTEXT) | {"m0", "m1", "m4", "m6", "m7", "m8", "m9", "n1", "n2", "n3", "n4"} == set(pr.GROUPS)
+    assert list(pr.ORDER) == ["k0", "k1", "k2", "k3", "k4", "k5"] and set(pr.ORDER) | set(pr.CONTEXT) | {"m0", "m1", "m4", "m6", "m7", "m8", "m9", "n1", "n2", "n3", "n4", "o1", "o2", "o3", "o4"} == set(pr.GROUPS)
     assert list(pr.FOLLOWUP_ORDER) == ["k4", "k3", "k2", "k1", "l1", "l2", "l3", "l4", "k4"] and "l4" in out
 
 
@@ -252,6 +252,98 @@ def test_a_train_that_never_settles_still_writes_valid_rows():
     rows = pr.rows_train("r", "pinroute.settle_train", res)
     validate(rows)
     assert any(r["field"] == "train_settle_ms_b0" and r["tag"] == "unavailable" and r["note"] for r in rows)
+
+
+# ------------------------------------------------------------------------------------------------ follow-up O
+
+def test_follow_up_o_order_and_lists_are_as_registered():
+    assert list(pr.ORDER_O) == ["k4", "l1", "o1", "o2", "o3", "o4", "k4"]
+    assert len(pr.FINE_WAITS_MS) == 36 and all(pr.FINE_WAITS_MS.count(t) == 4 for t in (0, 5, 7.5, 10, 12.5, 15, 17.5, 20, 50))
+    assert len(pr.GAPS_MS) == 10 and all(pr.GAPS_MS.count(g) == 2 for g in (1, 2, 5, 10, 20))
+    assert pr.FLUSH_MODES == ("none", "memcpy", "nt", "clflushopt", "clwb") and pr.READ_MODES == ("none", "direct", "buffered", "direct_wait")
+    assert pr.PAD_BYTES == 9_953_280 and pr.PAD_BYTES % 4096 == 0 and pr.PAD_BYTES >= pr.RECORD_BYTES
+    assert pr.wait_key(7.5) == "7p5" and pr.wait_key(20) == "20" and pr.wait_key(0.5) == "0p5"
+
+
+def test_follow_up_o_cells_report_their_keys_and_their_unavailable_modes(bench, tmp_path):
+    gates, failures, raw = {"roundtrip": True, "sanity": True}, [], {}
+    rows = []
+    for g in ("o1", "o2", "o3", "o4"):
+        rows += pr.run_group(bench, g, "r", suite.Deadline(120), gates, failures, raw, small=True, sampler_factory=_NoSampler, work_dir=str(tmp_path))
+    validate(rows)
+    assert gates == {"roundtrip": True, "sanity": True} and failures == []
+    fields = {r["field"] for r in rows}
+    assert {"slow_share_wait_0", "slow_share_wait_0p5", "gap_ms_b0", "gap_second_half_slow_share_b1", "gap_after_first_fast_share_b0",
+            "slow_share_mode_none", "op_ms_none", "read_ms_buffered", "content_ok"} <= fields
+    assert all(len(t["ms"]) == len(t["t_ms"]) > 0 for t in raw["gap_train"]["trains"]) and [t["gap_ms"] for t in raw["gap_train"]["trains"]] == [0.5, 1.0]
+    assert not list(tmp_path.glob("o4-records-*"))                        # o4's record file is removed
+    assert list(tmp_path.glob("cache_touch_*/cache_touch.so"))           # o3's helper is built inside the run directory
+    # every mode the Mac cannot run is an unavailable row with its reason, never a number and never a failed cell
+    un = {r["field"]: r for r in rows if r["tag"] == "unavailable" and r["field"].startswith("slow_share_mode_")}
+    for mode in list(raw["flush"]["unavailable"]) + list(raw["direct_read"]["unavailable"]):
+        assert un[f"slow_share_mode_{mode}"]["note"] and "value" not in un[f"slow_share_mode_{mode}"]
+    assert "none" in raw["direct_read"]["mode"] and "buffered" in raw["direct_read"]["mode"]
+
+
+def test_the_flush_cell_without_a_compiler_times_only_the_control(bench, monkeypatch):
+    import cache_touch as ct
+    monkeypatch.setattr(ct, "compiler", lambda: None)
+    res = bench.flush_cell(reps=1, nbytes=1 << 12)
+    assert res["mode"] == ["none"] and res["helper"] is None and res["roundtrip_ok"]
+    assert set(res["unavailable"]) == {"memcpy", "nt", "clflushopt", "clwb"} and all("compiler" in v for v in res["unavailable"].values())
+    rows = pr.rows_flush("r", "pinroute.flush", res)
+    validate(rows)
+    assert sum(1 for r in rows if r["tag"] == "unavailable" and r["field"].startswith("slow_share_mode_")) == 4
+
+
+def test_the_helper_compiles_and_its_memcpy_writes_the_new_bytes():
+    import cache_touch as ct
+    helper, why = ct.CacheTouch.load()
+    if helper is None:
+        pytest.skip(why)
+    src = torch.randint(0, 256, (1 << 12,), dtype=torch.uint8)
+    dst = torch.zeros(1 << 12, dtype=torch.uint8)
+    helper.run("memcpy", dst.data_ptr(), src.data_ptr(), 1 << 12)
+    assert torch.equal(dst, src)
+    import platform
+    if platform.machine() not in ("x86_64", "AMD64"):
+        assert helper.features == 0 and helper.available("nt") and helper.available("clflushopt")
+        with pytest.raises(RuntimeError):
+            helper.run("clflush", dst.data_ptr(), 0, 1 << 12)
+
+
+def test_a_refused_direct_read_is_unavailable_not_a_failed_cell(bench, monkeypatch, tmp_path):
+    def refuse(fd, view, offset):
+        if fd == state["direct"]:
+            raise OSError(22, "Invalid argument")
+        return real(fd, view, offset)
+
+    real, state = pr._pread, {"direct": None}
+    real_open = pr.os.open
+
+    def fake_open(path, flags, *a):
+        fd = real_open(path, flags & ~getattr(pr.os, "O_DIRECT", 0), *a)
+        if flags & 0x4000_0000:
+            state["direct"] = fd
+        return fd
+
+    monkeypatch.setattr(pr.os, "O_DIRECT", 0x4000_0000, raising=False)
+    monkeypatch.setattr(pr.os, "open", fake_open)
+    monkeypatch.setattr(pr, "_pread", refuse)
+    res = bench.direct_read_cell(str(tmp_path), reps=1, nbytes=1 << 12, pad_bytes=1 << 12, age_ms=0.0)
+    assert res["mode"] == ["none", "buffered"] and res["roundtrip_ok"] and res["content_ok"]
+    assert set(res["unavailable"]) == {"direct", "direct_wait"} and all("refused" in v for v in res["unavailable"].values())
+
+
+def test_gap_summary_reads_both_halves_and_the_tail_after_the_first_copy():
+    s = pr.gap_summary({"ms": [0.36] + [0.18] * 9, "t_ms": [float(i) for i in range(10)], "gap_ms": 20})
+    assert s["after_first_fast_share"] == 1.0 and s["second_half_slow_share"] == 0.0 and s["gap_ms"] == 20 and s["settle_ms"] is None
+    s = pr.gap_summary({"ms": [0.36] * 30, "t_ms": [float(i) for i in range(30)], "gap_ms": 1})
+    assert s["after_first_fast_share"] == 0.0 and s["second_half_slow_share"] == 1.0
+    rows = pr.rows_gap_train("r", "pinroute.gap_train", {"ms": [0.36], "roundtrip_ok": True, "nbytes": 1, "kept": 1, "train_ms": 1.0,
+                                                          "trains": [{"ms": [0.36] * 30, "t_ms": [float(i) for i in range(30)], "gap_ms": 1}]})
+    validate(rows)
+    assert any(r["field"] == "gap_settle_ms_b0" and r["tag"] == "unavailable" and r["note"] for r in rows)
 
 
 # ------------------------------------------------------------------------------------------------ DC-5: the guard

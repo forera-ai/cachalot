@@ -32,15 +32,21 @@ Follow-up N (docs/CUDA-PIN-SETTLE-RECORD.md, is a just-allocated buffer slow for
 n1 (a 1,000 ms train of single timed copies after each allocation), n2 (allocate, idle T ms, time; T swept), n3 (allocate, E bytes of
 unrelated CPU writes, time) and n4 (buffers aged 500 ms, then untouched, read or rewritten by the CPU, then timed).
 
+Follow-up O (docs/CUDA-PIN-FLUSH-RECORD.md, are the slow copies the CPU's dirty cache lines, and does a DMA fill avoid them): groups o1 (allocate,
+idle T ms, time; T swept finely between 5 and 20 ms), o2 (copy trains with G ms of idle after every copy), o3 (allocate, then a memcpy or
+non-temporal rewrite or a clflushopt or clwb over the buffer through `cache_touch.c`, then time) and o4 (buffers aged 500 ms, then filled by an
+O_DIRECT or an ordinary read of a file, then timed).
+
 Usage:
     ~/venvs/deepseek-v41/bin/python benchmarks/cuda/pin_route.py plan
-GPU host: `run --cells k0|k1|k2|k3|k4|k5|l1|l2|l3|l4|m0|m1|m4|m6|m7|m8|m9|n1|n2|n3|n4 [--execute] [--tag NAME] [--out-dir DIR]`.
+GPU host: `run --cells k0|k1|k2|k3|k4|k5|l1|l2|l3|l4|m0|m1|m4|m6|m7|m8|m9|n1|n2|n3|n4|o1|o2|o3|o4 [--execute] [--tag NAME] [--out-dir DIR]`.
 """
 
 from __future__ import annotations
 
 import argparse
 import contextlib
+import os
 import shutil
 import subprocess
 import sys
@@ -50,6 +56,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import backing_probe as bp  # noqa: E402
+import cache_touch as ct  # noqa: E402
 import manifest as mf  # noqa: E402
 import suite  # noqa: E402
 
@@ -85,17 +92,30 @@ GROUPS.update({"n1": "follow-up N: 6 buffers, each allocated then copied back to
                "n2": "follow-up N: 28 buffers, each allocated, left idle for T ms, then timed (T swept 0 to 500)",
                "n3": "follow-up N: 24 buffers, each allocated, E bytes of unrelated CPU writes, then timed (E 0, 64, 256 MiB)",
                "n4": "follow-up N: 24 buffers allocated first and left 500 ms, then each untouched, read or rewritten by the CPU, then timed"})
+GROUPS.update({"o1": "follow-up O: 36 buffers, each allocated, left idle for T ms, then timed (T 0 to 20 ms in 2.5 ms steps, and 50)",
+               "o2": "follow-up O: 10 buffers, each allocated, then single timed copies with G ms of idle after each for 400 ms (G 1 to 20)",
+               "o3": "follow-up O: 25 buffers, each allocated, then none, memcpy, non-temporal rewrite, clflushopt or clwb, then timed",
+               "o4": "follow-up O: 24 buffers aged 500 ms, then each untouched or filled by an O_DIRECT or an ordinary file read, then timed"})
 ORDER = ("k0", "k1", "k2", "k3", "k4", "k5")
 ORDER_N = ("k4", "l1", "n1", "n2", "n3", "n4", "k4")
 WAITS_MS = (0, 500, 5, 100, 20, 200, 50, 0, 500, 100, 5, 50, 200, 20, 500, 0, 50, 5, 200, 20, 100, 0, 500, 20, 5, 100, 200, 50)   # four of each T, fixed shuffle
 EVICT_BYTES = (0, 64 * MIB, 256 * MIB)
 RETOUCH = ("none", "read", "write")
+ORDER_O = ("k4", "l1", "o1", "o2", "o3", "o4", "k4")
+FINE_WAITS_MS = (15, 7.5, 0, 0, 20, 15, 10, 10, 7.5, 17.5, 7.5, 10, 17.5, 5, 15, 17.5, 20, 12.5, 5, 10, 5, 0, 17.5, 5, 20, 15, 0, 50, 50, 12.5,
+                 50, 12.5, 20, 12.5, 7.5, 50)   # four of each T, fixed shuffle (random.Random(20261028))
+GAPS_MS = (1, 20, 5, 2, 10, 10, 2, 5, 20, 1)   # two of each G, interleaved
+FLUSH_MODES = ("none", "memcpy", "nt", "clflushopt", "clwb")
+READ_MODES = ("none", "direct", "buffered", "direct_wait")
+BLOCK = 4096
+PAD_BYTES = -(-RECORD_BYTES // BLOCK) * BLOCK   # 9,953,280: whole blocks for O_DIRECT; only RECORD_BYTES are timed
 ORDER_M = ("m0", "k4", "l1", "m1", "m4", "m6", "m7", "m8", "m9")
 FOLLOWUP_ORDER = ("k4", "k3", "k2", "k1", "l1", "l2", "l3", "l4", "k4")     # reversed routes, the four new cells, the control again
 ARENA_BYTES = 24 * 2**30
 CONTEXT = {"l1": (True, False, False), "l2": (False, True, False), "l3": (False, False, True), "l4": (True, True, True)}   # batch_first, arena, side stream
 SMALL = {"arena_bytes": 1 << 20, "k_classify": 4, "k_plateau": 2, "k_route": 3, "nbytes": 1 << 16, "plateau_bytes": 1 << 18, "stream_bytes": 1 << 18,
-         "k_train": 2, "train_ms": 5.0, "waits_ms": (0, 2, 0, 2), "evict_bytes": (0, 1 << 16, 1 << 18), "evict_reps": 2, "age_ms": 2.0}
+         "k_train": 2, "train_ms": 5.0, "waits_ms": (0, 2, 0, 2), "evict_bytes": (0, 1 << 16, 1 << 18), "evict_reps": 2, "age_ms": 2.0,
+         "fine_waits_ms": (0, 0.5, 0, 0.5), "gaps_ms": (0.5, 1.0), "gap_train_ms": 5.0, "flush_reps": 1, "read_reps": 1, "pad_bytes": 1 << 16}
 
 
 # ------------------------------------------------------------------------------------------------ pure helpers (no torch)
@@ -501,6 +521,135 @@ class PinRouteBench(bp.BackingBench):
             modes.append(mode)
         return {"ms": ms, "mode": modes, "touch_ms": touch_ms, "roundtrip_ok": ok, "nbytes": nbytes, "kept": len(bufs), "age_ms": age_ms}
 
+    # -- follow-up O (docs/CUDA-PIN-FLUSH-RECORD.md): the CPU's cache lines of a just-written buffer, and a DMA fill
+    def gap_train(self, gaps_ms: tuple = GAPS_MS, train_ms: float = 400.0, nbytes: int = RECORD_BYTES, deadline: suite.Deadline | None = None) -> dict:
+        """Group o2: each buffer allocated, then single timed copies, each followed by G ms of idle, for train_ms."""
+        dev = self.dev_buffer(nbytes)
+        keep, trains, ok = [], [], True
+        for i, g in enumerate(gaps_ms):
+            if deadline is not None and deadline.expired():
+                break
+            buf = self.pinned(nbytes, SEED + i)
+            t0 = time.perf_counter()
+            keep.append(buf)
+            ms, at = [], []
+            while (time.perf_counter() - t0) * 1e3 < train_ms:
+                at.append((time.perf_counter() - t0) * 1e3)
+                ms.append(self.one_copy_ms(dev, buf))
+                time.sleep(g / 1e3)
+            ok &= self.roundtrip_ok(dev, buf, nbytes)
+            trains.append({"ms": ms, "t_ms": at, "gap_ms": g})
+        return {"trains": trains, "ms": [bp.p50(t["ms"][:25]) for t in trains if t["ms"]], "roundtrip_ok": ok, "nbytes": nbytes,
+                "kept": len(keep), "train_ms": train_ms}
+
+    def flush_cell(self, reps: int = 5, nbytes: int = RECORD_BYTES, modes: tuple = FLUSH_MODES, work_dir: str | None = None,
+                   deadline: suite.Deadline | None = None) -> dict:
+        """Group o3: each buffer allocated (so freshly written by the CPU), then one cache operation through `cache_touch.c`, then timed
+        at once. New bytes for memcpy and nt come from a pageable buffer made before the allocation (made for every mode alike).
+        A mode the helper or the CPU cannot run is recorded with its reason and its buffers are not timed."""
+        helper, why = ct.CacheTouch.load(work_dir=work_dir)
+        unavailable = {m: (why if helper is None else helper.available(m)) for m in modes if m != "none"}
+        dev = self.dev_buffer(nbytes)
+        keep, ms, done, op_ms, ok, content_ok = [], [], [], [], True, True
+        for i in range(reps * len(modes)):
+            if deadline is not None and deadline.expired():
+                break
+            mode = modes[i % len(modes)]
+            if unavailable.get(mode):
+                continue
+            g = self.torch.Generator().manual_seed(SEED + 6000 + i)
+            src = self.torch.randint(0, 256, (nbytes,), dtype=self.torch.uint8, generator=g)
+            buf = self.pinned(nbytes, SEED + i)
+            keep.append(buf)
+            t0 = time.perf_counter()
+            if mode != "none":
+                helper.run(mode, buf.data_ptr(), src.data_ptr(), nbytes)
+            op_ms.append((time.perf_counter() - t0) * 1e3)
+            ms.append(self.time_copy(dev, buf))
+            ok &= self.roundtrip_ok(dev, buf, nbytes)
+            if mode in ("memcpy", "nt"):
+                content_ok &= bool(self.torch.equal(buf, src))
+            done.append(mode)
+        return {"ms": ms, "mode": done, "op_ms": op_ms, "roundtrip_ok": bool(ok and content_ok), "content_ok": content_ok, "nbytes": nbytes,
+                "kept": len(keep), "unavailable": {m: r for m, r in unavailable.items() if r},
+                "helper": None if helper is None else {"cc": helper.cc, "features": helper.features}}
+
+    def direct_read_cell(self, work_dir: str, reps: int = 6, nbytes: int = RECORD_BYTES, pad_bytes: int = PAD_BYTES, age_ms: float = 500.0,
+                         modes: tuple = READ_MODES, wait_ms: float = 50.0, deadline: suite.Deadline | None = None) -> dict:
+        """Group o4: a file of records written, fsynced and dropped from the page cache; buffers of pad_bytes all allocated and left
+        age_ms; then each untouched or filled by a read of its own record (O_DIRECT, ordinary, or O_DIRECT then wait_ms idle), then the
+        first nbytes timed at once. After the timing the buffer is checked against its record."""
+        reads = [m for m in modes if m != "none"]
+        n_rec = reps * len(reads)
+        path = Path(work_dir) / f"o4-records-{os.getpid()}.bin"
+        records = []
+        with open(path, "wb") as fh:
+            for j in range(n_rec):
+                g = self.torch.Generator().manual_seed(SEED + 8000 + j)
+                records.append(g.initial_seed())
+                fh.write(self.torch.randint(0, 256, (pad_bytes,), dtype=self.torch.uint8, generator=g).numpy().tobytes())
+            fh.flush()
+            os.fsync(fh.fileno())
+        fd_buf = os.open(path, os.O_RDONLY)
+        if hasattr(os, "posix_fadvise"):
+            os.posix_fadvise(fd_buf, 0, 0, os.POSIX_FADV_DONTNEED)
+        fd_direct, direct_why = None, None
+        if not hasattr(os, "O_DIRECT"):
+            direct_why = "os.O_DIRECT is not defined on this platform"
+        else:
+            try:
+                fd_direct = os.open(path, os.O_RDONLY | os.O_DIRECT)
+            except OSError as exc:
+                direct_why = f"O_DIRECT open refused: {exc}"[:200]
+        dev = self.dev_buffer(nbytes)
+        bufs = [self.pinned(pad_bytes, SEED + i) for i in range(reps * len(modes))]
+        if fd_direct is not None and any(b.data_ptr() % BLOCK for b in bufs):
+            direct_why = f"a pinned buffer is not {BLOCK}-byte aligned"
+        self.sync()
+        time.sleep(age_ms / 1e3)
+        ms, done, read_ms, ok, content_ok, rec = [], [], [], True, True, 0
+        try:
+            for i, buf in enumerate(bufs):
+                if deadline is not None and deadline.expired():
+                    break
+                mode = modes[i % len(modes)]
+                direct = mode in ("direct", "direct_wait")
+                if direct and direct_why:
+                    continue
+                j = None
+                t0 = time.perf_counter()
+                if mode != "none":
+                    j, rec = rec, rec + 1
+                    view = memoryview(buf.numpy())
+                    try:
+                        got = _pread(fd_direct if direct else fd_buf, view, j * pad_bytes)
+                    except OSError as exc:
+                        if not direct:
+                            raise
+                        direct_why = f"O_DIRECT read refused: {exc}"[:200]
+                        continue
+                    if got != pad_bytes:
+                        raise RuntimeError(f"short read: {got} of {pad_bytes} bytes")
+                read_ms.append((time.perf_counter() - t0) * 1e3)
+                if mode == "direct_wait":
+                    time.sleep(wait_ms / 1e3)
+                head = buf[:nbytes]
+                ms.append(self.time_copy(dev, head))
+                ok &= self.roundtrip_ok(dev, head, nbytes)
+                if j is not None:
+                    g = self.torch.Generator().manual_seed(records[j])
+                    content_ok &= bool(self.torch.equal(buf, self.torch.randint(0, 256, (pad_bytes,), dtype=self.torch.uint8, generator=g)))
+                done.append(mode)
+        finally:
+            for fd in (fd_buf, fd_direct):
+                if fd is not None:
+                    os.close(fd)
+            with contextlib.suppress(OSError):
+                path.unlink()
+        unavailable = {m: direct_why for m in ("direct", "direct_wait") if m in modes and direct_why}
+        return {"ms": ms, "mode": done, "read_ms": read_ms, "roundtrip_ok": bool(ok and content_ok), "content_ok": content_ok, "nbytes": nbytes,
+                "pad_bytes": pad_bytes, "kept": len(bufs), "age_ms": age_ms, "wait_ms": wait_ms, "unavailable": unavailable}
+
     def alloc_cell(self, k: int = K_ROUTE, nbytes: int = RECORD_BYTES, sampler: LinkSampler | None = None,
                    deadline: suite.Deadline | None = None) -> dict:
         """Group k4: the `cudaHostAlloc` control, optionally beside the link sampler."""
@@ -513,6 +662,14 @@ class PinRouteBench(bp.BackingBench):
         if link is not None:
             res["link"] = link
         return res
+
+
+def _pread(fd: int, view: memoryview, offset: int) -> int:
+    """Read len(view) bytes at `offset` into `view` (os.preadv where the platform has it)."""
+    if hasattr(os, "preadv"):
+        return os.preadv(fd, [view], offset)
+    os.lseek(fd, offset, os.SEEK_SET)
+    return os.readv(fd, [view])
 
 
 # ------------------------------------------------------------------------------------------------ rows
@@ -635,6 +792,65 @@ def rows_retouch(run_id: str, arm: str, res: dict) -> list[dict]:
     return bp.rows_alloc_order(run_id, arm, res) + _slow_share_rows(run_id, arm, res["ms"], res["mode"], "touch", "")
 
 
+def wait_key(w: float) -> str:
+    """A field-name key for a wait in ms: 7.5 -> '7p5', 20 -> '20'."""
+    return f"{w:g}".replace(".", "p")
+
+
+def rows_fine_wait(run_id: str, arm: str, res: dict) -> list[dict]:
+    return bp.rows_alloc_order(run_id, arm, res) + _slow_share_rows(run_id, arm, res["ms"], [wait_key(w) for w in res["wait_ms"]], "wait", " ms")
+
+
+def gap_summary(train: dict, run: int = 10) -> dict:
+    """o2: the slow share of the train's second half, the fast share of copies 2 to the end, and the settle point (as `train_summary`)."""
+    ms = train["ms"]
+    half = ms[len(ms) // 2:]
+    rest = ms[1:]
+    s = train_summary(train, run=run)
+    return {**s, "gap_ms": train["gap_ms"], "second_half_slow_share": bp.share(bp.slow_flags(half, bp.SLOW_MS_9_95MB)) if half else None,
+            "after_first_fast_share": bp.share([x <= 0.25 for x in rest]) if rest else None}
+
+
+def rows_gap_train(run_id: str, arm: str, res: dict) -> list[dict]:
+    rows = bp.rows_alloc_order(run_id, arm, res)
+    for i, t in enumerate(res["trains"]):
+        s = gap_summary(t)
+        g = wait_key(s["gap_ms"])
+        rows += [_row(run_id, arm, f"gap_copies_b{i}", s["copies"], "count", "measured", f"copies in the train, gap {g} ms"),
+                 _row(run_id, arm, f"gap_ms_b{i}", s["gap_ms"], "ms", "measured", "idle after every copy"),
+                 _row(run_id, arm, f"gap_second_half_slow_share_b{i}", s["second_half_slow_share"], "fraction", "measured",
+                      "slow share of the second half of the train", n=len(t["ms"]) - len(t["ms"]) // 2),
+                 _row(run_id, arm, f"gap_after_first_fast_share_b{i}", s["after_first_fast_share"], "fraction", "measured",
+                      "fast share (at or below 0.25 ms) of copies 2 to the end", n=max(len(t["ms"]) - 1, 0)),
+                 _row(run_id, arm, f"gap_settle_ms_b{i}", s["settle_ms"], "ms", "measured" if s["settle_ms"] is not None else "unavailable",
+                      "host ms since allocation of the first of 10 fast copies in a row",
+                      note=None if s["settle_ms"] is not None else "no 10 fast copies in a row within the train")]
+    return rows
+
+
+def _mode_rows(run_id: str, arm: str, res: dict, op_field: str, op_note: str) -> list[dict]:
+    rows = bp.rows_alloc_order(run_id, arm, res) + _slow_share_rows(run_id, arm, res["ms"], res["mode"], "mode", "")
+    for mode, why in res["unavailable"].items():
+        rows.append(_row(run_id, arm, f"slow_share_mode_{mode}", None, "fraction", "unavailable", "cell", note=why[:150]))
+    for mode in dict.fromkeys(res["mode"]):
+        part = [x for x, m in zip(res[op_field], res["mode"], strict=True) if m == mode]
+        rows.append(_row(run_id, arm, f"{op_field}_{mode}", bp.p50(part), "ms", "measured", op_note, n=len(part)))
+    rows.append(_row(run_id, arm, "content_ok", int(res["content_ok"]), "bool", "measured", "rewritten or read buffers equal their new bytes"))
+    return rows
+
+
+def rows_flush(run_id: str, arm: str, res: dict) -> list[dict]:
+    rows = _mode_rows(run_id, arm, res, "op_ms", "host ms of the cache operation")
+    if res["helper"] is not None:
+        rows.append(_row(run_id, arm, "cpu_features", res["helper"]["features"], "bits", "measured",
+                         "cache_touch CPUID: 1 clflush, 2 clflushopt, 4 clwb, 8 sse2"))
+    return rows
+
+
+def rows_direct_read(run_id: str, arm: str, res: dict) -> list[dict]:
+    return _mode_rows(run_id, arm, res, "read_ms", "host ms of the read into the pinned buffer (none: 0)")
+
+
 # ------------------------------------------------------------------------------------------------ CLI
 
 def cmd_plan(args) -> int:
@@ -646,7 +862,7 @@ def cmd_plan(args) -> int:
 
 
 def run_group(bench: PinRouteBench, group: str, run_id: str, dl: suite.Deadline, gates: dict, failures: list, raw: dict,
-              small: bool = False, sampler_factory=LinkSampler) -> list[dict]:
+              small: bool = False, sampler_factory=LinkSampler, work_dir: str | None = None) -> list[dict]:
     cfg = SMALL if small else {"k_classify": K_CLASSIFY, "k_plateau": K_PLATEAU, "k_route": K_ROUTE, "nbytes": RECORD_BYTES,
                                "plateau_bytes": PLATEAU_BYTES, "stream_bytes": STREAM_BYTES, "arena_bytes": ARENA_BYTES}
     rows: list[dict] = []
@@ -696,6 +912,16 @@ def run_group(bench: PinRouteBench, group: str, run_id: str, dl: suite.Deadline,
         guarded("evict", lambda: bench.evict_cell(cfg.get("evict_bytes", EVICT_BYTES), cfg.get("evict_reps", 8), nb, deadline=dl), rows_evict)
     elif group == "n4":
         guarded("retouch", lambda: bench.retouch_cell(cfg["k_route"], cfg.get("age_ms", 500.0), nb, deadline=dl), rows_retouch)
+    elif group == "o1":
+        guarded("fine_wait", lambda: bench.wait_sweep(cfg.get("fine_waits_ms", FINE_WAITS_MS), nb, deadline=dl), rows_fine_wait)
+    elif group == "o2":
+        guarded("gap_train", lambda: bench.gap_train(cfg.get("gaps_ms", GAPS_MS), cfg.get("gap_train_ms", 400.0), nb, deadline=dl), rows_gap_train)
+    elif group == "o3":
+        guarded("flush", lambda: bench.flush_cell(cfg.get("flush_reps", 5), nb, work_dir=work_dir, deadline=dl), rows_flush)
+    elif group == "o4":
+        import tempfile
+        guarded("direct_read", lambda: bench.direct_read_cell(work_dir or tempfile.gettempdir(), cfg.get("read_reps", 6), nb,
+                                                              cfg.get("pad_bytes", PAD_BYTES), cfg.get("age_ms", 500.0), deadline=dl), rows_direct_read)
     elif group in CONTEXT:
         bf, ar, st = CONTEXT[group]
         guarded({"l1": "batch_first", "l2": "arena_dest", "l3": "side_stream", "l4": "arena_full"}[group],
@@ -725,7 +951,7 @@ def cmd_run(args) -> int:
     gates = {"roundtrip": True, "sanity": True}
     failures: list[dict] = []
     raw: dict = {"host_thp": bp.host_thp()}
-    rows = run_group(bench, args.cells, run_id, dl, gates, failures, raw)
+    rows = run_group(bench, args.cells, run_id, dl, gates, failures, raw, work_dir=str(out))
     for r in rows:
         if "gbps" in r["field"] and r.get("value") is not None and r["field"] != "stream_d2d_gbps" and r["value"] > suite.PCIE_SANITY_GB_S:
             gates["sanity"] = False
