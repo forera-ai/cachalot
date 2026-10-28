@@ -613,7 +613,8 @@ def rows_train(run_id: str, arm: str, res: dict) -> list[dict]:
                  _row(run_id, arm, f"train_first_ms_b{i}", s["first_ms"], "ms", "measured", "first copy after allocation"),
                  _row(run_id, arm, f"train_tail_slow_share_b{i}", s["tail_slow_share"], "fraction", "measured", "slow share of the last 100 copies"),
                  _row(run_id, arm, f"train_settle_ms_b{i}", s["settle_ms"], "ms", "measured" if s["settle_ms"] is not None else "unavailable",
-                      "host ms since allocation of the first of 10 fast copies in a row")]
+                      "host ms since allocation of the first of 10 fast copies in a row",
+                      note=None if s["settle_ms"] is not None else "no 10 fast copies in a row within the train")]
     return rows
 
 

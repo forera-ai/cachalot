@@ -246,6 +246,14 @@ def test_train_summary_finds_the_settle_point_and_the_tail():
     assert s["settle_ms"] is None and s["tail_slow_share"] == 1.0
 
 
+def test_a_train_that_never_settles_still_writes_valid_rows():
+    res = {"ms": [0.36], "roundtrip_ok": True, "nbytes": 1 << 12, "kept": 1, "train_ms": 1.0,
+           "trains": [{"ms": [0.36] * 30, "t_ms": [float(i) for i in range(30)]}]}
+    rows = pr.rows_train("r", "pinroute.settle_train", res)
+    validate(rows)
+    assert any(r["field"] == "train_settle_ms_b0" and r["tag"] == "unavailable" and r["note"] for r in rows)
+
+
 # ------------------------------------------------------------------------------------------------ DC-5: the guard
 
 def test_the_guard_brackets_the_window_and_counts_only_synchronisation_warnings():
