@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-28, 0.68.1): the CUDA lane's pinned-copy "slow class" is a buffer copied right after a CPU write; follow-ups M and N ran; DI-1 at 22k is still the Mac's first job
+>
+> Section 18.224. On one RTX 5090 (`calm-tongue-6106`) follow-up M scored 7 of 9 (an earlier copy does not slow later allocations; huge pages, page size and route do not matter in the fast pattern; the classification rule works when buffers are allocated first) and follow-up N found the variable: a pinned 9.95 MB buffer copies at half rate (0.359 against 0.182 ms) within about 5 ms of a CPU write, is fast after 20 ms idle, stays slow under back-to-back copies for 1,000 ms, and is slow again after a CPU rewrite (not after a read). Hypothesis, untested: the device reads the CPU's dirty cache lines slowly. MLX PR 4775 does not touch the shipped banks. **Needs Hamed:** an instance for the next cells if he wants them (`docs/CUDA-PIN-SETTLE-RESULTS.md` section 6); the v270 jobs stand (DI-1 at 22k, its pareto run, a live session, the two reference ports).
+>
 > ## Start here (2026-10-28, 0.68.0): the runtime is on MLX 0.32.4; snapshots re-prefill once; DI-1 at 22k is still the first job
 >
 > Section 18.223. MLX 0.32.4 sums the activation in float inside the affine qmv: decode GEMVs are more accurate (rel rms 2.3-2.5e-3 against 2.5-3.2e-3) and not bit-identical to 0.32.2; DeepSeek pareto against the 0.56.1 band: dNLL +0.0044 [-0.0142, +0.0221], KL 0.0146 (band 0.0144), tasks 20/21 unchanged, speed unchanged. NUMERICS_VERSION 0.68.0 and glm-0.68.0. The residency refresh knob is no better than the idle heartbeat. Upstream DeepSeek reference drift: `act_quant(o)` before `wo_a` and the tool-image `encoding.py` fix are not ported. **Needs Hamed:** those two ports, the DI-1 runs of v269.
@@ -9409,6 +9413,40 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 **Bottleneck after.** Unchanged: expert reads on misses; of the all-resident floor, CPU graph building, GPU idle, and routed-expert launch granularity.
 
 **Kind.** Engineering (a default on a prior research result).
+
+
+### 18.224 CUDA follow-ups M and N on an RTX 5090: a pinned buffer is slow when copied right after a CPU write; and the MLX quantize audit (0.68.1)
+
+**Goal.** Hamed: "/ca read the documentations and next session's prompt file and continue with CUDA part if needed", then (after the agent reported follow-up M ready and asked for an instance) "RTX5090 instance is ready", then "Keep calm-tongue-6106 up. Register follow-up N (allocate, wait T, then time; T swept), predictions committed first, build it, run it, then write everything up and release." While waiting for the instance: the v270 autonomous job, an audit of the banks for MLX PR 4775.
+
+**Baseline (recorded).** Follow-up L (§18.215): 24 `cudaHostAlloc` buffers of 9.95 MB timed one at a time right after each allocation copy at 0.362 ms (27.5 GB/s), allocated first at 0.192 ms (51.8 GB/s). The 0.66.60 audit (§18.216) left the cause open. MLX PR 4775 (unreleased main) fixes affine `mx.quantize` on the GPU for all-negative groups.
+
+**Prediction.** M-1 to M-9 in `docs/CUDA-PIN-ORDER-RECORD.md` (committed first in debaddb, 2026-10-21); N-1 to N-8 in `docs/CUDA-PIN-SETTLE-RECORD.md` (committed first in 8f2077e, after M ran and before any N code; an erratum on n2's buffer count, 28 not 27, committed with the build in 6afe0bb before any run). No prediction for the audit (a check).
+
+**Method.**
+1. Instance `calm-tongue-6106` (RTX 5090 32 GB, driver 580.159.03, module loaded, PCIe Gen 5 x16), Ready about 18:49 UTC; the agent ran over SSH with a private ssh config outside the repository, no sudo. Packs from clean commits (dcadfa1 for M, f27844f for N), the trace hashed against `n3d-expected.json`; `check`, `setup`, `doctor`, `smoke` clean.
+2. M: `session.sh pinroute3` (nine fresh processes, 9.9 s) and `n3ksmoke` (22.2 s, every gate true including `guard_sees_planted`), scored by `pin_route_order_score.py`.
+3. N: four new groups in `pin_route.py` (n1 a 1,000 ms train of single timed copies after each of six allocations; n2 allocate, idle T in {0, 5, 20, 50, 100, 200, 500} ms, four each, then time; n3 allocate, then 0, 64 or 256 MiB of unrelated CPU writes, then time; n4 24 buffers aged 500 ms, then untouched, read or rewritten by the CPU, then time), `session.sh pinroute4` (k4, l1, n1, n2, n3, n4, k4), scored by the new `pin_route_settle_score.py`. Attempt 1 stopped in the row writer (a train that never settled had an `unavailable` row without a note); fixed with a test, attempt 2 ran clean (16.6 s).
+4. Audit: the bank's `config.json` (`cachalot_bank.fit`), `grep` of `mx.quantize` in `src/` and `benchmarks/quant_affine.py`, and two scratch scripts (in the session scratchpad, not in the repo): the top dequantized level (`bias + 3 x scale`) of every group in bank shards 1, 20 and 40, and GLM's `kv_b_proj` dequantized and split as `glm5_next/language.py` does at load, groups of 64 counted.
+
+**Result.**
+- M (measured): `k4` 24 of 24 slow at 0.359 ms; `l1` 0 of 24 at 0.182 ms; `m1` (12 made, one copy, 12 made) 0 of 24 slow; `m4` (a copy of a separate buffer, then 24 made) 0 of 24; `m6` huge pages 24 of 24 verified, 54.6 GB/s; `m7` 54.5 GB/s; `m8` ordinary memory registered with flag 0 47.7 GB/s (-12.7 %); `m0` and `m9` class fast, plateau 55.16 and 55.17 GB/s; arena source 0.1845 ms against `m0`'s 0.1821. 7 held, M-2 and M-3 past their falsifiers.
+- N (measured): idle 0 and 5 ms 8 of 8 slow (0.359 ms), 20 ms and longer 20 of 20 fast (0.182 to 0.183 ms); every copy train slow to the end of 1,000 ms (6 of 6, 2,699 to 3,059 copies, fastest copy 0.294 ms; attempt 1's trains the same); unrelated writes of 256 MiB (8.9 ms) 0 of 8 slow but at 0.210 ms, 64 MiB (1.9 ms) 7 of 8 slow; aged buffers untouched and read 0 of 16 slow, rewritten 8 of 8 slow (0.353 ms); slow over fast 1.86 to 1.97 in every cell. N-1, N-3, N-4, N-6 held; N-5 held (registered for the wrong hypothesis); N-2, N-7, N-8 past their falsifiers.
+- Audit (measured): the bank was built with `--fit search`, which never calls `mx.quantize`; shards 1, 20 and 40 hold 52, 5 and 6,224 groups with a negative top level (all-negative groups kept) against 62, 15 and 7,068 all-positive. GLM's `kv_b_proj` split (12 MLA layers, 4-bit g64 affine): 0 all-negative groups of 3,145,728.
+
+**Intervention.** None in the runtime. Instruments: `pin_route.py` groups n1 to n4, `session.sh pinroute4`, `pin_route_settle_score.py`, 10 tests; results `docs/CUDA-PIN-ORDER-RESULTS.md`, `docs/CUDA-PIN-SETTLE-RESULTS.md`, `docs/cuda-results/pin-order-2026-10-28.json`, `docs/cuda-results/pin-settle-2026-10-28.json`.
+
+**Explanation (hypothesis).** The device reads a pinned buffer at half rate while the CPU's recent writes to it are still held dirty in the host's caches; with the buffer idle, other host traffic evicts them within 5 to 20 ms; back-to-back device reads keep them resident; a CPU read leaves lines clean. Allocation mattered in K, L and M only because `pinned()` writes the buffer. Not tested directly (needs a cache-line flush or non-temporal fill, and another instance).
+
+**Corrections.** §18.214, §18.215 and the 0.66.60 audit called the slow rate the "allocate-then-copy order"; it is "copied within about 5 ms of a CPU write, or kept busy since". The slow-population arena of 0.66.52 (sources written long before, still 0.349 ms) is not explained by this.
+
+**What did not go well / limits.** The N record's n2 row was inconsistent and needed an erratum; the row writer defect cost one 20-second attempt; the settle window is bracketed (5 to 20 ms), not resolved; one instance, the fast population, 9.95 MB only; n3 cannot separate eviction from elapsed time.
+
+**Closed.** H-after-copy (M-2, M-3). Huge pages as a lever on the host tier (M-4, M-5, with B2). PR 4775 as a risk to the shipped DeepSeek bank and GLM's load path.
+
+**Open / needs Hamed.** The next CUDA cells (`docs/CUDA-PIN-SETTLE-RESULTS.md` section 6: a finer idle sweep, a train with gaps, a non-temporal or flushed fill, an `O_DIRECT` fill, a slow-population instance, an L40S) need an instance and his go. The v270 jobs stand.
+
+**Kind.** Research (predicted, measured, explained as hypothesis): M 7 held, 2 falsified; N 4 held, 1 held on the wrong premise, 3 falsified. Plus a measurement (the audit). No default changed.
 
 
 ### 18.223 MLX 0.32.4: what changed upstream, what it changes here, and the upgrade (0.68.0)

@@ -1,0 +1,166 @@
+{
+  "arena_source_median_ms": 0.18451200425624847,
+  "cells": {
+    "k4": {
+      "median_gbps": 27.73132653288583,
+      "median_ms": 0.3588000014424324,
+      "n": 24,
+      "slow_share": 1.0
+    },
+    "l1": {
+      "median_gbps": 54.641508665673975,
+      "median_ms": 0.1820959970355034,
+      "n": 24,
+      "slow_share": 0.0
+    },
+    "m0": {
+      "median_gbps": 54.63670793420446,
+      "median_ms": 0.18211199715733528,
+      "n": 12,
+      "slow_share": 0.0
+    },
+    "m1": {
+      "median_gbps": 54.548045757383754,
+      "median_ms": 0.18240800127387047,
+      "n": 24,
+      "slow_share": 0.0
+    },
+    "m4": {
+      "median_gbps": 54.57197996865761,
+      "median_ms": 0.182328000664711,
+      "n": 24,
+      "slow_share": 0.0
+    },
+    "m6": {
+      "median_gbps": 54.5791648858855,
+      "median_ms": 0.182303998619318,
+      "n": 24,
+      "slow_share": 0.0
+    },
+    "m7": {
+      "median_gbps": 54.45490314520556,
+      "median_ms": 0.18272000178694725,
+      "n": 24,
+      "slow_share": 0.0
+    },
+    "m8": {
+      "median_gbps": 47.702603506092075,
+      "median_ms": 0.2085840031504631,
+      "n": 24,
+      "slow_share": 0.0
+    },
+    "m9": {
+      "median_gbps": 54.648711903994105,
+      "median_ms": 0.1820719949901104,
+      "n": 12,
+      "slow_share": 0.0
+    }
+  },
+  "classification": {
+    "m0": {
+      "class": "fast",
+      "plateau_gbps": 55.164257695381465,
+      "slow_count": 0
+    },
+    "m9": {
+      "class": "fast",
+      "plateau_gbps": 55.16788510705722,
+      "slow_count": 0
+    }
+  },
+  "elapsed_s": [
+    1.322,
+    1.021,
+    0.889,
+    0.889,
+    0.89,
+    0.828,
+    0.899,
+    0.874,
+    1.321
+  ],
+  "gates": [
+    {
+      "no_failed_cells": true,
+      "roundtrip": true,
+      "sanity": true
+    },
+    {
+      "no_failed_cells": true,
+      "roundtrip": true,
+      "sanity": true
+    },
+    {
+      "no_failed_cells": true,
+      "roundtrip": true,
+      "sanity": true
+    },
+    {
+      "no_failed_cells": true,
+      "roundtrip": true,
+      "sanity": true
+    },
+    {
+      "no_failed_cells": true,
+      "roundtrip": true,
+      "sanity": true
+    },
+    {
+      "no_failed_cells": true,
+      "roundtrip": true,
+      "sanity": true
+    },
+    {
+      "no_failed_cells": true,
+      "roundtrip": true,
+      "sanity": true
+    },
+    {
+      "no_failed_cells": true,
+      "roundtrip": true,
+      "sanity": true
+    },
+    {
+      "no_failed_cells": true,
+      "roundtrip": true,
+      "sanity": true
+    }
+  ],
+  "m1_first_half_slow_share": 0.0,
+  "m1_second_half_slow_share": 0.0,
+  "m6_huge_verified": 24,
+  "m6_huge_verified_slow": 0,
+  "order": [
+    "m0",
+    "k4",
+    "l1",
+    "m1",
+    "m4",
+    "m6",
+    "m7",
+    "m8",
+    "m9"
+  ],
+  "status": [
+    "complete",
+    "complete",
+    "complete",
+    "complete",
+    "complete",
+    "complete",
+    "complete",
+    "complete",
+    "complete"
+  ],
+  "verdict": {
+    "M-1": "in interval",
+    "M-2": "past falsifier",
+    "M-3": "past falsifier",
+    "M-4": "in interval",
+    "M-5": "in interval",
+    "M-6": "in interval",
+    "M-7": "in interval",
+    "M-8": "in interval",
+    "M-9": "in interval"
+  }
+}

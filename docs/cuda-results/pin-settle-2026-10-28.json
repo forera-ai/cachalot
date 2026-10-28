@@ -1,0 +1,217 @@
+{
+  "controls": {
+    "k4_slow_share": [
+      1.0,
+      1.0
+    ],
+    "l1_median_ms": 0.18220799788832664,
+    "l1_slow_share": 0.0
+  },
+  "elapsed_s": [
+    1.025,
+    0.887,
+    6.203,
+    4.652,
+    1.074,
+    1.693,
+    1.021
+  ],
+  "gates": [
+    {
+      "failed_cells": [],
+      "roundtrip": true,
+      "sanity": true
+    },
+    {
+      "failed_cells": [],
+      "roundtrip": true,
+      "sanity": true
+    },
+    {
+      "failed_cells": [],
+      "roundtrip": true,
+      "sanity": true
+    },
+    {
+      "failed_cells": [],
+      "roundtrip": true,
+      "sanity": true
+    },
+    {
+      "failed_cells": [],
+      "roundtrip": true,
+      "sanity": true
+    },
+    {
+      "failed_cells": [],
+      "roundtrip": true,
+      "sanity": true
+    },
+    {
+      "failed_cells": [],
+      "roundtrip": true,
+      "sanity": true
+    }
+  ],
+  "gpu_s": 16.555,
+  "n1": [
+    {
+      "copies": 2699,
+      "first_ms": 0.40272000432014465,
+      "settle_ms": null,
+      "tail_slow_share": 1.0
+    },
+    {
+      "copies": 2699,
+      "first_ms": 0.3657279908657074,
+      "settle_ms": null,
+      "tail_slow_share": 1.0
+    },
+    {
+      "copies": 2794,
+      "first_ms": 0.3696640133857727,
+      "settle_ms": null,
+      "tail_slow_share": 1.0
+    },
+    {
+      "copies": 3059,
+      "first_ms": 0.3476159870624542,
+      "settle_ms": null,
+      "tail_slow_share": 1.0
+    },
+    {
+      "copies": 2935,
+      "first_ms": 0.3547520041465759,
+      "settle_ms": null,
+      "tail_slow_share": 1.0
+    },
+    {
+      "copies": 2798,
+      "first_ms": 0.3667199909687042,
+      "settle_ms": null,
+      "tail_slow_share": 1.0
+    }
+  ],
+  "n1_stay_slow": 6,
+  "n2": {
+    "0": {
+      "median_ms": 0.35892000794410706,
+      "n": 4,
+      "slow_share": 1.0
+    },
+    "100": {
+      "median_ms": 0.18249599635601044,
+      "n": 4,
+      "slow_share": 0.0
+    },
+    "20": {
+      "median_ms": 0.18243999779224396,
+      "n": 4,
+      "slow_share": 0.0
+    },
+    "200": {
+      "median_ms": 0.18254400044679642,
+      "n": 4,
+      "slow_share": 0.0
+    },
+    "5": {
+      "median_ms": 0.359047994017601,
+      "n": 4,
+      "slow_share": 1.0
+    },
+    "50": {
+      "median_ms": 0.1825600005686283,
+      "n": 4,
+      "slow_share": 0.0
+    },
+    "500": {
+      "median_ms": 0.182608000934124,
+      "n": 4,
+      "slow_share": 0.0
+    }
+  },
+  "n3": {
+    "0": {
+      "fill_ms_median": 0.00035599998682300793,
+      "median_ms": 0.3500159978866577,
+      "n": 8,
+      "slow_share": 1.0
+    },
+    "256": {
+      "fill_ms_median": 8.907905999990362,
+      "median_ms": 0.21027200296521187,
+      "n": 8,
+      "slow_share": 0.0
+    },
+    "64": {
+      "fill_ms_median": 1.943898499973784,
+      "median_ms": 0.3283360078930855,
+      "n": 8,
+      "slow_share": 0.875
+    }
+  },
+  "n4": {
+    "none": {
+      "median_ms": 0.1822959966957569,
+      "n": 8,
+      "slow_share": 0.0
+    },
+    "read": {
+      "median_ms": 0.18224800005555153,
+      "n": 8,
+      "slow_share": 0.0
+    },
+    "write": {
+      "median_ms": 0.35337599366903305,
+      "n": 8,
+      "slow_share": 1.0
+    }
+  },
+  "order": [
+    "k4",
+    "l1",
+    "n1",
+    "n2",
+    "n3",
+    "n4",
+    "k4"
+  ],
+  "sides": {
+    "cache": {
+      "N-2": false,
+      "N-3": true,
+      "N-4": true
+    },
+    "time": {
+      "N-2": true,
+      "N-3": false,
+      "N-4": false
+    }
+  },
+  "slow_over_fast": {
+    "k4": 1.9691341965064075,
+    "n1": 1.8935721465360196,
+    "n2": 1.9704514029712732,
+    "n3": 1.8606428436153954,
+    "n4": 1.939409892894018
+  },
+  "status": [
+    "complete",
+    "complete",
+    "complete",
+    "complete",
+    "complete",
+    "complete",
+    "complete"
+  ],
+  "verdict": {
+    "N-1": "in interval",
+    "N-2": "past falsifier",
+    "N-3": "in interval",
+    "N-4": "in interval",
+    "N-5": "in interval",
+    "N-6": "in interval",
+    "N-7": "past falsifier",
+    "N-8": "past falsifier"
+  }
+}

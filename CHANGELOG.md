@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.68.1 (2026-10-28)
+
+HANDOFF "Start here (2026-10-28, 0.68.1)" and section 18.224; records `docs/CUDA-PIN-ORDER-RECORD.md` (M-1 to M-9, committed first in debaddb) and `docs/CUDA-PIN-SETTLE-RECORD.md` (N-1 to N-8, committed first in 8f2077e, an erratum on a buffer count in 6afe0bb before any run); results `docs/CUDA-PIN-ORDER-RESULTS.md` and `docs/CUDA-PIN-SETTLE-RESULTS.md`. No runtime change.
+
+### Measured
+- **CUDA follow-up M on an RTX 5090 (`calm-tongue-6106`): 7 of 9 held.** Copying 24 pinned 9.95 MB buffers one at a time right after each is allocated: all 0.359 ms (27.7 GB/s); allocated first: all 0.182 ms (54.6 GB/s). A copy that ran before the allocations does not make them slow (M-2, M-3 falsified). In the fast pattern huge pages (24 of 24 verified) and page size make no difference, ordinary memory registered with flag 0 is 12.7 % slower, and the committed classification rule reads the instance as fast at both ends (plateau 55.2 GB/s), within 1.3 % of the arena.
+- **CUDA follow-up N on the same instance: 4 held, 1 held on the wrong premise, 3 falsified.** A buffer idle for 5 ms after allocation is slow, for 20 ms or more fast; a back-to-back copy train keeps it slow for 1,000 ms (2,700 to 3,060 copies, none below 0.294 ms); a buffer aged 500 ms is slow again after a CPU rewrite and stays fast after a CPU read; 256 MiB of unrelated CPU writes (8.9 ms) leave it at 0.21 ms. The slow mode is 1.86 to 1.97 times the fast one in every cell. Neither registered hypothesis (time since allocation, or eviction alone) explains all of it; the variable is the last CPU write. The lane's earlier "slow class" readings (S1, B1, B2, K, M) were buffers copied right after the CPU wrote them.
+- **MLX PR 4775 (all-negative-group affine `mx.quantize` on the GPU) does not affect the shipped banks.** The DeepSeek q2g128 bank was built with `--fit search` (`benchmarks/quant_affine.py`'s own fit, no `mx.quantize`); shards 1, 20 and 40 keep 52, 5 and 6,224 all-negative groups with a negative top level. GLM's load-time `kv_b_proj` requantize (`glm5_next/language.py`) has 0 all-negative groups of 3,145,728. Not checked: the vendored quantized KV-cache paths, which are off unless chosen.
+
+### Added
+- `benchmarks/cuda/pin_route.py` groups `n1` to `n4` (copy train, idle-wait sweep, eviction, retouch), `session.sh pinroute4`, `benchmarks/cuda/pin_route_settle_score.py`, 10 tests.
+
+### Fixed
+- `pin_route.py`: a train that never settles writes its `unavailable` row with a note (the first follow-up N attempt stopped in the row writer).
+
 ## 0.68.0 (2026-10-28)
 
 HANDOFF "Start here (2026-10-28, 0.68.0)" and section 18.223. The runtime now requires MLX 0.32.4.
