@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-29, 0.69.0): Apple's on-device model is an optional auxiliary engine (`cachalot.auxiliary`, off by default); classification and extraction work, compression loses, the ANE costs a GPU stream ~2 %; DI-1 at 22k is still the Mac's first job
+>
+> Section 18.229. Hamed's mission "Integrate Apple Foundation Models into Cachalot". Built `src/cachalot/auxiliary/` on Apple's `apple-fm-sdk` 0.2.1 (on-device only, no cloud path; one worker child by default; bounded admission; typed errors; classify, extract, source-grounded compress with schemas, validators, grounding, heuristic fallbacks; lever registry A-G; `CACHALOT_AUX_*`; `cachalot aux`). Nothing in the serving path calls it. AF-1 to AF-19 registered first (eb92d02): 10 held, 1 split, 5 outside, 2 falsified (compression's ratio and its net time: -4.9 to -16 s per 1,000 tokens against DeepSeek's 99 tok/s cold prefill), 1 inconclusive (memory; `footprint` needs root). System model: 0.33 s short reply, 51.7 tok/s, 1,019 tok/s prompt, requests serialized. GPU GEMV -2.1 % beside it, GEMM -0.5 %. Speculative decoding with it: no-go. **Needs Hamed:** go for E-1 (a real DeepSeek decode arm beside auxiliary calls, ~25 min, `docs/APPLE-FM-HETEROGENEOUS.md` section 4); any wiring of a lever into the server; root `footprint`/`powermetrics` for the memory and power cells. The v270 Mac jobs stand.
+
 > ## Start here (2026-10-28, 0.68.5): a busy host thread alone holds a just-written pinned buffer slow; the non-temporal two-buffer pipeline (0.42 ms a record) is the CUDA staging answer; DI-1 at 22k is still the Mac's first job
 >
 > Section 18.228. Follow-up Q on `pricey-voice-4663` (the instance of O and P): 7 of 10 held, Q-2 and Q-3 outside, Q-8 falsified. Spinning the host 30 or 60 ms after a write with no copy keeps the buffer slow (12 of 12), sleeping 30 ms clears it; at a fixed 3.0 ms period only sleeps of 2.29 ms and more per period settled (L50 2.35 ms); across O, P and Q the host's idle fraction orders every train (derived). Depth 3 or 4 and a second filling thread do not speed the non-temporal fill. **Needs Hamed:** terminate `pricey-voice-4663` (told; files home); any next cell (`docs/CUDA-PIN-IDLE-RESULTS.md` section 6); the v270 jobs stand.
@@ -9429,6 +9433,40 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 **Bottleneck after.** Unchanged: expert reads on misses; of the all-resident floor, CPU graph building, GPU idle, and routed-expert launch granularity.
 
 **Kind.** Engineering (a default on a prior research result).
+
+
+### 18.229 Apple Foundation Models as an auxiliary engine: the provider, three tasks, a lever registry, and what they measure (0.69.0)
+
+**Goal.** Hamed's `/ca` mission (2026-10-29): integrate Apple Foundation Models as an auxiliary inference engine beside the target models, build a modular optimization-lever framework, implement the low-risk levers (classification, extraction, compression), benchmark them, research ANE/GPU concurrency, semantic cache assistance, routing and speculative decoding, keep everything optional and off by default.
+
+**Baseline (recorded).** Hamed's own Instruments run: 42.64 tok/s, 0.68 s TTFT, 1,562 ANE prediction events, none in an idle control, no Metal events attributed to the Foundation Models processes. This session's probes before any code: context 8,192, prompt processing 817-1,226 tok/s, two parallel sessions serialized (3.56 s against 1.57 s), cancel returns in 0.51 s and the session recovers, an oversized prompt fails as a generic status 255 after 4.28 s, the model's own `found` flags unreliable. Cachalot had no auxiliary or multi-backend abstraction; the serving path is a single-flight `Engine` on a lock.
+
+**Prediction.** AF-1 to AF-19, `docs/APPLE-FM-RECORD.md`, committed first in eb92d02 with the fixtures (40 routing requests, 48 extraction fields, 3 compression documents, labels by the agent).
+
+**Method.** Backend A (Apple's Python SDK) chosen over a Swift bridge (the SDK is one) and `/usr/bin/fm` (diagnostic only); installed into the runtime venv with `--no-deps` from the hash-verified sdist. `benchmarks/apple_fm_bench.py` arms overhead (7 trials), classify, extract, compress (3 trials, DeepSeek tokenizer for ratios), memory, contention (MLX GEMV and GEMM stand-ins in another process, gpu/fm/both/both/fm/gpu, 20 s windows). No target model loaded by any arm; no runtime process running.
+
+**Result (measured).**
+- System model: short greedy reply 0.333 s; through the worker child 0.315 s; first streamed delta 0.89 s; 51.7 tok/s; 1,019 tok/s prompt processing; warm `token_count` 30 ms.
+- Classification: route accuracy 0.90 (model and heuristic), model false routing 3 of 20 gold-target items, 0.81 s a call. Three defects found by the run and fixed (a refusal arrived as status 255; a failed classification used the heuristic's route; the agreement rule ignored the heuristic's target route) plus an arithmetic regex: post hoc on the same set 0.95 and 1 of 20.
+- Extraction: 0.917 (heuristic 0.375), 2 inventions accepted; after a numeric-grounding fix and placeholder rule, post hoc 0.958, 1 (a value present in the text copied into the wrong field).
+- Compression: ratio 0.77 / 0.82 / 0.28, 10.9-15.3 s per 1,000 input tokens, net against DeepSeek cold prefill -8.9 / -16.0 / -4.9 s per 1,000 (derived); constraints 1.00 verbatim; on `docs/CUDA-PIN-IDLE-RESULTS.md` 2 of 11 critical numbers kept with every gate passing.
+- Contention: GEMV 659.4 to 645.8 GB/s (-2.1 %), GEMM -0.5 %; the system model -2.3 % beside the GEMV, 0.0 % beside the GEMM.
+- Memory: the service's RSS +0.39 GiB while generating, the machine's wired + active + compressed +1.56 GiB; `footprint` of the service refused without root.
+- 10 held, AF-11 split, 5 outside, 2 falsified (AF-13, AF-15), 1 inconclusive (AF-16).
+
+**Intervention.** New package `src/cachalot/auxiliary/` (config, provider, apple_fm, isolated, worker, schema, tasks, engine, levers, cli), `cachalot aux` in `cli.py`, `--apple-fm` in `tests/conftest.py`, the `apple-fm` extra in `pyproject.toml`; 56 tests (49 without the model, 7 live, all passing). No change to any model's load, prefill, decode, sampling or serving code; no default changed; no numerics tag.
+
+**Explanation (derived, hypothesis).** Compression loses because the auxiliary writes its facts at ~19 ms a token while the target prefills at ~10 ms a token cold: break-even needs a kept share under ~0.27, and the model kept 0.77-0.82 on two documents by copying passages. The ANE's interference with the GPU follows memory bandwidth (about 13.6 GB/s taken from a bandwidth-bound stream, nothing from a compute-bound one).
+
+**Corrections.** None to earlier sections.
+
+**What did not go well / limits.** The labelled sets are small and written by the agent; the classification and extraction fixes were tuned on the sets that found them. The contention stand-in is not Cachalot's decode. The contention arm took ~22 minutes against an estimated ~7 (process start and model warm-up per cell). No energy or root memory numbers.
+
+**Closed.** Compression as a cold-prefill lever for DeepSeek and GLM on this model (AF-15). Speculative decoding with the system model as drafter (`docs/APPLE-FM-SPECULATIVE-FEASIBILITY.md`: no logits, no tokenizer, verify through the prefill path at 243 ms + 27 ms a position needs 2.2 of 4 to 5.5 of 16 drafted tokens accepted as a prefix even with drafting free). Concurrent auxiliary requests as a throughput lever (the system model serializes them).
+
+**Open / needs Hamed.** E-1: a real DeepSeek decode arm beside a stream of auxiliary calls (~25 min, `docs/APPLE-FM-HETEROGENEOUS.md` section 4). Lever D's offline replay of a dumped Hermes session through the prefix-cache policy (autonomous, cheap). Wiring any lever into the server (Hamed's call: `changes_output` levers change what the target sees). Root `footprint` of `TGOnDeviceInferenceProviderService` and `powermetrics` with `ane_power` beside the contention cells. Lab brief `docs/lab/briefs/2026-10-29-runtime-0.69.0.md`. The v270 Mac jobs stand.
+
+**Kind.** Research and a new optional module (predicted, built, measured): 10 held, 1 split, 5 outside, 2 falsified, 1 inconclusive. No default changed.
 
 
 ### 18.228 CUDA follow-up Q on an RTX 5090: a busy host holds the slow state; the clear follows the host's idle fraction; depth and a second thread do not help the staging pipeline (0.68.5)

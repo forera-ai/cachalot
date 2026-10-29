@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.69.0 (2026-10-29)
+
+HANDOFF "Start here (2026-10-29, 0.69.0)" and section 18.229; record `docs/APPLE-FM-RECORD.md` (AF-1 to AF-19, committed first in eb92d02, before any benchmark); results `docs/APPLE-FM-RESULTS.md`; design `docs/APPLE-FM-AUXILIARY.md`; `docs/APPLE-FM-HETEROGENEOUS.md`; `docs/APPLE-FM-SPECULATIVE-FEASIBILITY.md`. Nothing in the target models' load, prefill, decode or sampling path changed.
+
+### Added
+- **`cachalot.auxiliary`, an optional auxiliary-inference layer, off by default.** A provider interface (blocking calls with a cancel `Event`, `Capabilities`, a typed error taxonomy), the Apple Foundation Models provider on Apple's `apple-fm-sdk` 0.2.1 (on-device system model only: the SDK has no Private Cloud Compute path and `CACHALOT_AUX_MODEL` accepts only `system`), process isolation by default (one worker child, parent-side deadlines that kill a silent child, a restart cap, exit on stdin EOF), bounded admission, a context-window pre-check (the SDK reports an oversized prompt only as a generic status 255), typed tasks (request classification, field extraction, source-grounded compression) with JSON schemas, a deterministic validator on every result, grounding checks and heuristic fallbacks, a lever registry (A-G, each declaring requirements, failure behaviour and whether it changes output), `CACHALOT_AUX_*` configuration, the `cachalot aux check|respond|classify|extract|compress` command, an optional `apple-fm` extra.
+- `benchmarks/apple_fm_bench.py` (arms overhead, classify, extract, compress, memory, contention) and fixtures in `benchmarks/apple_fm/`; 56 tests (49 without the model, 7 with `--apple-fm`).
+- Lab brief `docs/lab/briefs/2026-10-29-runtime-0.69.0.md` (new `CACHALOT_AUX_*` knobs and the `cachalot aux` command).
+
+### Measured
+- **The system model on this Mac (macOS 27.2, "AFM 3 Core Advanced", context 8,192):** short greedy reply 0.333 s, the worker child adds nothing measurable, first streamed delta 0.89 s, 51.7 tok/s generation, 1,019 tok/s prompt processing, warm `token_count` 30 ms; two requests at once take as long as two in a row.
+- **Classification** (40 labelled requests): route accuracy 0.90 for model and heuristic, model false routing 3 of 20 gold-target requests in the registered run; 0.95 and 1 of 20 after three fixes found by that run (post hoc, same set). 0.82 s a call.
+- **Extraction** (48 labelled fields): 0.917 against the heuristic's 0.375 registered, 0.958 post hoc; the model's own "found" flags were wrong, so only grounding in the text decides.
+- **Compression loses and cannot see omissions:** 10.9-15.3 s per 1,000 input tokens, net -4.9 to -16 s per 1,000 against DeepSeek's 99 tok/s cold prefill (AF-15 falsified); on a real results document it kept 2 of 11 critical numbers while passing every gate. Stays off.
+- **Contention** (MLX GPU stand-in in another process): GEMV 659 GB/s alone, 646 beside the system model (-2.0 %), the system model -2.3 % beside it; GEMM -0.5 % with the system model unchanged: the interference follows memory bandwidth (derived).
+- **Speculative decoding with the system model as drafter: no-go** (no logits or tokenizer in the API; verify through the prefill path costs 243 ms + 27 ms a position).
+
+### Fixed (found by the benchmark runs, before release)
+- A system-model refusal (status 255, "The model refused to answer") is `AuxRefused`; a failed classification routes to the target; disagreement between the model and the heuristic's route is `uncertain`; numbers ground numerically (`1,240.50` grounds 1240.5); a "not stated" placeholder 0 is never accepted.
+
 ## 0.68.5 (2026-10-28)
 
 HANDOFF "Start here (2026-10-28, 0.68.5)" and section 18.228; record `docs/CUDA-PIN-IDLE-RECORD.md` (Q-1 to Q-10, committed first in a668cc4; the build in 2346580); results `docs/CUDA-PIN-IDLE-RESULTS.md`. No runtime change.

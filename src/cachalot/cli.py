@@ -5,6 +5,7 @@
     cachalot chat    --model PATH [PROMPT ...]
     cachalot doctor  [--model PATH]
     cachalot bench   --model PATH [--prompt-tokens N --decode-tokens N]
+    cachalot aux     check | respond | classify | extract | compress   (auxiliary model, no target model)
 """
 
 from __future__ import annotations
@@ -112,6 +113,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--prompt-tokens", type=int, default=512)
     p.add_argument("--decode-tokens", type=int, default=32)
 
+    from cachalot.auxiliary.cli import add_parser as add_aux_parser
+
+    add_aux_parser(sub)
     return parser
 
 
@@ -772,6 +776,10 @@ def main(argv: list[str] | None = None) -> None:
         from cachalot.model.vision_ablation import announce
 
         announce()
+    if args.command == "aux":
+        from cachalot.auxiliary.cli import cmd_aux
+
+        return cmd_aux(args)
     {"serve": cmd_serve, "chat": cmd_chat, "doctor": cmd_doctor, "bench": cmd_bench}[args.command](args)
 
 

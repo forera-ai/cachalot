@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cachalot"
-version = "0.68.5"
+version = "0.69.0"
 description = "SSD-backed Mixture-of-Experts runtime for DeepSeek V4.1 Flash on Apple Silicon (MLX + Metal), with an OpenAI-compatible server."
 readme = "README.md"
 license = "MIT"
@@ -41,6 +41,9 @@ dependencies = [
 server = ["fastapi>=0.115", "uvicorn>=0.30", "pydantic>=2.7"]
 dev = ["pytest>=8.0", "ruff>=0.6", "httpx>=0.27"]
 vision = ["pillow>=11.0"]
+# Auxiliary inference on Apple's on-device model (src/cachalot/auxiliary). Builds Swift bindings from
+# source: macOS 26+, full Xcode. Install with --no-deps (its build requirements are not runtime imports).
+apple-fm = ["apple-fm-sdk>=0.2.1"]
 
 [project.urls]
 Homepage = "https://github.com/forera-ai/cachalot"
