@@ -10,7 +10,9 @@ OUT=benchmarks/results/apple-fm-e1/$(date -u +%Y%m%dT%H%M%SZ)
 mkdir -p "$OUT"
 echo "out: $OUT"
 
-benchmarks/settle.sh --budget-gib 48
+# settle at its default arithmetic: with Hamed's applications open the machine offers ~70 GiB, short of the
+# 77 a 48 GiB arm's formula wants; the arm itself runs at 48 under guarded_run --force (as in 18.76 and later)
+benchmarks/settle.sh --budget-gib 36
 PYTHONPATH=src "$VENV_PY" benchmarks/run_manifest.py > "$OUT/manifest-machine.json" 2>/dev/null || true
 
 echo "aux-alone baseline (before), 30 s"

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.69.2 (2026-10-29)
+
+HANDOFF "Start here (2026-10-29, 0.69.2)" and section 18.230; record `docs/APPLE-FM-E1-RECORD.md` (E1-1 to E1-7, committed first in 0ff4d76; driver bf29cc7); results `docs/APPLE-FM-E1-RESULTS.md`. No runtime change.
+
+### Measured
+- **E-1: DeepSeek's decode through `./serve.sh` (48 GiB, shipped defaults) with Apple's system model classifying back to back beside it: +0.57 ms of a 78 ms token (+0.7 %), slower in 6 of 6 ABBA cycles (+0.27 to +1.83 ms), 12 replies an arm.** Arm medians 78.1 and 79.3 ms; the classification calls took 0.86 s against 0.82 s alone (+5 %). The MLX stand-in's -2.1 % over-predicted the real decode. Six of seven predictions held; text identity (E1-1) was falsified in both arms alike: under decode miss budget 0, 0.5-2.8 misses a token remained and each is a dropped expert, so every greedy reply differed (hypothesis).
+
+### Added
+- `benchmarks/apple_fm_e1.sh`, `benchmarks/apple_fm_e1.py` (drive, load, score).
+
 ## 0.69.1 (2026-10-29)
 
 HANDOFF section 18.229 (unchanged). Documentation only.

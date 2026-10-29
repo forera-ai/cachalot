@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-29, 0.69.2): the system model classifying beside DeepSeek's real decode costs +0.57 ms of a 78 ms token (+0.7 %); auxiliary work can run during decode; DI-1 at 22k is still the Mac's first job
+>
+> Section 18.230. E-1 (record 0ff4d76, driver bf29cc7, one attempt): `./serve.sh` at 48 GiB, 12 replies an arm in A B B A order, the auxiliary classifying back to back in B: arm medians 78.1 / 79.3 ms a token, per-cycle B - A median +0.57 ms (+0.27 to +1.83, 6 of 6 cycles slower), misses 1.43 / 1.24 a token, the calls +5 % (0.82 to 0.86 s). Six of seven held; text identity falsified in both arms alike (miss budget 0 kept dropping 0.5-2.8 experts a token, so every greedy reply differed). The stand-in's -2.1 % over-predicted. Guardian clean (peak wired 73.4 GiB, swap flat). **Needs Hamed:** an exact-path replicate if text identity under load matters; E-2 (GLM read-bound) and E-3 (power) as before. The v270 Mac jobs stand.
+
 > ## Start here (2026-10-29, 0.69.0): Apple's on-device model is an optional auxiliary engine (`cachalot.auxiliary`, off by default); classification and extraction work, compression loses, the ANE costs a GPU stream ~2 %; DI-1 at 22k is still the Mac's first job
 >
 > Section 18.229. Hamed's mission "Integrate Apple Foundation Models into Cachalot". Built `src/cachalot/auxiliary/` on Apple's `apple-fm-sdk` 0.2.1 (on-device only, no cloud path; one worker child by default; bounded admission; typed errors; classify, extract, source-grounded compress with schemas, validators, grounding, heuristic fallbacks; lever registry A-G; `CACHALOT_AUX_*`; `cachalot aux`). Nothing in the serving path calls it. AF-1 to AF-19 registered first (eb92d02): 10 held, 1 split, 5 outside, 2 falsified (compression's ratio and its net time: -4.9 to -16 s per 1,000 tokens against DeepSeek's 99 tok/s cold prefill), 1 inconclusive (memory; `footprint` needs root). System model: 0.33 s short reply, 51.7 tok/s, 1,019 tok/s prompt, requests serialized. GPU GEMV -2.1 % beside it, GEMM -0.5 %. Speculative decoding with it: no-go. **Needs Hamed:** go for E-1 (a real DeepSeek decode arm beside auxiliary calls, ~25 min, `docs/APPLE-FM-HETEROGENEOUS.md` section 4); any wiring of a lever into the server; root `footprint`/`powermetrics` for the memory and power cells. The v270 Mac jobs stand.
@@ -9433,6 +9437,33 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 **Bottleneck after.** Unchanged: expert reads on misses; of the all-resident floor, CPU graph building, GPU idle, and routed-expert launch granularity.
 
 **Kind.** Engineering (a default on a prior research result).
+
+
+### 18.230 E-1: DeepSeek's server decode beside the system model's classification calls costs +0.57 ms a token (0.69.2)
+
+**Goal.** Hamed: "Go: run E-1 (serve.sh DeepSeek 48 GiB, repeated greedy prompt, 12 replies an arm, ABBA, with and without concurrent auxiliary classification calls). Give the estimate first." Estimated 10-12 minutes, confirmed.
+
+**Baseline (recorded).** §18.229's stand-in: GEMV -2.1 % beside the system model; DS-FLOOR-SRV 79-80 ms; a classification call 0.82 s alone.
+
+**Prediction.** E1-1 to E1-7, `docs/APPLE-FM-E1-RECORD.md`, committed first in 0ff4d76 (H-e1: about 2 % of the token's bandwidth-bound part, +0.3 to +2.5 ms).
+
+**Method.** `benchmarks/apple_fm_e1.sh` (built and smoke-tested against a stub server in bf29cc7): settle, 30 s of auxiliary calls alone, one guarded `./serve.sh` (48 GiB, internal bank, budget 0, no snapshot dir), two warm-ups, A B B A x 6 of one 36-token greedy prompt to 128 tokens, the load (runtime venv, inline provider, back-to-back structured classification over the 40 fixtures) toggled by a control file and confirmed idle before every A reply, 30 s alone again. The driver started only after `serve.sh`'s own runtime check. Deviation: `settle.sh` gated at 36 GiB arithmetic (the machine offered ~70 of the 77 a 48 GiB formula asks); the first start was stopped in settle, before any reply.
+
+**Result (measured).** A 78.12 ms a token median (77.6-79.8), B 79.26 (77.7-80.7); per-cycle B - A +0.27, +0.50, +0.52, +0.62, +1.22, +1.83 ms, median +0.57 (+0.7 %); misses a token 1.43 / 1.24; 121 classification calls inside B replies at 0.862 s median against 0.820 s for 74 alone (+5.2 %); the only auxiliary errors were the known refusal of fixture 29, once a pass. Guardian: 304 s, peak wired 73.4 GiB, swap 4,486 MB flat, pressure 1. Held E1-2 to E1-7; falsified E1-1 (24 distinct texts in 24 replies, both arms).
+
+**Intervention.** None in the runtime (the lever registry's text for E now quotes the measurement). Results `docs/APPLE-FM-E1-RESULTS.md`.
+
+**Explanation (derived, hypothesis).** +0.57 ms is ~1.1 % of the token's ~53 ms GPU work, half the stand-in's 2.1 %: part of a real token is host work and sub-ceiling launches, and classification is bursty (prompt, then a few dozen output tokens). E1-1: the repeated prompt was not all-resident (0.5-2.8 misses a token, hit 99-100 %); under budget 0 each miss is a dropped expert, so routing and text drift reply to reply in both arms.
+
+**Corrections.** §18.229's "the ANE costs a GPU stream ~2 %" was the stand-in; on DeepSeek's real decode it is ~0.7 % of a token.
+
+**What did not go well / limits.** The settle gate needed changing at the start; one prompt, 128 tokens, 12 replies an arm; texts differed between replies.
+
+**Closed.** A scheduler that keeps auxiliary classification out of DeepSeek's short all-resident decode: the measured cost does not pay for one.
+
+**Open / needs Hamed.** An exact-path replicate (`CACHALOT_DECODE_MISS_BUDGET=off`, ~9 min) for text identity under load; E-2 (GLM read-bound) and E-3 (power) in `docs/APPLE-FM-HETEROGENEOUS.md`; a prefill arm. The v270 jobs stand.
+
+**Kind.** Research (predicted, measured, explained as hypothesis): 6 held, 1 falsified. No default changed.
 
 
 ### 18.229 Apple Foundation Models as an auxiliary engine: the provider, three tasks, a lever registry, and what they measure (0.69.0)
