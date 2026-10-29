@@ -1,0 +1,40 @@
+{"id": "d1", "text": "What is 17 * 23?", "has_tools": false, "route": "deterministic"}
+{"id": "d2", "text": "2+2", "has_tools": false, "route": "deterministic"}
+{"id": "d3", "text": "calculate 1024/16", "has_tools": false, "route": "deterministic"}
+{"id": "d4", "text": "What's 3.5 * 4?", "has_tools": false, "route": "deterministic"}
+{"id": "d5", "text": "compute (12+8)*3", "has_tools": false, "route": "deterministic"}
+{"id": "d6", "text": "100 - 37", "has_tools": false, "route": "deterministic"}
+{"id": "a1", "text": "hi", "has_tools": false, "route": "auxiliary"}
+{"id": "a2", "text": "thanks!", "has_tools": false, "route": "auxiliary"}
+{"id": "a3", "text": "good morning", "has_tools": false, "route": "auxiliary"}
+{"id": "a4", "text": "What is the capital of Japan?", "has_tools": false, "route": "auxiliary"}
+{"id": "a5", "text": "Who wrote Pride and Prejudice?", "has_tools": false, "route": "auxiliary"}
+{"id": "a6", "text": "Translate 'good morning' into French.", "has_tools": false, "route": "auxiliary"}
+{"id": "a7", "text": "Summarize this in one sentence: The meeting moved to Thursday because the room was booked on Wednesday.", "has_tools": false, "route": "auxiliary"}
+{"id": "a8", "text": "What does CPU stand for?", "has_tools": false, "route": "auxiliary"}
+{"id": "a9", "text": "How many days are in a leap year?", "has_tools": false, "route": "auxiliary"}
+{"id": "a10", "text": "Give me a synonym for happy.", "has_tools": false, "route": "auxiliary"}
+{"id": "a11", "text": "Extract the email address from: contact me at jo@example.com", "has_tools": false, "route": "auxiliary"}
+{"id": "a12", "text": "What color do you get by mixing blue and yellow?", "has_tools": false, "route": "auxiliary"}
+{"id": "a13", "text": "Is the sun a star?", "has_tools": false, "route": "auxiliary"}
+{"id": "a14", "text": "What is the plural of mouse?", "has_tools": false, "route": "auxiliary"}
+{"id": "t1", "text": "Why does decode slow down when the expert budget exceeds 52 GiB on this Mac?", "has_tools": false, "route": "target"}
+{"id": "t2", "text": "Write a Python function that merges overlapping intervals and add unit tests for it.", "has_tools": false, "route": "target"}
+{"id": "t3", "text": "Review this diff for race conditions: the reader thread pops from self._inbox while _spawn replaces the dict.", "has_tools": false, "route": "target"}
+{"id": "t4", "text": "Run the test suite and fix whatever fails.", "has_tools": true, "route": "target"}
+{"id": "t5", "text": "Open resident_store.py and explain the eviction policy.", "has_tools": true, "route": "target"}
+{"id": "t6", "text": "Design a caching strategy for mixture-of-experts weights streamed from an SSD at 1 GB/s.", "has_tools": false, "route": "target"}
+{"id": "t7", "text": "Prove that the square root of 2 is irrational.", "has_tools": false, "route": "target"}
+{"id": "t8", "text": "Compare LFU and LRU for a skewed workload and recommend one, with the trade-offs.", "has_tools": false, "route": "target"}
+{"id": "t9", "text": "Translate this contract clause into German and flag any ambiguity: The licensee shall indemnify the licensor against all claims arising from use of the software, except where such claims result from the licensor's gross negligence.", "has_tools": false, "route": "target"}
+{"id": "t10", "text": "Debug this: Traceback (most recent call last): File \"app.py\", line 3, in <module> KeyError: 'id'", "has_tools": false, "route": "target"}
+{"id": "t11", "text": "Search the web for the latest MLX release notes.", "has_tools": true, "route": "target"}
+{"id": "t12", "text": "Write a SQL query that returns the top 3 customers by revenue in each region.", "has_tools": false, "route": "target"}
+{"id": "t13", "text": "Explain step by step how speculative decoding preserves the target model's output distribution.", "has_tools": false, "route": "target"}
+{"id": "t14", "text": "List all files in the benchmarks folder.", "has_tools": true, "route": "target"}
+{"id": "t15", "text": "Refactor the server so it can batch concurrent requests.", "has_tools": true, "route": "target"}
+{"id": "t16", "text": "What are the security implications of exposing this inference server on 0.0.0.0?", "has_tools": false, "route": "target"}
+{"id": "t17", "text": "Given these decode times, is the slowdown statistically significant? Before: 80.1, 79.8, 80.4 ms. After: 85.3, 84.9, 86.0 ms.", "has_tools": false, "route": "target"}
+{"id": "t18", "text": "Plan a migration from YAML configuration to environment variables across three services without downtime.", "has_tools": false, "route": "target"}
+{"id": "t19", "text": "Implement a Metal kernel for a 2-bit grouped GEMV with per-group scales.", "has_tools": false, "route": "target"}
+{"id": "t20", "text": "My Mac panics when the model loads with a 64 GiB budget; what should I check first?", "has_tools": false, "route": "target"}

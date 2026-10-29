@@ -1,0 +1,107 @@
+{
+ "service_spec.md": {
+  "facts": [
+   "3 hours (and )?40 minutes",
+   "\\b27\\b.{0,20}retr",
+   "400 uploads",
+   "250 ms",
+   "\\b140\\b",
+   "\\bGo\\b",
+   "3 November 2026",
+   "Priya Raman",
+   "Tomasz Nowak",
+   "Lena Fischer",
+   "15 January 2027",
+   "1 March 2027",
+   "10 ?(percent|%)"
+  ],
+  "constraints": [
+   "The service must run fully offline inside the customer's network.",
+   "Uploads larger than 2 GiB must be rejected with HTTP status 413",
+   "hard memory limit of 1.5 GiB",
+   "at most 3 per upload",
+   "500 ms",
+   "/v2/upload and /v2/status",
+   "Never log file contents or file names"
+  ],
+  "questions": [
+   [
+    "What is the per-upload retry limit and the initial backoff?",
+    "3 retries, 500 ms"
+   ],
+   [
+    "Who owns extraction?",
+    "Tomasz Nowak"
+   ],
+   [
+    "What throughput must the service sustain on the reference hardware?",
+    "400 uploads per minute of 25 MB files, p99 under 250 ms"
+   ]
+  ]
+ },
+ "bench_log.md": {
+  "facts": [
+   "1\\.60",
+   "1\\.57",
+   "1\\.63",
+   "\\b41\\b",
+   "0\\.97 ?GB/s",
+   "71\\.4 ?GiB",
+   "4\\.6 ?GiB",
+   "9f3c2a71",
+   "2\\.31",
+   "glm-decode-2026-10-29-1412",
+   "38\\.9",
+   "1,?912"
+  ],
+  "constraints": [
+   "compare those repeats only with each other",
+   "Do not compare this run with runs from the internal SSD",
+   "Keep the directory until the A/B against the prefetch arm is done"
+  ],
+  "questions": [
+   [
+    "What was the median seconds per token?",
+    "1.60"
+   ],
+   [
+    "Which repeats ran with the screensaver on?",
+    "2 and 3"
+   ],
+   [
+    "What did the miss-budget-0 run measure?",
+    "2.31 s per token"
+   ]
+  ]
+ },
+ "cuda_idle_results.md": {
+  "facts": [
+   "pricey-voice-4663",
+   "RTX 5090",
+   "0\\.359",
+   "0\\.182",
+   "2\\.35 ?ms",
+   "0\\.426",
+   "0\\.455",
+   "12\\.2 ?s",
+   "25 ?GB/s",
+   "Q-8",
+   "0\\.540"
+  ],
+  "constraints": [],
+  "questions": [
+   [
+    "Which prediction was falsified?",
+    "Q-8"
+   ],
+   [
+    "What was L50?",
+    "2.35 ms"
+   ],
+   [
+    "Per-record time of the two-buffer one-thread non-temporal arm?",
+    "0.426 ms"
+   ]
+  ]
+ }
+}
