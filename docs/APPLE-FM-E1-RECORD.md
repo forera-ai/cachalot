@@ -67,3 +67,19 @@ All **predicted**; probabilities mine.
 Estimated wall clock: settle 1-3 min, aux baseline 0.5 min, server start ~1 min, 26 replies x ~13 s ≈ 6 min,
 shutdown and the second baseline ~1 min: **~10-12 minutes, up to ~25 if the guardian kills an arm and it is rerun once.**
 Stop and report on a guardian kill, a server error, or a text mismatch between replies of the same arm.
+
+## Addendum 1: the exact-path replicate (written 2026-10-29 after the first run, before the replicate)
+
+Hamed: "Go: run the E-1 exact-path replicate with CACHALOT_DECODE_MISS_BUDGET=off (~9 min)." Same script and settings as
+the first run (`docs/APPLE-FM-E1-RESULTS.md`), except `CACHALOT_DECODE_MISS_BUDGET=off` in the server's environment, so a
+miss is read, not dropped. Baseline: the first run (budget 0): A 78.1 ms, B - A +0.57 ms, 24 distinct texts, misses
+1.2-1.4 a token; 18.76's exact all-resident server token 79.2-80.3 ms; ~2.0 ms a read miss.
+
+| id | quantity | prediction | falsifier |
+|---|---|---|---|
+| E1R-1 | text identity | all 24 measured replies byte-identical (0.75) | any two differ |
+| E1R-2 | misses a token, measured replies | median at most 0.3 in both arms (the prompt goes all-resident once its experts are read) (0.65) | median above 1.5 in either arm |
+| E1R-3 | arm A decode | 78-84 ms a token median (0.60) | below 75 or above 90 |
+| E1R-4 | B - A | +0.2 to +2.0 ms a token, median of cycles (0.55) | above +5 or below -1 |
+| E1R-5 | consistency | B slower in at least 5 of 6 cycles (0.55) | 2 or fewer |
+| E1R-6 | completion | no guardian kill, swap flat, pressure normal (0.80) | a kill |
