@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.69.1 (2026-10-29)
+
+HANDOFF section 18.229 (unchanged). Documentation only.
+
+### Fixed
+- `docs/EXPERIMENTS.md` regenerated: 0.69.0 shipped without section 18.229 in the experiment index (`benchmarks/experiment_index.py --check` failed).
+
 ## 0.69.0 (2026-10-29)
 
 HANDOFF "Start here (2026-10-29, 0.69.0)" and section 18.229; record `docs/APPLE-FM-RECORD.md` (AF-1 to AF-19, committed first in eb92d02, before any benchmark); results `docs/APPLE-FM-RESULTS.md`; design `docs/APPLE-FM-AUXILIARY.md`; `docs/APPLE-FM-HETEROGENEOUS.md`; `docs/APPLE-FM-SPECULATIVE-FEASIBILITY.md`. Nothing in the target models' load, prefill, decode or sampling path changed.
