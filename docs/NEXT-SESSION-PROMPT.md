@@ -1,10 +1,11 @@
-# Next-session prompt — **v279**, written 2026-10-30
+# Next-session prompt — **v280**, written 2026-10-30
 
 **This is the file to paste.** `docs/NEXT-SESSION-PROMPT.md` is always current; superseded ones live in
 `docs/next-session-prompts/`.
 
 | version | written | produced by | what changed |
 |---|---|---|---|
+| **v280** | 2026-10-30 | Hamed: "powermetrics is now running (checked with ps). Rerun E-3 for the ANE and GPU watts." | **0.69.5, measurement: the Neural Engine runs the system model at 4.3-4.7 W (IOReport), 0 otherwise; powermetrics' ANE line reads 0 mW throughout on this Mac. +13.8 W over idle = ANE 4.5 + memory system 5.9 + CPU 0.2 + 3.3 unattributed; beside a GPU stream only the ANE and ~2 W CPU are added. GPU W -2.4 % beside it. E3-1, E3-6 held; the scorer's IOReport sum fixed.** §18.233 |
 | **v279** | 2026-10-30 | Hamed: "Go for GLM and power measurement steps. Do the remaining steps.", then "Confirmed: powermetrics is recording ... Run E-3, then E-2." | **0.69.4, measurement: E-2 GLM read-bound beside the system model B/A 0.97, misses and reads equal (6 of 6 held); E-3 by `PSTR` only (no powermetrics process existed): +18.0 W alone (0.34 J a token, 15.1 J a call), +7.8 W beside the GEMV, +15.0 beside the GEMM, sub-additive; lever D priced on the Hermes session: one evicted system block is all a policy could win, 3 GiB recovers it, closed.** §18.232 |
 | **v278** | 2026-10-29 | Hamed: "Go: run the E-1 exact-path replicate with CACHALOT_DECODE_MISS_BUDGET=off (~9 min)." | **0.69.3, measurement: E-1 on the exact path: 26 of 26 replies identical, 0 misses, A 75.95 / B 75.33 ms, B - A -0.97 ms (B slower in 1 of 6). With v277's +0.57 under budget 0 the sign flips between runs: the system model beside DeepSeek's all-resident decode moves a token by under ~1 ms, sign unresolved; "+0.57 consistently" withdrawn as general. The exact server floor is now 76 ms (FP8 GEMV likeliest, derived). 3 held, 2 outside, 1 falsified.** §18.231 |
 | **v277** | 2026-10-29 | Hamed: "Go: run E-1 (serve.sh DeepSeek 48 GiB, repeated greedy prompt, 12 replies an arm, ABBA, with and without concurrent auxiliary classification calls). Give the estimate first.", then "Confirmed" | **0.69.2, measurement: E-1, DeepSeek's decode through `serve.sh` with Apple's system model classifying back to back beside it: +0.57 ms of a 78 ms token (+0.7 %, 6 of 6 ABBA cycles slower, +0.27 to +1.83), the calls +5 %; 6 of 7 predictions held, text identity falsified in both arms (budget 0 kept dropping 0.5-2.8 experts a token). The stand-in's -2.1 % over-predicted. `benchmarks/apple_fm_e1.sh`.** §18.230 |
@@ -240,6 +241,10 @@
 | v47 | 2026-09-25 | Hamed asked for the v44-v46 levers planned, built, measured and documented | **0.18.0: GLM prefill 60 to 90 tok/s, bit-identical (a store path that never evicts, plus the next layer read early), GLM's missing MLX buffer-cache cap added, GLM disk snapshots (a restart reuses the system block). DeepSeek: an `iostat` trace shows prefill is not read-bound on either drive; the lookahead A/B drowned in a 124-to-200 s drift across back-to-back prefills.** §17.1, §15.13 |
 | v46 | 2026-09-25 | Hamed asked for GLM-5.3-Flash on Cachalot | 0.17.0: GLM through `serve-glm.sh` / `chat-glm.sh`. §17 |
 | v45 | 2026-09-24 | same as v47, one day earlier | 0.16.0: disk snapshot store by last use; lookahead and local compression closed. §15.12 |
+
+## First jobs (v280): the auxiliary lane is measured end to end; return to the Mac jobs of v270
+
+Read HANDOFF 18.233. **Needs Hamed:** the v270 and v269 Mac jobs (DI-1 at 22k first). **Autonomous:** none in the auxiliary lane. **New.** On this Mac (macOS 27.2) powermetrics' `ANE Power` line reads 0 mW even while the Neural Engine draws ~4.5 W: read ANE power from the IOReport Energy Model counters (`energy_logger.py`, beside a root powermetrics), which are cumulative.
 
 ## First jobs (v279): the auxiliary lane is measured end to end except the ANE's own watts; the Mac jobs of v270 come first
 

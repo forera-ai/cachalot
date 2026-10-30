@@ -64,9 +64,8 @@ Fourteen 30 s cells, each the median of ~27 one-second samples after a 3 s trim;
 **What it shows.**
 
 1. **Alone, the system model raises whole-system power by about 18 W** (alone at idle: 0.34 J a token, 15 J a
-   classification call). That is far more than the Neural Engine itself is likely to draw (hypothesis: most of it is
-   waking the shared fabric, memory and CPU cluster out of their idle states, which `PSTR` sees and an ANE counter
-   would not; the missing powermetrics cell would have separated them).
+   classification call). That is far more than the Neural Engine itself draws (section 6 measured it: ANE +4.5 W,
+   memory system +5.9 W, the rest unattributed; the replicate read +13.8 W).
 2. **Beside a busy GPU it costs much less: +7.8 W beside the GEMV, +15.0 W beside the GEMM** (derived as both minus
    GPU-alone), so the increments do not add (sub-additive by 10.1 W and 3.0 W). Read as the hypothesis above: the fixed
    cost of an awake machine is paid once, by whichever engine wakes it first. Beside the GEMV the system model's
@@ -109,3 +108,50 @@ Hamed's applications open (5-minute load ~5), no component breakdown. Lever D: o
 
 E-3's two unscored cells with a root `powermetrics` actually recording (the same command; ~12 minutes); a prefill arm
 (a cold 4-8k DeepSeek prompt with the auxiliary load beside it).
+
+## 6. E-3 rerun with a root `powermetrics` recording: the Neural Engine draws 4.3-4.7 W (0.69.5)
+
+Hamed started `sudo powermetrics --samplers cpu_power,gpu_power,ane_power -i 1000 -o
+benchmarks/results/energy/apple-fm-e3-powermetrics.txt` (process and file checked before the run: root pid, 11 samples
+already written), and the same 14 cells ran again (`benchmarks/results/apple-fm/power-20261030T141848Z.jsonl`, logger
+`power-logger-20261030T141848Z.jsonl`). With powermetrics running, the IOReport Energy Model counters that
+`energy_logger.py` reads advance, so every cell also has a component breakdown. The arm's scorer summed those cumulative
+counters as if they were per-sample deltas; it now takes each counter's rise over the cell (fixed in 0.69.5, and the
+numbers below are computed that way from the logger file).
+
+**powermetrics' own `ANE Power` line read 0 mW in all 647 samples**, including cells where IOReport's `ane` counter rose by
+4.3-4.7 W and the system model generated at 51 tok/s. On this Mac and macOS (27.2) that line is a reporting gap, not an
+idle Neural Engine (measured; earlier sessions' "ANE 0 W" readings from powermetrics, if any, should be read the same way).
+
+Component watts by cell (IOReport, mean of the two cells of each kind; system = SMC `PSTR`):
+
+| cell | system | ANE | GPU | CPU | DRAM | DCS | AMCC |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| idle | 32.3 | 0.03 | 0.54 | 4.16 | 2.07 | 2.81 | 3.64 |
+| fm (generating, 51.1 tok/s) | 46.1 | **4.48** | 0.51 | 4.36 | 4.40 | 4.23 | 5.76 |
+| classify (0.830 s a call) | 47.4 | **4.29** | 0.49 | 5.30 | 4.21 | 4.40 | 6.25 |
+| gemv | 127.0 | 0.00 | 35.26 | 3.42 | 25.21 | 8.25 | 19.78 |
+| gemv + fm | 134.3 | 4.43 | 34.47 | 5.32 | 25.64 | 8.39 | 20.04 |
+| gemm | 181.8 | 0.02 | 110.14 | 3.77 | 4.77 | 4.54 | 10.15 |
+| gemm + fm | 203.7 | 4.72 | 115.93 | 6.41 | 7.00 | 4.95 | 11.29 |
+
+The two idle cells read 26.4 and 38.3 W by `PSTR` (Hamed's applications, 5-minute load ~5): the idle baseline is the
+noisiest cell, so differences against idle carry a few watts of uncertainty.
+
+| id | result | score |
+|---|---|---|
+| E3-1 | ANE (IOReport): 0.00-0.06 W in idle and GPU-only cells; 4.29-4.75 W in every system-model cell | **held** (by IOReport; powermetrics' ANE line unusable) |
+| E3-6 | GPU W (powermetrics) beside the system model: GEMV 35.36 to 34.51 W (-2.4 %) | held |
+| E3-2 to E3-5, E3-7 (replicate, already scored on the first run) | fm minus idle +13.8 W (first run +18.0); 0.27 J a token; 12.5 J a call; additivity gemv -6.5 W, gemm +8.1 W; GEMV -4.2 % (586 to 561 GB/s) | replicate, not re-scored |
+
+**Where the system model's power goes (measured, components summed over the idle difference):** of its +13.8 W over idle,
+the Neural Engine is +4.45 W, the memory system (DRAM +2.33, DCS +1.42, AMCC +2.12) +5.87 W, the CPU +0.20 W, the GPU
+nothing; about 3.3 W are not in any IOReport component. Beside the GEMV, whose memory traffic already holds DRAM, DCS and
+AMCC up (25, 8 and 20 W), the system model adds the ANE's 4.4 W, 1.9 W of CPU and under 1 W of memory-system power: that is
+the sub-additivity of the first run, now attributed (it was a hypothesis in section 2). Its energy a token is about
+**0.09 J in the Neural Engine itself** (4.48 W / 51.1 tok/s), 0.27 J of whole-system power alone, and about 0.14 J beside a
+busy GPU (7.3 W / 50.8 tok/s), all derived.
+
+The GPU stand-in ran slower in this run than in the first (GEMV 586 against 654 GB/s alone); powermetrics' sampling or the
+busier machine are the candidates, not separated. Its slowdown beside the system model (-4.2 %) is larger than in 0.69.0
+(-2.1 %) and the first E-3 run (-1.6 %): the spread of three runs, -1.6 to -4.2 %.

@@ -574,14 +574,14 @@ def arm_power(args) -> None:
     out_cells = []
     for c in cells:
         pstr = [r["pstr"] for r in rows if c["t0"] <= r["t"] <= c["t1"] and r.get("pstr") is not None]
-        comp: dict[str, float] = {}
-        inwin = [r for r in rows if c["t0"] <= r["t"] <= c["t1"]]
-        for r in inwin:
-            for k, v in (r.get("joules") or {}).items():
-                comp[k] = comp.get(k, 0.0) + v
-        secs = (inwin[-1]["t"] - inwin[0]["t"]) if len(inwin) > 1 else None
-        res = {**c, "pstr_w_median": statistics.median(pstr) if pstr else None, "pstr_n": len(pstr),
-               "ioreport_w": {k: v / secs for k, v in comp.items()} if secs and comp else None}
+        # IOReport energy counters are cumulative: a component's watts are its counter's rise over the window
+        # (they advance only while a root powermetrics samples beside the logger; frozen counters read 0 W)
+        inwin = [r for r in rows if c["t0"] <= r["t"] <= c["t1"] and r.get("joules")]
+        io = None
+        if len(inwin) > 1:
+            secs = inwin[-1]["t"] - inwin[0]["t"]
+            io = {k: (inwin[-1]["joules"][k] - inwin[0]["joules"].get(k, 0.0)) / secs for k in inwin[-1]["joules"]}
+        res = {**c, "pstr_w_median": statistics.median(pstr) if pstr else None, "pstr_n": len(pstr), "ioreport_w": io}
         if pm:
             a, b = _local_clock(c["t0"]), _local_clock(c["t1"])
             win = [s for s in pm if a <= s.clock <= b]
@@ -607,7 +607,12 @@ def arm_power(args) -> None:
         vals = [c["rates"][who]["median"] for c in by.get(cell, []) if who in c["rates"] and c["rates"][who]["median"]]
         return statistics.mean(vals) if vals else None
 
+    def iomean(cell):
+        vals = [c["ioreport_w"] for c in by.get(cell, []) if c.get("ioreport_w")]
+        return {k: statistics.mean(v[k] for v in vals) for k in vals[0]} if vals else None
+
     summary = {"pstr_w": {k: med(k, "pstr_w_median") for k in by},
+               "ioreport_w": {k: iomean(k) for k in by},
                "pm_w": {k: {comp: pmmed(k, comp) for comp in ("cpu", "gpu", "ane", "combined")} for k in by} if pm else None,
                "rates": {"fm_tok_s": rate("fm", "fm"), "fm_beside_gemv": rate("gemv+fm", "fm"),
                          "gemv_Bps": rate("gemv", "gpu"), "gemv_beside_fm": rate("gemv+fm", "gpu"),

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.69.5 (2026-10-30)
+
+HANDOFF "Start here (2026-10-30, 0.69.5)" and section 18.233; record `docs/APPLE-FM-E2-E3-RECORD.md` (E3-1, E3-6); results section 6 of `docs/APPLE-FM-E2-E3-RESULTS.md`. No runtime change.
+
+### Measured
+- **E-3 rerun with Hamed's root `powermetrics` recording: the Neural Engine draws 4.3-4.7 W in every system-model cell and 0.00-0.06 W otherwise (IOReport Energy Model); powermetrics' own `ANE Power` line read 0 mW in all 647 samples, a reporting gap on this Mac.** Of the system model's +13.8 W over idle (first run +18.0): ANE +4.5 W, memory system (DRAM, DCS, AMCC) +5.9 W, CPU +0.2 W, ~3.3 W unattributed; beside the GPU GEMV only the ANE and ~2 W of CPU are added (the first run's sub-additivity, now attributed). GPU watts beside it -2.4 %. E3-1 and E3-6 held.
+
+### Fixed
+- `apple_fm_bench.py power` summed IOReport's cumulative energy counters as deltas; it now takes each counter's rise over a cell and reports per-kind means.
+
 ## 0.69.4 (2026-10-30)
 
 HANDOFF "Start here (2026-10-30, 0.69.4)" and section 18.232; record `docs/APPLE-FM-E2-E3-RECORD.md` (E2-1 to E2-6, E3-1 to E3-7, committed first in a8749fe; drivers 97b40f9); results `docs/APPLE-FM-E2-E3-RESULTS.md`. No runtime change.

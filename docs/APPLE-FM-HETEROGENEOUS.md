@@ -73,7 +73,9 @@ semantic signal could matter and where it cannot:
    the calls +0.7 %: a read-bound GLM token does not notice the system model.
 3. **E-3, power: done without the component breakdown (0.69.4).** By SMC `PSTR`: the system model adds ~18 W to an idle
    machine (0.34 J a token, 15 J a classification call) but only +7.8 W beside the GEMV and +15 W beside the GEMM
-   (sub-additive by 10 and 3 W); the ANE and GPU watts need a root `powermetrics` that was not recording.
+   (sub-additive by 10 and 3 W). Rerun with a root `powermetrics` (0.69.5): the Neural Engine itself draws 4.3-4.7 W
+   (IOReport; powermetrics' own ANE line reads 0), the memory system ~5.9 W more at idle, and beside the GEMV, whose traffic
+   already holds the memory system up, only the ANE and ~2 W of CPU are added; GPU watts beside it -2.4 %.
 
 No scheduler is built: the measured interference is small and there is no measured opportunity yet that a scheduler
 would capture.

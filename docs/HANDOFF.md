@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-30, 0.69.5): the Neural Engine runs the system model at 4.3-4.7 W; powermetrics' ANE line reads 0 on this Mac, use IOReport; DI-1 at 22k is still the Mac's first job
+>
+> Section 18.233. E-3 rerun with Hamed's root `powermetrics` recording (checked by process and file first): IOReport `ane` 4.29-4.75 W in every system-model cell, 0.00-0.06 W in idle and GPU-only cells; powermetrics' `ANE Power` 0 mW in all 647 samples. The +13.8 W over idle splits ANE 4.5, memory system 5.9, CPU 0.2, unattributed 3.3; beside the GEMV only the ANE and ~2 W CPU are added. GPU W beside it -2.4 %. E3-1, E3-6 held. Scorer fix: IOReport counters are cumulative. **Needs Hamed:** stop `powermetrics` if still running; the v270 Mac jobs.
+
 > ## Start here (2026-10-30, 0.69.4): GLM's read-bound decode does not notice the system model; by whole-system power the system model costs ~18 W alone, ~8 W beside a busy GPU; lever D has nothing to win; DI-1 at 22k is still the Mac's first job
 >
 > Section 18.232. E-2 (GLM from the X10Pro at 46 GiB, distinct prompts, A B B A x 4): B/A 0.97 median, misses and drive reads equal, 6 of 6 held. E-3 (SMC `PSTR` only: Hamed's `powermetrics` was not running, so ANE and GPU watts are unscored): +18.0 W over idle (0.34 J a token, 15.1 J a classification call), +7.8 W beside the GEMV, +15.0 W beside the GEMM (sub-additive). Lever D: on the 142-request Hermes session only one evicted system block (12,288 tokens) is recoverable by any policy, and 3 GiB recovers it; closed. **Needs Hamed:** E-3's two component cells with a root `powermetrics` actually recording (~12 min); the v270 Mac jobs.
@@ -9445,6 +9449,33 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 **Bottleneck after.** Unchanged: expert reads on misses; of the all-resident floor, CPU graph building, GPU idle, and routed-expert launch granularity.
 
 **Kind.** Engineering (a default on a prior research result).
+
+
+### 18.233 E-3 with a root powermetrics: the Neural Engine draws 4.3-4.7 W; powermetrics' ANE line reads 0 here (0.69.5)
+
+**Goal.** Hamed: "powermetrics is now running (checked with ps). Rerun E-3 for the ANE and GPU watts." The first check found no `powermetrics` process; after Hamed ran the command in the Terminal panel, a root `powermetrics` (pid 36893) and its file (11 samples) were confirmed before the run.
+
+**Baseline (recorded).** §18.232's `PSTR`-only E-3: +18.0 W over idle, sub-additive beside the GPU, ANE and GPU watts unscored.
+
+**Prediction.** E3-1 and E3-6 of `docs/APPLE-FM-E2-E3-RECORD.md` (a8749fe); the other E3 rows were already scored and this run is their replicate.
+
+**Method.** The same `apple_fm_bench.py power` arm (14 cells of 30 s) with `--powermetrics`; IOReport component watts from `energy_logger.py`'s counters, which advance while a root powermetrics runs.
+
+**Result (measured).** IOReport ANE 0.00-0.06 W in idle, gemv and gemm cells, 4.29-4.75 W in fm, classify, gemv+fm and gemm+fm cells; powermetrics `ANE Power` 0 mW in all 647 samples. Means (system / ANE / GPU / CPU / DRAM / DCS / AMCC W): idle 32.3 / 0.03 / 0.54 / 4.16 / 2.07 / 2.81 / 3.64; fm 46.1 / 4.48 / 0.51 / 4.36 / 4.40 / 4.23 / 5.76; gemv 127.0 / 0 / 35.26 / 3.42 / 25.21 / 8.25 / 19.78; gemv+fm 134.3 / 4.43 / 34.47 / 5.32 / 25.64 / 8.39 / 20.04. powermetrics GPU W 35.36 to 34.51 beside fm (-2.4 %). Replicate: fm minus idle +13.8 W, 0.27 J a token, 12.5 J a call, GEMV -4.2 % (the idle cells read 26.4 and 38.3 W). E3-1 held (by IOReport), E3-6 held.
+
+**Intervention.** None in the runtime; `apple_fm_bench.py power` fixed (IOReport counters are cumulative; it had summed them as deltas).
+
+**Explanation (measured attribution, derived energies).** The system model's power at idle is the ANE (4.5 W) plus the memory system woken for it (5.9 W) plus ~3.3 W outside IOReport; beside a GPU stream the memory system is already up, so only the ANE and ~2 W of CPU are added. Energy a token: ~0.09 J in the ANE, 0.27 J of system power alone, ~0.14 J beside a busy GPU.
+
+**Corrections.** §18.232's hypothesis that most of the 18 W is waking the shared fabric is now measured in part (memory system 5.9 W, ANE 4.5 W); powermetrics' ANE line reads 0 on this Mac.
+
+**What did not go well / limits.** Hamed's first confirmation had no process behind it; checked, not trusted. Idle baseline noisy (26-38 W). The GEMV stand-in ran ~10 % slower in this run than in the first.
+
+**Closed.** The ANE question of lever E: the system model runs on the Neural Engine at ~4.5 W, and its GPU interference is the memory traffic.
+
+**Open / needs Hamed.** Nothing in the auxiliary lane; the v270 jobs.
+
+**Kind.** Research (predicted, measured, attributed). No default changed.
 
 
 ### 18.232 E-2, E-3 and lever D: GLM read-bound is untouched; the system model costs ~18 W alone and ~8 W beside a busy GPU; no cache policy has anything to win (0.69.4)
