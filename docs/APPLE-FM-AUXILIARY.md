@@ -128,7 +128,8 @@ and nothing calls it. It needs both `adaptive_routing` and `classification`; any
 "not stated" placeholders, so a real zero reads as missing. Measured 0.958 field accuracy against the heuristic's
 0.375; the one remaining invention copied a value present in the text into the wrong field, which grounding cannot see.
 
-**Lever D (semantic cache), E (ANE/GPU scheduling):** research, `docs/APPLE-FM-HETEROGENEOUS.md`. **Lever F
+**Lever D (semantic cache):** no-go on the measured Hermes session (one recoverable eviction, which a 3 GiB budget fixes;
+`docs/APPLE-FM-E2-E3-RESULTS.md`). **Lever E (ANE/GPU scheduling):** measured, no scheduler needed (`docs/APPLE-FM-HETEROGENEOUS.md`). **Lever F
 (speculative decoding):** no-go, `docs/APPLE-FM-SPECULATIVE-FEASIBILITY.md`.
 
 <a id="lever-g"></a>**Lever G, semantic validation:** research only; the flag exists and nothing reads it. Deterministic

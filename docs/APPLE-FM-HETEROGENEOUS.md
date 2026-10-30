@@ -58,9 +58,10 @@ semantic signal could matter and where it cannot:
   prefix snapshot to keep when the byte budget evicts. The existing evidence (HANDOFF 18.66, the system-block pins) is
   that exact-prefix reuse already captures the agent's repeated blocks; a semantic tag would only help when entries
   compete, which no measured session has shown.
-* **Next step, offline and cheap:** replay a dumped Hermes session (`CACHALOT_SERVER_DUMP`) through the prefix-cache
-  policy with recency, a deterministic heuristic (request kind from the message structure) and the auxiliary label,
-  and count re-prefilled tokens. Only if the auxiliary label beats the deterministic one is there a lever.
+* **Priced (0.69.4, `docs/APPLE-FM-E2-E3-RESULTS.md` section 3): closed on the measured session.** The 142-request
+  Hermes session through the real `PrefixCache`: an unbounded cache prefills 266,913 tokens against 279,056 at the shipped
+  1.5 GiB, and one evicted 12,288-token system block is almost all of the difference; 3 GiB recovers it. No eviction
+  policy can save more, so an auxiliary label has nothing to add.
 
 ## 4. Next experiments (each needs Hamed's go and an estimate first)
 
@@ -68,10 +69,11 @@ semantic signal could matter and where it cannot:
    `serve.sh` at 48 GiB, 12 replies an arm in ABBA order, classification calls back to back in B: +0.57 ms a token under
    budget 0 (6 of 6 cycles slower), -0.97 ms on the exact path (1 of 6 slower, texts identical): less than about 1 ms
    either way, sign unresolved; the calls +3 to +5 %. The stand-in's -2.1 % over-predicted it.
-2. **E-2, the same for GLM read-bound** (decode is drive-bound on the X10Pro, 1.5-1.6 s a token): the ANE and the GPU
-   should then contend even less; ~30 minutes.
-3. **E-3, power.** The stand-in cells with Hamed's `sudo powermetrics --samplers cpu_power,gpu_power,ane_power`
-   beside them, to see the ANE's watts and whether the GPU's clock drops under the shared budget.
+2. **E-2, GLM read-bound: done (0.69.4).** B/A 0.97 median (B slower in 1 of 4 cycles), misses and drive reads equal,
+   the calls +0.7 %: a read-bound GLM token does not notice the system model.
+3. **E-3, power: done without the component breakdown (0.69.4).** By SMC `PSTR`: the system model adds ~18 W to an idle
+   machine (0.34 J a token, 15 J a classification call) but only +7.8 W beside the GEMV and +15 W beside the GEMM
+   (sub-additive by 10 and 3 W); the ANE and GPU watts need a root `powermetrics` that was not recording.
 
 No scheduler is built: the measured interference is small and there is no measured opportunity yet that a scheduler
 would capture.

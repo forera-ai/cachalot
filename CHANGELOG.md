@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.69.4 (2026-10-30)
+
+HANDOFF "Start here (2026-10-30, 0.69.4)" and section 18.232; record `docs/APPLE-FM-E2-E3-RECORD.md` (E2-1 to E2-6, E3-1 to E3-7, committed first in a8749fe; drivers 97b40f9); results `docs/APPLE-FM-E2-E3-RESULTS.md`. No runtime change.
+
+### Measured
+- **E-2, GLM-5.3-Flash read-bound from the X10Pro (`serve-glm.sh` at 46 GiB, shipped defaults, a different prompt a reply, A B B A x 4) beside Apple's system model classifying back to back: B/A 0.97 median, B slower in 1 of 4 cycles; misses (57.9 / 56.3 a token) and drive-read times (24.4 / 24.3 ms) equal; the calls +0.7 %.** Six of six predictions held.
+- **E-3, power by SMC `PSTR` (whole system):** the system model adds 18.0 W to an idle Mac (0.34 J a token, 15.1 J a classification call, derived) but only +7.8 W beside the GPU GEMV and +15.0 W beside the GEMM (sub-additive by 10.1 and 3.0 W); the GEMV loses 1.6 %. ANE and GPU watts were not measured: no root `powermetrics` was recording. One held, two outside, two falsified (E3-4 by 0.1 J, E3-5), two not scored.
+- **Lever D priced on the 142-request Hermes session:** an unbounded prefix cache prefills 266,913 tokens against 279,056 at the shipped 1.5 GiB; one evicted 12,288-token system block is nearly all the difference, and 3 GiB recovers it. Lever D is closed (no-go) on that session.
+
+### Added
+- `benchmarks/apple_fm_bench.py power`; `apple_fm_e1.py` / `apple_fm_e1.sh` take the server script, budget, model id, token cap, cycles and a prompt-per-reply file; `benchmarks/apple_fm/e2_prompts.txt`; `prefix_grain_replay.py --entries`.
+
 ## 0.69.3 (2026-10-29)
 
 HANDOFF "Start here (2026-10-29, 0.69.3)" and section 18.231; addendum 1 of `docs/APPLE-FM-E1-RECORD.md` (E1R-1 to E1R-6, committed first in 47d6358); results section 6 of `docs/APPLE-FM-E1-RESULTS.md`. No runtime change.

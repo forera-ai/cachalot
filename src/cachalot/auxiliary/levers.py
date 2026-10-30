@@ -72,11 +72,12 @@ LEVERS: dict[str, LeverSpec] = {s.id: s for s in (
         ("routing accuracy", "target invocations avoided", "task success", "end-to-end latency"), True,
         "docs/APPLE-FM-AUXILIARY.md#lever-c"),
     LeverSpec(
-        "D", "semantic cache assistance", "research", None, ("structured_output",),
+        "D", "semantic cache assistance", "no-go", None, ("structured_output",),
         ("agent sessions with eviction",), "per-block classification calls",
         "system model service", "existing cache policy unchanged",
-        "only through Cachalot's own cache code; no KV access through Apple's API",
-        ("hit rate", "recompute", "policy cost"), False, "docs/APPLE-FM-HETEROGENEOUS.md#lever-d"),
+        "only through Cachalot's own cache code; no KV access through Apple's API (priced 0.69.4: on a real Hermes "
+        "session only one evicted system block is recoverable, and a 3 GiB budget recovers it)",
+        ("hit rate", "recompute", "policy cost"), False, "docs/APPLE-FM-E2-E3-RESULTS.md"),
     LeverSpec(
         "E", "heterogeneous ANE/GPU scheduling", "research", None, (), ("concurrent target + auxiliary",),
         "under ~1 ms of a 76-78 ms DeepSeek decode token beside back-to-back classification, sign unresolved (E-1)",

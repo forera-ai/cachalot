@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-30, 0.69.4): GLM's read-bound decode does not notice the system model; by whole-system power the system model costs ~18 W alone, ~8 W beside a busy GPU; lever D has nothing to win; DI-1 at 22k is still the Mac's first job
+>
+> Section 18.232. E-2 (GLM from the X10Pro at 46 GiB, distinct prompts, A B B A x 4): B/A 0.97 median, misses and drive reads equal, 6 of 6 held. E-3 (SMC `PSTR` only: Hamed's `powermetrics` was not running, so ANE and GPU watts are unscored): +18.0 W over idle (0.34 J a token, 15.1 J a classification call), +7.8 W beside the GEMV, +15.0 W beside the GEMM (sub-additive). Lever D: on the 142-request Hermes session only one evicted system block (12,288 tokens) is recoverable by any policy, and 3 GiB recovers it; closed. **Needs Hamed:** E-3's two component cells with a root `powermetrics` actually recording (~12 min); the v270 Mac jobs.
+
 > ## Start here (2026-10-29, 0.69.3): on the exact path the system model beside DeepSeek's decode moves a token by -0.97 ms, under budget 0 by +0.57: under ~1 ms, sign unresolved; texts identical under load; DI-1 at 22k is still the Mac's first job
 >
 > Section 18.231. The exact-path replicate of E-1 (E1R-1 to E1R-6 committed first in 47d6358): `CACHALOT_DECODE_MISS_BUDGET=off`, same arm. 26 of 26 replies byte-identical, 0 misses a token; A 75.95 ms, B 75.33; per-cycle B - A median -0.97 ms, B slower in 1 of 6. With 18.230's +0.57 (6 of 6 slower) the sign flips between runs: the effect is under about 1 ms (~1.3 %) and unresolved; 18.230's "+0.57 ms consistently" is withdrawn as general. The exact all-resident server token is now 76 ms (79-80 on 0.60.10; FP8 GEMV likeliest, derived). Auxiliary classification can run during decode either way. **Needs Hamed:** E-2 (GLM read-bound) and E-3 (power) if wanted. The v270 Mac jobs stand.
@@ -9441,6 +9445,33 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 **Bottleneck after.** Unchanged: expert reads on misses; of the all-resident floor, CPU graph building, GPU idle, and routed-expert launch granularity.
 
 **Kind.** Engineering (a default on a prior research result).
+
+
+### 18.232 E-2, E-3 and lever D: GLM read-bound is untouched; the system model costs ~18 W alone and ~8 W beside a busy GPU; no cache policy has anything to win (0.69.4)
+
+**Goal.** Hamed: "Go for GLM and power measurement steps. Do the remaining steps." then "Confirmed: powermetrics is recording ... Run E-3, then E-2."
+
+**Baseline (recorded).** GLM from the X10Pro 1.52-1.73 s a token exact, budget 2 ~31 % faster; E-1's under-1 ms on DeepSeek; idle `PSTR` 25-30 W (0.62.35); DeepSeek 6.4-6.8 J a token resident; the DI-4 replay of the 142-request Hermes session (279,056 tokens prefilled at the shipped cache).
+
+**Prediction.** E2-1 to E2-6, E3-1 to E3-7, `docs/APPLE-FM-E2-E3-RECORD.md`, committed first in a8749fe; drivers built and smoke-tested in 97b40f9. Lever D was priced without a registered prediction.
+
+**Method.** E-2: `E1_SERVE=./serve-glm.sh E1_BUDGET_GIB=46 E1_MODEL_ID=glm-5.3-flash E1_MAX_TOKENS=32 E1_CYCLES=4 E1_PROMPTS=benchmarks/apple_fm/e2_prompts.txt benchmarks/apple_fm_e1.sh` (guarded, shipped GLM defaults, no snapshot dir). E-3: `apple_fm_bench.py power` (14 cells of 30 s, `energy_logger.py` beside). Lever D: `prefix_grain_replay.py --gib --entries` at seven budgets. Deviations: no `powermetrics` process or file existed when Hamed confirmed, so E-2 ran first and E-3 ran on `PSTR` alone (ANE and GPU watts unscored, IOReport counters frozen); a 5 s four-cell smoke of E-3 ran before the measured run.
+
+**Result (measured).** E-2: A 0.909 s a token, B/A by cycle 0.912 / 0.971 / 0.972 / 1.051 (median 0.971), misses 57.9 / 56.3, reads 24.45 / 24.31 ms, calls +0.7 %; peak wired 74.1 GiB, swap flat, 1,269 s. E-3 (system W, two cells each): idle 18.9, fm 36.9 (52.5 tok/s), classify 37.3 (0.817 s), gemv 130.4, gemv+fm 138.3, gemm 178.2, gemm+fm 193.2; GEMV -1.6 % beside fm. Lever D: 0.25 / 0.5 / 1.5 (8 entries) / 1.5 / 2 / 3 / 6 GiB prefill 350,541 / 314,111 / 313,920 / 279,056 / 279,247 / 266,959 / 266,913 tokens; request 106 (12,288 tokens) carries nearly all of the shipped budget's loss. Scores: E-2 six held; E-3 one held (E3-7), two outside (E3-2, E3-3), two falsified (E3-4 by 0.1 J, E3-5), two not scored (E3-1, E3-6).
+
+**Intervention.** None in the runtime; the lever registry marks D no-go. Results `docs/APPLE-FM-E2-E3-RESULTS.md`.
+
+**Explanation (hypothesis).** A read-bound GLM token is drive wait the ANE does not touch. The ~18 W of the system model alone is mostly waking the shared fabric, memory and CPU cluster (paid once: beside a busy GPU only +7.8 W remains), which `PSTR` sees and an ANE counter would not; untested without the component cells.
+
+**Corrections.** None.
+
+**What did not go well / limits.** powermetrics was not running despite the confirmation; I checked the process list and the file rather than trusting it, and ran what did not need it. Load average ~5 (Hamed's applications). One session for lever D.
+
+**Closed.** Lever D on the measured session. Any concern that auxiliary work slows GLM's read-bound decode.
+
+**Open / needs Hamed.** E-3's ANE/GPU component cells with a root `powermetrics` recording (the same command, ~12 min); a DeepSeek prefill arm; the v270 jobs.
+
+**Kind.** Research (predicted, measured, explained as hypothesis) and a pricing step. No default changed.
 
 
 ### 18.231 E-1 on the exact path: texts identical under load, B - A -0.97 ms; with 18.230 the effect is under ~1 ms and its sign unresolved (0.69.3)
