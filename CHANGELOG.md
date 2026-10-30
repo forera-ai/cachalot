@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.70.0 (2026-10-30)
+
+HANDOFF "Start here (2026-10-30, 0.70.0)" and section 18.236; record `docs/APPLE-FM-APPROVAL-RECORD.md` (AP-1 to AP-6 and the gate rule, committed first in 91f7b77); results `docs/APPLE-FM-APPROVAL-RESULTS.md`. No change to the serving path.
+
+### Added
+- `cachalot.auxiliary.approval`: recognizes Hermes Agent's command-safety review request by structure and decides an approve-only answer (only an exact `APPROVE` from the auxiliary model counts; everything else falls through to the target). Not wired into the server.
+- `benchmarks/apple_fm_approval_gate.py` (`gate`, `replay`) with `benchmarks/apple_fm/approval_gate.jsonl` (36 dangerous commands) and `hermes_reviewer_prompt.json` (Hermes's reviewer prompt, captured from a dump); 11 tests.
+
+### Measured
+- **The dangerous-command gate failed: the system model approved 2 of 36** (a base64-hidden `rm -rf ~/*` and `sudo tee /etc/hosts`) and denied 34, including every plain delete and all three prompt injections. Under Hamed's rule (zero approvals) the approve-only offload of Hermes's reviews is not enabled; the gate is not tuned afterwards.
+- Correction: the 31 short side requests of the 142-request Hermes session are command-safety reviews (APPROVE/DENY/ESCALATE), not titles; DeepSeek approved all 30 it answered, the system model 20; their target cost is ~3 minutes a session (17,421 prefilled tokens), not ~6.
+
 ## 0.69.7 (2026-10-30)
 
 HANDOFF "Start here (2026-10-30, 0.69.7)" and section 18.235; record `docs/ANE-MATMUL-RECORD.md` (AN-1 to AN-8, committed first in 9dd1e5d; build ee9bdb9); results `docs/ANE-MATMUL-RESULTS.md`. No runtime change.

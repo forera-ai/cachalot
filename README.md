@@ -683,7 +683,7 @@ auxiliary classification beside it moves a 76-78 ms token by less than about 1 m
 -0.97 ms on the exact path with identical texts; `docs/APPLE-FM-E1-RESULTS.md`). GLM's read-bound decode does not notice it
 (B/A 0.97); by whole-system power it adds ~14-18 W to an idle Mac (the Neural Engine itself 4.3-4.7 W, the memory system ~6 W) but ~7-8 W beside a busy GPU; a semantic prefix-cache policy
 has nothing to win on a real Hermes session (`docs/APPLE-FM-E2-E3-RESULTS.md`). What is left for the Neural Engine
-(`docs/APPLE-FM-ANE-LEVERS.md`, 0.69.6): offloading Hermes's side requests (titles, then gated summary calls); speculative decoding and ANE expert prediction have no
+(`docs/APPLE-FM-ANE-LEVERS.md`, 0.69.6): offloading Hermes's summary calls (gated; the session's short side requests turned out to be command-safety reviews, and the approve-only review offload failed its gate, 2 of 36 dangerous commands approved, 0.70.0); speculative decoding and ANE expert prediction have no
 speed ceiling on the shipped paths, and the ANE as a second matmul engine measured 3.7-5.1 TFLOP/s on trunk shapes, a quarter of
 the GPU, which does not pay for a second trunk copy (0.69.7, `docs/ANE-MATMUL-RESULTS.md`).
 

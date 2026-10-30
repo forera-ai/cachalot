@@ -123,6 +123,10 @@ the results document for what would reopen it.
 <a id="lever-c"></a>**Lever C, routing** (`levers.RoutingLever`). Returns a route decision; it never answers a request
 and nothing calls it. It needs both `adaptive_routing` and `classification`; anything else returns "target".
 
+**Command-review offload** (`approval.py`, 0.70.0): recognizes Hermes's command-safety review and would answer only an
+exact APPROVE from the system model. Not wired into the server: the system model approved 2 of 36 dangerous commands on
+the gate (`benchmarks/apple_fm_approval_gate.py`, `docs/APPLE-FM-APPROVAL-RESULTS.md`).
+
 **Structured extraction** (`tasks.extract`). Flat typed schema; a value is accepted only if it occurs in the text
 (`grounded_in`: case- and whitespace-insensitive for strings, numeric for numbers); "" and 0 are the instructed
 "not stated" placeholders, so a real zero reads as missing. Measured 0.958 field accuracy against the heuristic's
