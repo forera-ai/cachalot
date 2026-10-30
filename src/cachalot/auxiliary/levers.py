@@ -79,7 +79,7 @@ LEVERS: dict[str, LeverSpec] = {s.id: s for s in (
         ("hit rate", "recompute", "policy cost"), False, "docs/APPLE-FM-HETEROGENEOUS.md#lever-d"),
     LeverSpec(
         "E", "heterogeneous ANE/GPU scheduling", "research", None, (), ("concurrent target + auxiliary",),
-        "+0.57 ms of a 78 ms DeepSeek decode token beside back-to-back classification (E-1, measured)",
+        "under ~1 ms of a 76-78 ms DeepSeek decode token beside back-to-back classification, sign unresolved (E-1)",
         "ANE + system service beside the MLX GPU working set", "run auxiliary work sequentially",
         "target decode slowdown within its noise band",
         ("target tok/s", "aux tok/s", "combined throughput", "tail latency"), False,

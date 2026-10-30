@@ -64,9 +64,10 @@ semantic signal could matter and where it cannot:
 
 ## 4. Next experiments (each needs Hamed's go and an estimate first)
 
-1. **E-1, real decode beside the auxiliary: done (0.69.2, `docs/APPLE-FM-E1-RESULTS.md`).** DeepSeek through `serve.sh`
-   at 48 GiB, 12 replies an arm in ABBA order: +0.57 ms a token (+0.7 %) with classification calls running back to
-   back beside it, slower in 6 of 6 cycles; the calls themselves +5 %. The stand-in's -2.1 % over-predicted it.
+1. **E-1, real decode beside the auxiliary: done (0.69.2-0.69.3, `docs/APPLE-FM-E1-RESULTS.md`).** DeepSeek through
+   `serve.sh` at 48 GiB, 12 replies an arm in ABBA order, classification calls back to back in B: +0.57 ms a token under
+   budget 0 (6 of 6 cycles slower), -0.97 ms on the exact path (1 of 6 slower, texts identical): less than about 1 ms
+   either way, sign unresolved; the calls +3 to +5 %. The stand-in's -2.1 % over-predicted it.
 2. **E-2, the same for GLM read-bound** (decode is drive-bound on the X10Pro, 1.5-1.6 s a token): the ANE and the GPU
    should then contend even less; ~30 minutes.
 3. **E-3, power.** The stand-in cells with Hamed's `sudo powermetrics --samplers cpu_power,gpu_power,ane_power`

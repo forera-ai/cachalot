@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.69.3 (2026-10-29)
+
+HANDOFF "Start here (2026-10-29, 0.69.3)" and section 18.231; addendum 1 of `docs/APPLE-FM-E1-RECORD.md` (E1R-1 to E1R-6, committed first in 47d6358); results section 6 of `docs/APPLE-FM-E1-RESULTS.md`. No runtime change.
+
+### Measured
+- **E-1 on the exact path (`CACHALOT_DECODE_MISS_BUDGET=off`): all 26 replies byte-identical, 0 misses a token, arm A 75.95 ms, arm B (system model classifying back to back) 75.33 ms; per-cycle B - A median -0.97 ms, B slower in 1 of 6 cycles.** With 0.69.2's +0.57 ms under budget 0 (6 of 6 slower) the two runs disagree in sign: the effect on DeepSeek's all-resident decode is below about 1 ms (about 1.3 %) of a token and its sign is not resolved. 3 of 6 predictions held, 2 outside, E1R-5 falsified.
+- The exact all-resident server token is 76 ms (18.76 measured 79-80 on 0.60.10); the FP8 GEMV default of 0.66.0 is the likeliest reason (derived, not tested here).
+
+### Changed
+- 0.69.2's "+0.57 ms a token, consistently" is withdrawn as a general statement (README, HANDOFF 18.230, `docs/APPLE-FM-HETEROGENEOUS.md`, the lever registry's text for E).
+
 ## 0.69.2 (2026-10-29)
 
 HANDOFF "Start here (2026-10-29, 0.69.2)" and section 18.230; record `docs/APPLE-FM-E1-RECORD.md` (E1-1 to E1-7, committed first in 0ff4d76; driver bf29cc7); results `docs/APPLE-FM-E1-RESULTS.md`. No runtime change.

@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-29, 0.69.3): on the exact path the system model beside DeepSeek's decode moves a token by -0.97 ms, under budget 0 by +0.57: under ~1 ms, sign unresolved; texts identical under load; DI-1 at 22k is still the Mac's first job
+>
+> Section 18.231. The exact-path replicate of E-1 (E1R-1 to E1R-6 committed first in 47d6358): `CACHALOT_DECODE_MISS_BUDGET=off`, same arm. 26 of 26 replies byte-identical, 0 misses a token; A 75.95 ms, B 75.33; per-cycle B - A median -0.97 ms, B slower in 1 of 6. With 18.230's +0.57 (6 of 6 slower) the sign flips between runs: the effect is under about 1 ms (~1.3 %) and unresolved; 18.230's "+0.57 ms consistently" is withdrawn as general. The exact all-resident server token is now 76 ms (79-80 on 0.60.10; FP8 GEMV likeliest, derived). Auxiliary classification can run during decode either way. **Needs Hamed:** E-2 (GLM read-bound) and E-3 (power) if wanted. The v270 Mac jobs stand.
+
 > ## Start here (2026-10-29, 0.69.2): the system model classifying beside DeepSeek's real decode costs +0.57 ms of a 78 ms token (+0.7 %); auxiliary work can run during decode; DI-1 at 22k is still the Mac's first job
 >
 > Section 18.230. E-1 (record 0ff4d76, driver bf29cc7, one attempt): `./serve.sh` at 48 GiB, 12 replies an arm in A B B A order, the auxiliary classifying back to back in B: arm medians 78.1 / 79.3 ms a token, per-cycle B - A median +0.57 ms (+0.27 to +1.83, 6 of 6 cycles slower), misses 1.43 / 1.24 a token, the calls +5 % (0.82 to 0.86 s). Six of seven held; text identity falsified in both arms alike (miss budget 0 kept dropping 0.5-2.8 experts a token, so every greedy reply differed). The stand-in's -2.1 % over-predicted. Guardian clean (peak wired 73.4 GiB, swap flat). **Needs Hamed:** an exact-path replicate if text identity under load matters; E-2 (GLM read-bound) and E-3 (power) as before. The v270 Mac jobs stand.
@@ -9439,6 +9443,33 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 **Kind.** Engineering (a default on a prior research result).
 
 
+### 18.231 E-1 on the exact path: texts identical under load, B - A -0.97 ms; with 18.230 the effect is under ~1 ms and its sign unresolved (0.69.3)
+
+**Goal.** Hamed: "Go: run the E-1 exact-path replicate with CACHALOT_DECODE_MISS_BUDGET=off (~9 min)."
+
+**Baseline (recorded).** §18.230 (budget 0): A 78.1 ms, B - A +0.57, 24 distinct texts, misses 1.2-1.4 a token; 18.76's exact all-resident server token 79.2-80.3 ms.
+
+**Prediction.** E1R-1 to E1R-6, addendum 1 of `docs/APPLE-FM-E1-RECORD.md`, committed first in 47d6358.
+
+**Method.** `CACHALOT_DECODE_MISS_BUDGET=off benchmarks/apple_fm_e1.sh` (the script now prints the budget), otherwise §18.230's arm unchanged; one attempt; settle ready in 20 s, server healthy in 20 s, guardian 297 s, peak wired 73.5 GiB, pressure 1, swap shrank 4,486 to ~3,260 MB.
+
+**Result (measured).** 26 of 26 replies one hash; misses 0.0 a token in all measured replies (23.0 on the cold first); A 75.95 ms (74.9-77.3), B 75.33 (73.9-77.5); per-cycle B - A +0.98, -1.25, -1.07, -0.87, -0.13, -1.35, median -0.97, B slower in 1 of 6; classification 0.846 s beside against 0.825 alone (+2.6 %); predicted-load read time 0.84 / 0.89 ms (budget-0 run 1.61 / 1.68). Held E1R-1, 2, 6; outside E1R-3 (75.95 under 78, stale constant) and E1R-4 (-0.97); falsified E1R-5.
+
+**Intervention.** None in the runtime. Results section 6 of `docs/APPLE-FM-E1-RESULTS.md`; README, HETEROGENEOUS, CHANGELOG and the lever text corrected.
+
+**Explanation (hypothesis).** Each run's cycles agree with each other and the runs disagree in sign, so the effect is below the method's run-to-run resolution (~1 ms). Candidates for a negative gap: a busy auxiliary client keeping the CPU out of deep idle and shortening the host's wake-ups between the token's 44 syncs; for the positive budget-0 gap, the in-flight predicted loads the token waits on (reads ~4 % slower in B in both runs). Neither tested. The exact floor at 76 ms against 79-80 on 0.60.10: the FP8 GEMV default (0.66.0, ~3.3 ms priced) is the likeliest reason (derived).
+
+**Corrections.** §18.230's "+0.57 ms a token" stands for that run; as a general cost it is withdrawn: under ~1 ms, sign unresolved.
+
+**What did not go well / limits.** Two runs, one prompt, 128 tokens; a sign question needs more runs per configuration than a magnitude bound does.
+
+**Closed.** Text identity under the auxiliary load (exact path: identical). A scheduler around auxiliary classification during DeepSeek's short all-resident decode (no measurable cost either way).
+
+**Open / needs Hamed.** E-2 (GLM read-bound) and E-3 (power) in `docs/APPLE-FM-HETEROGENEOUS.md`; a prefill arm; the idle-state hypothesis would need several alternating runs per budget. The v270 jobs stand.
+
+**Kind.** Research (predicted, measured, explained as hypothesis): 3 held, 2 outside, 1 falsified. No default changed.
+
+
 ### 18.230 E-1: DeepSeek's server decode beside the system model's classification calls costs +0.57 ms a token (0.69.2)
 
 **Goal.** Hamed: "Go: run E-1 (serve.sh DeepSeek 48 GiB, repeated greedy prompt, 12 replies an arm, ABBA, with and without concurrent auxiliary classification calls). Give the estimate first." Estimated 10-12 minutes, confirmed.
@@ -9455,7 +9486,7 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Explanation (derived, hypothesis).** +0.57 ms is ~1.1 % of the token's ~53 ms GPU work, half the stand-in's 2.1 %: part of a real token is host work and sub-ceiling launches, and classification is bursty (prompt, then a few dozen output tokens). E1-1: the repeated prompt was not all-resident (0.5-2.8 misses a token, hit 99-100 %); under budget 0 each miss is a dropped expert, so routing and text drift reply to reply in both arms.
 
-**Corrections.** §18.229's "the ANE costs a GPU stream ~2 %" was the stand-in; on DeepSeek's real decode it is ~0.7 % of a token.
+**Corrections.** §18.229's "the ANE costs a GPU stream ~2 %" was the stand-in; on DeepSeek's real decode it is ~0.7 % of a token. (Superseded by §18.231: the exact-path replicate measured -0.97 ms; the effect is under ~1 ms with its sign unresolved.)
 
 **What did not go well / limits.** The settle gate needed changing at the start; one prompt, 128 tokens, 12 replies an arm; texts differed between replies.
 

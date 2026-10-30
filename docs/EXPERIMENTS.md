@@ -1,8 +1,8 @@
 # Experiment index (charter section 7.2 and section 10)
 
-Written 2026-10-09 against runtime 0.69.2; regenerate with `benchmarks/experiment_index.py`. The charter asks for "a file of experiment records whose predictions were written before the build". The records themselves live in `docs/HANDOFF.md` section 18 (each with Baseline, Prediction, Method, Result, Explanation, Limits, Kind); this file is the index: where each record is, whether it carries a written prediction, and what kind of result it is, as its own **Kind** line says. It does not restate results. Sections before 18.75 predate the record format and are not listed; sections without a **Kind** line are listed as unlabelled and have no claim made for them here.
+Written 2026-10-09 against runtime 0.69.3; regenerate with `benchmarks/experiment_index.py`. The charter asks for "a file of experiment records whose predictions were written before the build". The records themselves live in `docs/HANDOFF.md` section 18 (each with Baseline, Prediction, Method, Result, Explanation, Limits, Kind); this file is the index: where each record is, whether it carries a written prediction, and what kind of result it is, as its own **Kind** line says. It does not restate results. Sections before 18.75 predate the record format and are not listed; sections without a **Kind** line are listed as unlabelled and have no claim made for them here.
 
-Counts of the 156 sections listed (18.75-18.230): 78 research, 22 measurement, 22 unlabelled, 18 planning, 15 engineering, 1 pricing.
+Counts of the 157 sections listed (18.75-18.231): 79 research, 22 measurement, 22 unlabelled, 18 planning, 15 engineering, 1 pricing.
 
 Research means predicted, measured and explained (charter section 8.1 rule 6); a falsified prediction is still research and is marked so in its Kind line. Engineering means it works without a written prediction, or an instrument was built.
 
@@ -10,6 +10,7 @@ Research means predicted, measured and explained (charter section 8.1 rule 6); a
 
 | section | title | prediction written | kind (as recorded) |
 |---|---|:---:|---|
+| §18.231 | E-1 on the exact path: texts identical under load, B - A -0.97 ms; with 18.230 the effect is under ~1 ms and its sign unresolved (0.69.3) | yes | Research (predicted, measured, explained as hypothesis): 3 held, 2 outside, 1 falsified. No default changed. |
 | §18.230 | E-1: DeepSeek's server decode beside the system model's classification calls costs +0.57 ms a token (0.69.2) | yes | Research (predicted, measured, explained as hypothesis): 6 held, 1 falsified. No default changed. |
 | §18.229 | Apple Foundation Models as an auxiliary engine: the provider, three tasks, a lever registry, and what they measure (0.69.0) | yes | Research and a new optional module (predicted, built, measured): 10 held, 1 split, 5 outside, 2 falsified, 1 inconclusive. No default changed. |
 | §18.228 | CUDA follow-up Q on an RTX 5090: a busy host holds the slow state; the clear follows the host's idle fraction; depth and a second thread do not help the staging pipeline (0.68.5) | yes | Research (predicted, measured, explained as hypothesis): 7 held, 2 outside, 1 falsified. No default changed. |
