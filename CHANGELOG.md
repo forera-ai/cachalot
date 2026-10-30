@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.69.7 (2026-10-30)
+
+HANDOFF "Start here (2026-10-30, 0.69.7)" and section 18.235; record `docs/ANE-MATMUL-RECORD.md` (AN-1 to AN-8, committed first in 9dd1e5d; build ee9bdb9); results `docs/ANE-MATMUL-RESULTS.md`. No runtime change.
+
+### Measured
+- **The Neural Engine running our own fp16 Core ML programs with DeepSeek's trunk shapes:** every `linear` placed on the ANE (`MLComputePlan`); prefill GEMMs 3.67 TFLOP/s (shared expert gate+up, 512 x 5120 x 4608), 4.06 (512 x 4096 x 4096), 5.11 (q up-projection, 512 x 1280 x 32768), against the GPU's 16.6-18.2 on the 4096 reference; a decode GEMV 67 GB/s of weights (the CPU alone 64, the GPU ~600); int8 weights 1.15x; an ANE call round trip 0.26 ms. Both engines at once: 20.96 TFLOP/s, +26 % over the GPU alone, the ANE -8.7 % and the GPU +4 % (unexplained). Five held, two outside; the registered go rule (ANE at least ~5 TFLOP/s on the prefill GEMM) was not met, so the ANE-as-second-matmul-engine lever closes: at most a single-digit-to-~15 % prefill gain for a second trunk copy and a numerics change (derived).
+
+### Added
+- `benchmarks/ane_matmul_bench.py` (build, plan, alone, handoff, contention; runs in a scratch venv with `coremltools` 9.0, not the runtime venv).
+
 ## 0.69.6 (2026-10-30)
 
 HANDOFF "Start here (2026-10-30, 0.69.6)" and section 18.234. Documentation only.

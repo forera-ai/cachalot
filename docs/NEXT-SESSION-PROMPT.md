@@ -1,10 +1,11 @@
-# Next-session prompt — **v281**, written 2026-10-30
+# Next-session prompt — **v282**, written 2026-10-30
 
 **This is the file to paste.** `docs/NEXT-SESSION-PROMPT.md` is always current; superseded ones live in
 `docs/next-session-prompts/`.
 
 | version | written | produced by | what changed |
 |---|---|---|---|
+| **v282** | 2026-10-30 | Hamed: "Go: run the ANE matmul microbenchmark (install coremltools in a scratch venv, ~30-45 min). Register predictions first." | **0.69.7, measurement: our own fp16 Core ML programs on the Neural Engine reach 3.7-5.1 TFLOP/s on DeepSeek trunk shapes (a quarter of the GPU), a decode GEMV 67 GB/s (CPU 64, GPU ~600), a call 0.26 ms; both engines together +26 %. The go rule (~5 TFLOP/s) was not met; the ANE-matmul lever closes. 5 held, 2 outside.** §18.235 |
 | **v281** | 2026-10-30 | Hamed: "reassess the possibilities and find if there are other levers from using FM along with cachalot" | **0.69.6, docs: `docs/APPLE-FM-ANE-LEVERS.md` prices nine Neural Engine levers; speculative decoding and ANE expert prediction have no speed ceiling on the shipped paths; left are Hermes side-request offload (titles ~6 min, summaries ~35-40 min a session, derived) and an ANE-matmul microbenchmark.** §18.234 |
 | **v280** | 2026-10-30 | Hamed: "powermetrics is now running (checked with ps). Rerun E-3 for the ANE and GPU watts." | **0.69.5, measurement: the Neural Engine runs the system model at 4.3-4.7 W (IOReport), 0 otherwise; powermetrics' ANE line reads 0 mW throughout on this Mac. +13.8 W over idle = ANE 4.5 + memory system 5.9 + CPU 0.2 + 3.3 unattributed; beside a GPU stream only the ANE and ~2 W CPU are added. GPU W -2.4 % beside it. E3-1, E3-6 held; the scorer's IOReport sum fixed.** §18.233 |
 | **v279** | 2026-10-30 | Hamed: "Go for GLM and power measurement steps. Do the remaining steps.", then "Confirmed: powermetrics is recording ... Run E-3, then E-2." | **0.69.4, measurement: E-2 GLM read-bound beside the system model B/A 0.97, misses and reads equal (6 of 6 held); E-3 by `PSTR` only (no powermetrics process existed): +18.0 W alone (0.34 J a token, 15.1 J a call), +7.8 W beside the GEMV, +15.0 beside the GEMM, sub-additive; lever D priced on the Hermes session: one evicted system block is all a policy could win, 3 GiB recovers it, closed.** §18.232 |
@@ -242,6 +243,10 @@
 | v47 | 2026-09-25 | Hamed asked for the v44-v46 levers planned, built, measured and documented | **0.18.0: GLM prefill 60 to 90 tok/s, bit-identical (a store path that never evicts, plus the next layer read early), GLM's missing MLX buffer-cache cap added, GLM disk snapshots (a restart reuses the system block). DeepSeek: an `iostat` trace shows prefill is not read-bound on either drive; the lookahead A/B drowned in a 124-to-200 s drift across back-to-back prefills.** §17.1, §15.13 |
 | v46 | 2026-09-25 | Hamed asked for GLM-5.3-Flash on Cachalot | 0.17.0: GLM through `serve-glm.sh` / `chat-glm.sh`. §17 |
 | v45 | 2026-09-24 | same as v47, one day earlier | 0.16.0: disk snapshot store by last use; lookahead and local compression closed. §15.12 |
+
+## First jobs (v282): of the Neural Engine levers only side-request offload is left (Hamed's call); otherwise the Mac jobs of v270
+
+Read HANDOFF 18.235 and `docs/ANE-MATMUL-RESULTS.md`. **Needs Hamed:** whether to build Hermes side-request offload (titles first, output-changing); the v270 and v269 Mac jobs. **What is closed:** the ANE as a second matmul engine (0.69.7). The scratch venv for `benchmarks/ane_matmul_bench.py` is not kept; rebuild it with the command in the script's docstring.
 
 ## First jobs (v281): two Neural Engine levers wait for Hamed's choice; otherwise the Mac jobs of v270
 

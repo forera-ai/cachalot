@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-30, 0.69.7): the Neural Engine as a second matmul engine: 3.7-5.1 TFLOP/s, a quarter of the GPU; the go rule is not met; side-request offload is the ANE's only lever left; DI-1 at 22k is still the Mac's first job
+>
+> Section 18.235. AN-1 to AN-8 (9dd1e5d), `benchmarks/ane_matmul_bench.py` (ee9bdb9, scratch venv with coremltools 9.0). Every matmul placed on the ANE; prefill GEMMs 3.67 / 4.06 / 5.11 TFLOP/s on trunk shapes; decode GEMV 67 GB/s (CPU 64, GPU ~600); call 0.26 ms; both engines 20.96 TFLOP/s (+26 % over the GPU, ANE -8.7 %, GPU +4 %). The ANE takes only compiled-in fp16/int8 weights, so only the trunk could move, as a second copy with changed numerics, for at most a single-digit-to-~15 % prefill gain: closed. **Needs Hamed:** side-request offload (titles first) if wanted; the v270 Mac jobs.
+
 > ## Start here (2026-10-30, 0.69.6): the Neural Engine's speed levers reassessed: side-request offload and an ANE-matmul microbenchmark are what is left; DI-1 at 22k is still the Mac's first job
 >
 > Section 18.234, `docs/APPLE-FM-ANE-LEVERS.md`. Nine levers priced from measured constants. No speed ceiling on the shipped paths: speculative decoding (verify through the prefill path, 243 + 27 ms a position), an ANE expert predictor or speculative routing (DeepSeek budget 0 drops misses; GLM's X10Pro reads 770 MiB a token on a ~1 GB/s drive), semantic cache and compression (closed). Left: Hermes side-request offload (32 title/short calls ~6 min a session, 7 summary calls ~35-40 min, derived from the dump; output-changing, Hamed's call) and a Core ML microbenchmark of the ANE as a second matmul engine for the trunk (needs `coremltools` in a scratch venv, ~30-45 min). **Needs Hamed:** which, if either.
@@ -9453,6 +9457,33 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 **Bottleneck after.** Unchanged: expert reads on misses; of the all-resident floor, CPU graph building, GPU idle, and routed-expert launch granularity.
 
 **Kind.** Engineering (a default on a prior research result).
+
+
+### 18.235 The Neural Engine as a second matmul engine: ~4 TFLOP/s, a quarter of the GPU; closed (0.69.7)
+
+**Goal.** Hamed: "Go: run the ANE matmul microbenchmark (install coremltools in a scratch venv, ~30-45 min). Register predictions first."
+
+**Baseline (recorded).** GPU fp16 GEMM 16.5-18.2 TFLOP/s, GEMV 586-659 GB/s (0.69.0-0.69.5); no measurement of the ANE running our own programs.
+
+**Prediction.** AN-1 to AN-8, `docs/ANE-MATMUL-RECORD.md`, committed first in 9dd1e5d, with the go rule of `docs/APPLE-FM-ANE-LEVERS.md` section 4.
+
+**Method.** Scratch venv (Homebrew Python 3.12, `coremltools` 9.0 with its PyPI hash, `mlx` 0.32.4); `benchmarks/ane_matmul_bench.py` (built ee9bdb9): fp16 MIL `linear` programs with constant weights and DeepSeek trunk shapes, CPU_AND_NE, `MLComputePlan` placement, 15 s of back-to-back `predict` each, MLX-NumPy hand-off, and gpu/ane/both/both/ane/gpu 20 s contention cells against the MLX GEMM stand-in. Deviation: the add probe was placed on the CPU, so a small ANE linear (`tiny_ane`) became the dispatch probe.
+
+**Result (measured).** All linears on the ANE; `gemm4096` 4.06, `w13_gemm` 3.67, `qup_gemm` 5.11 TFLOP/s; `w13_gemv` 67.3 GB/s on the ANE, 64.1 on the CPU alone; int8 1.15x; `tiny_ane` 0.258 ms; MLX-to-NumPy 0.0007 ms (1 x 5120), 0.086 ms (512 x 5120); contention GPU 16.63 to 17.30 (+4.0 %), ANE 4.01 to 3.66 (-8.7 %), together 20.96 TFLOP/s. Held AN-1, 2, 3, 4, 6; outside AN-5, AN-7; AN-8 rule not met (throughput under ~5 TFLOP/s on the shared-expert and reference GEMMs).
+
+**Intervention.** None in the runtime.
+
+**Explanation (derived).** Balanced splitting gives the ANE ~19 % of matmul work (4 against 17 TFLOP/s): at most ~1.23x if every prefill matmul could move. The routed experts cannot (streamed 2-bit weights into run-time buffers; ANE weights are compiled in), so only the trunk could, as a second fp16 or int8 copy (memory taken from the expert cache) with changed numerics, for single digits to ~15 %. Decode GEMVs on the ANE are no faster than the CPU and a tenth of the GPU.
+
+**Corrections.** None.
+
+**What did not go well / limits.** Synthetic weights, batch 512 only, `predict` from Python, no power, applications open. The GPU's +4 % beside the ANE is unexplained.
+
+**Closed.** The ANE as a second matmul engine for the trunk (lever 2 of `docs/APPLE-FM-ANE-LEVERS.md`), under the registered rule.
+
+**Open / needs Hamed.** Side-request offload (lever 1); the v270 jobs.
+
+**Kind.** Research (predicted, measured, rule applied). No default changed.
 
 
 ### 18.234 The Neural Engine's possible speed levers, reassessed (0.69.6)
