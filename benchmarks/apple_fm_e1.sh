@@ -4,9 +4,18 @@
 #
 #   cd /Users/hamedprooshani/Projects/deepseek-v41-mac && benchmarks/apple_fm_e1.sh
 #   CACHALOT_DECODE_MISS_BUDGET=off benchmarks/apple_fm_e1.sh     (the exact path; serve.sh passes it through)
+#   E1_SERVE=./serve-glm.sh E1_BUDGET_GIB=46 E1_MODEL_ID=glm-5.3-flash E1_MAX_TOKENS=32 E1_CYCLES=4 \
+#     E1_PROMPTS=benchmarks/apple_fm/e2_prompts.txt benchmarks/apple_fm_e1.sh      (E-2, GLM read-bound)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 VENV_PY=~/venvs/deepseek-v41/bin/python
+SERVE=${E1_SERVE:-./serve.sh}
+BUDGET=${E1_BUDGET_GIB:-48}
+CYCLES=${E1_CYCLES:-6}
+MODEL_ID=${E1_MODEL_ID:-deepseek-v4.1-flash}
+MAX_TOKENS=${E1_MAX_TOKENS:-128}
+PROMPTS_ARG=()
+[ -n "${E1_PROMPTS:-}" ] && PROMPTS_ARG=(--prompts "$E1_PROMPTS")
 OUT=benchmarks/results/apple-fm-e1/$(date -u +%Y%m%dT%H%M%SZ)
 mkdir -p "$OUT"
 echo "out: $OUT"
@@ -20,9 +29,9 @@ PYTHONPATH=src "$VENV_PY" benchmarks/run_manifest.py > "$OUT/manifest-machine.js
 echo "aux-alone baseline (before), 30 s"
 PYTHONPATH=src "$VENV_PY" benchmarks/apple_fm_e1.py load --seconds 30 --log "$OUT/aux-pre.jsonl"
 
-echo "server: guarded ./serve.sh at 48 GiB"
-benchmarks/guarded_run.sh --budget-gib 48 --force --max-seconds 1800 --tag apple-fm-e1 -- \
-    env CACHALOT_SNAPSHOT_DIR= ./serve.sh > "$OUT/guard.txt" 2>&1 &
+echo "server: guarded $SERVE at $BUDGET GiB, model $MODEL_ID, $CYCLES ABBA cycles, $MAX_TOKENS tokens"
+benchmarks/guarded_run.sh --budget-gib "$BUDGET" --force --max-seconds 3600 --tag apple-fm-e1 -- \
+    env CACHALOT_SNAPSHOT_DIR= CACHALOT_GLM_SNAPSHOT_DIR= "$SERVE" --expert-budget-gib "$BUDGET" > "$OUT/guard.txt" 2>&1 &
 GPID=$!
 # the driver and the load are Python processes the runtime guards would count: start them only after
 # serve.sh's own one-runtime check has passed and the server process exists
@@ -34,7 +43,8 @@ done
 pgrep -f 'cachalot\.cli serve' >/dev/null || { echo "server did not start"; cat "$OUT/guard.txt"; exit 1; }
 
 set +e
-/usr/bin/python3 benchmarks/apple_fm_e1.py drive --out "$OUT" --python "$VENV_PY" --cycles 6
+/usr/bin/python3 benchmarks/apple_fm_e1.py drive --out "$OUT" --python "$VENV_PY" --cycles "$CYCLES" \
+    --model-id "$MODEL_ID" --max-tokens "$MAX_TOKENS" "${PROMPTS_ARG[@]+"${PROMPTS_ARG[@]}"}"
 DRIVE=$?
 set -e
 pkill -INT -f 'cachalot\.cli serve' || true

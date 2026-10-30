@@ -447,6 +447,33 @@ print(json.dumps({"kind": "fm", "n": len(rates), "rates": rates}))
 """
 
 
+CLASSIFY_LOOP = r"""
+import json, sys, time
+sys.path.insert(0, sys.argv[3])
+from cachalot.auxiliary.apple_fm import AppleFoundationModelsProvider
+from cachalot.auxiliary.provider import GenerationParams
+from cachalot.auxiliary.tasks import CLASSIFY_INSTRUCTIONS, CLASSIFY_SCHEMA
+start, dur = float(sys.argv[1]), float(sys.argv[2])
+texts = [json.loads(l)["text"] for l in open(sys.argv[4])]
+p = AppleFoundationModelsProvider(timeout_s=60)
+params = GenerationParams(max_tokens=64)
+p.generate_structured("Request:\nhi\n", CLASSIFY_SCHEMA, instructions=CLASSIFY_INSTRUCTIONS, params=params)
+while time.time() < start:
+    time.sleep(0.01)
+rates, i = [], 0
+while time.time() < start + dur:
+    t = time.perf_counter()
+    try:
+        p.generate_structured("Request:\n" + texts[i % len(texts)] + "\n", CLASSIFY_SCHEMA, instructions=CLASSIFY_INSTRUCTIONS, params=params)
+        rates.append(time.perf_counter() - t)
+    except Exception:
+        pass
+    i += 1
+p.close()
+print(json.dumps({"kind": "classify", "n": len(rates), "rates": rates}))
+"""
+
+
 def _launch(code: str, argv: list[str]) -> subprocess.Popen:
     return subprocess.Popen([sys.executable, "-c", code, *argv], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
@@ -490,6 +517,116 @@ def arm_contention(args) -> None:
     print(json.dumps(summary, indent=1))
 
 
+
+# ============================================================================== power (E3-1..E3-7)
+POWER_CELLS = ["idle", "fm", "gemv", "gemv+fm", "gemv+fm", "gemv", "fm", "idle",
+               "gemm", "gemm+fm", "gemm+fm", "gemm", "classify", "classify"]
+
+
+def _local_clock(epoch: float) -> str:
+    return time.strftime("%H:%M:%S", time.localtime(epoch))
+
+
+def arm_power(args) -> None:
+    rec = Recorder("power", "W7:apple-fm-power", [FIX / "classify.jsonl"])
+    log_path = OUT / f"power-logger-{utc()}.jsonl"
+    logger = subprocess.Popen([sys.executable, str(HERE / "energy_logger.py"), "--out", str(log_path),
+                               "--stats-url", "http://127.0.0.1:9/none"], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+    time.sleep(3)
+    cells = []
+    try:
+        for idx, cell in enumerate(args.cells or POWER_CELLS):
+            start = time.time() + args.warmup_s
+            procs = {}
+            kind = cell.split("+")[0] if cell.split("+")[0] in ("gemv", "gemm") else None
+            if kind:
+                procs["gpu"] = _launch(GPU_LOOP, [kind, str(start), str(args.seconds)])
+            if cell.endswith("fm") or cell == "fm":
+                procs["fm"] = _launch(FM_LOOP, [str(start), str(args.seconds), "", str(REPO / "src")])
+            if cell == "classify":
+                procs["classify"] = _launch(CLASSIFY_LOOP, [str(start), str(args.seconds), str(REPO / "src"),
+                                                            str(FIX / "classify.jsonl")])
+            if not procs:
+                time.sleep(max(0.0, start + args.seconds - time.time()))
+            rates = {}
+            for who, proc in procs.items():
+                out, err = proc.communicate(timeout=args.seconds + args.warmup_s + 120)
+                if proc.returncode != 0:
+                    sys.exit(f"{who} loop failed in cell {cell}: {err[-400:]}")
+                data = json.loads(out.strip().splitlines()[-1])
+                rates[who] = {"median": statistics.median(data["rates"]) if data["rates"] else None, "n": data["n"]}
+            w0, w1 = start + args.trim_s, start + args.seconds
+            cells.append({"idx": idx, "cell": cell, "t0": w0, "t1": w1, "rates": rates})
+            print(f"{idx:2d} {cell:9s} " + " ".join(f"{k}={v['median']:.4g}" for k, v in rates.items() if v["median"]), flush=True)
+            time.sleep(args.gap_s)
+    finally:
+        logger.send_signal(2)
+        try:
+            logger.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            logger.kill()
+    rows = [json.loads(line) for line in log_path.read_text().splitlines() if line.strip()]
+    pm = None
+    if args.powermetrics and Path(args.powermetrics).exists():
+        import powermetrics_parse as pp
+
+        pm = pp.parse(Path(args.powermetrics).read_text())
+    out_cells = []
+    for c in cells:
+        pstr = [r["pstr"] for r in rows if c["t0"] <= r["t"] <= c["t1"] and r.get("pstr") is not None]
+        comp: dict[str, float] = {}
+        inwin = [r for r in rows if c["t0"] <= r["t"] <= c["t1"]]
+        for r in inwin:
+            for k, v in (r.get("joules") or {}).items():
+                comp[k] = comp.get(k, 0.0) + v
+        secs = (inwin[-1]["t"] - inwin[0]["t"]) if len(inwin) > 1 else None
+        res = {**c, "pstr_w_median": statistics.median(pstr) if pstr else None, "pstr_n": len(pstr),
+               "ioreport_w": {k: v / secs for k, v in comp.items()} if secs and comp else None}
+        if pm:
+            a, b = _local_clock(c["t0"]), _local_clock(c["t1"])
+            win = [s for s in pm if a <= s.clock <= b]
+            if win:
+                res["pm_w_median"] = {n: statistics.median(getattr(s, f"{n}_mw") for s in win) / 1000
+                                      for n in ("cpu", "gpu", "ane", "combined")}
+                res["pm_n"] = len(win)
+        out_cells.append(res)
+        rec.row(measure="cell", **res)
+    by: dict[str, list[dict]] = {}
+    for c in out_cells:
+        by.setdefault(c["cell"], []).append(c)
+
+    def med(cell, key):
+        vals = [c[key] for c in by.get(cell, []) if c.get(key) is not None]
+        return statistics.mean(vals) if vals else None
+
+    def pmmed(cell, comp):
+        vals = [c["pm_w_median"][comp] for c in by.get(cell, []) if c.get("pm_w_median")]
+        return statistics.mean(vals) if vals else None
+
+    def rate(cell, who):
+        vals = [c["rates"][who]["median"] for c in by.get(cell, []) if who in c["rates"] and c["rates"][who]["median"]]
+        return statistics.mean(vals) if vals else None
+
+    summary = {"pstr_w": {k: med(k, "pstr_w_median") for k in by},
+               "pm_w": {k: {comp: pmmed(k, comp) for comp in ("cpu", "gpu", "ane", "combined")} for k in by} if pm else None,
+               "rates": {"fm_tok_s": rate("fm", "fm"), "fm_beside_gemv": rate("gemv+fm", "fm"),
+                         "gemv_Bps": rate("gemv", "gpu"), "gemv_beside_fm": rate("gemv+fm", "gpu"),
+                         "gemm_flops": rate("gemm", "gpu"), "gemm_beside_fm": rate("gemm+fm", "gpu"),
+                         "classify_s": rate("classify", "classify")},
+               "logger": str(log_path.relative_to(REPO)), "powermetrics": args.powermetrics}
+    P = summary["pstr_w"]
+    R = summary["rates"]
+    if P.get("idle") and P.get("fm") and R["fm_tok_s"]:
+        summary["fm_minus_idle_w"] = P["fm"] - P["idle"]
+        summary["j_per_fm_token"] = (P["fm"] - P["idle"]) / R["fm_tok_s"]
+    if P.get("idle") and P.get("classify") and R["classify_s"]:
+        summary["j_per_classify_call"] = (P["classify"] - P["idle"]) * R["classify_s"]
+    for k in ("gemv", "gemm"):
+        if all(P.get(x) for x in ("idle", "fm", k, f"{k}+fm")):
+            summary[f"{k}_additivity_w"] = P[f"{k}+fm"] - (P[k] + P["fm"] - P["idle"])
+    rec.row(measure="summary", summary=summary)
+    print(json.dumps(summary, indent=1))
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="arm", required=True)
@@ -503,6 +640,13 @@ def main() -> None:
     s = sub.add_parser("memory")
     s.add_argument("--trials", type=int, default=3)
     s.add_argument("--after-s", type=float, default=10.0)
+    s = sub.add_parser("power")
+    s.add_argument("--seconds", type=float, default=30.0)
+    s.add_argument("--warmup-s", type=float, default=8.0)
+    s.add_argument("--trim-s", type=float, default=3.0)
+    s.add_argument("--gap-s", type=float, default=3.0)
+    s.add_argument("--powermetrics", default=None, help="Hamed's sudo powermetrics output file, read after the cells")
+    s.add_argument("--cells", nargs="+", default=None, help="a subset of the cells, for a smoke run")
     s = sub.add_parser("contention")
     s.add_argument("--kinds", nargs="+", default=["gemv", "gemm"])
     s.add_argument("--seconds", type=float, default=20.0)
@@ -514,7 +658,7 @@ def main() -> None:
     if out:
         sys.exit(f"a Cachalot runtime is running; benchmarks need a quiet machine:\n{out}")
     {"overhead": arm_overhead, "classify": arm_classify, "extract": arm_extract, "compress": arm_compress,
-     "memory": arm_memory, "contention": arm_contention}[args.arm](args)
+     "memory": arm_memory, "contention": arm_contention, "power": arm_power}[args.arm](args)
 
 
 if __name__ == "__main__":

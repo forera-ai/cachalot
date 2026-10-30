@@ -127,9 +127,10 @@ def cmd_drive(args) -> None:
     if not _wait_status(status, "idle", 120):
         load.kill()
         raise SystemExit("auxiliary load did not start")
-    body = {"model": "deepseek-v4.1-flash", "messages": [{"role": "user", "content": PROMPT}],
-            "temperature": 0, "max_tokens": MAX_TOKENS, "thinking": False, "stream": False}
     order = ["warm", "warm"] + ["A", "B", "B", "A"] * args.cycles
+    prompts = [line.strip() for line in Path(args.prompts).read_text().splitlines() if line.strip()] if args.prompts else None
+    if prompts is not None and len(prompts) < len(order):
+        raise SystemExit(f"{args.prompts}: {len(prompts)} prompts for {len(order)} replies")
     rows = open(out / "replies.jsonl", "a")
     try:
         for n, arm in enumerate(order):
@@ -142,6 +143,9 @@ def cmd_drive(args) -> None:
                 control.write_text("off")
                 if not _wait_status(status, "idle", 30):
                     raise SystemExit("auxiliary load did not go idle")
+            prompt = prompts[n] if prompts is not None else PROMPT
+            body = {"model": args.model_id, "messages": [{"role": "user", "content": prompt}],
+                    "temperature": 0, "max_tokens": args.max_tokens, "thinking": False, "stream": False}
             t0 = time.time()
             r = _post("/v1/chat/completions", body)
             t1 = time.time()
@@ -175,22 +179,26 @@ def cmd_score(args) -> None:
     out = Path(args.out)
     replies = [r for r in _jsonl(out / "replies.jsonl") if r["arm"] != "warm"]
     lines = [ln for ln in Path(args.server_log).read_text().splitlines() if ln.startswith("[request] prompt=")]
-    misses = []
+    misses, reads = [], []
     for ln in lines:
         m = [tok for tok in ln.split() if tok.startswith("miss/tok=")]
         misses.append(float(m[0].split("=")[1]) if m else None)
+        rd = [tok for tok in ln.split() if tok.startswith("read=")]
+        reads.append(float(rd[0].split("=")[1].rstrip("ms")) if rd else None)
     all_rows = _jsonl(out / "replies.jsonl")
     if len(misses) == len(all_rows):
-        for r, m in zip(all_rows, misses):  # noqa: B905 - runs under the system python3 (3.9)
+        for r, m, rd in zip(all_rows, misses, reads):  # noqa: B905 - runs under the system python3 (3.9)
             r["miss_tok"] = m
+            r["read_ms"] = rd
     by = {a: [r for r in replies if r["arm"] == a] for a in ("A", "B")}
     med = {a: statistics.median(r["ms_token"] for r in rs) for a, rs in by.items()}
     cycles = sorted({r["cycle"] for r in replies})
-    diffs = []
+    diffs, ratios = [], []
     for c in cycles:
         a = [r["ms_token"] for r in by["A"] if r["cycle"] == c]
         b = [r["ms_token"] for r in by["B"] if r["cycle"] == c]
         diffs.append(statistics.mean(b) - statistics.mean(a))
+        ratios.append(statistics.mean(b) / statistics.mean(a))
     shas = {r["sha"] for r in replies}
     pre = [x["latency_s"] for x in _jsonl(out / "aux-pre.jsonl") if not x["error"]]
     post = [x["latency_s"] for x in _jsonl(out / "aux-post.jsonl") if not x["error"]]
@@ -206,6 +214,10 @@ def cmd_score(args) -> None:
         "ms_token": {a: sorted(round(r["ms_token"], 2) for r in rs) for a, rs in by.items()},
         "b_minus_a_by_cycle": [round(d, 2) for d in diffs],
         "b_minus_a_median": statistics.median(diffs), "b_slower_cycles": sum(d > 0 for d in diffs),
+        "b_over_a_by_cycle": [round(x, 4) for x in ratios], "b_over_a_median": statistics.median(ratios),
+        "read_ms_mean": {a: (statistics.mean(v) if v else None) for a, v in
+                         {a: [r.get("read_ms") for r in all_rows if r["arm"] == a and r.get("read_ms") is not None]
+                          for a in ("A", "B")}.items()},
         "distinct_texts": len(shas), "completion_tokens": sorted({r["completion_tokens"] for r in replies}),
         "miss_tok_mean": {a: (statistics.mean(v) if v else None) for a, v in miss.items()},
         "aux_alone_median_s": statistics.median(alone) if alone else None, "aux_alone_n": len(alone),
@@ -230,7 +242,10 @@ def main() -> None:
     s.add_argument("--out", required=True)
     s.add_argument("--python", required=True)
     s.add_argument("--cycles", type=int, default=6)
-    s.add_argument("--health-timeout", type=float, default=600)
+    s.add_argument("--health-timeout", type=float, default=900)
+    s.add_argument("--model-id", default="deepseek-v4.1-flash")
+    s.add_argument("--max-tokens", type=int, default=MAX_TOKENS)
+    s.add_argument("--prompts", default=None, help="one prompt a line, reply n uses line n (keeps a read-bound model cold)")
     s = sub.add_parser("score")
     s.add_argument("--out", required=True)
     s.add_argument("--server-log", required=True)

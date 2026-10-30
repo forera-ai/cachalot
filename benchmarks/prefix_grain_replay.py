@@ -58,6 +58,7 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("dump")
     ap.add_argument("--gib", type=float, default=1.5)
+    ap.add_argument("--entries", type=int, default=64, help="PrefixCache max_entries (the server's prefix_cache_entries)")
     ap.add_argument("--json")
     args = ap.parse_args(argv)
     from transformers import AutoTokenizer
@@ -78,7 +79,7 @@ def main(argv=None) -> int:
     rows_in = [json.loads(line) for line in open(args.dump)]
     replies = [r["reply"] for r in rows_in if "reply" in r]
     bodies = [r for r in rows_in if "body" in r]
-    cache = PrefixCache(max_entries=64, max_pinned=64, max_bytes=int(args.gib * 1024**3))
+    cache = PrefixCache(max_entries=args.entries, max_pinned=64, max_bytes=int(args.gib * 1024**3))
     rt = P.TokenRuntime(cache)
     unused, seen, rows = list(replies), [], []
     for row in bodies:
