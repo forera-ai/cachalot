@@ -5,6 +5,7 @@ replay of a dump's real reviews through the same decision function (AP-3, AP-4).
     cd /Users/hamedprooshani/Projects/deepseek-v41-mac && PYTHONPATH=src ~/venvs/deepseek-v41/bin/python \
       benchmarks/apple_fm_approval_gate.py gate
     ... replay benchmarks/results/hermes-live-di4/requests.jsonl
+    ... target --passes 3        (a running Cachalot server on :8011; see benchmarks/apple_fm_approval_target.sh)
 
 `gate` exits 1 when the auxiliary model approves any gate command: the offload must then stay off.
 The provider is the one the server would use (a worker child, greedy, the offload's token cap and timeout).
@@ -16,6 +17,7 @@ import argparse
 import json
 import statistics
 import sys
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -87,14 +89,64 @@ def cmd_replay(args) -> int:
     return 0
 
 
+def _post(url: str, body: dict, timeout: float = 300) -> dict:
+    import urllib.request
+
+    req = urllib.request.Request(url, data=json.dumps(body).encode(), headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return json.loads(r.read())
+
+
+def _verdict(text: str) -> str:
+    words = text.strip().split()
+    first = words[0].strip(".!,:;*`'\"").upper() if words else ""
+    return first if first in ("APPROVE", "DENY", "ESCALATE") else "OTHER"
+
+
+def cmd_target(args) -> int:
+    """The gate through the target model's server, each request exactly as Hermes sends a review."""
+    items = [json.loads(line) for line in (FIX / "approval_gate.jsonl").read_text().splitlines() if line.strip()]
+    url = args.base.rstrip("/") + "/v1/chat/completions"
+    rows = []
+    for rep in range(args.passes):
+        for it in items:
+            body = {"model": args.model, "messages": reviewer_messages(it["category"], it["command"]), "n": 1,
+                    "reasoning_effort": "none", "stream": False, "temperature": 0.7}
+            t0 = time.perf_counter()
+            r = _post(url, body)
+            text = r["choices"][0]["message"].get("content") or ""
+            v = _verdict(text)
+            u = r.get("usage", {})
+            rows.append({"pass": rep, "id": it["id"], "verdict": v, "raw": text[:200], "wall_s": time.perf_counter() - t0,
+                         "prompt_tokens": u.get("prompt_tokens"), "completion_tokens": u.get("completion_tokens")})
+            print(f"pass {rep} {it['id']} {v:9s} {rows[-1]['wall_s']:5.1f}s {text.strip()[:40]!r}", flush=True)
+    by: dict[str, list[str]] = {}
+    for r in rows:
+        by.setdefault(r["id"], []).append(r["verdict"])
+    approved_any = sorted(i for i, vs in by.items() if "APPROVE" in vs)
+    agree = sum(len(set(vs)) == 1 for vs in by.values())
+    path = write(rows, "target")
+    summary = {"items": len(by), "passes": args.passes, "approved_in_any_pass": approved_any,
+               "approvals_by_item": {i: by[i].count("APPROVE") for i in approved_any},
+               "items_all_passes_agree": agree,
+               "verdicts": {v: sum(r["verdict"] == v for r in rows) for v in sorted({r["verdict"] for r in rows})},
+               "wall_median_s": statistics.median(r["wall_s"] for r in rows), "rows": str(path)}
+    print(json.dumps(summary, indent=1))
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("gate")
     s = sub.add_parser("replay")
     s.add_argument("dump")
+    s = sub.add_parser("target")
+    s.add_argument("--passes", type=int, default=3)
+    s.add_argument("--base", default="http://127.0.0.1:8011")
+    s.add_argument("--model", default="deepseek-v4.1-flash")
     args = ap.parse_args()
-    return {"gate": cmd_gate, "replay": cmd_replay}[args.cmd](args)
+    return {"gate": cmd_gate, "replay": cmd_replay, "target": cmd_target}[args.cmd](args)
 
 
 if __name__ == "__main__":
