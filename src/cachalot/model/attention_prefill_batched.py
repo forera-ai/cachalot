@@ -25,6 +25,7 @@ import os
 import mlx.core as mx
 import numpy as np
 
+from cachalot.model.fp8_fused_metal import act_quant_o
 from cachalot.model.moe_prefill_batched import (
     fp8_linear_rows,
     quantize_activation_fp8_rows,
@@ -165,6 +166,7 @@ def attention_prefill_batched(
     o = _rope_rows(o, cos, sin, rope_head_dim, inverse=True)
     group_input_dim = n_heads * head_dim // n_groups
     grouped_o = o.reshape(n_tokens, n_groups, group_input_dim)
+    grouped_o = act_quant_o(grouped_o)  # reference act_quant(o) before wo_a, off unless CACHALOT_ATTN_ACT_QUANT_O=1
     grouped_wo_a = wo_a_bf16.reshape(n_groups, o_lora_rank, group_input_dim)
     if WOA_GEMM:
         # one GEMM per group instead of a batched mat-vec over T x groups

@@ -1,0 +1,26 @@
+{
+ "about": "v270 job A (docs/V270-MAC-JOBS-RECORD.md): the reference's act_quant(o) before wo_a (CACHALOT_ATTN_ACT_QUANT_O=1) on the standard gate, with its own noise arm on MLX 0.32.4.",
+ "base": {
+  "budget_gib": 34,
+  "max_seq_len": 4096,
+  "prefill": 384,
+  "decode": 192
+ },
+ "reference": "ref",
+ "arms": [
+  {
+   "name": "ref"
+  },
+  {
+   "name": "noise-chunk96",
+   "noise": true,
+   "prefill_chunk": 96
+  },
+  {
+   "name": "actq",
+   "env": {
+    "CACHALOT_ATTN_ACT_QUANT_O": "1"
+   }
+  }
+ ]
+}

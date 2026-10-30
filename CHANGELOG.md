@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.71.0 (2026-10-31)
+
+HANDOFF "Start here (2026-10-31, 0.71.0)" and section 18.238; record `docs/V270-MAC-JOBS-RECORD.md` (nine predictions, committed first in c2f2e70); results `docs/V270-MAC-JOBS-RESULTS.md`. A minor release for one new knob, off by default; no default changed.
+
+### Added
+- **`CACHALOT_ATTN_ACT_QUANT_O=1` (default off).** The DeepSeek reference's 2026-10-12 change: the attention output is round-tripped through FP8 (`act_quant`, 32-value blocks, power-of-two scales) before the grouped `wo_a` einsum, at all seven call sites (main attention, sliding window, layer 0, the three compressed decode paths, batched prefill, DSpark). Off returns the same array (tested); on is the repo's own exact round trip (tested on model shapes and inside `mx.compile`). Output-changing when on; snapshots made with it on are not marked.
+- `benchmarks/pareto.py` long-context mode: an arm option `encoder_only` (every prefill call encoder-only, then `finish_decoder`), a base `prefill_chunk` and `battery: false`; `benchmarks/pareto_arms.long.json` and `pareto_arms.actq.json`.
+- `benchmarks/di1_tail_equality.py --text-file/--text-start` (the default source tops out at 14,796 tokens).
+
+### Measured
+- **DI-1 (`CACHALOT_PREFILL_ENCODER_ONLY=1`) at 22,000 tokens:** cold prefill 136.5 s against 224.6 s (-39.2 %); same top-1 and 16 greedy tokens, logits KL 0.013; layers 0 to 20 and layer 20's caches bit-identical. At 14,796 tokens -37.8 %.
+- **DI-1 on a long-context quality gate** (8,192-token prefills in 4,096-token calls, 576 positions): dNLL +0.0003 [-0.0036, +0.0043], KL mean 0.0014; a plain re-chunking (3,000-token calls) is +0.0049 [-0.0114, +0.0237], KL 0.0101. Inside noise, and seven times closer to the full prefill than the re-chunking.
+- **`act_quant(o)` on the standard gate:** dNLL +0.0047 [-0.0156, +0.0261], KL mean 0.0171 against the noise arm's 0.0140, 20 of 21 tasks like the reference, 142 against 140 ms a step. Quality-neutral; not turned on.
+- **`encoding.py` revision of 2026-10-16:** all 142 requests of the recorded Hermes session render identically (prompt text and image lists, chat and thinking modes), including 37 with tool-result images. The checkpoint's file is unchanged.
+
 ## 0.70.1 (2026-10-30)
 
 HANDOFF "Start here (2026-10-30, 0.70.1)" and section 18.237; addendum 1 of `docs/APPLE-FM-APPROVAL-RECORD.md` (DG-1 to DG-5, committed first in 86f2d1c); results section 5 of `docs/APPLE-FM-APPROVAL-RESULTS.md`. No runtime change.

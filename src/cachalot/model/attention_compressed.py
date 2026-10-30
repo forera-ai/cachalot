@@ -18,6 +18,9 @@ from cachalot.model.fp4_act_mlx import (
     fp4_act_roundtrip_mlx,
 )
 from cachalot.model.fp8_fused_metal import (
+    act_quant_o,
+)
+from cachalot.model.fp8_fused_metal import (
     fp8_roundtrip_fused as fp8_roundtrip_activation_mlx,
 )
 from cachalot.model.fp8_linear_metal import (
@@ -658,6 +661,7 @@ def compressed_attention_decode_source(
         n_groups,
         group_input_dim,
     )
+    grouped_o = act_quant_o(grouped_o)  # reference act_quant(o) before wo_a, off unless CACHALOT_ATTN_ACT_QUANT_O=1
 
     grouped_wo_a = (
         wo_a_bf16.reshape(
@@ -1038,6 +1042,7 @@ def compressed_attention_decode_reuse(
         n_groups,
         group_input_dim,
     )
+    grouped_o = act_quant_o(grouped_o)  # reference act_quant(o) before wo_a, off unless CACHALOT_ATTN_ACT_QUANT_O=1
 
     grouped_wo_a = (
         wo_a_bf16.reshape(
@@ -1484,6 +1489,7 @@ def compressed_attention_decode_index_source(
         n_groups,
         group_input_dim,
     )
+    grouped_o = act_quant_o(grouped_o)  # reference act_quant(o) before wo_a, off unless CACHALOT_ATTN_ACT_QUANT_O=1
 
     grouped_wo_a = (
         wo_a_bf16.reshape(

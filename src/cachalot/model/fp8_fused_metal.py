@@ -392,3 +392,16 @@ def fp8_roundtrip_fused(x: mx.array) -> mx.array:
         output_dtypes=[x.dtype],
     )[0]
     return out.reshape(x.shape)
+
+
+# CACHALOT_ATTN_ACT_QUANT_O=1 (default off): the DeepSeek reference's 2026-10-12 change (inference/model.py, revision 314113f) quantizes the
+# attention output `o` to FP8 and back (act_quant with the 32-value blocks and power-of-two scales of the FP8 linears) before the grouped wo_a
+# einsum, in the main and the DSpark attention. This runtime ran that einsum on bf16 `o`; the knob applies the same round trip with this module's
+# kernel. Output-changing: off is the old path (docs/V270-MAC-JOBS-RECORD.md, job A).
+ATTN_ACT_QUANT_O = os.environ.get("CACHALOT_ATTN_ACT_QUANT_O", "0") == "1"
+
+
+def act_quant_o(o: mx.array) -> mx.array:
+    """The attention output before the grouped wo_a: unchanged by default, FP8-round-tripped under CACHALOT_ATTN_ACT_QUANT_O=1. The 32-value
+    blocks run along the last axis, which every caller's last axis (a group's input, a multiple of 32) keeps whole."""
+    return fp8_roundtrip_fused(o) if ATTN_ACT_QUANT_O else o

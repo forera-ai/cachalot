@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import mlx.core as mx
 
+from cachalot.model.attention_qkv_fusion import fused_qr_kv_linear
 from cachalot.model.decode_fused_metal import (
     rms_norm_decode,
     rope_decode,
     sparse_attention_decode,
 )
-from cachalot.model.attention_qkv_fusion import fused_qr_kv_linear
+from cachalot.model.fp8_fused_metal import act_quant_o
 from cachalot.model.fp8_fused_metal import fp8_roundtrip_fused as fp8_roundtrip_activation_mlx
 from cachalot.model.fp8_linear_metal import fp8_linear
 from cachalot.model.sparse_attn_mlx import (
@@ -243,6 +244,7 @@ def layer0_attention_decode(
             group_input_dim,
         )
     )
+    grouped_o = act_quant_o(grouped_o)  # reference act_quant(o) before wo_a, off unless CACHALOT_ATTN_ACT_QUANT_O=1
 
     grouped_wo_a = wo_a_bf16.reshape(
         (

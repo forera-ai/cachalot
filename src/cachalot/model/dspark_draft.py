@@ -50,6 +50,7 @@ import mlx.core as mx
 import mlx.nn as nn
 
 from cachalot.model.fp4_mlx import dequantize_fp4_weight
+from cachalot.model.fp8_fused_metal import act_quant_o
 from cachalot.model.hc_prefill_exact import hc_mixes_prefill_exact
 from cachalot.model.hyper_connection_mlx import hc_post, hc_pre
 from cachalot.model.moe_prefill_batched import (
@@ -437,6 +438,7 @@ class DSparkDraft:
 
         group_input_dim = (N_HEADS * HEAD_DIM) // N_GROUPS
         grouped_o = o.reshape(BLOCK_SIZE, N_GROUPS, group_input_dim)
+        grouped_o = act_quant_o(grouped_o)  # reference act_quant(o) before wo_a, off unless CACHALOT_ATTN_ACT_QUANT_O=1
         grouped_wo_a = self._wo_a_bf16(stage).reshape(
             N_GROUPS, O_LORA_RANK, group_input_dim
         )

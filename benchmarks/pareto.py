@@ -19,6 +19,11 @@ token, and which arms sit on the Pareto frontier. An arm marked `"noise": true` 
 the reference (a different prefill chunk size): its differences define the rounding band, and an arm inside the band
 on NLL and KL is "inside noise". An arm whose log-probabilities equal the reference's bit for bit is "identical".
 
+Long-context mode (v270 job L, docs/V270-MAC-JOBS-RECORD.md): a base `"prefill"` of thousands of tokens is made in calls of
+`"prefill_chunk"` (default the whole prefill), an arm with `"encoder_only": true` makes every call encoder-only and then runs
+`finish_decoder()` (the `CACHALOT_PREFILL_ENCODER_ONLY` path, which a single 384-token call never reaches), and a base `"battery": false`
+skips the task battery (its single-call prompts do not exercise a multi-call knob). `pareto_arms.long.json` is that configuration.
+
 What it does not do: speed here is the teacher-forced decode step (indicative; alternate arms and confirm any win
 through the server path, MEASUREMENT.md), the tasks do not include Hermes's real tool-call prompt (extend
 `pareto_tasks.json` with a dump-based task for that), and default-on stays Hamed's call. HANDOFF section 18.57.
@@ -284,10 +289,10 @@ def _load_texts(specs: list[dict]) -> list[tuple[str, str]]:
 
 
 def teacher_forced(model, texts: list[tuple[str, str]], *, prefill: int, decode: int, prefill_chunk: int | None,
-                   ref_ids: np.ndarray | None) -> dict:
+                   ref_ids: np.ndarray | None, encoder_only: bool = False) -> dict:
     """Prefill each text's first `prefill` tokens, then teacher-force the next `decode` tokens one decode step at a
     time. With `ref_ids` ([positions, TOP_K]) the arm's log-probabilities are read at those ids, else at its own
-    top-K."""
+    top-K. With `encoder_only` every prefill call is encoder-only and the decoder half runs once at the end (DI-1)."""
     import mlx.core as mx
 
     rt = model.runtime
@@ -301,7 +306,12 @@ def teacher_forced(model, texts: list[tuple[str, str]], *, prefill: int, decode:
         chunk = prefill_chunk or prefill
         res = None
         for a in range(0, prefill, chunk):
-            res = rt.prefill_tokens(ids[a:min(a + chunk, prefill)])
+            if encoder_only:
+                res = rt.prefill_tokens(ids[a:min(a + chunk, prefill)], encoder_only=True)
+            else:
+                res = rt.prefill_tokens(ids[a:min(a + chunk, prefill)])
+        if encoder_only:
+            res = rt.finish_decoder()
         logits = res.logits
         for i in range(prefill, prefill + decode):
             lp = logits.astype(mx.float32)
@@ -370,9 +380,10 @@ def cmd_run(args) -> None:
                                   expert_cache_budget_bytes=int(budget * 2**30)) as model:
         apply_decode_arm(model, arm)
         tf = teacher_forced(model, texts, prefill=prefill, decode=decode,
-                            prefill_chunk=arm.get("prefill_chunk"), ref_ids=ref_ids)
+                            prefill_chunk=arm.get("prefill_chunk", base.get("prefill_chunk")), ref_ids=ref_ids,
+                            encoder_only=bool(arm.get("encoder_only", False)))
         tasks = json.loads(TASKS_FILE.read_text())["tasks"]
-        battery = run_battery(model, tasks, args.quick)
+        battery = run_battery(model, tasks, args.quick) if base.get("battery", True) else []
     np.savez_compressed(out / f"{args.name}.npz", **tf)
     manifest.update({"tasks": battery, "complete": True, "positions": int(len(tf["ms"]))})
     (out / f"{args.name}.json").write_text(json.dumps(manifest, indent=1))  # written last: a killed run has none

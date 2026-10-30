@@ -1,0 +1,193 @@
+{
+ "arm": "noise-chunk96",
+ "config": {
+  "name": "noise-chunk96",
+  "noise": true,
+  "prefill_chunk": 96
+ },
+ "base": {
+  "budget_gib": 34,
+  "max_seq_len": 4096,
+  "prefill": 384,
+  "decode": 192
+ },
+ "git": {
+  "sha": "c1831dd",
+  "dirty": true
+ },
+ "budget_gib": 34.0,
+ "texts_hash": "1b5b1ac1d33760e4",
+ "started": "2026-10-31T00:16:28",
+ "complete": true,
+ "tasks": [
+  {
+   "id": "mul-17-23",
+   "kind": "exact",
+   "passed": true,
+   "seconds": 2.5,
+   "chars": 3,
+   "text": "391"
+  },
+  {
+   "id": "capital-aus",
+   "kind": "exact",
+   "passed": true,
+   "seconds": 1.6,
+   "chars": 8,
+   "text": "Canberra"
+  },
+  {
+   "id": "reverse-word",
+   "kind": "exact",
+   "passed": false,
+   "seconds": 2.3,
+   "chars": 9,
+   "text": "kmarhcneb"
+  },
+  {
+   "id": "compare-decimals",
+   "kind": "exact",
+   "passed": true,
+   "seconds": 2.0,
+   "chars": 3,
+   "text": "9.9"
+  },
+  {
+   "id": "extract-year",
+   "kind": "exact",
+   "passed": true,
+   "seconds": 2.7,
+   "chars": 4,
+   "text": "1932"
+  },
+  {
+   "id": "count-letters",
+   "kind": "exact",
+   "passed": true,
+   "seconds": 1.4,
+   "chars": 2,
+   "text": "10"
+  },
+  {
+   "id": "hours-minutes",
+   "kind": "exact",
+   "passed": true,
+   "seconds": 1.3,
+   "chars": 3,
+   "text": "205"
+  },
+  {
+   "id": "py-slice",
+   "kind": "exact",
+   "passed": true,
+   "seconds": 2.3,
+   "chars": 1,
+   "text": "2"
+  },
+  {
+   "id": "palindrome",
+   "kind": "python",
+   "passed": true,
+   "seconds": 9.1,
+   "chars": 126,
+   "text": "```python\ndef is_palindrome(s):\n    filtered = [c.lower() for c in s if c.isalnum()]\n    return filtered == filtered[::-1]\n```"
+  },
+  {
+   "id": "merge-intervals",
+   "kind": "python",
+   "passed": true,
+   "seconds": 19.1,
+   "chars": 406,
+   "text": "```python\ndef merge_intervals(intervals):\n    if not intervals:\n        return []\n    intervals = sorted(intervals, key=lambda x: x[0])\n    merged = [intervals[0]]\n    for start, end in intervals[1:]:\n        last_start, last_end = merged[-1]\n        if start <= last_end:\n            merged[-1] = [last_start, max(last_end, end)]\n        else:\n            merged.append([start, end])\n    return merged\n```"
+  },
+  {
+   "id": "flatten",
+   "kind": "python",
+   "passed": true,
+   "seconds": 11.1,
+   "chars": 204,
+   "text": "```python\ndef flatten(x):\n    result = []\n    for item in x:\n        if isinstance(item, list):\n            result.extend(flatten(item))\n        else:\n            result.append(item)\n    return result\n```"
+  },
+  {
+   "id": "rle",
+   "kind": "python",
+   "passed": true,
+   "seconds": 18.0,
+   "chars": 320,
+   "text": "```python\ndef rle(s):\n    if not s:\n        return \"\"\n    result = []\n    count = 1\n    for i in range(1, len(s)):\n        if s[i] == s[i - 1]:\n            count += 1\n        else:\n            result.append(s[i - 1] + str(count))\n            count = 1\n    result.append(s[-1] + str(count))\n    return \"\".join(result)\n```"
+  },
+  {
+   "id": "parse-duration",
+   "kind": "python",
+   "passed": true,
+   "seconds": 23.3,
+   "chars": 435,
+   "text": "```python\nimport re\n\ndef parse_duration(s):\n    pattern = re.compile(r'(?:(\\d+)h)?(?:(\\d+)m)?(?:(\\d+)s)?$')\n    match = pattern.fullmatch(s)\n    if not match:\n        raise ValueError(f\"Invalid duration: {s}\")\n    hours, minutes, seconds = match.groups()\n    total = 0\n    if hours:\n        total += int(hours) * 3600\n    if minutes:\n        total += int(minutes) * 60\n    if seconds:\n        total += int(seconds)\n    return total\n```"
+  },
+  {
+   "id": "top-k-words",
+   "kind": "python",
+   "passed": true,
+   "seconds": 14.8,
+   "chars": 209,
+   "text": "```python\ndef top_k(words, k):\n    counts = {}\n    for word in words:\n        counts[word] = counts.get(word, 0) + 1\n    return [word for word, _ in sorted(counts.items(), key=lambda x: (-x[1], x[0]))[:k]]\n```"
+  },
+  {
+   "id": "roman",
+   "kind": "python",
+   "passed": true,
+   "seconds": 18.7,
+   "chars": 315,
+   "text": "```python\ndef roman_to_int(s):\n    vals = {'I': 1, 'V': 5, 'X': 10, 'L': 50, 'C': 100, 'D': 500, 'M': 1000}\n    total = 0\n    prev = 0\n    for ch in reversed(s):\n        cur = vals[ch]\n        if cur < prev:\n            total -= cur\n        else:\n            total += cur\n            prev = cur\n    return total\n```"
+  },
+  {
+   "id": "two-sum",
+   "kind": "python",
+   "passed": true,
+   "seconds": 13.5,
+   "chars": 231,
+   "text": "```python\ndef two_sum(nums, target):\n    seen = {}\n    for i, num in enumerate(nums):\n        complement = target - num\n        if complement in seen:\n            return [seen[complement], i]\n        seen[num] = i\n    return []\n```"
+  },
+  {
+   "id": "json-person",
+   "kind": "json",
+   "passed": true,
+   "seconds": 8.4,
+   "chars": 68,
+   "text": "{\"name\":\"Ada\",\"age\":36,\"tags\":[\"curious\",\"analytical\",\"pioneering\"]}"
+  },
+  {
+   "id": "json-order",
+   "kind": "json",
+   "passed": true,
+   "seconds": 5.9,
+   "chars": 39,
+   "text": "{\"id\":\"A-17\",\"total\":42.5,\"paid\":false}"
+  },
+  {
+   "id": "json-point",
+   "kind": "json",
+   "passed": true,
+   "seconds": 4.5,
+   "chars": 19,
+   "text": "{\"x\":1,\"y\":2,\"z\":3}"
+  },
+  {
+   "id": "cs-counter",
+   "kind": "csharp",
+   "passed": true,
+   "seconds": 12.5,
+   "chars": 186,
+   "text": "```csharp\npublic class Counter\n{\n    private int _value;\n\n    public int Value\n    {\n        get { return _value; }\n    }\n\n    public void Increment()\n    {\n        _value++;\n    }\n}\n```"
+  },
+  {
+   "id": "cs-stringtools",
+   "kind": "csharp",
+   "passed": true,
+   "seconds": 34.1,
+   "chars": 960,
+   "text": "```csharp\npublic static class StringTools\n{\n    public static string Reverse(string s)\n    {\n        if (s == null)\n            return null;\n\n        char[] chars = s.ToCharArray();\n        int left = 0;\n        int right = chars.Length - 1;\n\n        while (left < right)\n        {\n            char temp = chars[left];\n            chars[left] = chars[right];\n            chars[right] = temp;\n            left++;\n            right--;\n        }\n\n        return new string(chars);\n    }\n\n    public static bool IsPalindrome(string s)\n    {\n        if (s == null)\n            return false;\n\n        int left = 0;\n        int right = s.Length - 1;\n\n        while (left < right)\n        {\n            char leftChar = char.ToLowerInvariant(s[left]);\n            char rightChar = char.ToLowerInvariant(s[right]);\n\n            if (leftChar != rightChar)\n                return false;\n\n            left++;\n            right--;\n        }\n\n        return true;\n    }\n}\n```"
+  }
+ ],
+ "positions": 576
+}

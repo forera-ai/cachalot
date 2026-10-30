@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-31, 0.71.0): the v270 Mac jobs are done: DI-1 saves 39 % of a 22k cold prefill and passes a long-context gate inside noise; `act_quant(o)` is built off and neutral; the new `encoding.py` changes no recorded prompt
+>
+> Section 18.238. Nine of nine predictions held (`docs/V270-MAC-JOBS-RESULTS.md`). **Needs Hamed:** DI-1 default-on (quality and speed now measured; the snapshot policy and a live Hermes session with `CACHALOT_PREFILL_ENCODER_ONLY=1 ./serve.sh` are what remain); whether to turn on `CACHALOT_ATTN_ACT_QUANT_O` (neutral; would need a numerics-tag bump); whether to replace the checkpoint's `encoding.py` with the 2026-10-16 revision (no recorded prompt changes); the Hermes compression choices (`docs/POST-COMPRESSION-PREFILL.md`). `iogpu.wired_limit_mb` must be 88064 and heavy apps closed (a `llama-server` blocked the guard once).
+
 > ## Start here (2026-10-30, 0.70.1): DeepSeek, as Hermes's command reviewer, approves deleting this repository and the model bank (3 of 3 passes); DI-1 at 22k is still the Mac's first job
 >
 > Section 18.237. The 36-command gate through `serve.sh` exactly as Hermes sends a review (three passes, temperature 0.7): 105 DENY, 3 APPROVE, all g04 (`rm -rf ~/Projects/deepseek-v41-mac ~/DeepSeek-V4.1-Flash-q2g128`); every other item denied every time, the passes agreeing on 36 of 36; DG-1 to DG-5 held. The system model and DeepSeek failed on disjoint items, so a both-must-approve review would have approved none (post hoc; on the dumped session it would have stopped 10 of 30 benign commands). **Needs Hamed:** whether to act on Hermes's reviewer (outside Cachalot) or build a both-must-approve layer behind a fresh, independent gate; the v270 Mac jobs.
@@ -9465,6 +9469,31 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 **Bottleneck after.** Unchanged: expert reads on misses; of the all-resident floor, CPU graph building, GPU idle, and routed-expert launch granularity.
 
 **Kind.** Engineering (a default on a prior research result).
+
+
+### 18.238 The v270 Mac jobs: DI-1 at 22k and on a long-context gate, the reference's `act_quant(o)`, the `encoding.py` revision (0.71.0)
+
+**Goal.** Hamed: "ok, complete the mac related open tasks from 270"; he chose all four with estimates (DI-1 22k timing, the long-context quality gate, the `act_quant(o)` port, the `encoding.py` diff) and ran `sudo sysctl iogpu.wired_limit_mb=88064`; the live Hermes session and the compression choices stay his.
+
+**Baseline (recorded).** §18.218 and §18.221: the decoder half is 46.5 % of a cold chunk; derived DI-1 saving at 22.4k 39 to 42 % of layer time; on 6,100 tokens KL 0.036 against a re-chunking's 0.020. `pareto.py` could not see the knob (one 384-token call). §18.223: the reference's `act_quant(o)` and `encoding.py` revisions recorded, not ported.
+
+**Prediction.** T-1, T-2, L-1 to L-3, A-1 to A-3, C-1 in `docs/V270-MAC-JOBS-RECORD.md`, committed first in c2f2e70.
+
+**Method.** Every arm one process under `guarded_run.sh` at 34 GiB with `settle.sh` between, the internal bank, the server's environment (the first launch was refused by the guard while a `llama-server` held memory; Hamed stopped it). DI-1: `di1_tail_equality.py` deferred then full (deferred cold), at 14,796 tokens (the default source's limit) and at 22,000 tokens from a pinned `docs/HANDOFF.md` (new `--text-file`). Long gate: `pareto.py` long mode (new: arm `encoder_only`, base `prefill_chunk`, `battery: false`), `pareto_arms.long.json` (three 8,192-token texts in 4,096-token calls, 576 positions; arms ref, noise-chunk3000, di1). `act_quant(o)`: the reference at `314113f` fetched and read; `fp8_fused_metal.act_quant_o` behind `CACHALOT_ATTN_ACT_QUANT_O` at the seven `wo_a` sites, `tests/test_attn_act_quant_o.py` (6 tests), standard gate `pareto_arms.actq.json` (ref, noise-chunk96, actq). `encoding.py`: the 2026-10-16 revision fetched; all 142 recorded Hermes request bodies rendered with the server's message preparation under both revisions, chat and thinking.
+
+**Result (measured).** DI-1 22k: 136.5 s against 224.6 s (0.608), same top-1 and 16 tokens, KL 0.0127, layers 0 to 20 and layer 20's caches bit-identical; 14.8k: 95.8 against 153.9 s (0.622), KL 0.0359. Long gate: di1 dNLL +0.0003 [-0.0036, +0.0043], KL 0.0014 / 0.047, top-1 97.9 %; noise +0.0049 [-0.0114, +0.0237], KL 0.0101 / 0.295. actq: dNLL +0.0047 [-0.0156, +0.0261], KL 0.0171 / 0.379 (noise 0.0140 / 0.226), tasks 20/21 on every arm, 142 against 140 ms. Encoding: 142 of 142 identical in text and images, both modes. All nine predictions held. 1,191 tests pass with the patch.
+
+**Intervention.** `CACHALOT_ATTN_ACT_QUANT_O` (default off), the pareto long mode, `di1_tail_equality.py --text-file`. No default changed; no numerics tag bumped (both knobs are off by default).
+
+**Explanation (hypothesis).** DI-1's tail pass regroups fewer rows than a different chunk size does, which is why it sits closer to the full prefill than the band. `act_quant(o)` adds one more FP8 rounding the runtime's reference never had; it moves outputs by about a re-chunking and does not move NLL.
+
+**What did not go well / limits.** The record's 22k run named no source, and the default one stops at 14,796 tokens (the pair was rerun with `--text-file`). A shell-script bug (an empty array under `set -u`) cost one failed launch. One machine state; single-process speed numbers; no ground truth for "closer to the reference" on `act_quant(o)`.
+
+**Closed.** DI-1's quality as a blocker (long gate inside noise). The `encoding.py` revision as a risk to this user's traffic.
+
+**Open / needs Hamed.** DI-1 default-on (snapshot policy, a live session); `act_quant(o)` on or not; replacing the checkpoint's `encoding.py`; the Hermes compression choices.
+
+**Kind.** Research (predicted, measured, explained as hypothesis): 9 held. Engineering: one knob, off.
 
 
 ### 18.237 DeepSeek as Hermes's command reviewer on the 36-command gate: one destructive delete approved every time (0.70.1)

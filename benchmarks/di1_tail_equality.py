@@ -51,7 +51,7 @@ def compare_arrays(a: np.ndarray, b: np.ndarray) -> dict:
     return {"max_abs": float(d.max()), "mean_abs": float(d.mean()), "rel_max": float(d.max() / scale), "equal": bool(np.array_equal(a, b))}
 
 
-def run(mode: str, n_tokens: int, out: Path, decode: int) -> int:
+def run(mode: str, n_tokens: int, out: Path, decode: int, text_file: str | None = None, text_start: int = 0) -> int:
     import mlx.core as mx
 
     from _common import MODEL_PATH
@@ -62,11 +62,17 @@ def run(mode: str, n_tokens: int, out: Path, decode: int) -> int:
     out.mkdir(parents=True, exist_ok=True)
     with TextDecodeRuntime(MODEL_PATH, max_seq_len=max(8192, n_tokens + decode + 8)) as rt:
         enc = load_official_encoding(MODEL_PATH)
-        ids = build_prompt(rt, enc, prompt_sources()[0][1], n_tokens)
+        if text_file:
+            # a longer source than the default module (which tops out near 14,800 tokens): an engineering document from the repository
+            body = Path(text_file).read_text()[text_start:]
+            source = "You are a staff engineer. Read this handoff document and propose the three highest-value next steps.\n\n" + body
+        else:
+            source = prompt_sources()[0][1]
+        ids = build_prompt(rt, enc, source, n_tokens)
         rt.reset()
         chunks = prefill_chunks(0, len(ids))
         t0 = perf_counter()
-        for i, (a, b) in enumerate(chunks):
+        for a, b in chunks:
             if mode == "full":
                 res = rt.prefill_tokens(ids[a:b])
             else:
@@ -133,13 +139,15 @@ def main(argv=None) -> int:
         p.add_argument("--tokens", type=int, default=6100)
         p.add_argument("--decode", type=int, default=16)
         p.add_argument("--out", required=True)
+        p.add_argument("--text-file", help="prompt source instead of the default module (for prompts above about 14,800 tokens)")
+        p.add_argument("--text-start", type=int, default=0, help="character offset into --text-file")
     c = sub.add_parser("compare")
     c.add_argument("a")
     c.add_argument("b")
     args = ap.parse_args(argv)
     if args.cmd == "compare":
         return compare(Path(args.a), Path(args.b))
-    return run(args.cmd, args.tokens, Path(args.out), args.decode)
+    return run(args.cmd, args.tokens, Path(args.out), args.decode, args.text_file, args.text_start)
 
 
 if __name__ == "__main__":

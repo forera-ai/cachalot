@@ -1,0 +1,46 @@
+{
+ "about": "v270 job L (docs/V270-MAC-JOBS-RECORD.md): DI-1's long-context quality gate. 8,192 tokens prefilled in 4,096-token calls, 192 teacher-forced steps a text; the noise arm changes only the call size; di1 runs every call encoder-only and the decoder half once at the end. No battery: its prompts are single-call.",
+ "base": {
+  "budget_gib": 34,
+  "max_seq_len": 8704,
+  "prefill": 8192,
+  "decode": 192,
+  "prefill_chunk": 4096,
+  "battery": false,
+  "texts": [
+   {
+    "name": "prose",
+    "path": "docs/HANDOFF.md",
+    "start": 1057561,
+    "chars": 60000
+   },
+   {
+    "name": "code",
+    "path": "src/cachalot/model/text_decode_runtime.py",
+    "start": 0,
+    "chars": 60000
+   },
+   {
+    "name": "markdown",
+    "path": "CHANGELOG.md",
+    "start": 0,
+    "chars": 60000
+   }
+  ]
+ },
+ "reference": "ref",
+ "arms": [
+  {
+   "name": "ref"
+  },
+  {
+   "name": "noise-chunk3000",
+   "noise": true,
+   "prefill_chunk": 3000
+  },
+  {
+   "name": "di1",
+   "encoder_only": true
+  }
+ ]
+}
