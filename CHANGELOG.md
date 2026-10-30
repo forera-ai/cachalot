@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.69.6 (2026-10-30)
+
+HANDOFF "Start here (2026-10-30, 0.69.6)" and section 18.234. Documentation only.
+
+### Added
+- `docs/APPLE-FM-ANE-LEVERS.md`: every way the Neural Engine could speed Cachalot up, priced against measured constants. Speculative decoding (the target's verify cost, not the draft, is the blocker), an ANE expert predictor and speculative routing (DeepSeek's shipped decode drops misses instead of waiting; GLM and MiniMax decode are drive-bound) have no speed ceiling on the shipped paths. Two levers remain: offloading Hermes side requests to the system model (titles ~6 min a session, summary calls ~35-40 min a session, derived from the 142-request dump; output-changing) and the ANE as a second matmul engine for the dense trunk in prefill (unpriced; one Core ML microbenchmark decides it).
+
 ## 0.69.5 (2026-10-30)
 
 HANDOFF "Start here (2026-10-30, 0.69.5)" and section 18.233; record `docs/APPLE-FM-E2-E3-RECORD.md` (E3-1, E3-6); results section 6 of `docs/APPLE-FM-E2-E3-RESULTS.md`. No runtime change.

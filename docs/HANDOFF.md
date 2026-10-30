@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-30, 0.69.6): the Neural Engine's speed levers reassessed: side-request offload and an ANE-matmul microbenchmark are what is left; DI-1 at 22k is still the Mac's first job
+>
+> Section 18.234, `docs/APPLE-FM-ANE-LEVERS.md`. Nine levers priced from measured constants. No speed ceiling on the shipped paths: speculative decoding (verify through the prefill path, 243 + 27 ms a position), an ANE expert predictor or speculative routing (DeepSeek budget 0 drops misses; GLM's X10Pro reads 770 MiB a token on a ~1 GB/s drive), semantic cache and compression (closed). Left: Hermes side-request offload (32 title/short calls ~6 min a session, 7 summary calls ~35-40 min, derived from the dump; output-changing, Hamed's call) and a Core ML microbenchmark of the ANE as a second matmul engine for the trunk (needs `coremltools` in a scratch venv, ~30-45 min). **Needs Hamed:** which, if either.
+
 > ## Start here (2026-10-30, 0.69.5): the Neural Engine runs the system model at 4.3-4.7 W; powermetrics' ANE line reads 0 on this Mac, use IOReport; DI-1 at 22k is still the Mac's first job
 >
 > Section 18.233. E-3 rerun with Hamed's root `powermetrics` recording (checked by process and file first): IOReport `ane` 4.29-4.75 W in every system-model cell, 0.00-0.06 W in idle and GPU-only cells; powermetrics' `ANE Power` 0 mW in all 647 samples. The +13.8 W over idle splits ANE 4.5, memory system 5.9, CPU 0.2, unattributed 3.3; beside the GEMV only the ANE and ~2 W CPU are added. GPU W beside it -2.4 %. E3-1, E3-6 held. Scorer fix: IOReport counters are cumulative. **Needs Hamed:** stop `powermetrics` if still running; the v270 Mac jobs.
@@ -9449,6 +9453,21 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 **Bottleneck after.** Unchanged: expert reads on misses; of the all-resident floor, CPU graph building, GPU idle, and routed-expert launch granularity.
 
 **Kind.** Engineering (a default on a prior research result).
+
+
+### 18.234 The Neural Engine's possible speed levers, reassessed (0.69.6)
+
+**Goal.** Hamed: "I hope the neural engine usage can help accelerate throughputs in anyway like speculative decode or next layer guesses or any other area of possibilities. reassess the possibilities and find if there are other levers from using FM along with cachalot."
+
+**Method.** Pricing only, from measured constants (0.60.9-0.69.5) and the 142-request Hermes dump (request kinds by structure: `reasoning_effort: none` with three or fewer messages = title/short; a summarization system or user message with three or fewer messages = summary; the rest main turns). The code read: next-layer prediction is the next layer's router on this layer's hidden state inside the same sync (`moe_layer_metal.py`).
+
+**Result (derived).** Main turns 103 (59 % of prefill, 63 % of decode tokens), summary calls 7 (28 %, 37 %; ~46 min of estimated target time), title/short 32 (12 %, ~0 %; ~6 min). Lever table in `docs/APPLE-FM-ANE-LEVERS.md` section 3: speculative decoding, ANE predictor, speculative routing, vision, cache policy and compression have no speed ceiling on the shipped paths; side-request offload and the ANE as a trunk matmul engine remain.
+
+**Closed.** Speculative decoding and expert prediction as Neural Engine speed levers on the shipped paths (the reasons in the table).
+
+**Open / needs Hamed.** Side-request offload (titles first; summaries after a fact-retention gate); the ANE matmul microbenchmark (`coremltools` install in a scratch venv).
+
+**Kind.** Pricing, documentation. No default changed.
 
 
 ### 18.233 E-3 with a root powermetrics: the Neural Engine draws 4.3-4.7 W; powermetrics' ANE line reads 0 here (0.69.5)

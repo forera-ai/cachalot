@@ -1,8 +1,8 @@
 # Experiment index (charter section 7.2 and section 10)
 
-Written 2026-10-09 against runtime 0.69.5; regenerate with `benchmarks/experiment_index.py`. The charter asks for "a file of experiment records whose predictions were written before the build". The records themselves live in `docs/HANDOFF.md` section 18 (each with Baseline, Prediction, Method, Result, Explanation, Limits, Kind); this file is the index: where each record is, whether it carries a written prediction, and what kind of result it is, as its own **Kind** line says. It does not restate results. Sections before 18.75 predate the record format and are not listed; sections without a **Kind** line are listed as unlabelled and have no claim made for them here.
+Written 2026-10-09 against runtime 0.69.6; regenerate with `benchmarks/experiment_index.py`. The charter asks for "a file of experiment records whose predictions were written before the build". The records themselves live in `docs/HANDOFF.md` section 18 (each with Baseline, Prediction, Method, Result, Explanation, Limits, Kind); this file is the index: where each record is, whether it carries a written prediction, and what kind of result it is, as its own **Kind** line says. It does not restate results. Sections before 18.75 predate the record format and are not listed; sections without a **Kind** line are listed as unlabelled and have no claim made for them here.
 
-Counts of the 159 sections listed (18.75-18.233): 81 research, 22 measurement, 22 unlabelled, 18 planning, 15 engineering, 1 pricing.
+Counts of the 160 sections listed (18.75-18.234): 81 research, 22 measurement, 22 unlabelled, 18 planning, 15 engineering, 2 pricing.
 
 Research means predicted, measured and explained (charter section 8.1 rule 6); a falsified prediction is still research and is marked so in its Kind line. Engineering means it works without a written prediction, or an instrument was built.
 
@@ -10,6 +10,7 @@ Research means predicted, measured and explained (charter section 8.1 rule 6); a
 
 | section | title | prediction written | kind (as recorded) |
 |---|---|:---:|---|
+| §18.234 | The Neural Engine's possible speed levers, reassessed (0.69.6) | no | Pricing, documentation. No default changed. |
 | §18.233 | E-3 with a root powermetrics: the Neural Engine draws 4.3-4.7 W; powermetrics' ANE line reads 0 here (0.69.5) | yes | Research (predicted, measured, attributed). No default changed. |
 | §18.232 | E-2, E-3 and lever D: GLM read-bound is untouched; the system model costs ~18 W alone and ~8 W beside a busy GPU; no cache policy has anything to win (0.69.4) | yes | Research (predicted, measured, explained as hypothesis) and a pricing step. No default changed. |
 | §18.231 | E-1 on the exact path: texts identical under load, B - A -0.97 ms; with 18.230 the effect is under ~1 ms and its sign unresolved (0.69.3) | yes | Research (predicted, measured, explained as hypothesis): 3 held, 2 outside, 1 falsified. No default changed. |
