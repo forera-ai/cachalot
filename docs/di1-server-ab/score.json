@@ -1,0 +1,155 @@
+{
+ "arms": [
+  {
+   "arm": 1,
+   "knob": 0,
+   "watchdog": {
+    "tripped": null,
+    "pressure_max": 1,
+    "swap_start_mb": 1204.5,
+    "swap_max_mb": 1204.81
+   },
+   "error": null,
+   "prefill_s": [
+    163.025,
+    2.439,
+    103.149,
+    65.358
+   ],
+   "prefilled": [
+    16040,
+    27,
+    11570,
+    6544
+   ],
+   "tokens": [
+    "Hey",
+    "\n\n",
+    "That",
+    "Here"
+   ]
+  },
+  {
+   "arm": 2,
+   "knob": 1,
+   "watchdog": {
+    "tripped": null,
+    "pressure_max": 2,
+    "swap_start_mb": 1211.56,
+    "swap_max_mb": 1499.75
+   },
+   "error": null,
+   "prefill_s": [
+    106.653,
+    2.446,
+    66.247,
+    47.184
+   ],
+   "prefilled": [
+    16040,
+    27,
+    11570,
+    6544
+   ],
+   "tokens": [
+    "Hey",
+    "\n\n",
+    "That",
+    "Here"
+   ]
+  },
+  {
+   "arm": 3,
+   "knob": 1,
+   "watchdog": {
+    "tripped": null,
+    "pressure_max": 2,
+    "swap_start_mb": 1500.56,
+    "swap_max_mb": 1674.19
+   },
+   "error": null,
+   "prefill_s": [
+    109.963,
+    2.422,
+    66.335,
+    46.499
+   ],
+   "prefilled": [
+    16040,
+    27,
+    11570,
+    6544
+   ],
+   "tokens": [
+    "Hey",
+    "\n\n",
+    "That",
+    "Top"
+   ]
+  },
+  {
+   "arm": 4,
+   "knob": 0,
+   "watchdog": {
+    "tripped": null,
+    "pressure_max": 2,
+    "swap_start_mb": 1674.19,
+    "swap_max_mb": 1732.75
+   },
+   "error": null,
+   "prefill_s": [
+    163.184,
+    2.443,
+    103.657,
+    64.579
+   ],
+   "prefilled": [
+    16040,
+    27,
+    11570,
+    6544
+   ],
+   "tokens": [
+    "Hey",
+    "\n\n",
+    "That",
+    "Top"
+   ]
+  }
+ ],
+ "mean_prefill_s": {
+  "off": [
+   163.1,
+   2.44,
+   103.4,
+   64.97
+  ],
+  "on": [
+   108.31,
+   2.43,
+   66.29,
+   46.84
+  ]
+ },
+ "ratio": {
+  "request 1": 0.664,
+  "request 2": 0.997,
+  "request 3": 0.641,
+  "request 4": 0.721,
+  "requests 1+3+4": 0.668
+ },
+ "request 1 spread off": 0.001,
+ "request 1 spread on": 0.031,
+ "prefilled equal across arms": [
+  true,
+  true,
+  true,
+  true
+ ],
+ "token equal across arms": [
+  true,
+  true,
+  true,
+  false
+ ]
+}

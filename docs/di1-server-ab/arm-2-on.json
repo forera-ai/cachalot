@@ -1,0 +1,58 @@
+{
+ "arm": 2,
+ "knob": 1,
+ "started": "2026-10-31 14:38:39",
+ "requests": [
+  {
+   "request": 1,
+   "prompt_tokens": 16040,
+   "reused": 0,
+   "prefilled": 16040,
+   "prefill_s": 106.653,
+   "wall_s": 106.846,
+   "completion_tokens": 1,
+   "token": "Hey",
+   "tool_calls": false
+  },
+  {
+   "request": 2,
+   "prompt_tokens": 16068,
+   "reused": 16041,
+   "prefilled": 27,
+   "prefill_s": 2.446,
+   "wall_s": 2.606,
+   "completion_tokens": 1,
+   "token": "\n\n",
+   "tool_calls": false
+  },
+  {
+   "request": 3,
+   "prompt_tokens": 27639,
+   "reused": 16069,
+   "prefilled": 11570,
+   "prefill_s": 66.247,
+   "wall_s": 66.535,
+   "completion_tokens": 1,
+   "token": "That",
+   "tool_calls": false
+  },
+  {
+   "request": 4,
+   "prompt_tokens": 34184,
+   "reused": 27640,
+   "prefilled": 6544,
+   "prefill_s": 47.184,
+   "wall_s": 47.379,
+   "completion_tokens": 1,
+   "token": "Here",
+   "tool_calls": false
+  }
+ ],
+ "watchdog": {
+  "tripped": null,
+  "pressure_max": 2,
+  "swap_start_mb": 1211.56,
+  "swap_max_mb": 1499.75
+ },
+ "finished": "2026-10-31 14:42:23"
+}

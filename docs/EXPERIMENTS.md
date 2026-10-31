@@ -1,8 +1,8 @@
 # Experiment index (charter section 7.2 and section 10)
 
-Written 2026-10-09 against runtime 0.71.1; regenerate with `benchmarks/experiment_index.py`. The charter asks for "a file of experiment records whose predictions were written before the build". The records themselves live in `docs/HANDOFF.md` section 18 (each with Baseline, Prediction, Method, Result, Explanation, Limits, Kind); this file is the index: where each record is, whether it carries a written prediction, and what kind of result it is, as its own **Kind** line says. It does not restate results. Sections before 18.75 predate the record format and are not listed; sections without a **Kind** line are listed as unlabelled and have no claim made for them here.
+Written 2026-10-09 against runtime 0.71.3; regenerate with `benchmarks/experiment_index.py`. The charter asks for "a file of experiment records whose predictions were written before the build". The records themselves live in `docs/HANDOFF.md` section 18 (each with Baseline, Prediction, Method, Result, Explanation, Limits, Kind); this file is the index: where each record is, whether it carries a written prediction, and what kind of result it is, as its own **Kind** line says. It does not restate results. Sections before 18.75 predate the record format and are not listed; sections without a **Kind** line are listed as unlabelled and have no claim made for them here.
 
-Counts of the 165 sections listed (18.75-18.239): 85 research, 23 measurement, 22 unlabelled, 18 planning, 15 engineering, 2 pricing.
+Counts of the 167 sections listed (18.75-18.241): 86 research, 23 measurement, 22 unlabelled, 18 planning, 16 engineering, 2 pricing.
 
 Research means predicted, measured and explained (charter section 8.1 rule 6); a falsified prediction is still research and is marked so in its Kind line. Engineering means it works without a written prediction, or an instrument was built.
 
@@ -10,6 +10,8 @@ Research means predicted, measured and explained (charter section 8.1 rule 6); a
 
 | section | title | prediction written | kind (as recorded) |
 |---|---|:---:|---|
+| §18.241 | DI-1 server A/B, same build, ABBA (0.71.3) | yes | Research (predicted, measured, explained as hypothesis): 7 held, 1 missed. No default changed. |
+| §18.240 | DeepSeek-V4.1-Flash-1017 prepared, Mistral Large 4 declined (0.71.2) | no | Engineering (preparation); no measurement on the machine. |
 | §18.239 | DI-1 in a live Hermes session (0.71.1) | yes | Measurement (a live check, no prediction). No default changed. |
 | §18.238 | The v270 Mac jobs: DI-1 at 22k and on a long-context gate, the reference's `act_quant(o)`, the `encoding.py` revision (0.71.0) | yes | Research (predicted, measured, explained as hypothesis): 9 held. Engineering: one knob, off. |
 | §18.237 | DeepSeek as Hermes's command reviewer on the 36-command gate: one destructive delete approved every time (0.70.1) | yes | Research (predicted, measured): 5 held. No default changed. |

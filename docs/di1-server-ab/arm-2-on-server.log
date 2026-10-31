@@ -1,0 +1,29 @@
+MLX_METAL_FAST_SYNCH=1
+darwin role 1 (CACHALOT_DARWIN_ROLE=0 disables)
+cachalot 0.71.1: loading /Volumes/X10Pro/Flash4-1/DeepSeek-V4.1-Flash
+expert bank: /Users/hamedprooshani/DeepSeek-V4.1-Flash-q2g128 (affine, 2-bit, 9.49 MiB/expert, 15360 experts)
+hotlist: reading 863 experts in the background
+[transformers] You are using a model of type `deepseek_v41` to instantiate a model of type ``. This may be expected if you are loading a checkpoint that shares a subset of the architecture (e.g., loading a `sam2_video` checkpoint into `Sam2Model`), but is otherwise not supported and can yield errors. Please verify that the checkpoint is compatible with the model you are instantiating.
+hotlist: 863 experts preloaded (8.0 GiB in 2.1 s of reading)
+ready in 17.3s (expert budget 48.0 GiB, wired 80.0 GiB, max_seq_len 65536)
+prefix snapshots: 0 loaded from /var/folders/4p/xh823rjd32x53hbm_zvcjnqh0000gn/T//di1-ab-snap.UrppZV (none tokens), 0 more on disk, in 0.00s
+system date reuse: an agent's date line shows a date up to 7 days old so a new day reuses the saved system block (CACHALOT_SYSTEM_DATE_REUSE=0 turns it off)
+decode miss budget 0: at most 0 non-resident experts are read per layer in decode, the rest dropped (changes outputs; CACHALOT_DECODE_MISS_BUDGET)
+OpenAI-compatible API on http://127.0.0.1:8011/v1  (model id: deepseek-v4.1-flash; a request without them samples at temperature 0.6, top_p 1.0)
+INFO:     Started server process [82413]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8011 (Press CTRL+C to quit)
+wired fit: expert slots 5178 -> 4972 (system wired 74.9 GiB, ceiling 73.0)
+[request] prompt=16040 reused=0 prefilled=16040 prefill=106.65s completion=1 decode=0.13s (7.62 tok/s) images=0 spliced=0 miss/tok=28.0 hit=88% read=2.91ms fast=7% finish=length mlx=60.9/68.0/1.8GiB
+[request] prompt=16068 reused=16041 prefilled=27 prefill=2.45s completion=1 decode=0.11s (8.71 tok/s) images=0 spliced=0 miss/tok=18.0 hit=92% read=3.08ms fast=0% finish=length mlx=61.0/61.6/1.8GiB
+wired fit: expert slots 4972 -> 5167 (system wired 69.6 GiB, ceiling 73.0)
+wired fit: expert slots 5167 -> 5117 (system wired 73.4 GiB, ceiling 73.0)
+[request] prompt=27639 reused=16069 prefilled=11570 prefill=66.25s completion=1 decode=0.24s (4.15 tok/s) images=0 spliced=0 miss/tok=62.0 hit=70% read=4.92ms fast=1% finish=length mlx=62.5/67.8/2.0GiB
+wired fit: expert slots 5117 -> 5089 (system wired 73.2 GiB, ceiling 73.0)
+wired fit: expert slots 5089 -> 5011 (system wired 73.7 GiB, ceiling 73.0)
+[request] prompt=34184 reused=27640 prefilled=6544 prefill=47.18s completion=1 decode=0.14s (7.34 tok/s) images=0 spliced=0 miss/tok=28.0 hit=87% read=2.88ms fast=8% finish=length mlx=61.8/67.2/2.0GiB
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [82413]

@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-31, 0.71.3): DI-1 in the server, same build, ABBA: 0.668 of the knob-off prefill time on the live session's three large prefills, reuse unchanged; every registered DI-1 check has run, the default is Hamed's
+>
+> Section 18.241 (`docs/DI1-SERVER-AB-RESULTS.md`). Cold 16,040-token system block 108.3 against 163.1 s (0.664), tool results 66.3 against 103.4 s (0.641) and 46.8 against 65.0 s (0.721); the same tokens reused and prefilled in all four arms; 7 of 8 predictions held. The one greedy token differed on one request, by run order (off, on, on, off gave Here, Here, Top, Top), not by the knob (derived: the decode miss budget's drops on the reused decoded token). **Needs Hamed:** DI-1 default-on in `serve.sh` and the snapshot policy (§18.221); the 0.71.2 items (the 1017 download, the internal bank, the default checkpoint).
+
 > ## Start here (2026-10-31, 0.71.2): DeepSeek-V4.1-Flash-1017 is new weights in the old shapes; the download is with Hamed and `docs/V41-1017-RUNBOOK.md` takes it from there
 >
 > Section 18.240. Compared file by file with the local checkpoint: `config.json` equal in every field, same 96,085 tensors, shard map and size, same tokenizer, all 48 shards new. Same speed by construction, up to the new routing's hit rate; the card claims large agentic and coding gains (Terminal-Bench 31.2 to 42.3). `serve.sh` and `chat.sh` now take `CACHALOT_MODEL_PATH` from the environment and derive the bank and hotlist from the checkpoint's directory name (old defaults unchanged); `scripts/verify_hf_download.py` and `benchmarks/pareto_arms.v1017.json` added. **Needs Hamed:** deleting the internal copy of the old bank (step 2; its twin stays on the X10Pro), then making 1017 the default after the gate and a live session (step 8). Mistral-Large-4-1T-A52B was looked at the same day and not taken: 31.8 MB experts at 2 bits, about 18 % resident at 48 GiB, 2-3 s a token from the X10Pro, and a 1.06 TB checkpoint no drive holds.
@@ -9477,6 +9481,27 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 **Bottleneck after.** Unchanged: expert reads on misses; of the all-resident floor, CPU graph building, GPU idle, and routed-expert launch granularity.
 
 **Kind.** Engineering (a default on a prior research result).
+
+
+### 18.241 DI-1 server A/B, same build, ABBA (0.71.3)
+
+**Goal.** Hamed chose "Run the A/B first" before settling DI-1's default: the same-build server pair the live session (§18.239) lacked.
+
+**Baseline (recorded).** §18.238: bench 10.21 ms a token off, 6.20 on (0.608 at 22k, 0.622 at 14.8k). §18.239: live, knob on, 102.45 s for the cold 16,040-token block, 63.38 s for 11,478 tokens, 44.62 s for 6,480; no knob-off pair.
+
+**Prediction.** S-1 to S-8 in `docs/DI1-SERVER-AB-RECORD.md`, committed first in 6e16a14 (driver after, 47d84c2).
+
+**Method.** `benchmarks/di1_server_ab.sh`: four `serve.sh` arms, off, on, on, off, each with a new empty `CACHALOT_SNAPSHOT_DIR` and `settle.sh` before it; `benchmarks/di1_server_ab_driver.py` (system Python, after the server is up) replays the dump's first four request bodies with `max_tokens` 1, temperature 0, not streamed, and a watchdog on pressure and swap. Deviations: the settle gate at 40 GiB, not 48 (at 48 it needs 77 GiB available and the machine reached 73.9; the first launch timed out, nothing ran); arm 4 ran under 0.71.2's `serve.sh` (committed during arm 3), which resolved the same checkpoint, bank and hotlist.
+
+**Result (measured).** Mean `prefill_seconds` off then on: request 1 (16,040 cold) 163.10 and 108.31 (0.664); request 3 (11,570 after 16,069 reused) 103.40 and 66.29 (0.641); request 4 (6,544 after 27,640) 64.97 and 46.84 (0.721); the three 331.5 and 221.4 (0.668); request 2 (27 tokens) 2.44 and 2.43. Off arms within 0.1 % on request 1, on arms within 3.1 %. Prefilled and reused counts equal in all arms. One greedy token: equal on requests 1 to 3; request 4 "Here" in arms 1 and 2, "Top" in arms 3 and 4. Watchdog never tripped; pressure up to 2; swap 1,204 to 1,733 MB over the run, at most +288 MB in one arm. S-1, S-2, S-3, S-4, S-5, S-7, S-8 held; S-6 missed (its falsifier, a difference on request 1, did not occur).
+
+**Explanation (derived).** The server's 0.664 at 16k sits between the bench's 0.622 (14.8k) and 0.608 (22k); the knob-off rate equals the bench's. Request 4's token split follows run order: its reused prefix ends with the token request 3 decoded under the decode miss budget 0, whose dropped experts depend on the cache's history (miss counts 64, 62, 65, 61 do not separate the groups; the dropped sets are not logged). Not tested (a `CACHALOT_DECODE_MISS_BUDGET=off` replay would).
+
+**What did not go well.** The record named a settle budget this machine cannot reach with Hamed's apps open; a 10-minute timeout before the rerun. A commit landed in `serve.sh` mid-run (no effect on the resolved configuration, stated).
+
+**Open / needs Hamed.** DI-1 default-on and the snapshot policy (§18.221).
+
+**Kind.** Research (predicted, measured, explained as hypothesis): 7 held, 1 missed. No default changed.
 
 
 ### 18.240 DeepSeek-V4.1-Flash-1017 prepared, Mistral Large 4 declined (0.71.2)

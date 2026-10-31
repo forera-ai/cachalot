@@ -10,6 +10,9 @@ cd "$(dirname "$0")/.."
 OUT=${DI1_AB_OUT:-docs/di1-server-ab}
 DUMP=${DI1_AB_DUMP:-$HOME/cachalot-di1-live.jsonl}
 ORDER=${DI1_AB_ORDER:-"0 1 1 0"}
+# The settle gate checks that the previous arm gave its memory back. At 48 it needs 77 GiB available, which this machine does not reach with
+# Hamed's apps open (73.7 at most on 2026-10-31); 40 needs 69. The server itself still holds serve.sh's 48 GiB.
+SETTLE_GIB=${DI1_AB_SETTLE_GIB:-40}
 mkdir -p "$OUT"
 [ -f "$DUMP" ] || { echo "no dump at $DUMP" >&2; exit 1; }
 n=0
@@ -17,7 +20,7 @@ for k in $ORDER; do
   n=$((n + 1))
   if [ "$k" = 1 ]; then tag=on; else tag=off; fi
   echo "arm $n ($tag): settle $(date +%H:%M:%S)"
-  benchmarks/settle.sh --budget-gib 48 || { echo "settle failed before arm $n" >&2; exit 1; }
+  benchmarks/settle.sh --budget-gib $SETTLE_GIB || { echo "settle failed before arm $n" >&2; exit 1; }
   snap=$(mktemp -d "${TMPDIR:-/tmp}/di1-ab-snap.XXXXXX")
   env -u CACHALOT_SERVER_DUMP CACHALOT_PREFILL_ENCODER_ONLY=$k CACHALOT_SNAPSHOT_DIR="$snap" ./serve.sh > "$OUT/arm-$n-$tag-server.log" 2>&1 &
   SP=$!

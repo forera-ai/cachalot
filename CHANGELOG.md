@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.71.3 (2026-10-31)
+
+HANDOFF "Start here (2026-10-31, 0.71.3)" and section 18.241; record `docs/DI1-SERVER-AB-RECORD.md`, results `docs/DI1-SERVER-AB-RESULTS.md`. Measurement and an instrument; no runtime change, DI-1 stays off by default.
+
+### Measured
+- **DI-1 in the server, same build, ABBA** (four `serve.sh` arms off, on, on, off; each with an empty snapshot directory; the live session's first four requests replayed with `max_tokens` 1): `CACHALOT_PREFILL_ENCODER_ONLY=1` takes 0.664 of the knob-off prefill time on the cold 16,040-token system block (108.3 against 163.1 s), 0.641 on an 11,570-token tool result (66.3 against 103.4 s) and 0.721 on a 6,544-token one (46.8 against 65.0 s); 0.668 over the three (221.4 against 331.5 s). Every request reused and prefilled the same counts in all arms. The first greedy token matched on three of four requests; on the fourth it followed the run order, not the knob. Seven of eight predictions held, one missed (S-6).
+
+### Added
+- `benchmarks/di1_server_ab.sh` and `benchmarks/di1_server_ab_driver.py`: the server A/B (replay, memory watchdog, scorer); `tests/test_di1_server_ab_driver.py` (8 tests, a stub server).
+
 ## 0.71.2 (2026-10-31)
 
 HANDOFF "Start here (2026-10-31, 0.71.2)" and section 18.240; runbook `docs/V41-1017-RUNBOOK.md`. Launch scripts and tools only; nothing measured on the machine, the old checkpoint's configuration is unchanged.
