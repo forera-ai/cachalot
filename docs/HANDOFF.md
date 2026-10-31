@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-31, 0.71.1): DI-1 ran a live Hermes session cleanly: cold system block 102 s (about 164 s off, derived), reuse intact, answers fine; the default and snapshot policy are Hamed's
+>
+> Section 18.239 (`docs/DI1-LIVE-SESSION-RESULTS.md`). 13 requests, no error; prefill 5.5 to 6.9 ms a token on the large prefills (bench: 6.2 on, 10.2 off); one C# property-name slip in an otherwise building importer. Not covered: a same-session knob-off pair, a compression's re-prefill. **Needs Hamed:** DI-1 default-on and the snapshot policy (§18.221); optionally a same-build server A/B of the three large prefills (estimate about 20 minutes, his confirm).
+
 > ## Start here (2026-10-31, 0.71.0): the v270 Mac jobs are done: DI-1 saves 39 % of a 22k cold prefill and passes a long-context gate inside noise; `act_quant(o)` is built off and neutral; the new `encoding.py` changes no recorded prompt
 >
 > Section 18.238. Nine of nine predictions held (`docs/V270-MAC-JOBS-RESULTS.md`). **Needs Hamed:** DI-1 default-on (quality and speed now measured; the snapshot policy and a live Hermes session with `CACHALOT_PREFILL_ENCODER_ONLY=1 ./serve.sh` are what remain); whether to turn on `CACHALOT_ATTN_ACT_QUANT_O` (neutral; would need a numerics-tag bump); whether to replace the checkpoint's `encoding.py` with the 2026-10-16 revision (no recorded prompt changes); the Hermes compression choices (`docs/POST-COMPRESSION-PREFILL.md`). `iogpu.wired_limit_mb` must be 88064 and heavy apps closed (a `llama-server` blocked the guard once).
@@ -9469,6 +9473,27 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 **Bottleneck after.** Unchanged: expert reads on misses; of the all-resident floor, CPU graph building, GPU idle, and routed-expert launch granularity.
 
 **Kind.** Engineering (a default on a prior research result).
+
+
+### 18.239 DI-1 in a live Hermes session (0.71.1)
+
+**Goal.** Hamed chose "Live session first" before deciding DI-1's default; he ran `CACHALOT_PREFILL_ENCODER_ONLY=1 CACHALOT_SNAPSHOT_DIR=$HOME/.cache/cachalot/prefix-snapshots-di1 CACHALOT_SERVER_DUMP=$HOME/cachalot-di1-live.jsonl ./serve.sh`, worked one Hermes Desktop session and attached its export.
+
+**Baseline (recorded).** §18.238: on this build a cold 22,000-token prefill runs at 10.21 ms a token with the knob off and 6.20 with it; older live sessions without the knob 10.2 to 10.4.
+
+**Prediction.** None registered (a check he asked for); a measurement.
+
+**Method.** The server log's `[request]` lines; the export's 26 messages read; the C# answer built with `dotnet build`, the TypeScript syntax-checked with `node` (a broken control fails), the Python compiled; the image transcription compared with the screenshot.
+
+**Result (measured).** 13 requests, no error. Prefill: 16,040 tokens cold in 102.45 s (6.39 ms a token), 11,478 in 63.38 s (5.52), 6,480 in 44.62 s (6.89); the other ten 13 to 298 tokens. Reuse: 16,049 tokens on the second turn, all but the tail after. Decode 7.7 to 10.9 tok/s. Answers: well-formed `search_files`, `terminal` and `vision_analyze` calls; exact image transcription; C# one error (`AllowTrailingComma`), 0 after the one-word fix; TypeScript syntax valid (no type check); Python compiles; stories 178 and 469 words for 200 and 500 asked; three-language translations fluent.
+
+**Explanation (derived).** The live rate equals the bench's knob-on rate; at the knob-off rate the cold block would take about 164 s, the three large prefills about 347 s against 210.5 s.
+
+**What did not go well / limits.** No same-session knob-off pair; no compression occurred; one session at temperature 0.6.
+
+**Open / needs Hamed.** DI-1 default-on and the snapshot policy; optionally a same-build server A/B replaying the three large prefills with `max_tokens` 1 (about 20 minutes).
+
+**Kind.** Measurement (a live check, no prediction). No default changed.
 
 
 ### 18.238 The v270 Mac jobs: DI-1 at 22k and on a long-context gate, the reference's `act_quant(o)`, the `encoding.py` revision (0.71.0)

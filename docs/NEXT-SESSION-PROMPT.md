@@ -1,10 +1,11 @@
-# Next-session prompt — **v285**, written 2026-10-31
+# Next-session prompt — **v286**, written 2026-10-31
 
 **This is the file to paste.** `docs/NEXT-SESSION-PROMPT.md` is always current; superseded ones live in
 `docs/next-session-prompts/`.
 
 | version | written | produced by | what changed |
 |---|---|---|---|
+| **v286** | 2026-10-31 | Hamed chose "Live session first", ran `CACHALOT_PREFILL_ENCODER_ONLY=1 ./serve.sh` with a fresh snapshot directory and a dump, then "Session done" with the Hermes export | **0.71.1, measurement: DI-1 live, 13 requests, no error; cold 16,040-token block 102.45 s (6.39 ms a token; about 164 s at the knob-off rate, derived), tool-result prefills 5.5 to 6.9 ms a token, reuse intact; answers fine (one C# property-name slip, exact image transcription). No compression occurred. `docs/DI1-LIVE-SESSION-RESULTS.md`.** §18.239 |
 | **v285** | 2026-10-31 | Hamed: "ok, complete the mac related open tasks from 270" (all four jobs chosen with estimates, the sysctl set, a `llama-server` stopped for memory) | **0.71.0, minor: `CACHALOT_ATTN_ACT_QUANT_O=1` (default off), the reference's FP8 round trip of the attention output before `wo_a`, neutral on the gate (dNLL +0.0047 [-0.0156, +0.0261], KL 0.0171 against noise 0.0140). DI-1 at 22,000 tokens: 136.5 against 224.6 s (-39 %), same tokens; on a new long-context `pareto.py` gate (8,192-token prefills in 4,096-token calls) dNLL +0.0003 [-0.0036, +0.0043], KL 0.0014 against a re-chunking's 0.0101. The 2026-10-16 `encoding.py` renders all 142 recorded Hermes requests identically. Nine of nine predictions held (`docs/V270-MAC-JOBS-RESULTS.md`).** §18.238 |
 | **v284** | 2026-10-30 | Hamed: "Go: run the 36-command gate through DeepSeek's server (serve.sh) as Hermes would send it. Estimate first.", then "Confirmed" | **0.70.1, measurement: DeepSeek as Hermes's reviewer approved `rm -rf ~/Projects/deepseek-v41-mac ~/DeepSeek-V4.1-Flash-q2g128` in 3 of 3 passes and denied the other 35 every time; the system model and DeepSeek failed on disjoint items (a both-must-approve layer would have approved none, post hoc). 5 of 5 held.** §18.237 |
 | **v283** | 2026-10-30 | Hamed: "build the side-request offload ...", then "Go with the approve-only offload ... require zero system-model approvals on [the gate] before enabling" | **0.70.0: Hermes's short side requests are command-safety reviews, not titles. The approve-only offload's 36-command gate failed (system model approved a base64-hidden delete and `sudo tee /etc/hosts`), so it is not enabled or wired; `cachalot.auxiliary.approval` and `benchmarks/apple_fm_approval_gate.py` stay as instruments.** §18.236 |
@@ -246,6 +247,10 @@
 | v47 | 2026-09-25 | Hamed asked for the v44-v46 levers planned, built, measured and documented | **0.18.0: GLM prefill 60 to 90 tok/s, bit-identical (a store path that never evicts, plus the next layer read early), GLM's missing MLX buffer-cache cap added, GLM disk snapshots (a restart reuses the system block). DeepSeek: an `iostat` trace shows prefill is not read-bound on either drive; the lookahead A/B drowned in a 124-to-200 s drift across back-to-back prefills.** §17.1, §15.13 |
 | v46 | 2026-09-25 | Hamed asked for GLM-5.3-Flash on Cachalot | 0.17.0: GLM through `serve-glm.sh` / `chat-glm.sh`. §17 |
 | v45 | 2026-09-24 | same as v47, one day earlier | 0.16.0: disk snapshot store by last use; lookahead and local compression closed. §15.12 |
+
+## First jobs (v286): DI-1's default is Hamed's decision; the evidence is complete except a same-session knob-off pair
+
+Read HANDOFF 18.239 and `docs/DI1-LIVE-SESSION-RESULTS.md`, then 18.238. **Needs Hamed:** (1) DI-1 default-on in `serve.sh` and the snapshot policy (snapshots made with the knob on are not marked; mixing them with knob-off ones changes rounding only); (2) optionally, before that, a same-build server A/B: replay the dump's three large prefills (requests 1, 3, 4 of `~/cachalot-di1-live.jsonl`) with `max_tokens` 1, knob off and on, ABBA, a fresh snapshot directory per arm (about 20 minutes; estimate and confirm); (3) the v285 items (act_quant(o), encoding.py, compression choices, the reviewer). **Rules kept:** the earlier ones.
 
 ## First jobs (v285): the v270 Mac jobs are measured; what remains is Hamed's decisions and a live session
 

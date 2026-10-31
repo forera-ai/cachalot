@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.71.1 (2026-10-31)
+
+HANDOFF "Start here (2026-10-31, 0.71.1)" and section 18.239; results `docs/DI1-LIVE-SESSION-RESULTS.md`. Measurement only; no runtime change.
+
+### Measured
+- **DI-1 in a live Hermes session** (`CACHALOT_PREFILL_ENCODER_ONLY=1 ./serve.sh`, a fresh snapshot directory, 13 requests): the cold 16,040-token system block prefilled in 102.45 s (6.39 ms a token, the bench's knob-on rate; about 164 s at the knob-off rate of 10.21, derived), tool-result prefills of 11,478 and 6,480 tokens in 63.38 and 44.62 s; snapshot reuse intact (16,049 tokens reused on the next turn). Answers: tool calls well-formed, an image transcribed exactly, Python compiles, TypeScript passes a syntax check, the C# importer builds after fixing one wrong property name (`AllowTrailingComma` for `AllowTrailingCommas`), translations into German, French and Farsi fluent. No compression occurred. The default stays off.
+
 ## 0.71.0 (2026-10-31)
 
 HANDOFF "Start here (2026-10-31, 0.71.0)" and section 18.238; record `docs/V270-MAC-JOBS-RECORD.md` (nine predictions, committed first in c2f2e70); results `docs/V270-MAC-JOBS-RESULTS.md`. A minor release for one new knob, off by default; no default changed.

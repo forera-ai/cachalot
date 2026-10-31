@@ -1,0 +1,43 @@
+MLX_METAL_FAST_SYNCH=1
+darwin role 1 (CACHALOT_DARWIN_ROLE=0 disables)
+cachalot 0.71.0: loading /Volumes/X10Pro/Flash4-1/DeepSeek-V4.1-Flash
+expert bank: /Users/hamedprooshani/DeepSeek-V4.1-Flash-q2g128 (affine, 2-bit, 9.49 MiB/expert, 15360 experts)
+hotlist: reading 863 experts in the background
+[transformers] You are using a model of type `deepseek_v41` to instantiate a model of type ``. This may be expected if you are loading a checkpoint that shares a subset of the architecture (e.g., loading a `sam2_video` checkpoint into `Sam2Model`), but is otherwise not supported and can yield errors. Please verify that the checkpoint is compatible with the model you are instantiating.
+hotlist: 863 experts preloaded (8.0 GiB in 2.1 s of reading)
+ready in 17.4s (expert budget 48.0 GiB, wired 80.0 GiB, max_seq_len 65536)
+prefix snapshots: 0 loaded from /Users/hamedprooshani/.cache/cachalot/prefix-snapshots-di1 (none tokens), 0 more on disk, in 0.00s
+system date reuse: an agent's date line shows a date up to 7 days old so a new day reuses the saved system block (CACHALOT_SYSTEM_DATE_REUSE=0 turns it off)
+decode miss budget 0: at most 0 non-resident experts are read per layer in decode, the rest dropped (changes outputs; CACHALOT_DECODE_MISS_BUDGET)
+OpenAI-compatible API on http://127.0.0.1:8011/v1  (model id: deepseek-v4.1-flash; a request without them samples at temperature 0.6, top_p 1.0)
+INFO:     Started server process [29879]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8011 (Press CTRL+C to quit)
+wired fit: expert slots 5178 -> 5072 (system wired 73.9 GiB, ceiling 73.0)
+wired fit: expert slots 5072 -> 5026 (system wired 73.4 GiB, ceiling 73.0)
+[request] prompt=16040 reused=0 prefilled=16040 prefill=102.45s completion=9 decode=1.17s (7.69 tok/s) images=0 spliced=0 miss/tok=38.4 hit=82% read=2.53ms fast=18% finish=stop mlx=61.4/67.6/1.6GiB
+wired fit: expert slots 5026 -> 5114 (system wired 70.6 GiB, ceiling 73.0)
+wired fit: expert slots 5114 -> 5158 (system wired 71.1 GiB, ceiling 73.0)
+wired fit: expert slots 5158 -> 5178 (system wired 70.5 GiB, ceiling 73.0)
+[request] prompt=16068 reused=16049 prefilled=19 prefill=1.93s completion=93 decode=9.62s (9.67 tok/s) images=0 spliced=0 miss/tok=14.8 hit=93% read=2.05ms fast=34% finish=tool_calls mlx=62.9/63.0/0.3GiB
+wired fit: expert slots 5178 -> 5063 (system wired 74.0 GiB, ceiling 73.0)
+wired fit: expert slots 5063 -> 4999 (system wired 73.5 GiB, ceiling 73.0)
+[request] prompt=27639 reused=16161 prefilled=11478 prefill=63.38s completion=65 decode=6.99s (9.30 tok/s) images=0 spliced=1 miss/tok=21.6 hit=90% read=2.31ms fast=24% finish=tool_calls mlx=61.4/67.9/2.0GiB
+wired fit: expert slots 4999 -> 5075 (system wired 70.8 GiB, ceiling 73.0)
+wired fit: expert slots 5075 -> 5178 (system wired 69.3 GiB, ceiling 73.0)
+[request] prompt=34184 reused=27704 prefilled=6480 prefill=44.62s completion=444 decode=43.40s (10.23 tok/s) images=0 spliced=1 miss/tok=11.7 hit=95% read=2.04ms fast=33% finish=stop mlx=63.3/66.3/1.3GiB
+[request] prompt=34662 reused=34628 prefilled=34 prefill=2.73s completion=1367 decode=132.34s (10.33 tok/s) images=0 spliced=1 miss/tok=9.0 hit=96% read=2.07ms fast=30% finish=stop mlx=63.6/64.1/1.9GiB
+[request] prompt=36047 reused=36029 prefilled=18 prefill=2.39s completion=218 decode=20.87s (10.45 tok/s) images=0 spliced=1 miss/tok=10.2 hit=95% read=2.06ms fast=30% finish=stop mlx=63.8/64.2/1.9GiB
+wired fit: expert slots 5178 -> 5125 (system wired 73.5 GiB, ceiling 73.0)
+wired fit: expert slots 5125 -> 5079 (system wired 73.4 GiB, ceiling 73.0)
+[request] prompt=36563 reused=36265 prefilled=298 prefill=9.35s completion=160 decode=16.37s (9.77 tok/s) images=1 spliced=1 miss/tok=14.4 hit=93% read=2.15ms fast=29% finish=tool_calls mlx=64.0/65.9/0.5GiB
+[request] prompt=36792 reused=36723 prefilled=69 prefill=3.85s completion=153 decode=15.89s (9.63 tok/s) images=1 spliced=1 miss/tok=15.6 hit=93% read=2.23ms fast=27% finish=stop mlx=64.1/64.8/1.8GiB
+wired fit: expert slots 5079 -> 5048 (system wired 73.2 GiB, ceiling 73.0)
+wired fit: expert slots 5048 -> 5036 (system wired 73.1 GiB, ceiling 73.0)
+[request] prompt=36979 reused=36945 prefilled=34 prefill=2.92s completion=1105 decode=109.66s (10.08 tok/s) images=1 spliced=1 miss/tok=10.3 hit=95% read=2.16ms fast=30% finish=stop mlx=63.8/64.9/1.3GiB
+[request] prompt=38097 reused=38084 prefilled=13 prefill=1.56s completion=1145 decode=113.53s (10.09 tok/s) images=1 spliced=1 miss/tok=10.1 hit=95% read=2.04ms fast=30% finish=stop mlx=63.7/64.4/2.0GiB
+[request] prompt=39266 reused=39242 prefilled=24 prefill=2.83s completion=563 decode=52.00s (10.83 tok/s) images=1 spliced=1 miss/tok=5.9 hit=97% read=1.91ms fast=33% finish=stop mlx=63.7/64.4/2.0GiB
+[request] prompt=39843 reused=39829 prefilled=14 prefill=1.95s completion=2483 decode=228.73s (10.86 tok/s) images=1 spliced=1 miss/tok=5.1 hit=98% read=1.85ms fast=36% finish=stop mlx=63.7/64.4/2.0GiB
+[request] prompt=42356 reused=42326 prefilled=30 prefill=2.82s completion=3043 decode=285.64s (10.65 tok/s) images=1 spliced=1 miss/tok=5.9 hit=97% read=1.93ms fast=34% finish=stop mlx=63.7/64.5/2.0GiB
+wired fit: expert slots 5036 -> 5011 (system wired 73.2 GiB, ceiling 73.0)
