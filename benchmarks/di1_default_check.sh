@@ -9,6 +9,8 @@ cd "$(dirname "$0")/.."
 OUT=${DI1_CHECK_OUT:-docs/di1-default-on}
 DUMP=${DI1_AB_DUMP:-$HOME/cachalot-di1-live.jsonl}
 SETTLE_GIB=${DI1_AB_SETTLE_GIB:-40}          # 48 needs more memory available than this machine has with Hamed's apps open (18.241)
+# Extra serve.sh arguments: on 2026-10-31 the 1017 download held memory, so the check ran with --expert-budget-gib 40 (Hamed's choice).
+SERVE_ARGS=${DI1_CHECK_SERVE_ARGS:-}
 mkdir -p "$OUT"
 [ -f "$DUMP" ] || { echo "no dump at $DUMP" >&2; exit 1; }
 snap=$(mktemp -d "${TMPDIR:-/tmp}/di1-default-snap.XXXXXX")
@@ -18,10 +20,10 @@ for mode in default default off; do
   echo "run $n ($mode): settle $(date +%H:%M:%S)"
   benchmarks/settle.sh --budget-gib $SETTLE_GIB || { echo "settle failed before run $n" >&2; rm -rf "$snap"; exit 1; }
   if [ "$mode" = off ]; then
-    env -u CACHALOT_SERVER_DUMP CACHALOT_PREFILL_ENCODER_ONLY=0 CACHALOT_SNAPSHOT_DIR="$snap" ./serve.sh > "$OUT/run-$n-$mode-server.log" 2>&1 &
+    env -u CACHALOT_SERVER_DUMP CACHALOT_PREFILL_ENCODER_ONLY=0 CACHALOT_SNAPSHOT_DIR="$snap" ./serve.sh $SERVE_ARGS > "$OUT/run-$n-$mode-server.log" 2>&1 &
     knob=0
   else
-    env -u CACHALOT_SERVER_DUMP -u CACHALOT_PREFILL_ENCODER_ONLY CACHALOT_SNAPSHOT_DIR="$snap" ./serve.sh > "$OUT/run-$n-$mode-server.log" 2>&1 &
+    env -u CACHALOT_SERVER_DUMP -u CACHALOT_PREFILL_ENCODER_ONLY CACHALOT_SNAPSHOT_DIR="$snap" ./serve.sh $SERVE_ARGS > "$OUT/run-$n-$mode-server.log" 2>&1 &
     knob=1
   fi
   SP=$!

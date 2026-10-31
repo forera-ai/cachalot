@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.72.0 (2026-10-31)
+
+HANDOFF "Start here (2026-10-31, 0.72.0)" and section 18.242; plan `docs/DI1-DEFAULT-ON-PLAN.md`, results `docs/DI1-DEFAULT-ON-RESULTS.md`, Lab brief `docs/lab/briefs/2026-10-31-runtime-0.72.0.md`.
+
+### Changed
+- **`serve.sh` turns on DI-1's encoder-only prefill** (`CACHALOT_PREFILL_ENCODER_ONLY=1` unless the environment sets it; `=0` is the full prefill), Hamed's decision after the server A/B (0.668 of the full prefill's time on Hermes's large prefills) and the long-context gate (inside noise). It changes outputs in rounding and applies only to DeepSeek text prompts of more than one 4,096-token call. `chat.sh`, the GLM and MiniMax scripts and the code default are unchanged.
+- **DeepSeek disk snapshots are keyed on the prefill mode:** `0.68.0-di1` with the knob on, `0.68.0` (unchanged) without (`snapshot_store.numerics_version`). The first request after updating prefills each saved system block once, cold; the old snapshots stay on disk for `=0`.
+
+### Added
+- A startup line when the knob is on; `tests/test_di1_default_on.py` (5 tests); `benchmarks/di1_default_check.sh` (cold, restart, `=0` restart); `di1_server_ab_driver.py --requests`.
+
+### Measured
+- The check, at a 40 GiB budget (a download held memory): no knob set, a cold 16,040-token block in 104.1 s; after a restart 16,036 tokens reused from disk in 0.96 s; with `=0` after another restart nothing reused, 161.1 s; the same first token in all three. Five of five predictions held.
+
+### Fixed (documentation)
+- `docs/DI1-SERVER-AB-RESULTS.md` (0.71.3) gains an erratum: the 1017 download overlapped arms 1 to 4; the two off arms agree within 0.1 to 1.2 %.
+
 ## 0.71.3 (2026-10-31)
 
 HANDOFF "Start here (2026-10-31, 0.71.3)" and section 18.241; record `docs/DI1-SERVER-AB-RECORD.md`, results `docs/DI1-SERVER-AB-RESULTS.md`. Measurement and an instrument; no runtime change, DI-1 stays off by default.

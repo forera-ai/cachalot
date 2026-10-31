@@ -1,0 +1,21 @@
+MLX_METAL_FAST_SYNCH=1
+darwin role 1 (CACHALOT_DARWIN_ROLE=0 disables)
+cachalot 0.71.3: loading /Volumes/X10Pro/Flash4-1/DeepSeek-V4.1-Flash
+expert bank: /Users/hamedprooshani/DeepSeek-V4.1-Flash-q2g128 (affine, 2-bit, 9.49 MiB/expert, 15360 experts)
+hotlist: reading 863 experts in the background
+[transformers] You are using a model of type `deepseek_v41` to instantiate a model of type ``. This may be expected if you are loading a checkpoint that shares a subset of the architecture (e.g., loading a `sam2_video` checkpoint into `Sam2Model`), but is otherwise not supported and can yield errors. Please verify that the checkpoint is compatible with the model you are instantiating.
+hotlist: 863 experts preloaded (8.0 GiB in 2.1 s of reading)
+ready in 18.1s (expert budget 40.0 GiB, wired 80.0 GiB, max_seq_len 65536)
+prefix snapshots: 0 loaded from /var/folders/4p/xh823rjd32x53hbm_zvcjnqh0000gn/T//di1-default-snap.bvxGiJ (none tokens), 0 more on disk, in 0.00s
+system date reuse: an agent's date line shows a date up to 7 days old so a new day reuses the saved system block (CACHALOT_SYSTEM_DATE_REUSE=0 turns it off)
+decode miss budget 0: at most 0 non-resident experts are read per layer in decode, the rest dropped (changes outputs; CACHALOT_DECODE_MISS_BUDGET)
+OpenAI-compatible API on http://127.0.0.1:8011/v1  (model id: deepseek-v4.1-flash; a request without them samples at temperature 0.6, top_p 1.0)
+INFO:     Started server process [60411]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8011 (Press CTRL+C to quit)
+[request] prompt=16040 reused=0 prefilled=16040 prefill=161.12s completion=1 decode=0.14s (7.09 tok/s) images=0 spliced=0 miss/tok=33.0 hit=85% read=2.84ms fast=8% finish=length mlx=54.9/60.3/2.0GiB
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [60411]

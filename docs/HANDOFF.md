@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-31, 0.72.0): DI-1 is on by default in `serve.sh`; DeepSeek snapshots are keyed on the prefill mode, so the first request after updating prefills each system block once
+>
+> Section 18.242 (`docs/DI1-DEFAULT-ON-RESULTS.md`). Hamed chose default-on with mode-keyed snapshots (M1) and no in-block pins in DI-1 mode. Checked: no knob set, cold block 104.1 s with the startup line; restart reuses 16,036 tokens from disk in 0.96 s; `=0` restart sees none of them and prefills in 161.1 s; same token; 5 of 5 held (at a 40 GiB budget: his 1017 download held memory). `chat.sh` keeps the full prefill. Erratum to 18.241: that download overlapped the A/B (off arms agree within 0.1 to 1.2 %). **Needs Hamed:** the 0.71.2 items (the 1017 download is running, the internal old bank, the default checkpoint); a live session to see a compression's re-prefill with the default on.
+
 > ## Start here (2026-10-31, 0.71.3): DI-1 in the server, same build, ABBA: 0.668 of the knob-off prefill time on the live session's three large prefills, reuse unchanged; every registered DI-1 check has run, the default is Hamed's
 >
 > Section 18.241 (`docs/DI1-SERVER-AB-RESULTS.md`). Cold 16,040-token system block 108.3 against 163.1 s (0.664), tool results 66.3 against 103.4 s (0.641) and 46.8 against 65.0 s (0.721); the same tokens reused and prefilled in all four arms; 7 of 8 predictions held. The one greedy token differed on one request, by run order (off, on, on, off gave Here, Here, Top, Top), not by the knob (derived: the decode miss budget's drops on the reused decoded token). **Needs Hamed:** DI-1 default-on in `serve.sh` and the snapshot policy (§18.221); the 0.71.2 items (the 1017 download, the internal bank, the default checkpoint).
@@ -9481,6 +9485,27 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 **Bottleneck after.** Unchanged: expert reads on misses; of the all-resident floor, CPU graph building, GPU idle, and routed-expert launch granularity.
 
 **Kind.** Engineering (a default on a prior research result).
+
+
+### 18.242 DI-1 default-on in `serve.sh`, snapshots keyed on the mode (0.72.0)
+
+**Goal.** Hamed: "Yes, plan default-on", then "Yes, build with M1" (mode-keyed snapshots, pins left off in DI-1 mode).
+
+**Baseline (recorded).** §18.241: server A/B 0.668 of the full prefill's time; §18.238: long gate inside noise; §18.239: live answers fine. Before 0.72.0 knob-on and knob-off snapshots shared one key.
+
+**Prediction.** D-1 to D-5 in `docs/DI1-DEFAULT-ON-PLAN.md`, committed first in 2d9489e.
+
+**Method.** Built (c322004): `serve.sh` default `CACHALOT_PREFILL_ENCODER_ONLY=1`; a startup line; `snapshot_store.numerics_version` (`-di1` suffix) used by `cli._attach_snapshot_store`; `tests/test_di1_default_on.py`. `benchmarks/di1_default_check.sh`: three `serve.sh` starts on one new snapshot directory (no knob, no knob after a restart, `=0` after a restart), request 1 of the live dump with `max_tokens` 1. Deviation: a 40 GiB budget and a 32 GiB settle gate, because Hamed's 1017 download left 61 to 65 GiB available (the 48 GiB launch timed out in settle; nothing ran); Hamed chose it.
+
+**Result (measured).** Run 1: startup line printed, 16,040 tokens cold in 104.14 s, 3 files written. Run 2: 1 snapshot loaded, 16,036 reused, 0.96 s. Run 3 (`=0`): 0 loaded and 0 seen on disk, 0 reused, 161.12 s, 3 more files. Token "Hey" in all three. Suite 1,204 passed, 7 skipped (2d9489e: 1,196 and 10). D-1 to D-5 held.
+
+**Explanation.** The `-di1` tag changes the identity hashed into every file name and header, so each mode's store sees only its own set; the knob-off identity is the pre-0.72.0 one, so existing snapshots serve `=0` unchanged.
+
+**What did not go well.** The A/B of 18.241 missed that the download overlapped it (erratum added there; off arms agree within 0.1 to 1.2 %).
+
+**Open / needs Hamed.** A live session with the default on (a compression's re-prefill is still unobserved); the 0.71.2 items.
+
+**Kind.** Engineering (a default change, predicted and checked): 5 held.
 
 
 ### 18.241 DI-1 server A/B, same build, ABBA (0.71.3)

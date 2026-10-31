@@ -1,10 +1,11 @@
-# Next-session prompt — **v287**, written 2026-10-31
+# Next-session prompt — **v288**, written 2026-10-31
 
 **This is the file to paste.** `docs/NEXT-SESSION-PROMPT.md` is always current; superseded ones live in
 `docs/next-session-prompts/`.
 
 | version | written | produced by | what changed |
 |---|---|---|---|
+| **v288** | 2026-10-31 | Hamed: "Yes, plan default-on", then "Yes, build with M1", then "Run at 40 GiB now" for the check | **0.72.0: `serve.sh` turns on DI-1 (`CACHALOT_PREFILL_ENCODER_ONLY=0` is the full prefill; `chat.sh` unchanged); DeepSeek disk snapshots keyed on the prefill mode (`0.68.0-di1`). Check: cold block 104.1 s, restart reuses 16,036 from disk in 0.96 s, `=0` restart sees none (161.1 s); 5 of 5 held. Erratum to 0.71.3: the 1017 download overlapped the A/B.** §18.242 |
 | **v287** | 2026-10-31 | Hamed chose "Run the A/B first" (v286 First job 2) | **0.71.3, measurement: DI-1 in the server, same build, four arms off, on, on, off replaying the live session's first four requests with `max_tokens` 1: 0.664 of the knob-off prefill time on the cold 16,040-token block (108.3 against 163.1 s), 0.641 and 0.721 on two tool results, 0.668 over the three (221.4 against 331.5 s), reuse unchanged; the one greedy token differed on one request by run order, not by the knob. 7 of 8 held, S-6 missed. 0.71.2 (another session the same day) prepared DeepSeek-V4.1-Flash-1017 (§18.240).** §18.241 |
 | **v286** | 2026-10-31 | Hamed chose "Live session first", ran `CACHALOT_PREFILL_ENCODER_ONLY=1 ./serve.sh` with a fresh snapshot directory and a dump, then "Session done" with the Hermes export | **0.71.1, measurement: DI-1 live, 13 requests, no error; cold 16,040-token block 102.45 s (6.39 ms a token; about 164 s at the knob-off rate, derived), tool-result prefills 5.5 to 6.9 ms a token, reuse intact; answers fine (one C# property-name slip, exact image transcription). No compression occurred. `docs/DI1-LIVE-SESSION-RESULTS.md`.** §18.239 |
 | **v285** | 2026-10-31 | Hamed: "ok, complete the mac related open tasks from 270" (all four jobs chosen with estimates, the sysctl set, a `llama-server` stopped for memory) | **0.71.0, minor: `CACHALOT_ATTN_ACT_QUANT_O=1` (default off), the reference's FP8 round trip of the attention output before `wo_a`, neutral on the gate (dNLL +0.0047 [-0.0156, +0.0261], KL 0.0171 against noise 0.0140). DI-1 at 22,000 tokens: 136.5 against 224.6 s (-39 %), same tokens; on a new long-context `pareto.py` gate (8,192-token prefills in 4,096-token calls) dNLL +0.0003 [-0.0036, +0.0043], KL 0.0014 against a re-chunking's 0.0101. The 2026-10-16 `encoding.py` renders all 142 recorded Hermes requests identically. Nine of nine predictions held (`docs/V270-MAC-JOBS-RESULTS.md`).** §18.238 |
@@ -248,6 +249,10 @@
 | v47 | 2026-09-25 | Hamed asked for the v44-v46 levers planned, built, measured and documented | **0.18.0: GLM prefill 60 to 90 tok/s, bit-identical (a store path that never evicts, plus the next layer read early), GLM's missing MLX buffer-cache cap added, GLM disk snapshots (a restart reuses the system block). DeepSeek: an `iostat` trace shows prefill is not read-bound on either drive; the lookahead A/B drowned in a 124-to-200 s drift across back-to-back prefills.** §17.1, §15.13 |
 | v46 | 2026-09-25 | Hamed asked for GLM-5.3-Flash on Cachalot | 0.17.0: GLM through `serve-glm.sh` / `chat-glm.sh`. §17 |
 | v45 | 2026-09-24 | same as v47, one day earlier | 0.16.0: disk snapshot store by last use; lookahead and local compression closed. §15.12 |
+
+## First jobs (v288): DI-1 is the serve.sh default; what is left is the 1017 checkpoint and a live session
+
+Read HANDOFF 18.242 and `docs/DI1-DEFAULT-ON-RESULTS.md`, then 18.240 and `docs/V41-1017-RUNBOOK.md`. **Needs Hamed:** (1) the 1017 checkpoint: his download to the X10Pro was running on 2026-10-31 (shard 9 of 48 at 15:30); then the runbook's verify, the internal old bank's deletion (step 2, his call), the bank build, gate and live session, and the default (step 8). The 1017 bank's snapshots key on its own files, and DI-1 on 1017 gets the `-di1` tag like the old checkpoint. (2) A live Hermes session with the default on, to see a compression's re-prefill (the one DI-1 case not observed). (3) The v285 items (act_quant(o), encoding.py, compression choices, the reviewer). **Not tested:** whether 0.71.3's request-4 token split comes from the decode miss budget (only on his go). **Rules kept:** the earlier ones; while a large download runs, available memory can fall below what a 48 GiB server needs (61 to 65 GiB seen): check `settle.sh` before promising a run.
 
 ## First jobs (v287): every registered DI-1 check has run; its default, and the 1017 checkpoint, are Hamed's
 

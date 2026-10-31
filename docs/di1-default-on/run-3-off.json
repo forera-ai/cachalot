@@ -1,0 +1,25 @@
+{
+ "arm": 3,
+ "knob": 0,
+ "started": "2026-10-31 15:42:16",
+ "requests": [
+  {
+   "request": 1,
+   "prompt_tokens": 16040,
+   "reused": 0,
+   "prefilled": 16040,
+   "prefill_s": 161.122,
+   "wall_s": 161.419,
+   "completion_tokens": 1,
+   "token": "Hey",
+   "tool_calls": false
+  }
+ ],
+ "watchdog": {
+  "tripped": null,
+  "pressure_max": 1,
+  "swap_start_mb": 1730.44,
+  "swap_max_mb": 1743.62
+ },
+ "finished": "2026-10-31 15:44:58"
+}
