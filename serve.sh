@@ -24,18 +24,29 @@ if pgrep -fl "deepseek-v41/bin/python|cachalot\.cli|Python\.app/Contents/MacOS/P
     exit 1
 fi
 
-export CACHALOT_MODEL_PATH=/Volumes/X10Pro/Flash4-1/DeepSeek-V4.1-Flash
-# The 2-bit bank is read from the internal SSD (6.8 GB/s) when a verified copy exists there, else from the X10Pro (1 GB/s, six times dearer a miss;
-# HANDOFF 18.51). The internal copy is trusted only when it carries the marker written after a byte-for-byte compare with the X10Pro one.
-if [ -f "$HOME/DeepSeek-V4.1-Flash-q2g128/.cachalot-verified" ]; then
-    DS_BANK_DEFAULT="$HOME/DeepSeek-V4.1-Flash-q2g128"
+export CACHALOT_MODEL_PATH=${CACHALOT_MODEL_PATH:-/Volumes/X10Pro/Flash4-1/DeepSeek-V4.1-Flash}
+# Each checkpoint has its own bank and hotlist, named after the checkpoint directory, so pointing CACHALOT_MODEL_PATH at another
+# revision (DeepSeek-V4.1-Flash-1017, docs/V41-1017-RUNBOOK.md) never pairs its trunk with another revision's experts.
+DS_NAME=$(basename "$CACHALOT_MODEL_PATH")
+# The 2-bit bank is read from the internal SSD (6.8 GB/s) when a verified copy exists there, else from beside the checkpoint on the
+# X10Pro (1 GB/s, six times dearer a miss; HANDOFF 18.51). The internal copy is trusted only when it carries the marker, written after
+# a byte-for-byte compare with the X10Pro copy or after a build that finished and verified.
+if [ -f "$HOME/$DS_NAME-q2g128/.cachalot-verified" ]; then
+    DS_BANK_DEFAULT="$HOME/$DS_NAME-q2g128"
 else
-    DS_BANK_DEFAULT="/Volumes/X10Pro/Flash4-1/DeepSeek-V4.1-Flash-q2g128"
+    DS_BANK_DEFAULT="$(dirname "$CACHALOT_MODEL_PATH")/$DS_NAME-q2g128"
 fi
 export CACHALOT_EXPERT_BANK=${CACHALOT_EXPERT_BANK:-$DS_BANK_DEFAULT}
 export CACHALOT_PAGE_CACHE=1
 export CACHALOT_MLX_WIRED_LIMIT_GIB=${CACHALOT_MLX_WIRED_LIMIT_GIB:-80}
-export CACHALOT_HOTLIST=/Users/hamedprooshani/cachalot-hotlist.json
+# The hotlist ranks experts by one checkpoint's routing; another revision starts without one until its own is built. Empty disables it.
+if [ "$DS_NAME" = "DeepSeek-V4.1-Flash" ]; then
+    DS_HOTLIST_DEFAULT="$HOME/cachalot-hotlist.json"
+else
+    DS_HOTLIST_DEFAULT="$HOME/cachalot-hotlist-$DS_NAME.json"
+fi
+[ -f "$DS_HOTLIST_DEFAULT" ] || DS_HOTLIST_DEFAULT=""
+export CACHALOT_HOTLIST=${CACHALOT_HOTLIST-$DS_HOTLIST_DEFAULT}
 export CACHALOT_HOTLIST_GIB=8
 export PYTHONPATH=src
 # Shared-memory Metal fences: bit-identical, faster decode in a display-on slow

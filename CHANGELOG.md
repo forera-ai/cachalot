@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.71.2 (2026-10-31)
+
+HANDOFF "Start here (2026-10-31, 0.71.2)" and section 18.240; runbook `docs/V41-1017-RUNBOOK.md`. Launch scripts and tools only; nothing measured on the machine, the old checkpoint's configuration is unchanged.
+
+### Changed
+- `serve.sh` and `chat.sh` take `CACHALOT_MODEL_PATH` from the environment (default unchanged) and derive the expert bank and hotlist from the checkpoint directory's name: the bank is `$HOME/<name>-q2g128` when it carries `.cachalot-verified`, else `<name>-q2g128` beside the checkpoint; the hotlist is `~/cachalot-hotlist.json` for `DeepSeek-V4.1-Flash` and `~/cachalot-hotlist-<name>.json` for any other revision when it exists, else none. `CACHALOT_HOTLIST=` (empty) now disables the hotlist.
+
+### Added
+- `scripts/verify_hf_download.py`: checks a downloaded checkpoint against the Hub's file list at a revision (presence and size, `--sha256` for LFS files).
+- `benchmarks/pareto_arms.v1017.json`: DeepSeek-V4.1-Flash-1017 as the reference, a chunk-96 noise arm, 1017 with `CACHALOT_ATTN_ACT_QUANT_O=1`, and the old checkpoint.
+- `docs/V41-1017-RUNBOOK.md`: download, verification, disk plan, bank build, smoke test, quality gate, live session, hotlist, default switch.
+
+### Checked (files, not runs)
+- **DeepSeek-V4.1-Flash-1017** (revision `1bae0e1`) against the local checkpoint (`dba1be0`): `config.json` equal in every field, the same 96,085 tensors, shard map and `total_size`, identical tokenizer files, new weights in all 48 shards; `inference/model.py` differs only by `act_quant(o)` and the indexer publish fix, `encoding.py` is the 2026-10-16 revision.
+- **Mistral-Large-4-1T-A52B** declined for this machine: 128 experts top-4 of 113M parameters each, 31.8 MB an expert at 2-bit g128, about 18 % of experts resident at 48 GiB, 2-3 s a token derived from the X10Pro, a 1.06 TB FP8 checkpoint.
+
 ## 0.71.1 (2026-10-31)
 
 HANDOFF "Start here (2026-10-31, 0.71.1)" and section 18.239; results `docs/DI1-LIVE-SESSION-RESULTS.md`. Measurement only; no runtime change.

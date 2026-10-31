@@ -1,0 +1,46 @@
+{
+ "about": "DeepSeek-V4.1-Flash-1017 against the checkpoint served until now (docs/V41-1017-RUNBOOK.md step 5). The new checkpoint is the reference so the paired NLL difference of 'old' reads as how much worse (positive) or better (negative) the old weights predict the same texts; KL and top-1 against a different checkpoint are not a rounding measure here, only NLL and the task battery compare the two models. 'noise-chunk96' is the 1017 reference at another prefill chunk and sets the rounding band; 'v1017-actq' is the reference's act_quant(o), which the 1017 release ships in inference/model.py. No hotlist in any arm: the shipped one ranks the old checkpoint's routing. The old bank is read from the X10Pro once the internal copy is gone, so the old arm's ms a step is not comparable.",
+ "base": {
+  "budget_gib": 48,
+  "max_seq_len": 4096,
+  "prefill": 384,
+  "decode": 192,
+  "env": {
+   "CACHALOT_HOTLIST": ""
+  }
+ },
+ "reference": "v1017",
+ "arms": [
+  {
+   "name": "v1017",
+   "env": {
+    "CACHALOT_MODEL_PATH": "/Volumes/X10Pro/Flash4-1/DeepSeek-V4.1-Flash-1017",
+    "CACHALOT_EXPERT_BANK": "/Users/hamedprooshani/DeepSeek-V4.1-Flash-1017-q2g128"
+   }
+  },
+  {
+   "name": "noise-chunk96",
+   "noise": true,
+   "prefill_chunk": 96,
+   "env": {
+    "CACHALOT_MODEL_PATH": "/Volumes/X10Pro/Flash4-1/DeepSeek-V4.1-Flash-1017",
+    "CACHALOT_EXPERT_BANK": "/Users/hamedprooshani/DeepSeek-V4.1-Flash-1017-q2g128"
+   }
+  },
+  {
+   "name": "v1017-actq",
+   "env": {
+    "CACHALOT_MODEL_PATH": "/Volumes/X10Pro/Flash4-1/DeepSeek-V4.1-Flash-1017",
+    "CACHALOT_EXPERT_BANK": "/Users/hamedprooshani/DeepSeek-V4.1-Flash-1017-q2g128",
+    "CACHALOT_ATTN_ACT_QUANT_O": "1"
+   }
+  },
+  {
+   "name": "old",
+   "env": {
+    "CACHALOT_MODEL_PATH": "/Volumes/X10Pro/Flash4-1/DeepSeek-V4.1-Flash",
+    "CACHALOT_EXPERT_BANK": "/Volumes/X10Pro/Flash4-1/DeepSeek-V4.1-Flash-q2g128"
+   }
+  }
+ ]
+}

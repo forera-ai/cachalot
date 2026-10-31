@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-10-31, 0.71.2): DeepSeek-V4.1-Flash-1017 is new weights in the old shapes; the download is with Hamed and `docs/V41-1017-RUNBOOK.md` takes it from there
+>
+> Section 18.240. Compared file by file with the local checkpoint: `config.json` equal in every field, same 96,085 tensors, shard map and size, same tokenizer, all 48 shards new. Same speed by construction, up to the new routing's hit rate; the card claims large agentic and coding gains (Terminal-Bench 31.2 to 42.3). `serve.sh` and `chat.sh` now take `CACHALOT_MODEL_PATH` from the environment and derive the bank and hotlist from the checkpoint's directory name (old defaults unchanged); `scripts/verify_hf_download.py` and `benchmarks/pareto_arms.v1017.json` added. **Needs Hamed:** deleting the internal copy of the old bank (step 2; its twin stays on the X10Pro), then making 1017 the default after the gate and a live session (step 8). Mistral-Large-4-1T-A52B was looked at the same day and not taken: 31.8 MB experts at 2 bits, about 18 % resident at 48 GiB, 2-3 s a token from the X10Pro, and a 1.06 TB checkpoint no drive holds.
+
 > ## Start here (2026-10-31, 0.71.1): DI-1 ran a live Hermes session cleanly: cold system block 102 s (about 164 s off, derived), reuse intact, answers fine; the default and snapshot policy are Hamed's
 >
 > Section 18.239 (`docs/DI1-LIVE-SESSION-RESULTS.md`). 13 requests, no error; prefill 5.5 to 6.9 ms a token on the large prefills (bench: 6.2 on, 10.2 off); one C# property-name slip in an otherwise building importer. Not covered: a same-session knob-off pair, a compression's re-prefill. **Needs Hamed:** DI-1 default-on and the snapshot policy (§18.221); optionally a same-build server A/B of the three large prefills (estimate about 20 minutes, his confirm).
@@ -9473,6 +9477,25 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 **Bottleneck after.** Unchanged: expert reads on misses; of the all-resident floor, CPU graph building, GPU idle, and routed-expert launch granularity.
 
 **Kind.** Engineering (a default on a prior research result).
+
+
+### 18.240 DeepSeek-V4.1-Flash-1017 prepared, Mistral Large 4 declined (0.71.2)
+
+**Goal.** Hamed asked whether two new checkpoints are worth adding: Mistral-Large-4-1T-A52B ("only if it would beat any of the current models") and DeepSeek-V4.1-Flash-1017, then "prepare" the 1017 integration; he downloads.
+
+**Method.** Hub files only, nothing run on the model. Mistral: `config.json`, `params.json`, model card. 1017: `config.json`, `model.safetensors.index.json`, `inference/`, `encoding/`, the Hub's LFS hashes for both repositories, all compared with `/Volumes/X10Pro/Flash4-1/DeepSeek-V4.1-Flash` (revision `dba1be0`).
+
+**Measured (file comparisons).** 1017 (revision `1bae0e1`): config equal in every field; 96,085 tensors with the same names, shard map and `total_size`; `tokenizer.json` and `tokenizer_config.json` identical; 0 of 48 shards share a hash with the old revision. `inference/model.py` differs only by `act_quant(o)` and the indexer publish fix (§18.223); `encoding.py` is the 2026-10-16 revision (§18.238: no recorded prompt changes). Mistral Large 4: 72 layers (71 MoE), 128 routed experts top-4 plus one shared, an expert of 3 x 6144 x 6144 = 113M parameters, FP8 checkpoint ~1.06 TB.
+
+**Derived.** Mistral: 31.8 MB an expert at 2-bit g128 (3.2 times DeepSeek's 9.95 MB), a ~289 GB bank that only the X10Pro could hold, 284 expert uses a token, ~1,600 experts (18 %) resident at 48 GiB; at a 70-75 % hit rate that is 2-3 GB of reads and 2-3 s a token at 1 GB/s, slower than GLM there, with its card's own index (26) below where Artificial Analysis lists DeepSeek V4.1 Flash (39-40). Declined. 1017: the bank recipe, record size, trunk and kernels are unchanged, so the cost of a token is unchanged up to routing; disk snapshots need no change because `runtime_identity` already hashes the checkpoint's config and index and the bank's files.
+
+**Built.** `serve.sh`, `chat.sh`: `CACHALOT_MODEL_PATH` overridable; the bank defaults to `$HOME/<checkpoint dir>-q2g128` when marked verified, else `<checkpoint parent>/<checkpoint dir>-q2g128`; the hotlist to `~/cachalot-hotlist.json` for the old checkpoint and `~/cachalot-hotlist-<checkpoint dir>.json` for any other when it exists, else none; `CACHALOT_HOTLIST=` disables it. Checked by sourcing the scripts' header: the old defaults resolve exactly as before, the 1017 path resolves to its own bank and no hotlist. `scripts/verify_hf_download.py` (sizes, `--sha256` of LFS files, against the Hub's tree at a revision; checked on the old checkpoint, 88 files, 0 bad, one LFS hash matched). `benchmarks/pareto_arms.v1017.json` (1017 reference, chunk-96 noise, 1017 with `act_quant(o)`, the old checkpoint). `docs/V41-1017-RUNBOOK.md`: download, verify, free the internal SSD, build the bank, smoke, gate, live session, hotlist, default.
+
+**Closed.** Mistral-Large-4-1T-A52B on this machine.
+
+**Open / needs Hamed.** The download; deleting the internal old bank (runbook step 2); 1017 as the default (step 8).
+
+**Kind.** Engineering (preparation); no measurement on the machine.
 
 
 ### 18.239 DI-1 in a live Hermes session (0.71.1)
