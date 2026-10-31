@@ -61,6 +61,12 @@ export CACHALOT_SNAPSHOT_DIR=${CACHALOT_SNAPSHOT_DIR-$HOME/.cache/cachalot/prefi
 # a token, no sign of harm in the blind checks (18.60, 18.61). It changes outputs; CACHALOT_DECODE_MISS_BUDGET=off is the exact path.
 export CACHALOT_DECODE_MISS_BUDGET=${CACHALOT_DECODE_MISS_BUDGET-0}
 
+# DI-1 encoder-only prefill (Hamed's default since 0.72.0, HANDOFF 18.242, docs/DI1-DEFAULT-ON-PLAN.md): a text prompt of more than one
+# 4,096-token call runs layers 20 to 39 once over its last 2,541 rows; 0.668 of the full prefill's time on Hermes's large prefills
+# (18.241), inside noise on the long-context gate (18.238). It changes outputs in rounding, so its disk snapshots carry their own key;
+# CACHALOT_PREFILL_ENCODER_ONLY=0 is the full prefill. chat.sh keeps the full prefill, as it keeps the exact decode.
+export CACHALOT_PREFILL_ENCODER_ONLY=${CACHALOT_PREFILL_ENCODER_ONLY-1}
+
 # A request without max_tokens gets 8192 (cut to what fits in max_seq_len). At 2000, Hermes's context
 # summaries and one long delegate_task call were cut mid-output, and the truncated tool call reached
 # the client as raw markup (HANDOFF section 15.10).

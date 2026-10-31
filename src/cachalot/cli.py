@@ -185,10 +185,12 @@ def _attach_snapshot_store(runtime, directory: str) -> None:
     (section 15.12).
     """
     from cachalot.model import snapshot_store
+    from cachalot.model.generation import encoder_only_enabled
 
     t0 = time.perf_counter()
     identity = snapshot_store.runtime_identity(
-        runtime.model_path, runtime.expert_bank_path, runtime.max_seq_len, snapshot_store.NUMERICS_VERSION
+        runtime.model_path, runtime.expert_bank_path, runtime.max_seq_len,
+        snapshot_store.numerics_version(encoder_only_enabled()),
     )
     store = snapshot_store.SnapshotStore(directory, identity)
     loaded = store.load_all()
@@ -279,6 +281,13 @@ def cmd_serve(args) -> None:
             model.set_decode_miss_budget(budget)
             print(f"decode miss budget {budget}: at most {budget} non-resident experts are read per layer in decode, "
                   f"the rest dropped (changes outputs; CACHALOT_DECODE_MISS_BUDGET)", file=sys.stderr, flush=True)
+        from cachalot.model.generation import encoder_only_enabled
+
+        if encoder_only_enabled():
+            # HANDOFF 18.242: serve.sh's default since 0.72.0; snapshots are keyed on the mode (snapshot_store.numerics_version)
+            print("DI-1 encoder-only prefill on: a prompt of more than one prefill call runs layers 20 to 39 once over its last "
+                  "2,541 rows (changes outputs in rounding; snapshots keyed on it; CACHALOT_PREFILL_ENCODER_ONLY=0 is the full "
+                  "prefill)", file=sys.stderr, flush=True)
         trace_path = os.environ.get("CACHALOT_ROUTING_TRACE")
         if trace_path:
             # HANDOFF 18.54: a weighted routing trace of a live session, saved when the server stops. The weights cost a

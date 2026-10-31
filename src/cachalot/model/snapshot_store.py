@@ -43,6 +43,13 @@ FORMAT = 1
 NUMERICS_VERSION = "0.68.0"
 
 
+def numerics_version(encoder_only: bool) -> str:
+    """The tag a DeepSeek server keys its disk snapshots on. DI-1's encoder-only prefill (CACHALOT_PREFILL_ENCODER_ONLY) moves the
+    decoder half's rounding, so its snapshots get their own key (0.72.0, docs/DI1-DEFAULT-ON-PLAN.md): a restored snapshot always
+    equals a cold prefill of the same configuration, and switching the knob finds the other mode's set intact."""
+    return NUMERICS_VERSION + "-di1" if encoder_only else NUMERICS_VERSION
+
+
 def _stat_key(path: Path) -> str:
     try:
         st = path.stat()

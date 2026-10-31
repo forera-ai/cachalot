@@ -96,13 +96,13 @@ def post(body: dict, url: str = URL, timeout: float = 1800) -> dict:
     return json.loads(urllib.request.urlopen(req, timeout=timeout).read())
 
 
-def run(dump: Path, out: Path, arm: int, knob: int, server_pid: int | None, url: str = URL, sampler=sample) -> int:
+def run(dump: Path, out: Path, arm: int, knob: int, server_pid: int | None, url: str = URL, sampler=sample, requests: int = REQUESTS) -> int:
     dog = Watchdog(server_pid, sampler=sampler)
     dog.start()
     rec = {"arm": arm, "knob": knob, "started": time.strftime("%Y-%m-%d %H:%M:%S"), "requests": []}
     rc = 0
     try:
-        for i, body in enumerate(bodies(dump), start=1):
+        for i, body in enumerate(bodies(dump, requests), start=1):
             t0 = time.time()
             res = post(prepare(body), url)
             cx = res["usage"].get("cachalot", {})
@@ -170,11 +170,12 @@ def main() -> None:
     ap.add_argument("--knob", type=int, choices=(0, 1))
     ap.add_argument("--server-pid", type=int)
     ap.add_argument("--score", type=Path)
+    ap.add_argument("--requests", type=int, default=REQUESTS, help="replay only the first N bodies (the default-on check uses 1)")
     a = ap.parse_args()
     if a.score:
         print(json.dumps(score(a.score), indent=1, ensure_ascii=False))
         return
-    raise SystemExit(run(a.dump.expanduser(), a.out, a.arm, a.knob, a.server_pid))
+    raise SystemExit(run(a.dump.expanduser(), a.out, a.arm, a.knob, a.server_pid, requests=a.requests))
 
 
 if __name__ == "__main__":
