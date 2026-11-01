@@ -45,3 +45,12 @@ display as it is.
 ## Kind
 
 Research if the predictions are scored as written; the default decision that follows is Hamed's.
+
+## Erratum before any arm ran (2026-11-01 21:31)
+
+The first launch waited in `settle.sh` at 71.6-72.2 GiB available against the 77 GiB a 48 GiB arm needs (the
+llama-server was gone; the rest is ordinary applications) and was stopped before any arm started. The gate runs at
+**40 GiB** (needs 69 GiB) from `docs/v1017-gate/arms.json`, a copy of the arms file with only the base budget changed.
+Outputs do not depend on the budget on this gate (32, 36 and 48 GiB were bit-identical), so G-1 to G-5 stand as
+written. G-6 is scored against itself only: 1017's ms a step at 40 GiB is not comparable to the ~140 ms 48 GiB
+baseline, and the old arm's ratio to it still is a ratio within the run. G-7 stands.
