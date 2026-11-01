@@ -1,8 +1,8 @@
 # Experiment index (charter section 7.2 and section 10)
 
-Written 2026-10-09 against runtime 0.72.1; regenerate with `benchmarks/experiment_index.py`. The charter asks for "a file of experiment records whose predictions were written before the build". The records themselves live in `docs/HANDOFF.md` section 18 (each with Baseline, Prediction, Method, Result, Explanation, Limits, Kind); this file is the index: where each record is, whether it carries a written prediction, and what kind of result it is, as its own **Kind** line says. It does not restate results. Sections before 18.75 predate the record format and are not listed; sections without a **Kind** line are listed as unlabelled and have no claim made for them here.
+Written 2026-10-09 against runtime 0.72.2; regenerate with `benchmarks/experiment_index.py`. The charter asks for "a file of experiment records whose predictions were written before the build". The records themselves live in `docs/HANDOFF.md` section 18 (each with Baseline, Prediction, Method, Result, Explanation, Limits, Kind); this file is the index: where each record is, whether it carries a written prediction, and what kind of result it is, as its own **Kind** line says. It does not restate results. Sections before 18.75 predate the record format and are not listed; sections without a **Kind** line are listed as unlabelled and have no claim made for them here.
 
-Counts of the 169 sections listed (18.75-18.243): 86 research, 24 measurement, 22 unlabelled, 18 planning, 17 engineering, 2 pricing.
+Counts of the 170 sections listed (18.75-18.244): 86 research, 24 measurement, 22 unlabelled, 18 engineering, 18 planning, 2 pricing.
 
 Research means predicted, measured and explained (charter section 8.1 rule 6); a falsified prediction is still research and is marked so in its Kind line. Engineering means it works without a written prediction, or an instrument was built.
 
@@ -10,6 +10,7 @@ Research means predicted, measured and explained (charter section 8.1 rule 6); a
 
 | section | title | prediction written | kind (as recorded) |
 |---|---|:---:|---|
+| §18.244 | DI-1's layer-20 speculation outlived its slots: the `'w1.weight'` error and silent wrong weights (0.72.2) | no | Engineering (a correctness fix, reproduced and counted; no prediction written). |
 | §18.243 | DeepSeek-V4.1-Flash-1017 built and run live; the decode miss budget's tool-argument cost (0.72.1) | no | Measurement (live sessions and a replay, no prediction written). No default changed. |
 | §18.242 | DI-1 default-on in `serve.sh`, snapshots keyed on the mode (0.72.0) | yes | Engineering (a default change, predicted and checked): 5 held. |
 | §18.241 | DI-1 server A/B, same build, ABBA (0.71.3) | yes | Research (predicted, measured, explained as hypothesis): 7 held, 1 missed. No default changed. |

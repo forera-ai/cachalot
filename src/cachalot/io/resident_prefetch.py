@@ -48,6 +48,9 @@ class ResidentExpertPrefetcher:
 
         self._lock = RLock()
 
+        # Finished loads whose record the store had already let go of when they were collected (see get).
+        self.stale = 0
+
     def prefetch(
         self,
         entry: ExpertEntry,
@@ -91,7 +94,13 @@ class ResidentExpertPrefetcher:
             )
 
         if future is not None:
-            return future.result()
+            resident = future.result()
+            # A load can outlive its record: DI-1's last encoder layer speculates layer 20, which runs only in finish_decoder, after the next
+            # chunk's layer 0 has released that transient slot. The slot then holds another expert, or the wired governor parked it and its
+            # arrays are gone (KeyError 'w1.weight' in the 1017 live session, HANDOFF section 18.244). Such a record is read again.
+            if self.store.holds(resident):
+                return resident
+            self.stale += 1
 
         return self.store.get_prefill(entry)
 

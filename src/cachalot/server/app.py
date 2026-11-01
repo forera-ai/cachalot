@@ -19,8 +19,10 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sys
 import threading
 import time
+import traceback
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
@@ -163,6 +165,20 @@ def _stops(stop) -> tuple[str, ...]:
     return tuple(stop)
 
 
+def log_failed_request(exc: BaseException) -> None:
+    """Print a failed streaming request on the server's stderr.
+
+    The client only gets str(exc), which for a KeyError is just the key
+    ('w1.weight' in the 1017 live session, HANDOFF section 18.243), and no
+    [request] line is printed for it. A ValueError is a bad request and gets
+    one line; anything else gets its traceback.
+    """
+    print(f"[request failed] {type(exc).__name__}: {exc}", file=sys.stderr, flush=True)
+    if not isinstance(exc, ValueError):
+        traceback.print_exception(exc, file=sys.stderr)
+        sys.stderr.flush()
+
+
 def create_app(engine: Engine, config: ServerConfig | None = None) -> FastAPI:
     config = config or ServerConfig()
     app = FastAPI(title="Cachalot", version="0.2.0", docs_url="/docs")
@@ -268,7 +284,8 @@ def create_app(engine: Engine, config: ServerConfig | None = None) -> FastAPI:
             try:
                 for delta in produce(cancel):
                     loop.call_soon_threadsafe(queue.put_nowait, delta)
-            except Exception as exc:  # pragma: no cover - surfaced to client
+            except Exception as exc:
+                log_failed_request(exc)
                 loop.call_soon_threadsafe(queue.put_nowait, exc)
             finally:
                 loop.call_soon_threadsafe(queue.put_nowait, sentinel)

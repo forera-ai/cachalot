@@ -1256,6 +1256,12 @@ class ResidentExpertStore:
         with self._lock:
             return key in self._items or key in self._transients
 
+    def holds(self, resident: ResidentExpert) -> bool:
+        """Whether `resident` is still this store's record for its expert. A record whose slot was handed back (a transient released, a
+        resident evicted) is not: the slot may hold another expert by now, or be parked with no arrays (HANDOFF section 18.244)."""
+        with self._lock:
+            return self._items.get(resident.key) is resident or self._transients.get(resident.key) is resident
+
     def is_cached(self, key: Key) -> bool:
         """In the LRU cache proper (what a decode `get_many` counts as a hit); transients excluded."""
         with self._lock:

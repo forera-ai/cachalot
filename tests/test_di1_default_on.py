@@ -37,7 +37,7 @@ def test_the_code_default_stays_off(monkeypatch):
 
 def test_the_numerics_tag_separates_the_modes_and_leaves_the_full_prefill_tag_alone():
     assert snapshot_store.numerics_version(False) == snapshot_store.NUMERICS_VERSION
-    assert snapshot_store.numerics_version(True) == snapshot_store.NUMERICS_VERSION + "-di1"
+    assert snapshot_store.numerics_version(True) == snapshot_store.NUMERICS_VERSION + "-di1.1"
 
 
 def _runtime(tmp_path):

@@ -810,3 +810,60 @@ def test_is_cached_ignores_transients(index):
     store, _ = make_store(slots=4, transient=2)
     store.get(index[(0, 0)])
     assert store.is_cached((0, 0)) and not store.is_cached((0, 1))
+
+
+def _di1_stale_speculation(index, *, reuse: bool, shrink: bool):
+    """DI-1's sequence (HANDOFF section 18.244), scaled to 4 layers: the last encoder layer (1) speculates layer 2, the next chunk's
+    layer 0 releases that transient, later loads may reuse its slot, the wired governor may park it, then finish_decoder's layer 2
+    collects the finished load."""
+    store, _ = make_store(slots=6)
+    pf = ResidentExpertPrefetcher(store, workers=2)
+    try:
+        store.prepare_prefill_layer(1, [index[(1, 0)]], num_layers=N_LAYERS)
+        pf.get(index[(1, 0)])
+        spec = index[(2, 5)]
+        assert pf.prefetch(spec)
+        pf._pending[(2, 5)].result()
+        store.prepare_prefill_layer(0, [index[(0, i)] for i in range(4)], num_layers=N_LAYERS)
+        for i in range(4):
+            pf.get(index[(0, i)])
+        if reuse:
+            for i in range(N_EXPERTS):
+                store.get(index[(3, i)])
+        if shrink:
+            store.set_capacity(1)
+        store.prepare_prefill_layer(2, [spec], num_layers=N_LAYERS)
+        pf.discard_pending(2, {(2, 5)})
+        got = pf.get(spec)
+        return store, pf, got
+    finally:
+        pf.close()
+
+
+@pytest.mark.parametrize("reuse,shrink", [(False, False), (True, False), (False, True), (True, True)])
+def test_a_load_collected_after_its_slot_was_released_is_read_again(index, reuse, shrink):
+    import numpy as np
+
+    store, pf, got = _di1_stale_speculation(index, reuse=reuse, shrink=shrink)
+    assert store.holds(got)
+    assert pf.stale == 1
+    ref, _ = make_store(slots=2)
+    expected = ref.get(index[(2, 5)]).as_model_dict()
+    for name in ("w1.weight", "w2.weight", "w3.scale"):
+        assert np.array_equal(np.array(got.as_model_dict()[name]), np.array(expected[name]))
+
+
+def test_a_load_collected_in_time_is_not_read_again(index):
+    store, reader = make_store(slots=6)
+    pf = ResidentExpertPrefetcher(store, workers=2)
+    try:
+        store.prepare_prefill_layer(1, [index[(1, 0)]], num_layers=N_LAYERS)
+        spec = index[(2, 5)]
+        pf.prefetch(spec)
+        pf._pending[(2, 5)].result()
+        reads = reader.reads
+        store.prepare_prefill_layer(2, [spec], num_layers=N_LAYERS)
+        got = pf.get(spec)
+        assert store.holds(got) and pf.stale == 0 and reader.reads == reads
+    finally:
+        pf.close()

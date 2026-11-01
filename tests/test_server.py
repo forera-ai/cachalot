@@ -313,3 +313,49 @@ def test_an_explicit_max_tokens_that_does_not_fit_is_still_refused():
         assert "max_seq_len" in str(exc)
     else:
         assert r.status_code >= 400
+
+
+def _stream_error(client):
+    with client.stream(
+        "POST", "/v1/chat/completions", json={"messages": [{"role": "user", "content": "hi"}], "stream": True}
+    ) as r:
+        lines = [ln for ln in r.iter_lines() if ln.startswith("data: ")]
+    return json.loads(lines[0][6:])["error"]["message"], lines[-1]
+
+
+def test_a_failed_stream_logs_its_traceback(monkeypatch, capsys):
+    # HANDOFF section 18.243: a KeyError reached Hermes as just 'w1.weight'
+    # and the server printed nothing.
+    import cachalot.server.engine as engine_mod
+
+    client, _ = make_client()
+
+    def failing(self, req, cancel=None):
+        yield from ()
+        {}["w1.weight"]
+
+    monkeypatch.setattr(engine_mod.Engine, "stream_chat", failing)
+    message, last = _stream_error(client)
+    assert message == "'w1.weight'"  # what the client sees is unchanged
+    assert last == "data: [DONE]"
+    err = capsys.readouterr().err
+    assert "[request failed] KeyError: 'w1.weight'" in err
+    assert "Traceback (most recent call last)" in err
+    assert "in failing" in err
+
+
+def test_a_bad_stream_request_logs_one_line(monkeypatch, capsys):
+    import cachalot.server.engine as engine_mod
+
+    client, _ = make_client()
+
+    def refusing(self, req, cancel=None):
+        yield from ()
+        raise ValueError("prompt too long")
+
+    monkeypatch.setattr(engine_mod.Engine, "stream_chat", refusing)
+    message, _ = _stream_error(client)
+    assert message == "prompt too long"
+    err = capsys.readouterr().err
+    assert "[request failed] ValueError: prompt too long" in err
+    assert "Traceback" not in err

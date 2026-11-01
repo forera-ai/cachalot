@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-11-01, 0.72.2): the `'w1.weight'` server error was DI-1's layer-20 speculation outliving its slots; the same bug silently gave layer 20 other experts' weights; fixed, DI-1 snapshots re-keyed `-di1.1`
+>
+> Section 18.244. Layer 19's speculative loads for layer 20 were collected by `finish_decoder` after the next chunk's layer 0 had released their transient slots: reused slot = wrong weights, parked slot = `KeyError: 'w1.weight'`. Reproduced on a fake store; a 9,000-token 1017 DI-1 prefill collected 88 stale records of 307 at layer 20 (11 reused, 77 free, 0 parked), none at any other layer. `ResidentExpertPrefetcher.get` now re-reads a record the store no longer holds; the server logs a failed stream's traceback. Suite 1,211 passed. **Needs Hamed:** whether to re-run the DI-1 long gate (the 0.71.x DI-1 gates ran with the bug; about 75-95 min) and the 1017 gate (step 5). **Agent's next:** 1017 routing trace and hotlist (step 7).
+
 > ## Start here (2026-11-01, 0.72.1): DeepSeek-V4.1-Flash-1017 runs: bank built internally, two live Hermes sessions; the decode miss budget 0 costs some non-JSON integer tool arguments, and Hamed kept it
 >
 > Section 18.243 (`docs/V41-1017-LIVE-SESSION.md`). Runbook steps 1-4 and 6 done: download verified, internal old bank deleted after a byte compare (the old checkpoint now reads its bank from the X10Pro), 1017 bank `~/DeepSeek-V4.1-Flash-1017-q2g128` built in 35 min. Live, budget 0: cold block 104.1 s, decode 10.1-11.2 tok/s, 93-98 % hits without a hotlist; defects: non-JSON `search_files` `limit` 3x, one malformed DSML block shown raw, one `KeyError: 'w1.weight'` server error during the cold prefill (no traceback printed). Replay: non-JSON arguments 2/10 at budget 0, 0/10 exact (p = 0.047); exact decode 16 % slower. Live, exact: clean, 21 % slower (8.57 against 10.82 tok/s). **Hamed's decisions:** keep budget 0 for 1017 (twice). **Needs Hamed:** runbook step 5 (quality gate, about 75-95 min), step 8 (1017 as the default). **Agent's next:** traceback logging in the server, then the `'w1.weight'` holder; step 7 (routing trace, hotlist).
@@ -9489,6 +9493,27 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 **Bottleneck after.** Unchanged: expert reads on misses; of the all-resident floor, CPU graph building, GPU idle, and routed-expert launch granularity.
 
 **Kind.** Engineering (a default on a prior research result).
+
+
+### 18.244 DI-1's layer-20 speculation outlived its slots: the `'w1.weight'` error and silent wrong weights (0.72.2)
+
+**Goal.** Hamed: "Yes, start it" (server traceback logging, then the holder of the parked slot behind 18.243's `KeyError: 'w1.weight'`).
+
+**Baseline (recorded).** 18.243: one `KeyError: 'w1.weight'` 90 s into a cold 16,040-token DI-1 prefill on 1017, while the wired governor shrank slots; the server printed nothing. Derived there: only `park`/`park_slab` empty a slot's arrays, so a record reached an expert forward after its slot was parked.
+
+**Method.** No prediction was written; a code trace, then reproduction and a count. Trace: `moe_prefill_grouped._speculate_next_layer` runs at the end of every layer's MoE and submits `ResidentExpertPrefetcher.prefetch` loads for layer L+1 (into transient slots, since L+1 is not in the admit set). In a DI-1 encoder-only call the last MoE is layer 19, so it speculates layer 20, whose MoE runs only in `finish_decoder` after every encoder chunk. The next chunk's layer 0 `prepare_prefill_layer` releases every transient not of layer 0, while the prefetcher's `_pending` keeps the finished future; later chunks' speculation finds the key pending and does not resubmit; `finish_decoder`'s layer 20 `discard_pending` keeps the needed ones and `get` returns them. Reproduction: the same sequence on the fake store (4 layers, `tests/test_resident_store.py`). Count: `benchmarks/di1_tail_equality.py deferred --tokens 9000 --decode 4` on 1017 (3 calls, budget 34 GiB, guarded) with `ResidentExpertPrefetcher.get` wrapped to classify each collected record (scratchpad `stale_count.py`): current in the store, or stale with its slot free, reused by another record, or parked.
+
+**Result (measured).** Fake store: governor shrink gives `KeyError 'w1.weight'`; slot reuse gives another expert's `w1.weight` with no error. 1017: layers 0-19 and 21-39 collected only current records (648-900 a layer in 0-19, 285-349 in 21-39); layer 20 collected 219 current and 88 stale, 11 of them in a slot another record held, 77 free with their data intact, 0 parked (no shrink in that run). Prefill 68.9 s for 9,000 tokens.
+
+**Fix.** `ResidentExpertStore.holds(resident)`: the record is still `_items[key]` or `_transients[key]`. `ResidentExpertPrefetcher.get` returns a finished load only when the store holds it, else reads the expert again through `get_prefill` and counts `stale`; a run without stale records is unchanged (no extra read, `test_a_load_collected_in_time_is_not_read_again`). DI-1 snapshots keyed `0.68.0-di1.1` (`snapshot_store.DI1_TAG`): the `-di1` ones carry layer-20 tail numbers from wrong experts. The server prints `[request failed] Type: message` on stderr for a failed stream, with the traceback unless it is a `ValueError`. Tests: 7 new; the four stale cases fail without the fix. Suite 1,211 passed, 7 skipped.
+
+**Explanation.** The speculation was written for a prefill that runs layer L+1 right after L in the same call; DI-1 (0.71.0) split the layers across calls at 19/20 and nothing tied a prefetcher future to the slot's lifetime. Whether a stale slot is reused depends on the free list (FIFO, a released slot goes to the back): 11 of 88 were reused on 9,000 tokens; a longer prompt runs more chunks between the release and `finish_decoder`, so more would be (derived, not counted).
+
+**What did not go well.** Every DI-1 measurement from 0.71.0 to 0.72.1 ran with this: the 22k bench (-39 %), the long `pareto.py` gate (inside noise), the server A/B (speed only, unaffected) and both 1017 live sessions. The quality numbers are an upper bound on DI-1's loss, not a measure of it; the speed numbers stand (one re-read per stale record, 88 at most on 9,000 tokens, about 0.2 s derived at 2 ms a read).
+
+**Open / needs Hamed.** Re-running the DI-1 long gate (about 75-95 min) is his call; the 1017 gate (runbook step 5). The `-di1.1` key re-prefills each saved DI-1 system block once.
+
+**Kind.** Engineering (a correctness fix, reproduced and counted; no prediction written).
 
 
 ### 18.243 DeepSeek-V4.1-Flash-1017 built and run live; the decode miss budget's tool-argument cost (0.72.1)

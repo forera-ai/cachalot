@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.72.2 (2026-11-01)
+
+HANDOFF "Start here (2026-11-01, 0.72.2)" and section 18.244; Lab brief `docs/lab/briefs/2026-11-01-runtime-0.72.2.md`.
+
+### Fixed
+- **DI-1's decoder tail could compute layer 20 with another expert's weights.** The last encoder layer (19) speculatively loads layer 20's experts, but layer 20 runs only in `finish_decoder`, after the next chunk's layer 0 has handed those transient slots back. The prefetcher still held the finished loads and gave them to layer 20: a slot reused since then held another expert (wrong weights, no error), and a slot the wired governor had parked had no arrays (`KeyError: 'w1.weight'`, the 1017 live session's server error). `ResidentExpertPrefetcher.get` now checks that the store still holds the record (`ResidentExpertStore.holds`) and reads the expert again when it does not (counted in `stale`). Runs that collect no stale record are unchanged.
+- **DeepSeek DI-1 disk snapshots are keyed `0.68.0-di1.1`** (was `-di1`), since the old ones carry those numbers. The first request after updating prefills each saved system block once, cold (about 105 s for Hermes's 16k block). Full-prefill snapshots (`0.68.0`) are unchanged.
+- **The server logs a failed streaming request:** `[request failed] Type: message` on stderr, with the traceback unless it is a `ValueError` (a bad request). The client still gets only the message, and no `[request]` line is printed for it.
+
+### Measured
+- A 9,000-token DI-1 prefill of 1017 in three calls (`benchmarks/di1_tail_equality.py deferred`, collections counted around `ResidentExpertPrefetcher.get`): every collection of layers 0-19 and 21-39 was current; layer 20 collected 88 stale records of 307, 11 of them in a slot that another expert had taken, 77 released with their data intact, 0 parked. Every multi-chunk DI-1 prefill since 0.71.0 was exposed, including the 0.71.x DI-1 gates and the 1017 live sessions.
+
+### Added
+- 7 tests: the DI-1 sequence on a fake store with and without slot reuse and a governor shrink (the four fail without the fix), a load collected in time is not read again, a failed stream logs its traceback, a bad request logs one line.
+
 ## 0.72.1 (2026-11-01)
 
 HANDOFF "Start here (2026-11-01, 0.72.1)" and section 18.243; results `docs/V41-1017-LIVE-SESSION.md`, Lab brief `docs/lab/briefs/2026-11-01-runtime-0.72.1.md`. Measurement only; no code or default changed. The old checkpoint stays the `serve.sh` default.
