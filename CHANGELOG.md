@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.72.3 (2026-11-01)
+
+HANDOFF "Start here (2026-11-01, 0.72.3)" and section 18.245; manifests and report in `docs/di1-gate-0722/`. Measurement only; no code or default changed.
+
+### Measured
+- **DI-1's long quality gate re-run with the 0.72.2 fix, against the fix switched off.** `benchmarks/pareto.py` long mode on DeepSeek-V4.1-Flash-1017 (internal bank, no hotlist, 34 GiB), the 0.71.0 gate's texts pinned (texts hash equal), 8,192-token prefills in two calls, 576 teacher-forced positions: noise arm (3,000-token calls) KL 0.0116, dNLL -0.0042 [-0.0245, +0.0167]; **DI-1 fixed KL 0.0011 / max 0.036, dNLL -0.0018 [-0.0055, +0.0018], top-1 98.6 %**; DI-1 with the fix off (the 0.71.0-0.72.1 behaviour) KL 0.0014, dNLL -0.0041 [-0.0096, +0.0008]. Both DI-1 arms are inside noise; the fix moved 564 of 576 positions' log-probabilities and 5 top-1 tokens and sits a little closer to the full prefill. The bug's quality cost was small and DI-1 stays on by default in `serve.sh`.
+
 ## 0.72.2 (2026-11-01)
 
 HANDOFF "Start here (2026-11-01, 0.72.2)" and section 18.244; Lab brief `docs/lab/briefs/2026-11-01-runtime-0.72.2.md`.

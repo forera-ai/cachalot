@@ -1,0 +1,8 @@
+| arm | verdict | dNLL nats [95 % CI] | KL mean / max | top-1 | tasks (Wilson low) | ms a token | misses | frontier |
+|---|---|---|---|---|---|---|---|---|
+| ref | reference | +0.0000 [+0.0000, +0.0000] | 0.0000 / 0.000 | 100.0% | 0/0 (0%) | 144 | 40.7 |  |
+| noise-chunk3000 | noise arm | -0.0042 [-0.0245, +0.0167] | 0.0116 / 0.283 | 95.3% | 0/0 (0%) | 145 | 40.1 |  |
+| di1 | inside noise | -0.0018 [-0.0055, +0.0018] | 0.0011 / 0.036 | 98.6% | 0/0 (0%) | 143 | 40.5 |  |
+| di1-nofix | inside noise | -0.0041 [-0.0096, +0.0008] | 0.0014 / 0.019 | 98.8% | 0/0 (0%) | 143 | 40.6 | yes |
+
+ms is the teacher-forced decode step on one process (indicative: alternate arms and confirm a win through the server path). 'inside noise' needs a `noise: true` arm; default-on stays Hamed's call.

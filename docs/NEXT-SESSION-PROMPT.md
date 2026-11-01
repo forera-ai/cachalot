@@ -1,10 +1,11 @@
-# Next-session prompt — **v290**, written 2026-11-01
+# Next-session prompt — **v291**, written 2026-11-01
 
 **This is the file to paste.** `docs/NEXT-SESSION-PROMPT.md` is always current; superseded ones live in
 `docs/next-session-prompts/`.
 
 | version | written | produced by | what changed |
 |---|---|---|---|
+| **v291** | 2026-11-01 | Hamed: "Yes, run the gate" (closed Cachalot Lab for it), then "Yes, release 0.72.3" | **0.72.3, measurement: DI-1's long gate re-run on 1017 with the 0.71.0 texts pinned and a fix-off arm: noise KL 0.0116; DI-1 fixed KL 0.0011, dNLL -0.0018 [-0.0055, +0.0018]; fix off KL 0.0014, dNLL -0.0041. Both inside noise; the fix moved 564 of 576 positions and 5 top-1 tokens. DI-1 stays default-on. `docs/di1-gate-0722/`.** §18.245 |
 | **v290** | 2026-11-01 | Hamed: "Yes, start it" (traceback logging, the `'w1.weight'` holder), then "Yes, release 0.72.2" | **0.72.2, fix: DI-1's layer-19 speculation for layer 20 was collected by `finish_decoder` after the next chunk had released its slots (reused = another expert's weights, parked = `KeyError: 'w1.weight'`); 88 of 307 layer-20 collections stale on a 9,000-token 1017 prefill, 11 reused. `ResidentExpertPrefetcher.get` re-reads a record the store no longer holds; DI-1 snapshots keyed `0.68.0-di1.1`; the server logs a failed stream's traceback. 1,211 passed.** §18.244 |
 | **v289** | 2026-11-01 | Hamed: "prepare the model in internal drive", two live Hermes sessions on 1017 (budget 0, then `=off`), "Yes, run replay", "Keep budget 0" twice, "commit + push" | **0.72.1, measurement: DeepSeek-V4.1-Flash-1017 verified, bank built internally (old internal bank deleted after a byte compare; the old checkpoint reads its bank from the X10Pro). Live on 1017: cold block 104.1 s, decode 10.1-11.2 tok/s at budget 0, 93-98 % hits without a hotlist; non-JSON integer tool arguments follow budget 0 (replay 2/10 against 0/10 exact, p = 0.047); exact live session clean, 21 % slower. One `KeyError: 'w1.weight'` server error, no traceback. Hamed kept budget 0. `docs/V41-1017-LIVE-SESSION.md`.** §18.243 |
 | **v288** | 2026-10-31 | Hamed: "Yes, plan default-on", then "Yes, build with M1", then "Run at 40 GiB now" for the check | **0.72.0: `serve.sh` turns on DI-1 (`CACHALOT_PREFILL_ENCODER_ONLY=0` is the full prefill; `chat.sh` unchanged); DeepSeek disk snapshots keyed on the prefill mode (`0.68.0-di1`). Check: cold block 104.1 s, restart reuses 16,036 from disk in 0.96 s, `=0` restart sees none (161.1 s); 5 of 5 held. Erratum to 0.71.3: the 1017 download overlapped the A/B.** §18.242 |
@@ -251,6 +252,10 @@
 | v47 | 2026-09-25 | Hamed asked for the v44-v46 levers planned, built, measured and documented | **0.18.0: GLM prefill 60 to 90 tok/s, bit-identical (a store path that never evicts, plus the next layer read early), GLM's missing MLX buffer-cache cap added, GLM disk snapshots (a restart reuses the system block). DeepSeek: an `iostat` trace shows prefill is not read-bound on either drive; the lookahead A/B drowned in a 124-to-200 s drift across back-to-back prefills.** §17.1, §15.13 |
 | v46 | 2026-09-25 | Hamed asked for GLM-5.3-Flash on Cachalot | 0.17.0: GLM through `serve-glm.sh` / `chat-glm.sh`. §17 |
 | v45 | 2026-09-24 | same as v47, one day earlier | 0.16.0: disk snapshot store by last use; lookahead and local compression closed. §15.12 |
+
+## First jobs (v291): DI-1 is re-gated and fine; 1017's hotlist, gate and default are what is left
+
+Read HANDOFF 18.245 and 18.244, then 18.243 and `docs/V41-1017-RUNBOOK.md`. **Agent's first job:** runbook step 7 on 1017 (routing trace, hotlist `~/cachalot-hotlist-DeepSeek-V4.1-Flash-1017.json`). **Needs Hamed:** the 1017 gate against the old checkpoint (step 5: the old checkpoint's bank is X10Pro-only, so its arms are slow; estimate before asking) and the default switch (step 8). **Closed:** the DI-1 re-gate (inside noise with the fix, KL 0.0011). **Rules kept:** the earlier ones. New: `guarded_run.sh` refuses while Cachalot Lab is open, even with `--force`; ask Hamed to close it before a run; a gate on the old checkpoint now reads from the X10Pro (about 2 h for four long arms, derived).
 
 ## First jobs (v290): the DI-1 stale-slot bug is fixed; its quality numbers need a re-run, and 1017's gate and hotlist are open
 

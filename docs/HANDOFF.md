@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-11-01, 0.72.3): DI-1's long gate re-run with the fix: inside noise, a little closer to the full prefill than with the bug; the bug's quality cost was small
+>
+> Section 18.245 (`docs/di1-gate-0722/`). 1017, the 0.71.0 gate's texts (hash equal), four arms: noise KL 0.0116; DI-1 fixed KL 0.0011, dNLL -0.0018 [-0.0055, +0.0018]; DI-1 with the fix off KL 0.0014, dNLL -0.0041 [-0.0096, +0.0008]. The fix moved 564 of 576 positions' log-probabilities and 5 top-1 tokens. DI-1's default stands. **Needs Hamed:** the 1017 gate (step 5) and default (step 8).
+
 > ## Start here (2026-11-01, 0.72.2): the `'w1.weight'` server error was DI-1's layer-20 speculation outliving its slots; the same bug silently gave layer 20 other experts' weights; fixed, DI-1 snapshots re-keyed `-di1.1`
 >
 > Section 18.244. Layer 19's speculative loads for layer 20 were collected by `finish_decoder` after the next chunk's layer 0 had released their transient slots: reused slot = wrong weights, parked slot = `KeyError: 'w1.weight'`. Reproduced on a fake store; a 9,000-token 1017 DI-1 prefill collected 88 stale records of 307 at layer 20 (11 reused, 77 free, 0 parked), none at any other layer. `ResidentExpertPrefetcher.get` now re-reads a record the store no longer holds; the server logs a failed stream's traceback. Suite 1,211 passed. **Needs Hamed:** whether to re-run the DI-1 long gate (the 0.71.x DI-1 gates ran with the bug; about 75-95 min) and the 1017 gate (step 5). **Agent's next:** 1017 routing trace and hotlist (step 7).
@@ -9493,6 +9497,34 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 **Bottleneck after.** Unchanged: expert reads on misses; of the all-resident floor, CPU graph building, GPU idle, and routed-expert launch granularity.
 
 **Kind.** Engineering (a default on a prior research result).
+
+
+### 18.245 DI-1's long gate re-run with the stale-slot fix, against the fix switched off (0.72.3)
+
+**Goal.** Hamed: "Yes, run the gate" (18.244: every DI-1 quality number from 0.71.0 to 0.72.1 ran with the layer-20 stale-slot bug).
+
+**Baseline (recorded).** 0.71.0 (`docs/V270-MAC-JOBS-RESULTS.md` section 2, old checkpoint, internal bank, hotlist): noise KL 0.0101, DI-1 KL 0.0014 / max 0.047, dNLL +0.0003 [-0.0036, +0.0043], top-1 97.9 %.
+
+**Method.** No prediction was written. `benchmarks/pareto.py run` per arm on 1017 (the old checkpoint's bank is X10Pro-only since 18.243, which would have made the run about 2 h), internal bank, no hotlist, 34 GiB, one guarded process each with `settle.sh` between, git e56b291 clean. Texts pinned to the 0.71.0 run (git c1831dd copies; texts hash `05a1148ccc1ff338`, equal). Arms: ref (full prefill, 4,096-token calls), noise-chunk3000, di1, and di1-nofix (di1 with `ResidentExpertStore.holds` forced True, the pre-0.72.2 behaviour, through a wrapper). 8,192-token prefills in two calls, 192 teacher-forced positions a text, 576 in all; about 23 minutes. Manifests and report in `docs/di1-gate-0722/`. The first two launches did not run (a bash 3.2 empty-array expansion in the driver; then Cachalot Lab was open and the guard refused; Hamed closed it).
+
+**Result (measured).**
+
+| arm | verdict | dNLL nats [95 % CI] | KL mean / max | top-1 | ms a step |
+|---|---|---|---|---|---|
+| ref | reference | | | | 144 |
+| noise-chunk3000 | noise arm | -0.0042 [-0.0245, +0.0167] | 0.0116 / 0.283 | 95.3 % | 145 |
+| **di1 (fixed)** | inside noise | **-0.0018 [-0.0055, +0.0018]** | **0.0011 / 0.036** | **98.6 %** | 143 |
+| di1-nofix | inside noise | -0.0041 [-0.0096, +0.0008] | 0.0014 / 0.019 | 98.8 % | 143 |
+
+di1 against di1-nofix directly: the teacher-forced token ids equal; the true token's log-probability differs at 564 of 576 positions (max 0.47 nats), the argmax at 5.
+
+**Explanation.** In a two-call prefill the first call's layer-19 speculation for layer 20 is stale by `finish_decoder`, so the bug was live in this gate (the outputs moved everywhere). Its effect on the decoder tail is a few wrong experts in one of 20 decoder layers for 2,541 rows, small against the routed sum; the fixed arm sits a little closer to the reference (KL 0.0011 against 0.0014, dNLL interval centred nearer 0), both an order of magnitude inside the chunk-size noise. 1017's numbers with the bug equal the old checkpoint's of 0.71.0 (KL 0.0014), so the model change does not move this gate.
+
+**Limits.** One run an arm, three texts, 576 positions; the KL difference between the two DI-1 arms (0.0003) is not tested for significance. No battery (long mode).
+
+**Open / needs Hamed.** Nothing new: DI-1 stays default-on. The 1017 gate (step 5) and default (step 8).
+
+**Kind.** Measurement (a gate re-run with a before/after arm; no prediction written).
 
 
 ### 18.244 DI-1's layer-20 speculation outlived its slots: the `'w1.weight'` error and silent wrong weights (0.72.2)

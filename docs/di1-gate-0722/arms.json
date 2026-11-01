@@ -1,0 +1,50 @@
+{
+ "about": "0.72.2 re-run of the v270 DI-1 long gate (HANDOFF 18.244) on DeepSeek-V4.1-Flash-1017 with the texts pinned to the 0.71.0 run (git c1831dd, texts hash 05a1148ccc1ff338); di1-nofix is di1 with ResidentExpertStore.holds forced True (the pre-0.72.2 behaviour), run through nofix_run.py.",
+ "base": {
+  "budget_gib": 34,
+  "max_seq_len": 8704,
+  "prefill": 8192,
+  "decode": 192,
+  "prefill_chunk": 4096,
+  "battery": false,
+  "texts": [
+   {
+    "name": "prose",
+    "path": "/private/tmp/claude-501/-Users-hamedprooshani-Projects-deepseek-v41-mac/4e1f5768-2526-49b3-a3f6-760a3da143f0/scratchpad/gate/texts/HANDOFF.md",
+    "start": 1057561,
+    "chars": 60000
+   },
+   {
+    "name": "code",
+    "path": "/private/tmp/claude-501/-Users-hamedprooshani-Projects-deepseek-v41-mac/4e1f5768-2526-49b3-a3f6-760a3da143f0/scratchpad/gate/texts/text_decode_runtime.py",
+    "start": 0,
+    "chars": 60000
+   },
+   {
+    "name": "markdown",
+    "path": "/private/tmp/claude-501/-Users-hamedprooshani-Projects-deepseek-v41-mac/4e1f5768-2526-49b3-a3f6-760a3da143f0/scratchpad/gate/texts/CHANGELOG.md",
+    "start": 0,
+    "chars": 60000
+   }
+  ]
+ },
+ "reference": "ref",
+ "arms": [
+  {
+   "name": "ref"
+  },
+  {
+   "name": "noise-chunk3000",
+   "noise": true,
+   "prefill_chunk": 3000
+  },
+  {
+   "name": "di1",
+   "encoder_only": true
+  },
+  {
+   "name": "di1-nofix",
+   "encoder_only": true
+  }
+ ]
+}
