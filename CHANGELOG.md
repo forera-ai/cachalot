@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.72.1 (2026-11-01)
+
+HANDOFF "Start here (2026-11-01, 0.72.1)" and section 18.243; results `docs/V41-1017-LIVE-SESSION.md`, Lab brief `docs/lab/briefs/2026-11-01-runtime-0.72.1.md`. Measurement only; no code or default changed. The old checkpoint stays the `serve.sh` default.
+
+### Measured
+- **DeepSeek-V4.1-Flash-1017 built and run** (runbook steps 1-4 and 6): the download verified against the Hub (83 files, sha256); the internal old bank compared byte for byte with its X10Pro copy and deleted (the old checkpoint now reads its bank from the X10Pro); the 1017 2-bit bank built on the internal SSD in 35 minutes (142.4 GiB, 12 sampled experts verified).
+- **First live Hermes session on 1017** (shipped `serve.sh`, decode miss budget 0): cold 16,040-token system block 104.1 s, decode 10.07-11.21 tok/s at 25-31k context with 93-98 % hits and no hotlist. Answers good (exact image transcription; C#, TypeScript and Python importers run), with four defects: `search_files` `limit` written as a non-JSON value three times (Hermes repaired and retried), one malformed DSML tool block shown raw instead of a translation, approximate Desktop counts, and one `KeyError: 'w1.weight'` server error 90 s into the cold prefill (derived: a parked expert slot still in use while the wired governor shrank slots).
+- **Attribution replay** (two dumped requests, 10 and 8 times per arm, temperature 0.7, one `serve.sh` per arm): non-JSON integer arguments came only with budget 0 (2 of 10, 3 of 4 live) and never on the exact path (0 of 10), one-sided Fisher p = 0.047; pointless tool calls before a translation came on the exact path (3 of 8), so they are the model's; the malformed tag did not reproduce in 16. Exact decode 16 % slower. Hamed kept budget 0.
+- **Second live session, exact decode** (`CACHALOT_DECODE_MISS_BUDGET=off`): both tool calls well-formed, no Hermes repair or error, the translation on the first try, C# builds even with implicit usings off; decode 8.57 against 10.82 tok/s on the replies of 100+ tokens (117 against 92 ms a token, 21 % slower). Hamed kept budget 0 again.
+
+### Open
+- Server-side traceback logging for a failed request, then the holder of the parked slot behind `'w1.weight'`; runbook steps 5 (quality gate), 7 (hotlist) and 8 (default switch).
+
 ## 0.72.0 (2026-10-31)
 
 HANDOFF "Start here (2026-10-31, 0.72.0)" and section 18.242; plan `docs/DI1-DEFAULT-ON-PLAN.md`, results `docs/DI1-DEFAULT-ON-RESULTS.md`, Lab brief `docs/lab/briefs/2026-10-31-runtime-0.72.0.md`.

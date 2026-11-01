@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-11-01, 0.72.1): DeepSeek-V4.1-Flash-1017 runs: bank built internally, two live Hermes sessions; the decode miss budget 0 costs some non-JSON integer tool arguments, and Hamed kept it
+>
+> Section 18.243 (`docs/V41-1017-LIVE-SESSION.md`). Runbook steps 1-4 and 6 done: download verified, internal old bank deleted after a byte compare (the old checkpoint now reads its bank from the X10Pro), 1017 bank `~/DeepSeek-V4.1-Flash-1017-q2g128` built in 35 min. Live, budget 0: cold block 104.1 s, decode 10.1-11.2 tok/s, 93-98 % hits without a hotlist; defects: non-JSON `search_files` `limit` 3x, one malformed DSML block shown raw, one `KeyError: 'w1.weight'` server error during the cold prefill (no traceback printed). Replay: non-JSON arguments 2/10 at budget 0, 0/10 exact (p = 0.047); exact decode 16 % slower. Live, exact: clean, 21 % slower (8.57 against 10.82 tok/s). **Hamed's decisions:** keep budget 0 for 1017 (twice). **Needs Hamed:** runbook step 5 (quality gate, about 75-95 min), step 8 (1017 as the default). **Agent's next:** traceback logging in the server, then the `'w1.weight'` holder; step 7 (routing trace, hotlist).
+
 > ## Start here (2026-10-31, 0.72.0): DI-1 is on by default in `serve.sh`; DeepSeek snapshots are keyed on the prefill mode, so the first request after updating prefills each system block once
 >
 > Section 18.242 (`docs/DI1-DEFAULT-ON-RESULTS.md`). Hamed chose default-on with mode-keyed snapshots (M1) and no in-block pins in DI-1 mode. Checked: no knob set, cold block 104.1 s with the startup line; restart reuses 16,036 tokens from disk in 0.96 s; `=0` restart sees none of them and prefills in 161.1 s; same token; 5 of 5 held (at a 40 GiB budget: his 1017 download held memory). `chat.sh` keeps the full prefill. Erratum to 18.241: that download overlapped the A/B (off arms agree within 0.1 to 1.2 %). **Needs Hamed:** the 0.71.2 items (the 1017 download is running, the internal old bank, the default checkpoint); a live session to see a compression's re-prefill with the default on.
@@ -9485,6 +9489,25 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 **Bottleneck after.** Unchanged: expert reads on misses; of the all-resident floor, CPU graph building, GPU idle, and routed-expert launch granularity.
 
 **Kind.** Engineering (a default on a prior research result).
+
+
+### 18.243 DeepSeek-V4.1-Flash-1017 built and run live; the decode miss budget's tool-argument cost (0.72.1)
+
+**Goal.** Hamed: "Check the downloaded model, prepare the model in internal drive ... and prepare the cachalot to run the new model" (runbook `docs/V41-1017-RUNBOOK.md` steps 1-4), then a live Hermes Desktop session (step 6), "analyze it", "Yes, run replay", and a second live session with `CACHALOT_DECODE_MISS_BUDGET=off`.
+
+**Baseline (recorded).** §18.240: same config, tensors and tokenizer as the old checkpoint, new weights in all 48 shards. §18.239: the old checkpoint's live session of 2026-10-31 on the same script (cold block 102.45 s, decode 7.7-10.9 tok/s). Budget 0 has been the `serve.sh` default since 0.60.0 with no visible quality cost in the blind checks (§18.60, §18.61).
+
+**Method.** No prediction was written: steps 1-4 are engineering, the sessions and the replay are measurements. Steps 1-4 as the runbook says (`scripts/verify_hf_download.py --sha256`, `cmp` of the internal old bank against its X10Pro twin, `build_affine_bank.py --bits 2 --group 128 --fit search` under `guarded_run.sh`, `.cachalot-verified`, a `chat.sh` smoke). Live sessions: Hamed's script (greeting, Desktop listing with a tool, C# importer, 200-word story, image read, TypeScript and Python importers, 500-word story, translations to German, French and Farsi, a hummingbird rewrite with translations), `serve.sh` with `CACHALOT_MODEL_PATH` at 1017, `CACHALOT_SNAPSHOT_DIR=$HOME/.cache/cachalot/prefix-snapshots-1017` and a request dump; replies decoded from the dump, code built and run (dotnet 8, `tsc --strict` 7.0.2, Node 22, Python 3), Hermes's logs read. Replay: dump requests 3 (Desktop) and 30 (translate) posted 10 and 8 times per arm as Hermes sent them (temperature 0.7, `max_tokens` capped at 400 and 500), one guarded `serve.sh` per arm (budget 0, `=off`), replies classified with the checkpoint's own `encoding.parse_message_from_completion_text` (driver and classifier in the session's scratchpad). The guard preflight wanted 77 GiB and found 73.5 with Hermes, Codex and Claude open, so it ran with `--force`; the guardian never fired.
+
+**Result (measured).** Build: 83 files verified, bank 142.4 GiB in 2,111 s, 12 experts byte for byte. Session 1 (budget 0, 19 requests): cold block 104.10 s, decode 10.07-11.21 tok/s at 25-31k, 93-98 % hits; non-JSON `limit` 3 of 4 `search_files` calls (Hermes repaired and retried, about 28 s lost), one malformed `<｜DSML｜ name=` block surfaced raw, one `KeyError: 'w1.weight'` 90 s into the cold prefill (the retry re-prefilled, 198 s for the greeting). Replay: non-JSON `limit` 2 of 10 at budget 0, 0 of 10 exact (one-sided Fisher on 5/14 against 0/10, p = 0.047); pointless tool calls before translating 3 of 8 exact, 0 of 8 at budget 0; malformed tag 0 of 16; decode 11.09 against 9.30 tok/s. Session 2 (exact, 13 requests): snapshot reuse 16,036 tokens in 1.06 s; both tool calls well-formed, no Hermes error; first-try translation; C# builds with implicit usings off; decode 8.57 against session 1's 10.82 tok/s on the replies of 100+ tokens (117 against 92 ms a token).
+
+**Explanation.** The drop removes 5-15 experts a token; the tag structure survives it, but a `string="false"` integer argument is sometimes replaced by a word, and the official parser puts that word into the JSON unquoted. 117 ms at about 19 reads a token is the measured token = 80 + 2.0 ms x misses (§18.76). `'w1.weight'` (derived, not reproduced): only `park`/`park_slab` empty a record's arrays, and the governor shrank slots during that request while `set_capacity` assumes no prefill holds a record.
+
+**What did not go well.** Hamed's first export was the old checkpoint's session (timestamps and image names gave it away); read the export's times against the dump first. The server sends a failed request's exception to the client without logging it, so defect 4 has no traceback.
+
+**Open / needs Hamed.** Decided: budget 0 stays (2026-11-01, twice). Open: traceback logging and the holder fix; steps 5 (gate, Hamed confirms the 75-95 min), 7 (routing trace, hotlist), 8 (default switch, Hamed).
+
+**Kind.** Measurement (live sessions and a replay, no prediction written). No default changed.
 
 
 ### 18.242 DI-1 default-on in `serve.sh`, snapshots keyed on the mode (0.72.0)
