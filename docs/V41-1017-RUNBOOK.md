@@ -101,7 +101,7 @@ cd /Users/hamedprooshani/Projects/deepseek-v41-mac && CACHALOT_MODEL_PATH=/Volum
 
 Pass: the startup line reads `expert bank: /Users/hamedprooshani/DeepSeek-V4.1-Flash-1017-q2g128 (..., 2-bit, 9.49 MiB/expert, 15360 experts)`, there is no `hotlist:` line (1017 has no hotlist yet), and the answer is coherent. The bank the scripts resolve for a model path was checked when 0.71.2 was made: the 1017 path gives `/Users/hamedprooshani/DeepSeek-V4.1-Flash-1017-q2g128` once it carries the marker, else the same name beside the checkpoint on the X10Pro, which does not exist, so the run fails rather than mixing revisions.
 
-### Step 5 — quality gate against the old checkpoint (~75-95 minutes)
+### Step 5 — quality gate against the old checkpoint (~75-95 minutes; **done 2026-11-01 at 40 GiB, 77 minutes, HANDOFF 18.247, `docs/v1017-gate/`**)
 
 `benchmarks/pareto_arms.v1017.json`: the 1017 reference, its rounding arm, 1017 with `act_quant(o)`, and the old
 checkpoint. Each arm is its own guarded process; the old arm reads its bank from the X10Pro, so its timing column is not

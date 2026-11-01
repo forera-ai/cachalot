@@ -1,0 +1,15 @@
+| arm | verdict | dNLL nats [95 % CI] | KL mean / max | top-1 | tasks (Wilson low) | ms a token | misses | frontier |
+|---|---|---|---|---|---|---|---|---|
+| v1017 | reference | +0.0000 [+0.0000, +0.0000] | 0.0000 / 0.000 | 100.0% | 21/21 (85%) | 126 | 31.4 | yes |
+| noise-chunk96 | noise arm | +0.0011 [-0.0126, +0.0146] | 0.0117 / 0.131 | 93.6% | 21/21 (85%) | 130 | 31.7 |  |
+| v1017-actq | outside noise | +0.0005 [-0.0165, +0.0188] | 0.0130 / 0.185 | 94.1% | 21/21 (85%) | 133 | 31.6 |  |
+| old | outside noise | +0.0240 [-0.0150, +0.0610] | 0.1213 / 1.960 | 84.2% | 20/21 (77%) | 1278 | 33.6 |  |
+
+ms is the teacher-forced decode step on one process (indicative: alternate arms and confirm a win through the server path). 'inside noise' needs a `noise: true` arm; default-on stays Hamed's call.
+
+Per-text paired dNLL against v1017 (positive = arm worse), 192 positions each, bootstrap 95 % CI (2,000 resamples, seed 0):
+noise-chunk96  prose +0.0078 [-0.0194, +0.0329]  code +0.0009 [-0.0147, +0.0182]  markdown -0.0056 [-0.0319, +0.0215]
+v1017-actq     prose +0.0097 [-0.0212, +0.0378]  code -0.0138 [-0.0352, +0.0070]  markdown +0.0058 [-0.0258, +0.0410]
+old            prose +0.0674 [-0.0297, +0.1699]  code -0.0250 [-0.0714, +0.0200]  markdown +0.0294 [-0.0678, +0.1202]
+Reference NLL a position: prose 2.633, code 1.143, markdown 2.567.
+The one failed task in the old arm: reverse-word, answer "kmarhcneb" (the same task the old checkpoint failed in 0.56.1).

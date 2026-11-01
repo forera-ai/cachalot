@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-11-01, 0.72.5): on the quality gate 1017 is at least as good as the old checkpoint (old dNLL +0.024 [-0.015, +0.061], tasks 21/21 against 20/21); the default switch is Hamed's
+>
+> Section 18.247 (`docs/v1017-gate/`). `pareto.py`, four guarded arms at 40 GiB (48 did not fit beside the open applications; outputs do not depend on the budget): 1017's rounding arm KL 0.0117 (the old bank's band was 0.0144-0.0146), `act_quant(o)` on 1017 neutral (KL 0.0130, dNLL +0.0005), old against 1017 KL 0.121 and the one task 1017 passes and the old checkpoint fails is reverse-word. 5 of 7 predictions held; the old arm's speed (1,278 ms a step, 10 times 1017, about 0.29 GB/s from the X10Pro) was falsified. **Needs Hamed:** step 8 (1017 as the default) and the hotlist first-turn A/B.
+
 > ## Start here (2026-11-01, 0.72.4): 1017 has its own hotlist: on the held-out session it covers 32-33 % of the expert requests at 8 GiB, twice the old checkpoint's hotlist (15-17 %)
 >
 > Section 18.246 (`docs/v1017-hotlist/`). Both 1017 live sessions replayed through `serve.sh` with `CACHALOT_ROUTING_TRACE` (32 requests, replies capped at 256, no error); `~/cachalot-hotlist-DeepSeek-V4.1-Flash-1017.json` built from both; a 1017 `serve.sh` start now preloads 863 experts (8.0 GiB in 2.0 s). Coverage is of requests, an upper bound on hits; not measured: a first turn's speed with and without it. **Needs Hamed:** the 1017 gate (step 5) and default (step 8).
@@ -9501,6 +9505,40 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 **Bottleneck after.** Unchanged: expert reads on misses; of the all-resident floor, CPU graph building, GPU idle, and routed-expert launch granularity.
 
 **Kind.** Engineering (a default on a prior research result).
+
+
+### 18.247 Runbook step 5: 1017 against the old checkpoint on the quality gate (0.72.5)
+
+**Goal.** Hamed: "Step 5 gate" (v292's first job that needed him: the quality gate of DeepSeek-V4.1-Flash-1017 against the checkpoint served until now, which decides step 8, 1017 as the default).
+
+**Baseline (recorded).** The old checkpoint's `pareto.py` band on the internal bank at 48 GiB: noise-chunk96 KL 0.0144 (0.56.1), 0.0146 after MLX 0.32.4 (18.223); tasks 20 of 21 (reverse-word failed). `act_quant(o)` on the old checkpoint (18.238): dNLL +0.0047 [-0.0156, +0.0261], KL 0.0171 against noise 0.0140. Reference about 140 ms a step at 48 GiB internal; 0.56.1 arms about 5 minutes each.
+
+**Prediction.** `docs/v1017-gate/RECORD.md`, G-1 to G-7, committed in c900b74 before any arm; an erratum in d3a1201, before any arm, moved the budget from 48 to 40 GiB (below).
+
+**Method.** `benchmarks/pareto.py run` per arm, one `guarded_run.sh` process each with `settle.sh` between, in the runbook's order: `v1017` (reference), `noise-chunk96`, `v1017-actq`, `old`; `docs/v1017-gate/arms.json` (the runbook's `benchmarks/pareto_arms.v1017.json` with the base budget at 40 GiB). No hotlist in any arm. Three texts (prose from `docs/SPEED-RESEARCH-2026-10-03.md`, code from `wired_governor.py`, markdown from `CHANGELOG.md`; W1, W4, W6), 384-token prefill, 192 teacher-forced positions each (576 in all), the 21-task battery. 1017 from its internal bank; the old checkpoint from its X10Pro bank. Git d3a1201 clean, texts hash `3efb4242d9e31da5` in every arm (the `CHANGELOG.md` excerpt has moved since 0.56.1's `946d91fae782129e`, so only this run's arms compare). Machine: Hamed had stopped a 58.7 GiB `llama-server` (Unsloth Ornith-1.5-122B) before the run; Codex, Claude and Hermes Desktop open, swap 3.9 GB stale and flat, pressure 1 throughout, display as it was. 21:30 to 22:47.
+
+**Result (measured).** `docs/v1017-gate/report.txt`:
+
+| arm | dNLL nats [95 % CI] (positive = arm worse) | KL mean / max | top-1 | tasks | ms a step | misses a step |
+|---|---|---|---|---|---|---|
+| v1017 (reference) | | | | **21/21** | 126 | 31.4 |
+| noise-chunk96 | +0.0011 [-0.0126, +0.0146] | 0.0117 / 0.131 | 93.6 % | 21/21 | 130 | 31.7 |
+| v1017-actq | +0.0005 [-0.0165, +0.0188] | 0.0130 / 0.185 | 94.1 % | 21/21 | 133 | 31.6 |
+| **old** | **+0.0240 [-0.0150, +0.0610]** | 0.1213 / 1.960 | 84.2 % | **20/21** | 1,278 | 33.6 |
+
+Per text, old against 1017: prose +0.067 [-0.030, +0.170], code -0.025 [-0.071, +0.020], markdown +0.029 [-0.068, +0.120]. The old arm's one failed task is reverse-word ("kmarhcneb"), the task it also failed in 0.56.1; 1017 passes it. Wall time: the three 1017 arms 5.2-5.7 minutes each, the old arm 59.6 minutes (2,148 s of it the battery, against 180-189 s for the 1017 arms).
+
+Predictions: **G-1 held** (noise KL 0.0117 in 0.008-0.022, CI contains 0). **G-2 held** (actq |dNLL| 0.0005, CI contains 0, KL 1.11 times the noise arm's; `pareto.py`'s strict rule calls it "outside noise" because 0.0130 > 0.0117, as it did for 0.71.0's 0.0171 against 0.0140). **G-3 held** (old KL 0.121 in 0.05-0.40). **G-4 held** (+0.024 in -0.01 to +0.05, centre positive; its CI includes 0, so the gate does not show the old weights worse, only not better). **G-5 held** (21, 20, differ by 1). **G-6 split**: 1017 126 ms held (125-160, at 40 GiB); the old arm at 10.1 times 1017 is falsified (2.5-4.5 predicted). **G-7 split**: internal arms held (4-9 min), the old arm falsified (15-40 min predicted, 59.6 measured), the run missed narrowly (77 against 40-75).
+
+**Explanation.** On this gate 1017 is at least as good as the old checkpoint: two of three texts and the battery lean its way, none of it significant at 576 positions; KL 0.12 and top-1 84 % say the weights differ by an order of magnitude more than rounding does. The 1017 bank under the runtime sits in the same band as the old bank (noise KL 0.0117 against 0.0144-0.0146; the texts differ, so this is a comparison of magnitude only). `act_quant(o)` behaves on 1017 as on the old checkpoint: a hair past the strict KL rule, no NLL effect. The old arm's 1,278 ms is 1,152 ms over 1017's step at 2.2 more misses: about 34 ms a missed 9.95 MB expert, 0.29 GB/s (derived). The prediction used the 0.61.0 emulated-drive curve (446 ms at 1 GB/s), which throttles the internal SSD and keeps its latency; the real X10Pro under demand reads one expert at a time, with the queue-depth plateau of 18.83 reached only at two in flight (hypothesis, not measured here).
+
+**Limits.** One run an arm, three texts, 576 positions; the texts are this repository's own documents and code (neither checkpoint's training could have seen the current excerpts, but they are one project's style); no long-context shape (DI-1's long gate ran 1017 alone, 18.245), no server path, no sampling or tool-call behaviour beyond the battery; the live sessions (18.243) are the only agent-behaviour evidence for 1017. The speed column is indicative, at 40 GiB, and the old arm's is drive-bound.
+
+**What did not go well.** The first launch asked for 48 GiB and waited in `settle.sh` at 71.6-72.2 of the 77 GiB the guard needs; it was stopped before any arm, and the erratum was committed before the 40 GiB launch. The old arm's time estimate rested on the emulated-drive curve instead of the measured X10Pro rate (GLM measured 1.52 s a token there, 18.78).
+
+**Open / needs Hamed.** Step 8: 1017 as the default (`serve.sh`, `chat.sh`, `pareto.py serve_defaults`), then a re-recorded floor and hit rate at 48 GiB; whether the old checkpoint (475 GiB on the X10Pro) and its X10Pro bank (142 GiB) stay as a fallback. The hotlist first-turn A/B (about 10-15 minutes) needs his go.
+
+**Kind.** Research (predicted, measured, explained as hypothesis): 5 held, 2 split (G-6, G-7: the old arm's speed falsified). No default changed.
 
 
 ### 18.246 Runbook step 7: 1017 routing traces from its two live sessions and its hotlist (0.72.4)

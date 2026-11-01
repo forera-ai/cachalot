@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.72.5 (2026-11-01)
+
+HANDOFF "Start here (2026-11-01, 0.72.5)" and section 18.247; predictions, arms, manifests and report in `docs/v1017-gate/`. Measurement only; no code or default changed. The old checkpoint stays the `serve.sh` default until Hamed decides.
+
+### Measured
+- **DeepSeek-V4.1-Flash-1017 against the old checkpoint on the `pareto.py` quality gate** (runbook step 5): four guarded arms at 40 GiB, no hotlist, three texts with 576 teacher-forced positions and the 21-task battery, predictions G-1 to G-7 committed first. With 1017 as the reference, the old checkpoint's paired dNLL is +0.0240 [-0.0150, +0.0610] (positive = old worse; prose +0.067, code -0.025, markdown +0.029, none significant), KL 0.121, top-1 84 %, tasks 20 of 21 against 1017's 21 of 21 (reverse-word, which the old checkpoint also failed in 0.56.1). 1017's rounding arm (prefill chunk 96) KL 0.0117, dNLL +0.0011, inside the old bank's band; `CACHALOT_ATTN_ACT_QUANT_O=1` on 1017 dNLL +0.0005, KL 0.0130 (neutral, as on the old checkpoint). Steps: 1017 126 ms at 40 GiB; the old checkpoint from its X10Pro bank 1,278 ms (about 0.29 GB/s a missed expert, derived), ten times 1017, where 2.5-4.5 times was predicted. 5 of 7 predictions held, 2 split.
+
 ## 0.72.4 (2026-11-01)
 
 HANDOFF "Start here (2026-11-01, 0.72.4)" and section 18.246; scripts, logs and coverage in `docs/v1017-hotlist/`. Measurement and a machine-local hotlist; no code or default changed.

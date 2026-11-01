@@ -1,10 +1,11 @@
-# Next-session prompt — **v292**, written 2026-11-01
+# Next-session prompt — **v293**, written 2026-11-01
 
 **This is the file to paste.** `docs/NEXT-SESSION-PROMPT.md` is always current; superseded ones live in
 `docs/next-session-prompts/`.
 
 | version | written | produced by | what changed |
 |---|---|---|---|
+| **v293** | 2026-11-01 | Hamed: killed the stale codebase-memory holders and cleared their locks, stopped a 58.7 GiB `llama-server`, then "Step 5 gate" | **0.72.5, measurement: runbook step 5, 1017 against the old checkpoint on `pareto.py` at 40 GiB (48 did not fit beside the open applications): old dNLL +0.0240 [-0.0150, +0.0610] (positive = old worse), KL 0.121, tasks 20/21 against 1017's 21/21 (reverse-word); 1017 noise KL 0.0117, `act_quant(o)` neutral (KL 0.0130, dNLL +0.0005). 5 of 7 predictions held; the old arm's X10Pro speed (1,278 ms a step, 10x) falsified. `docs/v1017-gate/`.** §18.247 |
 | **v292** | 2026-11-01 | Hamed: "Yes, start step 7", "Yes, run them" (replay the dumped sessions), then "Yes, release 0.72.4" | **0.72.4, measurement: 1017 routing traced from its two live sessions; at 8 GiB the old hotlist covers 16-17 % of a session's expert requests, a 1017 ranking from the other session 33 %; `~/cachalot-hotlist-DeepSeek-V4.1-Flash-1017.json` built, `serve.sh` on 1017 preloads 863 experts in 2 s. `docs/v1017-hotlist/`.** §18.246 |
 | **v291** | 2026-11-01 | Hamed: "Yes, run the gate" (closed Cachalot Lab for it), then "Yes, release 0.72.3" | **0.72.3, measurement: DI-1's long gate re-run on 1017 with the 0.71.0 texts pinned and a fix-off arm: noise KL 0.0116; DI-1 fixed KL 0.0011, dNLL -0.0018 [-0.0055, +0.0018]; fix off KL 0.0014, dNLL -0.0041. Both inside noise; the fix moved 564 of 576 positions and 5 top-1 tokens. DI-1 stays default-on. `docs/di1-gate-0722/`.** §18.245 |
 | **v290** | 2026-11-01 | Hamed: "Yes, start it" (traceback logging, the `'w1.weight'` holder), then "Yes, release 0.72.2" | **0.72.2, fix: DI-1's layer-19 speculation for layer 20 was collected by `finish_decoder` after the next chunk had released its slots (reused = another expert's weights, parked = `KeyError: 'w1.weight'`); 88 of 307 layer-20 collections stale on a 9,000-token 1017 prefill, 11 reused. `ResidentExpertPrefetcher.get` re-reads a record the store no longer holds; DI-1 snapshots keyed `0.68.0-di1.1`; the server logs a failed stream's traceback. 1,211 passed.** §18.244 |
@@ -253,6 +254,10 @@
 | v47 | 2026-09-25 | Hamed asked for the v44-v46 levers planned, built, measured and documented | **0.18.0: GLM prefill 60 to 90 tok/s, bit-identical (a store path that never evicts, plus the next layer read early), GLM's missing MLX buffer-cache cap added, GLM disk snapshots (a restart reuses the system block). DeepSeek: an `iostat` trace shows prefill is not read-bound on either drive; the lookahead A/B drowned in a 124-to-200 s drift across back-to-back prefills.** §17.1, §15.13 |
 | v46 | 2026-09-25 | Hamed asked for GLM-5.3-Flash on Cachalot | 0.17.0: GLM through `serve-glm.sh` / `chat-glm.sh`. §17 |
 | v45 | 2026-09-24 | same as v47, one day earlier | 0.16.0: disk snapshot store by last use; lookahead and local compression closed. §15.12 |
+
+## First jobs (v293): 1017 passed its gate; the default switch is Hamed's
+
+Read HANDOFF 18.247, 18.246, 18.243 and `docs/V41-1017-RUNBOOK.md`. Runbook steps 1-7 are done. **Needs Hamed:** step 8, 1017 as the default (`serve.sh`, `chat.sh`, `pareto.py serve_defaults`; then re-record the DeepSeek floor and hit rate at 48 GiB, the routing changed), and whether the old checkpoint (475 GiB) and its X10Pro bank (142 GiB) stay as a fallback (never delete without his yes). **Needs his go (about 10-15 minutes):** a first-turn A/B of the 1017 hotlist through `serve.sh` (ABBA, same prompt, predictions first; coverage, 33 % at 8 GiB, is an upper bound). **Rules kept:** the earlier ones. New: an arm that reads the X10Pro is estimated from the measured rate (old checkpoint 1,278 ms a teacher-forced step, about 0.29 GB/s a demand-read expert; GLM 1.52 s a token), not from the emulated-drive curve. New: `settle.sh` at 48 GiB needs 77 GiB available; with Codex, Claude and Hermes Desktop open the machine had 72, so a quality arm runs at 40 GiB (needs 69; outputs do not depend on the budget).
 
 ## First jobs (v292): 1017 is built, live-tested, fixed and has its hotlist; its gate and the default switch are Hamed's
 
@@ -828,6 +833,7 @@ check `pgrep -f Flurry.appex` before each arm instead.
 
 ## What is closed, so nobody spends a session there
 
+- **Re-gating 1017 against the old checkpoint on the standard gate (0.72.5, §18.247):** 1017 is at least as good (old dNLL +0.024 [-0.015, +0.061], tasks 21/21 against 20/21) and its bank sits in the old band; reopen only for a different workload class (long context through the server, sampling, tool calls under Hermes's real prompt).
 - **H-page and `O_DIRECT` on the CUDA host tier (0.68.2, §18.225):** a non-temporal rewrite (a write that bypasses the caches) and a `clflushopt` pass both make a just-written pinned buffer fast, so the slow copy is not a write-keyed state outside the caches; on the 7800X3D VM an `O_DIRECT` read into a pinned buffer leaves it slow like a CPU write. The settle is a step, not a gradual eviction.
 - **H-after-copy and huge pages on the CUDA host tier (0.68.1, §18.224):** a copy run earlier in a process does not slow later pinned allocations (M-2, M-3); huge-page backing and page size do not change the rate in either pattern (M-4, M-5 with B2). **MLX PR 4775 as a risk to the shipped banks:** the DeepSeek q2g128 bank was built by `quant_affine.py`'s own fit, GLM's `kv_b_proj` requantize has no all-negative group. Reopen only for a bank built with `--fit mlx` on the GPU.
 - **`MLX_METAL_RESIDENCY_REFRESH_INTERVAL_MS` as a replacement for the idle heartbeat (0.68.0, §18.223):** with 40 GiB wired and no memory pressure the first pass after an idle gap costs +16 ms (1,000 ms) or +19 ms (250 ms) against the heartbeat's +5 ms; reopen only under memory pressure or together with the heartbeat. **The reference's indexer `index_k` fix of 2026-10-12** is already in the runtime.
@@ -963,6 +969,8 @@ check `pgrep -f Flurry.appex` before each arm instead.
   reads is idle, but no A/B arm wins outside the drift; reopen only after Job 3 removes the drift.
 
 ## Rules that still hold, and two new ones
+
+- **Estimate an X10Pro-read arm from the measured X10Pro rate, not the emulated-drive curve (0.72.5, §18.247).** The old checkpoint's `pareto.py` arm from its X10Pro bank took 59.6 minutes, 1,278 ms a teacher-forced step (about 0.29 GB/s per demand-read 9.95 MB expert), against 15-40 minutes predicted from 0.61.0's throttled-internal curve. New.
 
 - **Lengthy tests need an estimate and Hamed's confirmation first, and minutes-remaining reports at checkpoints (Hamed, 2026-10-07).** New.
 

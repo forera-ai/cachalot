@@ -1,8 +1,8 @@
 # Experiment index (charter section 7.2 and section 10)
 
-Written 2026-10-09 against runtime 0.72.4; regenerate with `benchmarks/experiment_index.py`. The charter asks for "a file of experiment records whose predictions were written before the build". The records themselves live in `docs/HANDOFF.md` section 18 (each with Baseline, Prediction, Method, Result, Explanation, Limits, Kind); this file is the index: where each record is, whether it carries a written prediction, and what kind of result it is, as its own **Kind** line says. It does not restate results. Sections before 18.75 predate the record format and are not listed; sections without a **Kind** line are listed as unlabelled and have no claim made for them here.
+Written 2026-10-09 against runtime 0.72.5; regenerate with `benchmarks/experiment_index.py`. The charter asks for "a file of experiment records whose predictions were written before the build". The records themselves live in `docs/HANDOFF.md` section 18 (each with Baseline, Prediction, Method, Result, Explanation, Limits, Kind); this file is the index: where each record is, whether it carries a written prediction, and what kind of result it is, as its own **Kind** line says. It does not restate results. Sections before 18.75 predate the record format and are not listed; sections without a **Kind** line are listed as unlabelled and have no claim made for them here.
 
-Counts of the 172 sections listed (18.75-18.246): 86 research, 26 measurement, 22 unlabelled, 18 engineering, 18 planning, 2 pricing.
+Counts of the 173 sections listed (18.75-18.247): 87 research, 26 measurement, 22 unlabelled, 18 engineering, 18 planning, 2 pricing.
 
 Research means predicted, measured and explained (charter section 8.1 rule 6); a falsified prediction is still research and is marked so in its Kind line. Engineering means it works without a written prediction, or an instrument was built.
 
@@ -10,6 +10,7 @@ Research means predicted, measured and explained (charter section 8.1 rule 6); a
 
 | section | title | prediction written | kind (as recorded) |
 |---|---|:---:|---|
+| §18.247 | Runbook step 5: 1017 against the old checkpoint on the quality gate (0.72.5) | yes | Research (predicted, measured, explained as hypothesis): 5 held, 2 split (G-6, G-7: the old arm's speed falsified). No default changed. |
 | §18.246 | Runbook step 7: 1017 routing traces from its two live sessions and its hotlist (0.72.4) | no | Measurement (traces and an offline held-out coverage check; no prediction written). |
 | §18.245 | DI-1's long gate re-run with the stale-slot fix, against the fix switched off (0.72.3) | no | Measurement (a gate re-run with a before/after arm; no prediction written). |
 | §18.244 | DI-1's layer-20 speculation outlived its slots: the `'w1.weight'` error and silent wrong weights (0.72.2) | no | Engineering (a correctness fix, reproduced and counted; no prediction written). |
