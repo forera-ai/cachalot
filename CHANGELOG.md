@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.72.4 (2026-11-01)
+
+HANDOFF "Start here (2026-11-01, 0.72.4)" and section 18.246; scripts, logs and coverage in `docs/v1017-hotlist/`. Measurement and a machine-local hotlist; no code or default changed.
+
+### Measured
+- **DeepSeek-V4.1-Flash-1017's routing, from its two live Hermes sessions** replayed through `serve.sh` with `CACHALOT_ROUTING_TRACE` (32 requests, replies capped at 256 tokens, no error). Share of one session's routed-expert requests covered by a hot set's first 863 experts (8 GiB, the `serve.sh` default): the old checkpoint's hotlist 16.4-16.9 %, a 1017 ranking built on the other session 32.9-33.1 %, in-sample 33.4-33.7 %; at 4 and 16 GiB 10 % against 22 % and 27 % against 48 %. Coverage is an upper bound on a preload's hits; both sessions follow one script.
+
+### Added (machine-local, not in the repository)
+- `~/cachalot-hotlist-DeepSeek-V4.1-Flash-1017.json` from both traces (4,096 experts). `serve.sh` and `chat.sh` pick it up for the 1017 checkpoint by name (0.71.2); a 1017 start now preloads 863 experts, 8.0 GiB in 2.0 s.
+
 ## 0.72.3 (2026-11-01)
 
 HANDOFF "Start here (2026-11-01, 0.72.3)" and section 18.245; manifests and report in `docs/di1-gate-0722/`. Measurement only; no code or default changed.

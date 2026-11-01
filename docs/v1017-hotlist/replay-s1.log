@@ -1,0 +1,30 @@
+TRACE s1: ready, 19 requests
+TRACE s1 1/19 {'finish': 'stop', 'error': None, 'seconds': 103.8}
+TRACE s1 2/19 {'finish': 'stop', 'error': None, 'seconds': 0.7}
+TRACE s1 3/19 {'finish': 'tool_calls', 'error': None, 'seconds': 11.5}
+TRACE s1 4/19 {'finish': 'tool_calls', 'error': None, 'seconds': 8.1}
+TRACE s1 5/19 {'finish': 'tool_calls', 'error': None, 'seconds': 7.9}
+TRACE s1 6/19 {'finish': 'tool_calls', 'error': None, 'seconds': 8.2}
+TRACE s1 7/19 {'finish': 'tool_calls', 'error': None, 'seconds': 7.8}
+TRACE s1 8/19 {'finish': 'tool_calls', 'error': None, 'seconds': 32.9}
+TRACE s1 9/19 {'finish': 'length', 'error': None, 'seconds': 69.7}
+TRACE s1 10/19 {'finish': 'length', 'error': None, 'seconds': 36.1}
+TRACE s1 11/19 {'finish': 'stop', 'error': None, 'seconds': 50.6}
+TRACE s1 12/19 {'finish': 'tool_calls', 'error': None, 'seconds': 31.3}
+TRACE s1 13/19 {'finish': 'stop', 'error': None, 'seconds': 21.0}
+TRACE s1 14/19 {'finish': 'length', 'error': None, 'seconds': 34.5}
+TRACE s1 15/19 {'finish': 'length', 'error': None, 'seconds': 47.5}
+TRACE s1 16/19 {'finish': 'length', 'error': None, 'seconds': 44.0}
+TRACE s1 17/19 {'finish': 'length', 'error': None, 'seconds': 37.2}
+TRACE s1 18/19 {'finish': 'length', 'error': None, 'seconds': 33.9}
+TRACE s1 19/19 {'finish': 'stop', 'error': None, 'seconds': 50.7}
+TRACE s1: stopped, trace written
+TRACE s2: server not ready
+Traceback (most recent call last):
+  File "/private/tmp/claude-501/-Users-hamedprooshani-Projects-deepseek-v41-mac/4e1f5768-2526-49b3-a3f6-760a3da143f0/scratchpad/trace1017/replay_trace.py", line 95, in <module>
+    main()
+    ~~~~^^
+  File "/private/tmp/claude-501/-Users-hamedprooshani-Projects-deepseek-v41-mac/4e1f5768-2526-49b3-a3f6-760a3da143f0/scratchpad/trace1017/replay_trace.py", line 77, in main
+    os.killpg(srv.pid, signal.SIGINT)
+    ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+PermissionError: [Errno 1] Operation not permitted

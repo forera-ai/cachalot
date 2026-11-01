@@ -1,10 +1,11 @@
-# Next-session prompt — **v291**, written 2026-11-01
+# Next-session prompt — **v292**, written 2026-11-01
 
 **This is the file to paste.** `docs/NEXT-SESSION-PROMPT.md` is always current; superseded ones live in
 `docs/next-session-prompts/`.
 
 | version | written | produced by | what changed |
 |---|---|---|---|
+| **v292** | 2026-11-01 | Hamed: "Yes, start step 7", "Yes, run them" (replay the dumped sessions), then "Yes, release 0.72.4" | **0.72.4, measurement: 1017 routing traced from its two live sessions; at 8 GiB the old hotlist covers 16-17 % of a session's expert requests, a 1017 ranking from the other session 33 %; `~/cachalot-hotlist-DeepSeek-V4.1-Flash-1017.json` built, `serve.sh` on 1017 preloads 863 experts in 2 s. `docs/v1017-hotlist/`.** §18.246 |
 | **v291** | 2026-11-01 | Hamed: "Yes, run the gate" (closed Cachalot Lab for it), then "Yes, release 0.72.3" | **0.72.3, measurement: DI-1's long gate re-run on 1017 with the 0.71.0 texts pinned and a fix-off arm: noise KL 0.0116; DI-1 fixed KL 0.0011, dNLL -0.0018 [-0.0055, +0.0018]; fix off KL 0.0014, dNLL -0.0041. Both inside noise; the fix moved 564 of 576 positions and 5 top-1 tokens. DI-1 stays default-on. `docs/di1-gate-0722/`.** §18.245 |
 | **v290** | 2026-11-01 | Hamed: "Yes, start it" (traceback logging, the `'w1.weight'` holder), then "Yes, release 0.72.2" | **0.72.2, fix: DI-1's layer-19 speculation for layer 20 was collected by `finish_decoder` after the next chunk had released its slots (reused = another expert's weights, parked = `KeyError: 'w1.weight'`); 88 of 307 layer-20 collections stale on a 9,000-token 1017 prefill, 11 reused. `ResidentExpertPrefetcher.get` re-reads a record the store no longer holds; DI-1 snapshots keyed `0.68.0-di1.1`; the server logs a failed stream's traceback. 1,211 passed.** §18.244 |
 | **v289** | 2026-11-01 | Hamed: "prepare the model in internal drive", two live Hermes sessions on 1017 (budget 0, then `=off`), "Yes, run replay", "Keep budget 0" twice, "commit + push" | **0.72.1, measurement: DeepSeek-V4.1-Flash-1017 verified, bank built internally (old internal bank deleted after a byte compare; the old checkpoint reads its bank from the X10Pro). Live on 1017: cold block 104.1 s, decode 10.1-11.2 tok/s at budget 0, 93-98 % hits without a hotlist; non-JSON integer tool arguments follow budget 0 (replay 2/10 against 0/10 exact, p = 0.047); exact live session clean, 21 % slower. One `KeyError: 'w1.weight'` server error, no traceback. Hamed kept budget 0. `docs/V41-1017-LIVE-SESSION.md`.** §18.243 |
@@ -252,6 +253,10 @@
 | v47 | 2026-09-25 | Hamed asked for the v44-v46 levers planned, built, measured and documented | **0.18.0: GLM prefill 60 to 90 tok/s, bit-identical (a store path that never evicts, plus the next layer read early), GLM's missing MLX buffer-cache cap added, GLM disk snapshots (a restart reuses the system block). DeepSeek: an `iostat` trace shows prefill is not read-bound on either drive; the lookahead A/B drowned in a 124-to-200 s drift across back-to-back prefills.** §17.1, §15.13 |
 | v46 | 2026-09-25 | Hamed asked for GLM-5.3-Flash on Cachalot | 0.17.0: GLM through `serve-glm.sh` / `chat-glm.sh`. §17 |
 | v45 | 2026-09-24 | same as v47, one day earlier | 0.16.0: disk snapshot store by last use; lookahead and local compression closed. §15.12 |
+
+## First jobs (v292): 1017 is built, live-tested, fixed and has its hotlist; its gate and the default switch are Hamed's
+
+Read HANDOFF 18.246, 18.245, 18.244, 18.243 and `docs/V41-1017-RUNBOOK.md`. Runbook steps 1-4, 6 and 7 are done. **Needs Hamed:** step 5, the quality gate against the old checkpoint (`benchmarks/pareto_arms.v1017.json`; the old checkpoint's bank is X10Pro-only, so estimate its arms before asking), and step 8, 1017 as the default (`serve.sh`, `chat.sh`, `pareto.py serve_defaults`; then re-record the floor and hit rate at 48 GiB). **Agent, no Hamed needed:** a first-turn A/B of the 1017 hotlist (coverage is an upper bound; only on his go if it takes more than a few minutes). **Rules kept:** the earlier ones. New: to stop a server started under `guarded_run.sh` and keep its exit-time outputs (routing trace), send Ctrl-C to the `cachalot.cli` process, not the guard's process group.
 
 ## First jobs (v291): DI-1 is re-gated and fine; 1017's hotlist, gate and default are what is left
 

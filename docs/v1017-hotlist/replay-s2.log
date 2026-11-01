@@ -1,0 +1,16 @@
+TRACE s1: trace already on disk, skipped
+TRACE s2: ready, 13 requests
+TRACE s2 1/13 {'finish': 'stop', 'error': None, 'seconds': 101.9}
+TRACE s2 2/13 {'finish': 'tool_calls', 'error': None, 'seconds': 11.2}
+TRACE s2 3/13 {'finish': 'tool_calls', 'error': None, 'seconds': 45.0}
+TRACE s2 4/13 {'finish': 'length', 'error': None, 'seconds': 68.8}
+TRACE s2 5/13 {'finish': 'length', 'error': None, 'seconds': 34.8}
+TRACE s2 6/13 {'finish': 'length', 'error': None, 'seconds': 48.7}
+TRACE s2 7/13 {'finish': 'tool_calls', 'error': None, 'seconds': 30.3}
+TRACE s2 8/13 {'finish': 'length', 'error': None, 'seconds': 32.0}
+TRACE s2 9/13 {'finish': 'length', 'error': None, 'seconds': 43.9}
+TRACE s2 10/13 {'finish': 'length', 'error': None, 'seconds': 48.4}
+TRACE s2 11/13 {'finish': 'length', 'error': None, 'seconds': 34.8}
+TRACE s2 12/13 {'finish': 'length', 'error': None, 'seconds': 57.1}
+TRACE s2 13/13 {'finish': 'length', 'error': None, 'seconds': 67.4}
+TRACE s2: stopped, trace written

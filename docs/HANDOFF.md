@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-11-01, 0.72.4): 1017 has its own hotlist: on the held-out session it covers 32-33 % of the expert requests at 8 GiB, twice the old checkpoint's hotlist (15-17 %)
+>
+> Section 18.246 (`docs/v1017-hotlist/`). Both 1017 live sessions replayed through `serve.sh` with `CACHALOT_ROUTING_TRACE` (32 requests, replies capped at 256, no error); `~/cachalot-hotlist-DeepSeek-V4.1-Flash-1017.json` built from both; a 1017 `serve.sh` start now preloads 863 experts (8.0 GiB in 2.0 s). Coverage is of requests, an upper bound on hits; not measured: a first turn's speed with and without it. **Needs Hamed:** the 1017 gate (step 5) and default (step 8).
+
 > ## Start here (2026-11-01, 0.72.3): DI-1's long gate re-run with the fix: inside noise, a little closer to the full prefill than with the bug; the bug's quality cost was small
 >
 > Section 18.245 (`docs/di1-gate-0722/`). 1017, the 0.71.0 gate's texts (hash equal), four arms: noise KL 0.0116; DI-1 fixed KL 0.0011, dNLL -0.0018 [-0.0055, +0.0018]; DI-1 with the fix off KL 0.0014, dNLL -0.0041 [-0.0096, +0.0008]. The fix moved 564 of 576 positions' log-probabilities and 5 top-1 tokens. DI-1's default stands. **Needs Hamed:** the 1017 gate (step 5) and default (step 8).
@@ -9497,6 +9501,35 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 **Bottleneck after.** Unchanged: expert reads on misses; of the all-resident floor, CPU graph building, GPU idle, and routed-expert launch granularity.
 
 **Kind.** Engineering (a default on a prior research result).
+
+
+### 18.246 Runbook step 7: 1017 routing traces from its two live sessions and its hotlist (0.72.4)
+
+**Goal.** Hamed: "Yes, start step 7", then "Yes, run them" (replay the dumped sessions with a routing trace rather than drive a new one).
+
+**Baseline (recorded).** `~/cachalot-hotlist.json`: the old checkpoint's ranking from `trace_routing` v4/v6/v7 (four 512-token prompts with 32 decode tokens each, in-process). `serve.sh` gives a revision other than `DeepSeek-V4.1-Flash` no hotlist unless `~/cachalot-hotlist-<name>.json` exists (0.71.2), so 1017 ran without one in 18.243.
+
+**Method.** No prediction was written. `docs/v1017-hotlist/replay_trace.py`: one guarded `serve.sh` on 1017 per session (48 GiB, an empty snapshot directory so the system block is traced, `CACHALOT_ROUTING_TRACE=~/cachalot-routing-1017-sN.trace.npz`), every dumped Hermes request posted in order with `max_tokens` 256; the server is stopped with Ctrl-C to its own process so the trace is written. `docs/v1017-hotlist/coverage.py`: share of one session's routed-expert requests that the first N experts of a ranking cover, N = GiB / 9.49 MiB, for the old hotlist, a ranking built on the other session (held out) and one built on the same session (in-sample). Then `benchmarks/build_hotlist.py` on both traces, and one `serve.sh` start to read the preload line.
+
+**Result (measured).** Session 1: 19 requests, 26,418 prompt and 2,893 generated tokens traced; session 2: 13 requests; no request failed. Coverage, all requests (decode only in brackets):
+
+| hot set | 4 GiB | 8 GiB (the `serve.sh` default) | 16 GiB |
+|---|---|---|---|
+| old checkpoint's hotlist | 10.0-10.3 % (9.3-9.4) | 16.4-16.9 % (14.9-15.5) | 26.7-27.6 % (24.7-26.2) |
+| 1017, built on the other session | 22.4-22.5 % (20.5-20.6) | 32.9-33.1 % (31.7-31.9) | 47.6-48.0 % (46.7-47.0) |
+| 1017, in-sample | 22.8 % (22.0-22.2) | 33.4-33.7 % (33.9-34.0) | 48.1-48.7 % (49.3-49.8) |
+
+`~/cachalot-hotlist-DeepSeek-V4.1-Flash-1017.json`: 4,096 experts from 14,800,080 requests over 15,202 distinct experts. `serve.sh` on 1017: `hotlist: 863 experts preloaded (8.0 GiB in 2.0 s of reading)`, ready in 16.9 s.
+
+**Explanation.** 1017's new weights moved the routing enough that the old ranking keeps half its value; a ranking from one 1017 session transfers to the other almost without loss (held out within 0.5-2.3 points of in-sample).
+
+**Limits.** Both sessions follow the same script, so held-out here is optimistic for an unrelated task; coverage counts requests, an upper bound on a preload's hits (the cache also fills as a turn runs); the replies were capped at 256 tokens, so decode routing is from the first 256 tokens of each reply. Not measured: a first turn's decode with and without the hotlist.
+
+**What did not go well.** The first replay lost session 1's trace: the driver sent Ctrl-C to `guarded_run.sh`'s process group, and `guarded_run.sh` answers an interrupt by killing its child before uvicorn's exit hook writes the trace. Session 2's first start was refused because Cachalot Lab had been reopened.
+
+**Open / needs Hamed.** The 1017 gate (step 5) and default (step 8).
+
+**Kind.** Measurement (traces and an offline held-out coverage check; no prediction written).
 
 
 ### 18.245 DI-1's long gate re-run with the stale-slot fix, against the fix switched off (0.72.3)

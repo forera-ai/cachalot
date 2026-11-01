@@ -1,0 +1,14 @@
+phase both: requests s1 7,034,640, s2 7,765,440
+   4 GiB (431 experts) on s1: old hotlist 10.3%, built on s2 22.5%, in-sample 22.8%
+   4 GiB (431 experts) on s2: old hotlist 10.0%, built on s1 22.4%, in-sample 22.8%
+   8 GiB (863 experts) on s1: old hotlist 16.9%, built on s2 32.9%, in-sample 33.4%
+   8 GiB (863 experts) on s2: old hotlist 16.4%, built on s1 33.1%, in-sample 33.7%
+  16 GiB (1726 experts) on s1: old hotlist 27.6%, built on s2 47.6%, in-sample 48.1%
+  16 GiB (1726 experts) on s2: old hotlist 26.7%, built on s1 48.0%, in-sample 48.7%
+phase decode: requests s1 694,320, s2 627,600
+   4 GiB (431 experts) on s1: old hotlist 9.4%, built on s2 20.5%, in-sample 22.0%
+   4 GiB (431 experts) on s2: old hotlist 9.3%, built on s1 20.6%, in-sample 22.2%
+   8 GiB (863 experts) on s1: old hotlist 15.5%, built on s2 31.7%, in-sample 34.0%
+   8 GiB (863 experts) on s2: old hotlist 14.9%, built on s1 31.9%, in-sample 33.9%
+  16 GiB (1726 experts) on s1: old hotlist 26.2%, built on s2 47.0%, in-sample 49.8%
+  16 GiB (1726 experts) on s2: old hotlist 24.7%, built on s1 46.7%, in-sample 49.3%

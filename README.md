@@ -306,6 +306,8 @@ The same configuration as a benchmark, with a colder working set than a conversa
 token (5.90 tok/s)** at an 83.5 % hit rate, reading 627 MiB per token, drive busy 55 % of decode,
 reproducible to ±0.3 %.
 
+**0.72.4 (2026-11-01): a hotlist for DeepSeek-V4.1-Flash-1017.** Routing traces of its two live Hermes sessions show 1017 routes differently enough that the old checkpoint's startup hotlist covers only 16-17 % of a session's expert requests at 8 GiB; a 1017 ranking built on one session covers 33 % of the other. `serve.sh` on 1017 now preloads it (863 experts in 2 s). `docs/v1017-hotlist/`, HANDOFF section 18.246.
+
 **0.72.3 (2026-11-01): DI-1's quality gate re-run with the fix.** On 1017 with the 0.71.0 gate's texts, DI-1 stays inside the rounding noise of a plain re-chunking, now a little closer to the full prefill (KL 0.0011 against 0.0014 with the bug, noise 0.0116). The bug's cost to quality was small; DI-1 stays on by default. `docs/di1-gate-0722/`, HANDOFF section 18.245.
 
 **0.72.2 (2026-11-01): DI-1 fix.** DI-1's decoder tail could compute layer 20 with another expert's weights: experts speculatively loaded at the end of one encoder chunk were collected only after the next chunk had handed their slots back (11 of 307 layer-20 experts on a 9,000-token prefill). A slot the memory governor had freed instead raised the `KeyError: 'w1.weight'` seen in the first 1017 live session. The prefetcher now re-reads such an expert. DI-1 snapshots are re-keyed, so the first request after updating prefills its system block once. A failed streaming request now prints its traceback on the server. HANDOFF section 18.244.
