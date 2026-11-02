@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.73.1 (2026-11-02)
+
+HANDOFF "Start here (2026-11-02, 0.73.1)" and section 18.249; record, predictions, scripts and scorer in `docs/v1017-hotlist-ab/`. Measurement only; no code or default changed.
+
+### Measured
+- **The 1017 startup hotlist on a Hermes first turn** (ABBA through `serve.sh`, four fresh servers at 48 GiB, the 1017 live session's first request cold: 16,040 tokens, DI-1 on, budget 0; predictions H-1 to H-5 committed first): prefill 103.9 s with the hotlist against 103.5 s without (+0.37 %, inside the 1.5-3 % arm spread); over the turn the hit rate is 0.281 against 0.260 and budget 0 drops 27.2 against 29.2 experts a token in the first reply (8-9 tokens an arm, an indication only); startup unchanged. Under budget 0 the preload changes the reply's wording, deterministically per condition. 5 of 5 predictions held; the hotlist stays on.
+
 ## 0.73.0 (2026-11-02)
 
 HANDOFF "Start here (2026-11-02, 0.73.0)" and section 18.248; record, predictions, arm scripts, driver and analysis in `docs/v1017-floor/`. Runbook step 8, Hamed's call.

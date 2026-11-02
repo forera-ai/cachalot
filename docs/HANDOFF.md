@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-11-02, 0.73.1): the 1017 hotlist does not change a Hermes first turn's prefill (+0.4 %); it keeps about 2 more experts a token resident, so budget 0 drops ~7 % fewer
+>
+> Section 18.249 (`docs/v1017-hotlist-ab/`). ABBA through `serve.sh`, four fresh servers, the 1017 live session's first request cold (16,040 tokens, DI-1 on, budget 0): prefill 103.9 s on against 103.5 off, hit rate over the turn 0.281 against 0.260, dropped 27.2 against 29.2 a token (on an 8-9-token reply). 5 of 5 predictions held. The hotlist stays on. **Needs Hamed:** keep or delete the first release (475 GiB) and its X10Pro bank (142 GiB).
+
 > ## Start here (2026-11-02, 0.73.0): DeepSeek-V4.1-Flash-1017 is the default checkpoint; at 48 GiB its server floor is 76.7-78.0 ms and a miss costs 1.62 ms (exact)
 >
 > Section 18.248 (`docs/v1017-floor/`). `serve.sh`, `chat.sh` and `pareto.serve_defaults` default to 1017 with its internal bank and own hotlist; `CACHALOT_MODEL_PATH=/Volumes/X10Pro/Flash4-1/DeepSeek-V4.1-Flash` still serves the first release. Two fresh servers, 0.60.10's driver: exact mixed token 115.7 ms at 23.7 misses (first release at 0.60.10: 126.2 at 23.5), budget 0 (shipped) 89.8 ms, hit rate 0.898 / 0.928. The 1017 hotlist did not lower the miss count on this short-prompt workload. 4 of 5 predictions held, 1 split. **Needs Hamed:** keep or delete the first release (475 GiB) and its X10Pro bank (142 GiB); the hotlist first-turn A/B.
@@ -9510,6 +9514,40 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.249 The 1017 hotlist on a Hermes first turn: no measurable prefill effect, about 2 fewer dropped experts a token (0.73.1)
+
+**Goal.** Hamed: "Go, run A/B" (v294's open item: does the 1017 startup hotlist help a real Hermes first turn?).
+
+**Baseline (recorded).** First release, 2026-09-17 (HANDOFF-2026-09-17 section 28): on a 512-token cold prompt at 36 GiB the hotlist cut cold prefill 5.7 % and raised the first turn's hit rate 4.0 points; decode inside noise. 1017: the cold ~16,040-token Hermes block prefills in 102-108 s with DI-1 on (0.71.3, 0.72.1); the 1017 hotlist covers 32-33 % of a session's expert requests (§18.246, an upper bound); on 0.60.10's short-prompt driver it did not lower the miss count (§18.248). The preload is LRU, not pinned.
+
+**Prediction.** `docs/v1017-hotlist-ab/RECORD.md`, H-1 to H-5, committed in 7f6d266 before any arm.
+
+**Method.** `docs/v1017-hotlist-ab/run-all.sh`, ABBA: A1 on, B1 off, B2 off, A2 on, 12:45-13:08. Each arm a fresh `./serve.sh` with the shipped 1017 defaults (internal bank, DI-1 on, budget 0, wired 80) under `guarded_run.sh --budget-gib 48 --max-seconds 1500 --force`, `CACHALOT_SNAPSHOT_DIR=` (cold block), B arms `CACHALOT_HOTLIST=`; quiet gate (5-minute load under 3.5) before and `settle.sh --budget-gib 40` (ready in 20-26 s) between arms; manifests `c571c181`, `384dd542`, `4e2164c0`, `f20d0e3e` (A1, B1, B2, A2). Driver: request 0 of `~/cachalot-dump-1017.jsonl` (the 1017 live session's first turn: system block, 21 tools, the first user message), non-streaming, temperature 0, at most 160 tokens. Scored by `docs/v1017-hotlist-ab/analyse.py` from the `[request]` line and the `/v1/stats` difference. Peak wired 76.2-77.0 GiB, pressure 1, swap flat (3.5 GB, stale). Workload class W3 (agent first turn), one prompt.
+
+**Result (measured).**
+
+| arm | hotlist | prefill, 16,040 tokens | first reply | decode ms a token | misses a token | dropped a token | hit rate over the turn |
+|---|---|---|---|---|---|---|---|
+| A1 | on (863) | 105.43 s | 8 tokens | 125.0 | 37.2 | 27.5 | 0.282 |
+| B1 | off | 102.77 s | 9 tokens | 127.8 | 38.4 | 28.9 | 0.261 |
+| B2 | off | 104.27 s | 9 tokens | 130.0 | 39.8 | 29.4 | 0.259 |
+| A2 | on (863) | 102.38 s | 8 tokens | 130.0 | 38.4 | 26.9 | 0.280 |
+| **on - off** | | **+0.39 s (+0.37 %)** | | -1.4 (-1.1 %) | -1.3 | **-2.0 (-6.8 %)** | **+0.021** |
+
+The two arms of each condition gave the same reply; the conditions gave different replies ("Hey — what can I help with?" with the hotlist, "... help you with?" without): under budget 0 the experts resident when decode starts decide which are dropped, so the preload changes the output, deterministically per condition.
+
+Predictions: **H-1 held** (prefill +0.37 %, in -3 to +1). **H-2 held** (decode -1.1 %, under 4 %), on 8-9 tokens an arm. **H-3 held** (dropped -2.0 a token, in -3 to +1), same caveat. **H-4 held** (on arms 2.98 % apart, off 1.46 %; the on pair at the edge of 3 %). **H-5 held** (hit rate +2.1 points, within 3). 5 of 5 held.
+
+**Explanation.** On a Hermes first turn the hotlist buys nothing in prefill: the 16k-token prefill reads far more than the 8 GiB set and evicts most of it, and the set's one-time read saving (about 1.3 s at most, derived) is inside the 3 % arm-to-arm spread. What survives the prefill is enough to keep about 2 more of a token's routed experts resident when decode starts (hit rate +2 points), so budget 0 drops about 7 % fewer experts in the first reply. It costs nothing measurable at startup (the read runs in the background; ready 17 s in every arm). The 2026-09-17 prefill gain was on a 512-token prompt, where the set is a large share of what the prompt reads; at 16k it is not.
+
+**Limits.** One prompt, a greeting: the first reply is 8-9 tokens, so the decode and drop figures rest on 34 tokens in all and are an indication, not a measurement of a long reply; the OS page cache was not flushed (ABBA balances drift, not a first-arm effect); one checkpoint, one budget, DI-1 on.
+
+**What did not go well.** I chose the dump's first request without checking its user message: it is a greeting, which leaves the decode half of the question underpowered. A later request of the same session with a longer reply would answer it, at the cost of a longer prefill.
+
+**Open / needs Hamed.** Nothing to change: the hotlist stays on (no cost, a small gain in what budget 0 keeps). Still Hamed's: whether the first release and its X10Pro bank stay. Optional: the same ABBA on a request with a long first reply, if the decode-side effect matters to him.
+
+**Kind.** Research: 5 predictions, 5 held. No code or default changed.
 
 ### 18.248 Runbook step 8: 1017 is the default checkpoint; its floor and hit rate at 48 GiB (0.73.0)
 
