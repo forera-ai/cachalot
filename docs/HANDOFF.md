@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-11-02, 0.74.1): DI-2 keep 140 measured on the server: -12.7 s on a cold 16k Hermes block (-12 %), -11.1 s on a 4.3k prompt (-28 %); the default is Hamed's
+>
+> Section 18.252 (`docs/v1017-di2-server/`). ABBA, four fresh `serve.sh`, DI-1 exact against `CACHALOT_PREFILL_DECODER_KEEP=140`: block 102.75 against 90.06 s, mid prompt 39.73 against 28.68 s, pairs within 2.1 %. With 18.251's quality curve (inside noise), keep 140 saves a fixed 11-13 s on every cold multi-call prefill. 5 of 5 predictions held. **Needs Hamed:** whether `serve.sh` turns it on by default (optionally after a live Hermes session with it set).
+
 > ## Start here (2026-11-02, 0.74.0): DI-2 bounded decoder replay is inside noise at every length down to 140 rows (KL 0.0020 against noise 0.0116); new default-off `CACHALOT_PREFILL_DECODER_KEEP`
 >
 > Section 18.251 (`docs/v1017-di2-curve/`). The 0.72.3 long gate on 1017, seven arms: DI-1's exact tail KL 0.0011, keep 1,024 / 512 / 256 / 140 KL 0.0011 / 0.0012 / 0.0017 / 0.0020, every dNLL interval containing or below 0, top-1 98.4-98.8 %. Arm wall time says keep 140 cuts an 8,192-token prefill by about 11 s more than DI-1 (derived). 6 of 7 predictions held (the run time was falsified, short). **Needs Hamed:** a server-path speed A/B (about 25-35 minutes), then whether a keep becomes the `serve.sh` default.
@@ -9522,6 +9526,35 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.252 DI-2 keep 140 on the server: -12.7 s on a cold 16k Hermes block, -11.1 s (-28 %) on a 4.3k prompt (0.74.1)
+
+**Goal.** Hamed: "Push, then run A/B" (the server speed step after the DI-2 quality curve, §18.251).
+
+**Baseline (recorded).** DI-1 on the server: the cold 16,040-token Hermes block 102.4-105.4 s at 48 GiB (§18.249). §18.251: keep 140 about 11 s shorter than DI-1 per 8,192-token prefill (derived from arm wall time). The saving should be a fixed amount, because keep 140 runs the decoder half over 2,401 fewer rows whatever the prompt length.
+
+**Prediction.** `docs/v1017-di2-server/RECORD.md`, S-1 to S-5, committed in f8e8ced before any arm.
+
+**Method.** `docs/v1017-di2-server/run-all.sh`, ABBA (A1 exact, B1 keep 140, B2 keep 140, A2 exact), 15:31-15:53. Each arm a fresh `./serve.sh` with the shipped 1017 defaults (internal bank, DI-1 on, budget 0, the 1017 hotlist) under `guarded_run.sh --budget-gib 48 --max-seconds 1500 --force`, `CACHALOT_SNAPSHOT_DIR=`, B arms `CACHALOT_PREFILL_DECODER_KEEP=140`; quiet gate and `settle.sh --budget-gib 40` (ready in 20-21 s) between; manifests `8cc86c7b`, `00c03436`, `ca41b250`, `46d03927`. Two cold requests an arm: the 1017 dump's first request (16,040 tokens with system block and 21 tools) and `mid_prompt.txt` (4,277 tokens, the start of `docs/SPEED-RESEARCH-2026-10-03.md` under an instruction), greedy, 16 new tokens each. Scored by `analyse.py` from the `[request]` prefill seconds (`report.txt`). Peak wired 74.7-77.1 GiB, pressure 1, swap flat at 4.2 GB.
+
+**Result (measured).**
+
+| prompt | exact (DI-1) A1 / A2 | keep 140 B1 / B2 | keep 140 - exact |
+|---|---|---|---|
+| cold Hermes block, 16,040 tokens | 103.34 / 102.16 s | 90.99 / 89.14 s | **-12.69 s (-12.3 %)** |
+| mid prompt, 4,277 tokens | 40.09 / 39.38 s | 28.96 / 28.39 s | **-11.06 s (-27.8 %)** |
+
+Pairs of one condition agree within 1.2-2.1 %. The DI-2 startup line appears in B1 and B2 only. The mid prompt's 16-token replies begin identically in all four arms; the Hermes greeting's wording ("help you with" / "help with") alternates across arms in a pattern that does not follow the condition (A1 and B2 one way, B1 and A2 the other), so that wording is set by budget 0's cache-dependent drops, not by DI-2.
+
+Predictions: **S-1 held** (exact block 102.2-103.3 s in 98-112). **S-2 held** (-12.7 s, in -5 to -15). **S-3 held** (-11.1 s, in -5 to -14). **S-4 held** (1.2-2.1 % apart). **S-5 held**. 5 of 5 held.
+
+**Explanation.** The saving is the fixed cost of the 2,401 decoder rows keep 140 leaves out (11-13 s on this machine at 48 GiB), so its share grows as the prompt shrinks: 12 % of a 16k block, 28 % of a 4.3k prompt. With §18.251's quality curve (KL 0.0020 against noise 0.0116), keep 140 takes about 11-13 s off every cold multi-call prefill: a Hermes session's cold system block, each re-prefill after compression and each summary call. A one-call prompt (4,096 tokens or fewer) is unaffected (DI-1 does not engage there).
+
+**Limits.** Two arms a condition, two prompts, one session's block; the OS page cache was not flushed (ABBA balances drift); DI-2's continuation case (a snapshot plus a short suffix) and its quality on free-running long replies are unmeasured; only keep 140 was timed.
+
+**Open / needs Hamed.** Whether `serve.sh` turns on `CACHALOT_PREFILL_DECODER_KEEP=140` by default (output-changing within noise; its snapshots key `-keep140`, so the first start re-prefills each system block cold once). Optional before that: a live Hermes session with the knob set, read as in earlier live checks.
+
+**Kind.** Research: 5 predictions, 5 held. No code or default changed.
 
 ### 18.251 DI-2, bounded decoder replay: every replay length from 1,024 down to 140 rows is inside noise on the long gate (0.74.0)
 

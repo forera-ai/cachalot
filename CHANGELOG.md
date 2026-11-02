@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.74.1 (2026-11-02)
+
+HANDOFF "Start here (2026-11-02, 0.74.1)" and section 18.252; record, scripts, prompt and report in `docs/v1017-di2-server/`. Measurement only; no code or default changed.
+
+### Measured
+- **DI-2 keep 140 on the server path** (ABBA, four fresh `serve.sh` at 48 GiB with the shipped 1017 defaults, snapshots off, predictions S-1 to S-5 committed first): the cold 16,040-token Hermes block prefills in 90.06 s against DI-1's 102.75 s (-12.7 s, -12.3 %) and a 4,277-token prompt in 28.68 against 39.73 s (-11.1 s, -27.8 %); pairs within 2.1 %. A fixed 11-13 s on every cold multi-call prefill. 5 of 5 predictions held; `serve.sh`'s default is unchanged until Hamed decides.
+
 ## 0.74.0 (2026-11-02)
 
 HANDOFF "Start here (2026-11-02, 0.74.0)" and section 18.251; record, arms, run script and report in `docs/v1017-di2-curve/`. A default-off knob and a measurement; no default changed.

@@ -1,0 +1,8 @@
+A1 exact no DI-2 line hermes-block: 16040 tokens 103.34 s mid-prompt: 4277 tokens 40.09 s
+B1 keep140 DI-2 line hermes-block: 16040 tokens 90.99 s mid-prompt: 4277 tokens 28.96 s
+B2 keep140 DI-2 line hermes-block: 16040 tokens 89.14 s mid-prompt: 4277 tokens 28.39 s
+A2 exact no DI-2 line hermes-block: 16040 tokens 102.16 s mid-prompt: 4277 tokens 39.38 s
+hermes-block: exact 103.34/102.16 (mean 102.75), keep140 90.99/89.14 (mean 90.06); keep140 - exact -12.69 s (-12.3 %); pairs apart exact 1.2 %, keep140 2.1 %
+  replies: A1:["Hey \u2014 what can I help you with?", null] | B1:["Hey \u2014 what can I help with?", null] | B2:["Hey \u2014 what can I help you with?", null] | A2:["Hey \u2014 what can I help with?", null]
+mid-prompt: exact 40.09/39.38 (mean 39.73), keep140 28.96/28.39 (mean 28.68); keep140 - exact -11.06 s (-27.8 %); pairs apart exact 1.8 %, keep140 2.0 %
+  replies: A1:["Here are five bullet points summarising the research notes:\n\n- **Priority an | B1:["Here are five bullet points summarising the research notes:\n\n- **Priority an | B2:["Here are five bullet points summarising the research notes:\n\n- **Priority an | A2:["Here are five bullet points summarising the research notes:\n\n- **Priority an
