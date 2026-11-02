@@ -1,11 +1,12 @@
-# Next-session prompt — **v301**, written 2026-11-02
+# Next-session prompt — **v302**, written 2026-11-02
 
 **This is the file to paste.** `docs/NEXT-SESSION-PROMPT.md` is always current; superseded ones live in
 `docs/next-session-prompts/`.
 
 | version | written | produced by | what changed |
 |---|---|---|---|
-| **v301** | 2026-11-02 | Hamed: "Yes, push 0.75.1", then "Do A/B Test now" (exact decode inside tool-call blocks) | **0.76.0: `CACHALOT_DECODE_TOOL_EXACT=1` (default off) lifts the decode miss budget from a reply's tool-call opener to its end. Replay A/B of the Desktop turn, 24 replies an arm: non-JSON `limit` 2 of 24 at budget 0, 0 of 24 with the knob (p = 0.245; pooled with 18.243 4/34 against 0/34, p = 0.057); cost 0 warm, 15-30 % on tool-call tokens cold. New `tests/test_tool_exact_decode.py`.** §18.255 |
+| **v302** | 2026-11-02 | Hamed: "Yes, push 0.76.0", "Live session first", then "Yes, make default" | **0.77.0: `serve.sh` exports `CACHALOT_DECODE_TOOL_EXACT=1` (`=0` or empty keeps budget 0 in tool calls). Live session with it: both tool calls valid first try, no retry, about +3 s a call cold; three defects outside tool calls (skipped translations, one English word in the Farsi, a comma in the image text). New `tests/test_tool_exact_default_on.py`.** §18.256 |
+| v301 | 2026-11-02 | Hamed: "Yes, push 0.75.1", then "Do A/B Test now" (exact decode inside tool-call blocks) | **0.76.0: `CACHALOT_DECODE_TOOL_EXACT=1` (default off) lifts the decode miss budget from a reply's tool-call opener to its end. Replay A/B of the Desktop turn, 24 replies an arm: non-JSON `limit` 2 of 24 at budget 0, 0 of 24 with the knob (p = 0.245; pooled with 18.243 4/34 against 0/34, p = 0.057); cost 0 warm, 15-30 % on tool-call tokens cold. New `tests/test_tool_exact_decode.py`.** §18.255 |
 | v300 | 2026-11-02 | Hamed drove three live Hermes sessions on 0.75.0, then "Yes, record 0.75.1" | **0.75.1, measurement: DI-2 keep 140 live, clean 13-request session (system block reused 0.87 s, prefills 6,624 tokens 33.4 s / 2,292 24.2 s, decode 9.4-11.1 tok/s, tools, image, code, translations correct); first start cold block 91.2 s; budget 0 non-JSON `search_files` `limit` 3x in run 1 (also 3 of 5 on 2026-11-01, before DI-2), Hermes retried to `max_tokens` 65,536 and the server refused it. `docs/DI2-LIVE-SESSION.md`.** §18.254 |
 | v299 | 2026-11-02 | Hamed: "Yes, make default" (DI-2 keep 140) | **0.75.0: `serve.sh` exports `CACHALOT_PREFILL_DECODER_KEEP=140` (empty = DI-1's exact tail; `chat.sh` and code default off); snapshots re-key `-keep140`. New `tests/test_di2_default_on.py`.** §18.253 |
 | v298 | 2026-11-02 | Hamed: "Push, then run A/B" (DI-2 server speed) | **0.74.1, measurement: ABBA through `serve.sh`, DI-1 exact against `CACHALOT_PREFILL_DECODER_KEEP=140`: cold 16,040-token Hermes block 102.75 to 90.06 s (-12.3 %), 4,277-token prompt 39.73 to 28.68 s (-27.8 %); a fixed 11-13 s on every cold multi-call prefill. 5 of 5 held; default is Hamed's.** §18.252 |
@@ -262,6 +263,10 @@
 | v47 | 2026-09-25 | Hamed asked for the v44-v46 levers planned, built, measured and documented | **0.18.0: GLM prefill 60 to 90 tok/s, bit-identical (a store path that never evicts, plus the next layer read early), GLM's missing MLX buffer-cache cap added, GLM disk snapshots (a restart reuses the system block). DeepSeek: an `iostat` trace shows prefill is not read-bound on either drive; the lookahead A/B drowned in a 124-to-200 s drift across back-to-back prefills.** §17.1, §15.13 |
 | v46 | 2026-09-25 | Hamed asked for GLM-5.3-Flash on Cachalot | 0.17.0: GLM through `serve-glm.sh` / `chat-glm.sh`. §17 |
 | v45 | 2026-09-24 | same as v47, one day earlier | 0.16.0: disk snapshot store by last use; lookahead and local compression closed. §15.12 |
+
+## First jobs (v302): tool-call blocks decode exact by default; the max_tokens fit is the open item
+
+Read HANDOFF 18.256, 18.255, 18.254. **Needs Hamed:** fitting an explicit `max_tokens` to `max_seq_len` minus the prompt (`server/engine.py`, as `max_tokens_defaulted` does; output unchanged; Hermes's 65,536 retry was refused in 18.254); with tool-exact on, that retry should now be rare. **Watch in the next live sessions:** non-JSON tool arguments (expected none), translations skipped on a multi-part turn and English words in the Farsi (both seen under budget 0 outside tool calls). **Optional:** a DI-2 continuation-case gate. **Autonomous, small:** `cache_sim.py --floor-ms` 80 -> 77. Otherwise ask Hamed which lane is next (Hermes, vision, speed). **Rules kept:** the earlier ones; dumps and Hermes exports stay out of the repository.
 
 ## First jobs (v301): the tool-exact knob is measured; its default and the max_tokens fit are Hamed's
 

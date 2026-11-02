@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-11-02, 0.77.0): `serve.sh` decodes tool-call blocks exact by default; `CACHALOT_DECODE_TOOL_EXACT=0` keeps budget 0 there
+>
+> Section 18.256. Hamed's call after the replay (18.255: 0 of 24 non-JSON against 2 of 24) and a live Hermes session with the knob on (both tool calls valid on the first try, no retry, about 3 s more a call on a cold cache; `docs/v1017-tool-exact/RECORD.md` section 9). Three defects in that session were outside tool calls (skipped translations on one turn, one English word in the Farsi, an added comma in the image text). `chat.sh` and the code default stay off. **Open:** fitting an explicit `max_tokens` (output unchanged; the other 18.254 fix), Hamed's call.
+
 > ## Start here (2026-11-02, 0.76.0): `CACHALOT_DECODE_TOOL_EXACT=1` decodes tool-call blocks exact under budget 0; replay 0 of 24 non-JSON against 2 of 24; the default is Hamed's
 >
 > Section 18.255 (`docs/v1017-tool-exact/`). New default-off knob: once a reply opens a DSML tool-call block the decode miss budget is lifted until the request ends. Replay of Hermes's Desktop turn (three recorded versions, ABBA, 24 replies an arm): non-JSON `search_files` `limit` 2 of 24 at budget 0, 0 of 24 with the knob (p = 0.245; with 18.243's replay 4/34 against 0/34, p = 0.057); every knob call well formed; cost 0 on warm requests, about 15-30 % slower tool-call tokens on a fresh server's first requests. **Needs Hamed:** whether `serve.sh` turns it on; whether to fit an explicit `max_tokens` (the other 18.254 fix).
@@ -9538,6 +9542,20 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.256 Tool-call blocks decode exact by default in `serve.sh`; the live session that preceded it (0.77.0)
+
+**Goal.** Hamed, 2026-11-02: "Live session first" (after 18.255), then, after the session, "Yes, make default".
+
+**Live session (measured, one sample, not an A/B).** Hamed's usual script, 13 requests, `CACHALOT_DECODE_TOOL_EXACT=1` on top of 0.76.0's `serve.sh` defaults, dump `~/cachalot-dump-toolexact.jsonl` (outside the repository). `search_files` `limit` 100 and `terminal` `timeout` 30 valid on the first try; no Hermes retry or error. The two tool-call replies decoded at 7.80 and 7.35 tok/s at 26.3 and 31.3 misses a token, against 10.24-10.39 tok/s at about 15 for the same calls under budget 0 in 18.254's run 3 (about 3 s more a call; the cache was colder this time, 82-89 % hits on those requests); the other replies 10.17-11.04 tok/s. A new 16,156-token system block prefilled cold in 92.82 s. C# builds on .NET 8, TypeScript and Python check, stories 193 and 534 words, the fish story's three translations complete. Defects, all outside tool-call blocks (budget 0, not the knob): the hummingbird turn gave no translations; one English word ("mattered") in the Farsi; the image input read as `1227,`. Details in `docs/v1017-tool-exact/RECORD.md` section 9.
+
+**Change.** `serve.sh` exports `CACHALOT_DECODE_TOOL_EXACT=${CACHALOT_DECODE_TOOL_EXACT-1}` after the miss-budget export; `=0` or an explicit empty value keeps budget 0 inside tool calls. `chat.sh` (exact decode, no budget) and the code default (off) are unchanged. The startup line appears. No snapshot key changes (decode only). New `tests/test_tool_exact_default_on.py` (3 tests).
+
+**Evidence (recorded).** 18.255 replay: 0 of 24 non-JSON against 2 of 24 (p = 0.245; pooled with 18.243 4/34 against 0/34, p = 0.057), every knob call well formed, cost 0 warm and 15-30 % on tool-call tokens cold; this live session, above.
+
+**Not measured.** The live non-JSON rate with the knob over many sessions (two clean calls here); thinking-mode tool calls; tools other than `search_files` and `terminal` with integer arguments.
+
+**Kind.** A default change (Hamed's call) with one live measurement.
 
 ### 18.255 Exact decode inside tool-call blocks under the decode miss budget: replay A/B (0.76.0)
 

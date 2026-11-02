@@ -62,6 +62,11 @@ export CACHALOT_SNAPSHOT_DIR=${CACHALOT_SNAPSHOT_DIR-$HOME/.cache/cachalot/prefi
 # Decode drops every non-resident expert a layer would read (Hamed's default since 0.60.0, HANDOFF 18.66): -22 to -27 %
 # a token, no sign of harm in the blind checks (18.60, 18.61). It changes outputs; CACHALOT_DECODE_MISS_BUDGET=off is the exact path.
 export CACHALOT_DECODE_MISS_BUDGET=${CACHALOT_DECODE_MISS_BUDGET-0}
+# Tool-call blocks decode exact under that budget (Hamed's default since 0.77.0, HANDOFF 18.255-18.256): budget 0 turned some integer tool
+# arguments into words, which Hermes retried up to four times; with the budget lifted from a reply's tool-call opener to its end, a replay
+# wrote 0 of 24 non-JSON arguments against 2 of 24, at no cost with the experts resident and about 3 s a call on a cold cache.
+# CACHALOT_DECODE_TOOL_EXACT=0 (or empty) keeps budget 0 inside tool calls too.
+export CACHALOT_DECODE_TOOL_EXACT=${CACHALOT_DECODE_TOOL_EXACT-1}
 
 # DI-1 encoder-only prefill (Hamed's default since 0.72.0, HANDOFF 18.242, docs/DI1-DEFAULT-ON-PLAN.md): a text prompt of more than one
 # 4,096-token call runs layers 20 to 39 once over its last 2,541 rows; 0.668 of the full prefill's time on Hermes's large prefills

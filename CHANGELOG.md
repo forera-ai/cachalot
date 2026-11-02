@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.77.0 (2026-11-02)
+
+HANDOFF "Start here (2026-11-02, 0.77.0)" and section 18.256; the live session in `docs/v1017-tool-exact/RECORD.md` section 9. Hamed's call.
+
+### Changed
+- **`serve.sh` turns on `CACHALOT_DECODE_TOOL_EXACT`** (`=1` unless the environment sets it; `=0` or an explicit empty value keeps budget 0 inside tool calls): under the decode miss budget 0, tool-call blocks decode exact, so integer tool arguments are no longer written as words. `chat.sh` and the code default are unchanged.
+
+### Measured
+- **Live Hermes session with the knob on** (13 requests, one sample): `search_files` `limit` 100 and `terminal` `timeout` 30 valid on the first try, no Hermes retry (budget 0 alone: 3 of 4 non-JSON on each of two earlier sessions). The two tool-call replies cost about 3 s more each on a cold cache (7.80 and 7.35 tok/s at 26-31 misses a token, against 10.24-10.39 at about 15); other replies 10.17-11.04 tok/s. Three defects outside tool calls, where the knob does nothing: a turn that skipped its asked-for translations, one English word left in the Farsi, an added comma in the image transcription.
+
+### Tests
+- New `tests/test_tool_exact_default_on.py` (3 tests).
+
 ## 0.76.0 (2026-11-02)
 
 HANDOFF "Start here (2026-11-02, 0.76.0)" and section 18.255; record, driver, scripts and report in `docs/v1017-tool-exact/`. A default-off knob and a measurement; no default changed.

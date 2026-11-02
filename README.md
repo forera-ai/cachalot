@@ -306,6 +306,8 @@ The same configuration as a benchmark, with a colder working set than a conversa
 token (5.90 tok/s)** at an 83.5 % hit rate, reading 627 MiB per token, drive busy 55 % of decode,
 reproducible to ±0.3 %.
 
+**0.77.0 (2026-11-02): tool calls decode exact in `serve.sh`.** The server reads every missing expert once a reply starts a tool call, so the miss budget can no longer turn an integer argument into a word and send Hermes into retries. In a live Hermes session both tool calls were valid on the first try, at about 3 s more a call while the expert cache is cold. `CACHALOT_DECODE_TOOL_EXACT=0` keeps the old behaviour (HANDOFF section 18.256).
+
 **0.76.0 (2026-11-02): exact decode inside tool calls, opt-in.** `CACHALOT_DECODE_TOOL_EXACT=1` reads every missing expert once a reply starts a tool call, so the miss budget can no longer turn an integer argument into a word. In a replay of the turn that broke live, budget 0 wrote 2 non-JSON arguments in 24 replies and the option 0 in 24, at no cost when the experts are resident and about 15-30 % slower tool-call tokens when many are missing. Off by default (HANDOFF section 18.255).
 
 **0.75.1 (2026-11-02): DI-2 checked in live Hermes sessions.** A 13-request session on the new default ran clean: the saved system block came back from disk in under a second, decode held 9.4-11.1 tok/s, and tool calls, the image turn, code and translations were all correct. The one defect seen, non-JSON integer tool arguments, predates DI-2 and comes from the decode miss budget 0 (HANDOFF section 18.254, `docs/DI2-LIVE-SESSION.md`).

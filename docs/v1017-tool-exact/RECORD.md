@@ -88,3 +88,27 @@ budget 0 drops almost nothing once the turn's experts are resident. In the regim
 misses) the knob does what it is meant to: budget 0 wrote words for an integer, tool-exact wrote 100 or 200 every time. It never made a call
 worse, and its cost is confined to tool-call tokens: zero when the experts are resident, about 15-30 % on those tokens when they are not
 (the worst measured: a 77-token call 10.6 s against 7.4 s, about 3 s more). Whether it becomes `serve.sh`'s default is Hamed's call.
+
+## 9. Live Hermes session with the knob on (2026-11-02, 0.76.0) and the default
+
+Hamed ran the usual Hermes script (greeting, Desktop listing with a tool, C# importer, 200-word story, image, TypeScript and Python
+importers, 500-word story, translations to German, French and Farsi, hummingbird rewrite with translations) against
+`CACHALOT_DECODE_TOOL_EXACT=1 CACHALOT_SERVER_DUMP=$HOME/cachalot-dump-toolexact.jsonl ./serve.sh`: 13 requests, one sample, not an A/B.
+The dump and Hermes's export hold personal file names and stay out of the repository.
+
+- **Tool calls:** `search_files` with `limit` 100 and `terminal` with `timeout` 30, both valid JSON on the first try; no Hermes retry, no
+  entry in Hermes's error log. At budget 0 the same turn wrote a non-JSON `limit` in 3 of 4 calls on 2026-11-01 and in 3 of 4 earlier on
+  2026-11-02 (18.243, 18.254).
+- **Cost:** the two tool-call replies (93 and 92 tokens) decoded at 7.80 and 7.35 tok/s with 26.3 and 31.3 misses a token, against
+  10.24-10.39 tok/s at about 15 misses a token for the same calls at budget 0 in 18.254's run 3: about 3 s more a call on a cold cache, as
+  the replay's first requests showed. The other replies decoded at 10.17-11.04 tok/s (4.8-14.9 misses a token).
+- **Prefill:** Hermes's system prompt had changed again (16,156 tokens, no saved block matched): cold 92.82 s; follow-ups 5,224 tokens
+  28.06 s, 6,624 34.89 s.
+- **Answers:** C# builds on .NET 8, TypeScript passes a syntax check, Python parses; stories 193 and 534 words; the fish story's German,
+  French and Farsi translations complete. Three defects, all outside tool-call blocks (decoded under budget 0, which the knob does not
+  touch): the hummingbird turn wrote the English rewrite only, without the three translations it asked for; the Farsi left one English
+  word ("mattered") mid-sentence, as 18.243's had ("heard"); the image transcription read the input as `1227,` (an added comma), the rest
+  exact.
+
+Hamed, 2026-11-02, after the session: "Yes, make default". `serve.sh` exports `CACHALOT_DECODE_TOOL_EXACT=${CACHALOT_DECODE_TOOL_EXACT-1}`
+since 0.77.0; `=0` or an explicit empty value keeps budget 0 inside tool calls; `chat.sh` and the code default are unchanged.
