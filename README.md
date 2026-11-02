@@ -306,6 +306,8 @@ The same configuration as a benchmark, with a colder working set than a conversa
 token (5.90 tok/s)** at an 83.5 % hit rate, reading 627 MiB per token, drive busy 55 % of decode,
 reproducible to ±0.3 %.
 
+**0.75.1 (2026-11-02): DI-2 checked in live Hermes sessions.** A 13-request session on the new default ran clean: the saved system block came back from disk in under a second, decode held 9.4-11.1 tok/s, and tool calls, the image turn, code and translations were all correct. The one defect seen, non-JSON integer tool arguments, predates DI-2 and comes from the decode miss budget 0 (HANDOFF section 18.254, `docs/DI2-LIVE-SESSION.md`).
+
 **0.75.0 (2026-11-02): DI-2 is on in `serve.sh`.** The server now replays only the last 140 rows through the second half of the model on every prompt longer than one 4,096-token call: a cold 16k Hermes system block takes about 90 s instead of 103 s. `CACHALOT_PREFILL_DECODER_KEEP=` (empty) restores DI-1's exact tail (HANDOFF section 18.253).
 
 **0.74.1 (2026-11-02): DI-2 measured on the server.** With `CACHALOT_PREFILL_DECODER_KEEP=140` a cold 16,040-token Hermes system block prefills in 90.1 s instead of 102.8 s, and a 4,277-token prompt in 28.7 s instead of 39.7 s (four fresh servers, alternating): a fixed 11-13 s off every cold prompt longer than one 4,096-token call, at a quality cost inside noise (0.74.0). Still off by default (HANDOFF section 18.252).

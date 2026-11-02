@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-11-02, 0.75.1): DI-2 keep 140 ran a clean live Hermes session; the budget 0 non-JSON integer argument is still live on 1017
+>
+> Section 18.254 (`docs/DI2-LIVE-SESSION.md`). Hamed drove three `serve.sh` starts on 0.75.0 with a dump. Clean 13-request session: system block reused from disk in 0.87 s, follow-up prefills 6,624 tokens 33.4 s and 2,292 24.2 s, decode 9.4-11.1 tok/s, tool calls, image, code and translations correct. First start: cold block 91.2 s (the A/B's 90.1), and three non-JSON `search_files` `limit` values made Hermes retry four times and the server refuse a 65,536-token `max_tokens`; the 2026-11-01 dump (before DI-2) has the same 3 of 5, so it is budget 0 (18.243), not DI-2. **Needs Hamed:** whether to build exact decode inside DSML tool-call blocks (output-changing, replay A/B) and/or fit an explicit `max_tokens` to the room left (output unchanged). Otherwise his choice of lane.
+
 > ## Start here (2026-11-02, 0.75.0): `serve.sh` replays 140 decoder rows by default (DI-2 on top of DI-1); `CACHALOT_PREFILL_DECODER_KEEP=` is the exact tail
 >
 > Section 18.253. Hamed's call after 18.251 (inside noise, KL 0.0020) and 18.252 (-12.7 s on a cold 16k Hermes block, -28 % on 4.3k). Snapshots re-key `-keep140`: the first start prefills each system block cold once. `chat.sh` and the code default stay off. Not yet seen: a live Hermes session with it on.
@@ -9530,6 +9534,23 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.254 DI-2 keep 140 in live Hermes sessions: clean; the budget 0 non-JSON argument is still there (0.75.1)
+
+**Goal.** The check 18.253 left open: a live Hermes session on the new `serve.sh` default (DI-1 plus DI-2 keep 140, budget 0, 1017 with its hotlist, 48 GiB). Hamed drove it, three server starts on 2026-11-02 with `CACHALOT_SERVER_DUMP=$HOME/cachalot-dump-di2.jsonl`, the same script as 18.239 and 18.243.
+
+**Result (measured, one session each, sampled, not an A/B).** Full write-up, with the comparison to 1017's first session, in `docs/DI2-LIVE-SESSION.md`.
+- Run 1 (Hermes still had its MiniMax entry selected: `model: minimax-m3`, `Model: minimax-m3` in the system prompt). Cold 15,861-token block 91.20 s (18.252: 90.06 s on 16,040); follow-up prefills 11,326 tokens 53.07 s, 6,620 33.65 s; decode 9.8-11.6 tok/s. Three `search_files` calls wrote the integer `limit` as `strongest`, `COPIOUS`, `collapsed` (`string="false"`, not JSON); Hermes replaced the arguments with an empty object and resent with `max_tokens` unset, 8192, 32768, 65536; the server refused 65,536 (`exceeds runtime max_seq_len`); the next attempt wrote `200`. About 30 s lost. The 2026-11-01 dump (0.72.x, DI-2 not built) has the same 3 of 5 `limit` values non-JSON and the same retries: this is budget 0's defect from 18.243 (2/10 against 0/10 exact in the replay), not DI-2's.
+- Switching Hermes to `deepseek-v4.1-flash` mid-session rewrote its system prompt (the `Model:` line and an added "Tool-use enforcement" section), so the whole ~34k conversation re-prefilled; Hamed stopped it. A Ctrl-C during a prefill prints `RuntimeError: cannot schedule new futures after shutdown` (the read-ahead pool shut down under the running request): shutdown noise.
+- Run 3 (13 requests, `deepseek-v4.1-flash`, temperature 0.7): the 16,036-token DeepSeek system block reused from disk in 0.87 s (saved by run 1's interrupted prefill at the block boundary); follow-up prefills 6,624 tokens 33.35 s, 2,292 24.19 s, an image turn's 647 13.15 s; decode 9.43-11.12 tok/s on replies of 66-3,022 tokens at 16-37k context, 91-98 % hits. Every tool call well formed (`limit` 50, `terminal`, `vision_analyze`, Hermes's `memory` with a JSON array); image transcription exact; C# builds on .NET 8 (two wrong comments), TypeScript passes a syntax check, Python parses; stories 237 and 453 words; German, French and Farsi translations complete, no English left in the Farsi. Ctrl-C waited for the request in flight.
+
+**What it settles.** DI-2 keep 140 showed no defect in live use, and its cold block matched the A/B. The budget 0 non-JSON integer argument remains on 1017 and costs Hermes up to four retries and a refused request each time it happens. Two fixes are proposed and not built: exact decode inside DSML tool-call blocks (output-changing, Hamed's call, needs a replay A/B like 18.243's) and fitting an explicit `max_tokens` to the room left, as the server does when the client sends none (output unchanged; Hermes's 65,536 retry would then run).
+
+**Not measured.** DI-2's continuation case in isolation; a cold DeepSeek-labelled system block on 0.75.0; thinking mode.
+
+**Bottleneck after.** Not moved: nothing shipped. Decode is still the floor plus misses (DS1017-MISS-48).
+
+**Kind.** Measurement (a live check of a shipped default).
 
 ### 18.253 DI-2 keep 140 is the `serve.sh` default (0.75.0)
 

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.75.1 (2026-11-02)
+
+HANDOFF "Start here (2026-11-02, 0.75.1)" and section 18.254; write-up in `docs/DI2-LIVE-SESSION.md`. Measurement only; no code or default changed.
+
+### Measured
+- **Live Hermes sessions on the 0.75.0 default** (DI-1 plus DI-2 keep 140, budget 0, 1017, 48 GiB; Hamed drove three server starts with `CACHALOT_SERVER_DUMP`). The clean session (13 requests): the 16,036-token system block reused from disk in 0.87 s, follow-up prefills of 6,624 tokens in 33.4 s and 2,292 in 24.2 s, decode 9.4-11.1 tok/s at 16-37k context, every tool call well formed, image transcription exact, C# builds on .NET 8, translations complete. The first start's cold 15,861-token block took 91.2 s, as the 0.74.1 A/B predicted. No defect attributable to DI-2.
+- **The decode miss budget 0 defect is still live on 1017:** in the first start three non-JSON `search_files` `limit` values (`strongest`, `COPIOUS`, `collapsed`) made Hermes resend the request four times with growing `max_tokens`, and the server refused the 65,536-token one. The 2026-11-01 dump, before DI-2, shows the same 3 of 5 (0.72.1). Exact decode inside tool-call blocks and fitting an explicit `max_tokens` are proposed, not built.
+- A Ctrl-C during a prefill prints a `cannot schedule new futures after shutdown` traceback; it is shutdown noise. Switching Hermes's model mid-session rewrites its system prompt and re-prefills the whole conversation.
+
 ## 0.75.0 (2026-11-02)
 
 HANDOFF "Start here (2026-11-02, 0.75.0)" and section 18.253. Hamed's call.
