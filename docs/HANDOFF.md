@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-11-02, 0.77.1): an explicit `max_tokens` that does not fit is shortened to the room left, not refused
+>
+> Section 18.257. The second fix 18.254 offered; Hamed's call. DeepSeek and the GLM/MiniMax engine. Outputs unchanged. With 18.256's tool-exact default the Hermes retry chain that reached 65,536 should be rare; if it happens, the request now runs. **Open:** Hamed's choice of lane (Hermes, vision, speed).
+
 > ## Start here (2026-11-02, 0.77.0): `serve.sh` decodes tool-call blocks exact by default; `CACHALOT_DECODE_TOOL_EXACT=0` keeps budget 0 there
 >
 > Section 18.256. Hamed's call after the replay (18.255: 0 of 24 non-JSON against 2 of 24) and a live Hermes session with the knob on (both tool calls valid on the first try, no retry, about 3 s more a call on a cold cache; `docs/v1017-tool-exact/RECORD.md` section 9). Three defects in that session were outside tool calls (skipped translations on one turn, one English word in the Farsi, an added comma in the image text). `chat.sh` and the code default stay off. **Open:** fitting an explicit `max_tokens` (output unchanged; the other 18.254 fix), Hamed's call.
@@ -9542,6 +9546,16 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.257 A client's `max_tokens` that does not fit is shortened, not refused (0.77.1)
+
+**Goal.** Hamed, 2026-11-02: "Yes, build it" (the second fix 18.254 offered, after 18.256).
+
+**Change.** Since 0.15.0 (§15.10) a request without `max_tokens` got the server's default shortened to `max_seq_len` minus the prompt, while an explicit `max_tokens` that did not fit was refused (`ValueError: Prompt + requested generation exceeds runtime max_seq_len`). No reason for the difference was recorded. In 18.254 Hermes, retrying a turn whose tool arguments it could not repair, raised `max_tokens` to 8192, 32768, then 65,536, and the last was refused. Now `server/engine.py` and `glm/engine.py` (GLM and MiniMax) shorten any `max_tokens` larger than the room left; a prompt that leaves no room is still refused. `ChatRequest.max_tokens_defaulted` and its one assignment in `server/app.py` are removed. Tests: the refusal test becomes `test_an_explicit_max_tokens_that_does_not_fit_shrinks_too`, plus `test_a_prompt_that_leaves_no_room_is_still_refused`.
+
+**Effect.** Scheduling only: what is generated is the same up to the shortened cap; a reply that would have needed more than the room left ends `finish=length` instead of the request failing. No model run.
+
+**Kind.** Engineering (a server behaviour fix).
 
 ### 18.256 Tool-call blocks decode exact by default in `serve.sh`; the live session that preceded it (0.77.0)
 

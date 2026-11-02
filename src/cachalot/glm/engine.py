@@ -286,7 +286,7 @@ class GlmEngine:
             boundary = self.system_prefix_len(req, prompt)
             params = req.params
             room = self.model.max_seq_len - len(prompt)
-            if req.max_tokens_defaulted and 0 < room < params.max_new_tokens:
+            if 0 < room < params.max_new_tokens:  # the default's or the client's max_tokens, as server/engine.py
                 params = replace(params, max_new_tokens=room)
             splitter = self.model.splitter_cls(self.tokenizer, req.thinking_mode == "thinking")
             reused, prefill_s, finish, stop_hit, emitted = 0, 0.0, "length", False, 0

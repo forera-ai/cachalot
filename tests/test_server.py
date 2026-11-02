@@ -304,9 +304,20 @@ def test_default_max_tokens_shrinks_to_fit_the_context():
     assert r.json()["choices"][0]["message"]["content"] == "Hello, whale!"
 
 
-def test_an_explicit_max_tokens_that_does_not_fit_is_still_refused():
-    client, _ = make_client()
+def test_an_explicit_max_tokens_that_does_not_fit_shrinks_too():
+    # HANDOFF 18.254: Hermes retried a turn with max_tokens 65,536 and the server refused it; since 0.77.1 a client's
+    # max_tokens is shortened to what is left of max_seq_len, like the server's default.
+    client, rt = make_client()
+    assert 4000 + 1000 > rt.max_seq_len
     msg = {"messages": [{"role": "user", "content": "x" * 1000}], "max_tokens": 4000}
+    r = client.post("/v1/chat/completions", json=msg)
+    assert r.status_code == 200, r.text
+    assert r.json()["choices"][0]["message"]["content"] == "Hello, whale!"
+
+
+def test_a_prompt_that_leaves_no_room_is_still_refused():
+    client, rt = make_client()
+    msg = {"messages": [{"role": "user", "content": "x" * (rt.max_seq_len + 10)}], "max_tokens": 16}
     try:
         r = client.post("/v1/chat/completions", json=msg)
     except ValueError as exc:

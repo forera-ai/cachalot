@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.77.1 (2026-11-02)
+
+HANDOFF "Start here (2026-11-02, 0.77.1)" and section 18.257. Hamed's call. Outputs unchanged.
+
+### Changed
+- **A client's `max_tokens` that does not fit is shortened, not refused** (`serve`, `/v1/chat/completions`, DeepSeek and the GLM/MiniMax engine; `/v1/completions` unchanged): like the server's default since 0.15.0, an explicit `max_tokens` (or `max_completion_tokens`) larger than `max_seq_len` minus the prompt becomes what is left; only a prompt that leaves no room is refused. In 18.254 Hermes retried a turn with `max_tokens` 65,536 and the server refused it. `ChatRequest.max_tokens_defaulted` is gone.
+
+### Tests
+- `tests/test_server.py`: the refusal test becomes `test_an_explicit_max_tokens_that_does_not_fit_shrinks_too`; new `test_a_prompt_that_leaves_no_room_is_still_refused`.
+
 ## 0.77.0 (2026-11-02)
 
 HANDOFF "Start here (2026-11-02, 0.77.0)" and section 18.256; the live session in `docs/v1017-tool-exact/RECORD.md` section 9. Hamed's call.

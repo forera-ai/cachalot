@@ -40,10 +40,6 @@ class ChatRequest:
     stop: tuple[str, ...] = ()
     tools: list[dict[str, Any]] | None = None
     response_format: dict[str, Any] | None = None
-    # True when the client sent no max_tokens and params carries the
-    # server's default; stream_chat then shortens it to fit max_seq_len
-    # instead of refusing a long prompt (HANDOFF section 15.10).
-    max_tokens_defaulted: bool = False
 
 
 @dataclass
@@ -417,8 +413,10 @@ class Engine:
             splitter = _TextSplitter(self.tokenizer, req.thinking_mode)
             n_prompt = len(prompt_tokens)
             params = req.params
+            # A max_tokens that does not fit, the server's default (HANDOFF 15.10) or the client's own (18.254: Hermes retried at
+            # 65,536 and was refused), is shortened to what is left of max_seq_len; only a prompt that leaves no room is refused.
             room = self.model.max_seq_len - n_prompt
-            if req.max_tokens_defaulted and 0 < room < params.max_new_tokens:
+            if 0 < room < params.max_new_tokens:
                 params = replace(params, max_new_tokens=room)
             reused = 0
             prefill_seconds = 0.0
