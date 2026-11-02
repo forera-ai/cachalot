@@ -44,3 +44,10 @@ under `guarded_run.sh --budget-gib 48 --max-seconds 2400 --force` (the force ski
 to 0.60.10's): warm-up, the floor prompt three times, twelve mixed prompts, the floor prompt twice more; greedy, 120 tokens, non-streaming;
 `/v1/stats` after the warm-up and at the end. Workload class W1 only. Raw output in `benchmarks/results/floor-server-0.73.0-1017/`
 (gitignored); the result table goes in HANDOFF.
+
+## Erratum (2026-11-02, before any arm ran)
+
+The first launch waited 30 minutes at the quiet gate without starting an arm: the 5-minute load stayed at 3.2-3.3, held there by
+`hybridsearchd` (the macOS search indexer, ~87 % of one core). The 0.60.10 baseline's gate read the 1-minute field by mistake, and its
+arm B started at a 5-minute load of 2.93 (`run-all.log`: `{ 2.30 2.93 2.95 }`), so 2.5 on the correct field was stricter than the
+baseline's real condition. The gate now waits for a 5-minute load under 3.5. Nothing else changed; no prediction changed.
