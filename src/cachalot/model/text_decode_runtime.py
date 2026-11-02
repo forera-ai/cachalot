@@ -91,9 +91,11 @@ from cachalot.model.model_boundary_mlx import (
 from cachalot.model.norm_rope_mlx import (
     precompute_freqs,
 )
+from cachalot.model.attention_prefill_batched import WINDOW_FLOOR
 from cachalot.model.prefill_tail_plan import (
     ENCODER_LAYERS,
     TAIL_ROWS,
+    decoder_keep,
     tail_start,
 )
 from cachalot.model.prefix_cache import (
@@ -2785,7 +2787,13 @@ class TextDecodeRuntime:
             self._gpu_busy = True
             try:
                 end = self.position
-                p0, truncated = tail_start(d["start"], end)
+                keep = decoder_keep()
+                p0, truncated = tail_start(d["start"], end, keep or TAIL_ROWS)
+                # DI-2: a replay shorter than the exact tail masks every window key before its start instead of attending to the zeroed ring.
+                bounded = truncated and keep is not None and keep < TAIL_ROWS
+                if bounded and os.environ.get("CACHALOT_PREFILL_BATCHED_ATTN", "1") == "0":
+                    raise RuntimeError("CACHALOT_PREFILL_DECODER_KEEP needs the batched prefill attention")
+                WINDOW_FLOOR.set(p0 if bounded else 0)
                 rows = end - p0
                 x = d["x"][-rows:]
                 pre_mix = d["pre_mix"][-rows:]
@@ -2823,6 +2831,7 @@ class TextDecodeRuntime:
                     main_hidden=None,
                 )
             finally:
+                WINDOW_FLOOR.set(0)
                 self._gpu_idle_since = perf_counter()
                 self._gpu_busy = False
 

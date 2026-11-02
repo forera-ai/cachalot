@@ -288,6 +288,13 @@ def cmd_serve(args) -> None:
             print("DI-1 encoder-only prefill on: a prompt of more than one prefill call runs layers 20 to 39 once over its last "
                   "2,541 rows (changes outputs in rounding; snapshots keyed on it; CACHALOT_PREFILL_ENCODER_ONLY=0 is the full "
                   "prefill)", file=sys.stderr, flush=True)
+            from cachalot.model.prefill_tail_plan import decoder_keep
+
+            keep = decoder_keep()
+            if keep is not None:
+                # DI-2, default off: measured on the quality gate only (docs/v1017-di2-curve/)
+                print(f"DI-2 bounded replay on: the decoder half replays only the last {keep} rows with windows cut at the replay start "
+                      f"(approximate; snapshots keyed on it; unset CACHALOT_PREFILL_DECODER_KEEP is the exact tail)", file=sys.stderr, flush=True)
         trace_path = os.environ.get("CACHALOT_ROUTING_TRACE")
         if trace_path:
             # HANDOFF 18.54: a weighted routing trace of a live session, saved when the server stops. The weights cost a

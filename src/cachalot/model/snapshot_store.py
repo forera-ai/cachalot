@@ -30,6 +30,7 @@ from pathlib import Path
 import mlx.core as mx
 import numpy as np
 
+from cachalot.model.prefill_tail_plan import decoder_keep
 from cachalot.model.prefix_cache import SequenceSnapshot
 
 FORMAT = 1
@@ -49,7 +50,11 @@ def numerics_version(encoder_only: bool) -> str:
     equals a cold prefill of the same configuration, and switching the knob finds the other mode's set intact.
     -di1.1 (0.72.2): before it, finish_decoder's layer 20 could take a speculated expert whose slot already held another expert (11 of 307
     on a 9,000-token prefill, HANDOFF section 18.244), so -di1 snapshots carry those numbers."""
-    return NUMERICS_VERSION + DI1_TAG if encoder_only else NUMERICS_VERSION
+    if not encoder_only:
+        return NUMERICS_VERSION
+    # DI-2 (CACHALOT_PREFILL_DECODER_KEEP, default off): a bounded replay leaves other decoder windows than the exact tail, so each keep has its own key.
+    keep = decoder_keep()
+    return NUMERICS_VERSION + DI1_TAG + (f"-keep{keep}" if keep is not None else "")
 
 
 DI1_TAG = "-di1.1"

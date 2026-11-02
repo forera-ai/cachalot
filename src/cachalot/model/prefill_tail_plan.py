@@ -11,6 +11,8 @@ The bound: output rows of decoder layer j are exact from row `start + WINDOW_CON
 
 from __future__ import annotations
 
+import os
+
 WINDOW = 128
 WINDOW_CONTEXT = WINDOW - 1                 # rows of history a sliding-window row needs
 ENCODER_LAYERS = 20                         # layers 0 to 19 run on every row; 20 to 39 are the decoder half
@@ -47,3 +49,17 @@ def exact_from(start: int, layers: int = DECODER_LAYERS) -> list[int]:
         first = first + WINDOW_CONTEXT         # a row needs its 127 predecessors, which exist (and are exact) only from `first`
         out.append(first)
     return out
+
+
+def decoder_keep() -> int | None:
+    """CACHALOT_PREFILL_DECODER_KEEP=N (DI-2, default unset, docs/DEEPINFER-LEVER-LANE.md): an encoder-only prefill runs the decoder half over only the
+    last N rows, and every decoder layer's sliding window sees no key before the replay start (DeepInfer's bounded replay). Approximate: below TAIL_ROWS
+    the last row's state is no longer a full prefill's. Unset is the exact tail (DI-1). N must lie in [WINDOW, TAIL_ROWS] so the window rings decode reads
+    afterwards hold only replayed rows."""
+    raw = os.environ.get("CACHALOT_PREFILL_DECODER_KEEP", "").strip()
+    if not raw:
+        return None
+    keep = int(raw)
+    if not WINDOW <= keep <= TAIL_ROWS:
+        raise ValueError(f"CACHALOT_PREFILL_DECODER_KEEP={keep} is outside [{WINDOW}, {TAIL_ROWS}]")
+    return keep

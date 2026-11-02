@@ -20,6 +20,7 @@ Only the fp32 summation order differs from the token-sequential path.
 
 from __future__ import annotations
 
+import contextvars
 import os
 
 import mlx.core as mx
@@ -51,6 +52,8 @@ def _rope_rows(x: mx.array, cos: mx.array, sin: mx.array, rope_dim: int, inverse
 
 
 ATTN_CHUNK = int(os.environ.get("CACHALOT_ATTN_CHUNK", "256"))
+# First position a sliding-window key may come from (DI-2's bounded replay sets it to the replay start in finish_decoder); 0 = every real key.
+WINDOW_FLOOR: contextvars.ContextVar[int] = contextvars.ContextVar("window_floor", default=0)
 WOA_GEMM = os.environ.get("CACHALOT_WOA_GEMM", "1") != "0"
 
 
@@ -124,7 +127,7 @@ def attention_prefill_batched(
     ring_index = mx.array((old_positions % window_size).astype(np.int32))
     pool = mx.concatenate([window_cache[ring_index], kv], axis=0)  # [W + T, D]
     pool_positions = np.concatenate([old_positions, positions])
-    pool_valid = pool_positions >= 0
+    pool_valid = pool_positions >= WINDOW_FLOOR.get()
 
     # token t attends to pool[t + 1 : t + W + 1]  (positions p-W+1 .. p, ascending)
     win_idx = np.arange(n_tokens)[:, None] + 1 + np.arange(window_size)[None, :]  # [T, W]

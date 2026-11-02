@@ -1,0 +1,79 @@
+{
+ "about": "DI-2 mask-mode quality curve (0.73.3, docs/v1017-di2-curve/RECORD.md): the 0.72.3 DI-1 long gate (texts pinned to git c1831dd, hash 05a1148ccc1ff338; scratch copies, `git show c1831dd:<path>` recreates them) on DeepSeek-V4.1-Flash-1017, internal bank, no hotlist; keepN = DI-1 with CACHALOT_PREFILL_DECODER_KEEP=N (bounded decoder replay, windows cut at the replay start). di1 is the exact tail (2,541 rows).",
+ "base": {
+  "budget_gib": 34,
+  "max_seq_len": 8704,
+  "prefill": 8192,
+  "decode": 192,
+  "prefill_chunk": 4096,
+  "battery": false,
+  "texts": [
+   {
+    "name": "prose",
+    "path": "/private/tmp/claude-501/-Users-hamedprooshani-Projects-deepseek-v41-mac/4e1f5768-2526-49b3-a3f6-760a3da143f0/scratchpad/gate/texts/HANDOFF.md",
+    "start": 1057561,
+    "chars": 60000
+   },
+   {
+    "name": "code",
+    "path": "/private/tmp/claude-501/-Users-hamedprooshani-Projects-deepseek-v41-mac/4e1f5768-2526-49b3-a3f6-760a3da143f0/scratchpad/gate/texts/text_decode_runtime.py",
+    "start": 0,
+    "chars": 60000
+   },
+   {
+    "name": "markdown",
+    "path": "/private/tmp/claude-501/-Users-hamedprooshani-Projects-deepseek-v41-mac/4e1f5768-2526-49b3-a3f6-760a3da143f0/scratchpad/gate/texts/CHANGELOG.md",
+    "start": 0,
+    "chars": 60000
+   }
+  ],
+  "env": {
+   "CACHALOT_MODEL_PATH": "/Volumes/X10Pro/Flash4-1/DeepSeek-V4.1-Flash-1017",
+   "CACHALOT_EXPERT_BANK": "/Users/hamedprooshani/DeepSeek-V4.1-Flash-1017-q2g128",
+   "CACHALOT_HOTLIST": ""
+  }
+ },
+ "reference": "ref",
+ "arms": [
+  {
+   "name": "ref"
+  },
+  {
+   "name": "noise-chunk3000",
+   "noise": true,
+   "prefill_chunk": 3000
+  },
+  {
+   "name": "di1",
+   "encoder_only": true
+  },
+  {
+   "name": "keep1024",
+   "encoder_only": true,
+   "env": {
+    "CACHALOT_PREFILL_DECODER_KEEP": "1024"
+   }
+  },
+  {
+   "name": "keep512",
+   "encoder_only": true,
+   "env": {
+    "CACHALOT_PREFILL_DECODER_KEEP": "512"
+   }
+  },
+  {
+   "name": "keep256",
+   "encoder_only": true,
+   "env": {
+    "CACHALOT_PREFILL_DECODER_KEEP": "256"
+   }
+  },
+  {
+   "name": "keep140",
+   "encoder_only": true,
+   "env": {
+    "CACHALOT_PREFILL_DECODER_KEEP": "140"
+   }
+  }
+ ]
+}
