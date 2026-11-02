@@ -281,6 +281,10 @@ def cmd_serve(args) -> None:
             model.set_decode_miss_budget(budget)
             print(f"decode miss budget {budget}: at most {budget} non-resident experts are read per layer in decode, "
                   f"the rest dropped (changes outputs; CACHALOT_DECODE_MISS_BUDGET)", file=sys.stderr, flush=True)
+            if engine.tool_exact_decode:
+                # default off, under test (docs/v1017-tool-exact/)
+                print("tool-call blocks decode exact: the miss budget is lifted from a reply's tool-call opener to its end "
+                      "(CACHALOT_DECODE_TOOL_EXACT)", file=sys.stderr, flush=True)
         from cachalot.model.generation import encoder_only_enabled
 
         if encoder_only_enabled():

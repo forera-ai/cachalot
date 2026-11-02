@@ -210,6 +210,10 @@ class Engine:
     # An agent's system-prompt date line, held at a recent saved date so a new day
     # reuses the saved block (HANDOFF section 18.66). cli.py points it at the snapshot directory.
     system_date: Any = None
+    # CACHALOT_DECODE_TOOL_EXACT=1 (default off): once a reply opens a DSML tool-call block, the decode miss budget is
+    # lifted for the rest of that reply, so tool arguments decode exact (HANDOFF 18.243: budget 0 turns some integer
+    # arguments into words). It changes outputs only inside tool-call blocks and only when a miss budget is set.
+    tool_exact_decode: bool = field(default_factory=lambda: os.environ.get("CACHALOT_DECODE_TOOL_EXACT", "0") == "1")
 
     def __post_init__(self):
         if self.encoding is None:
@@ -423,86 +427,97 @@ class Engine:
             content_emitted = 0
             decode_start = None
 
-            for event in stream_tokens(
-                self.model.runtime,
-                prompt_tokens,
-                params,
-                cancel=cancel,
-                images=images,
-                boundaries=(system_end,) if system_end else (),
-            ):
-                if event.kind == "prefill":
-                    decode_start = self._expert_counts()
-                    reused = event.reused_prefix_tokens
-                    prefill_seconds = event.prefill_seconds
-                    yield Delta(prompt_tokens=n_prompt, reused_prefix_tokens=reused, prefill_seconds=prefill_seconds)
-                elif event.kind == "token":
-                    delta = splitter.push(event.token)
-                    if req.stop and not stop_hit:
-                        full = splitter.content_so_far()
-                        cut = _first_stop(full, req.stop)
-                        if cut is not None:
-                            allowed = full[:cut]
-                            delta.content = allowed[content_emitted:]
-                            stop_hit = True
-                            finish = "stop"
-                            if cancel is None:
-                                cancel = threading.Event()
-                            cancel.set()
-                    content_emitted += len(delta.content)
-                    if delta.content or delta.reasoning:
-                        yield delta
-                elif event.kind == "done":
-                    if not stop_hit:
-                        finish = event.finish_reason or "length"
-                    tail = splitter.flush()
-                    if stop_hit:
-                        tail.content = ""
-                    tool_calls = None
-                    if splitter.in_tool_block and not stop_hit:
-                        parsed = parse_completion(
-                            self.encoding,
-                            splitter.text,
-                            thinking_mode=req.thinking_mode,
-                            stopped_on_eos=(finish == "stop"),
-                            eos_token=self.tokenizer.eos_token,
+            # Tool-call blocks decode exact under CACHALOT_DECODE_TOOL_EXACT: the budget is lifted after the token that
+            # completes the opener, so the next decode_token already runs exact; it is restored however the request ends.
+            store = getattr(self.model.runtime, "expert_store", None)
+            budget_before = getattr(store, "decode_miss_budget", None)
+            lift_budget = self.tool_exact_decode and budget_before is not None
+            try:
+                for event in stream_tokens(
+                    self.model.runtime,
+                    prompt_tokens,
+                    params,
+                    cancel=cancel,
+                    images=images,
+                    boundaries=(system_end,) if system_end else (),
+                ):
+                    if event.kind == "prefill":
+                        decode_start = self._expert_counts()
+                        reused = event.reused_prefix_tokens
+                        prefill_seconds = event.prefill_seconds
+                        yield Delta(prompt_tokens=n_prompt, reused_prefix_tokens=reused, prefill_seconds=prefill_seconds)
+                    elif event.kind == "token":
+                        delta = splitter.push(event.token)
+                        if lift_budget and splitter.in_tool_block:
+                            store.decode_miss_budget = None
+                        if req.stop and not stop_hit:
+                            full = splitter.content_so_far()
+                            cut = _first_stop(full, req.stop)
+                            if cut is not None:
+                                allowed = full[:cut]
+                                delta.content = allowed[content_emitted:]
+                                stop_hit = True
+                                finish = "stop"
+                                if cancel is None:
+                                    cancel = threading.Event()
+                                cancel.set()
+                        content_emitted += len(delta.content)
+                        if delta.content or delta.reasoning:
+                            yield delta
+                    elif event.kind == "done":
+                        if not stop_hit:
+                            finish = event.finish_reason or "length"
+                        tail = splitter.flush()
+                        if stop_hit:
+                            tail.content = ""
+                        tool_calls = None
+                        if splitter.in_tool_block and not stop_hit:
+                            parsed = parse_completion(
+                                self.encoding,
+                                splitter.text,
+                                thinking_mode=req.thinking_mode,
+                                stopped_on_eos=(finish == "stop"),
+                                eos_token=self.tokenizer.eos_token,
+                            )
+                            if parsed and parsed.get("tool_calls"):
+                                tool_calls = _with_ids(parsed["tool_calls"])
+                                finish = "tool_calls"
+                            else:
+                                # Malformed block: surface it as plain text.
+                                tail.content += splitter.text[splitter.emitted_content:]
+                        self.requests_served += 1
+                        self.tokens_generated += len(splitter.tokens)
+                        dump_reply(prompt_tokens, splitter.tokens, reused)
+                        if finish in ("stop", "tool_calls") and not stop_hit:
+                            # ended on EOS, so a client's history renders it as
+                            # reply + EOS: a candidate for the next turn's splice
+                            self._remember_reply(prompt_tokens, splitter.tokens, splitter.text, req.thinking_mode)
+                        energy = (self.energy.request_report(t_energy0, time.time(), event.decode_seconds, len(splitter.tokens))
+                                  if self.energy is not None else None)
+                        if self.token_trace is not None:
+                            self.token_trace.collect()
+                        _log_request(
+                            n_prompt, reused, prefill_seconds, len(splitter.tokens),
+                            event.decode_seconds, finish,
+                            len(images.spans) if images is not None else 0,
+                            self.replies_spliced - spliced_before,
+                            self._expert_counts(), decode_start, energy=energy,
                         )
-                        if parsed and parsed.get("tool_calls"):
-                            tool_calls = _with_ids(parsed["tool_calls"])
-                            finish = "tool_calls"
-                        else:
-                            # Malformed block: surface it as plain text.
-                            tail.content += splitter.text[splitter.emitted_content:]
-                    self.requests_served += 1
-                    self.tokens_generated += len(splitter.tokens)
-                    dump_reply(prompt_tokens, splitter.tokens, reused)
-                    if finish in ("stop", "tool_calls") and not stop_hit:
-                        # ended on EOS, so a client's history renders it as
-                        # reply + EOS: a candidate for the next turn's splice
-                        self._remember_reply(prompt_tokens, splitter.tokens, splitter.text, req.thinking_mode)
-                    energy = (self.energy.request_report(t_energy0, time.time(), event.decode_seconds, len(splitter.tokens))
-                              if self.energy is not None else None)
-                    if self.token_trace is not None:
-                        self.token_trace.collect()
-                    _log_request(
-                        n_prompt, reused, prefill_seconds, len(splitter.tokens),
-                        event.decode_seconds, finish,
-                        len(images.spans) if images is not None else 0,
-                        self.replies_spliced - spliced_before,
-                        self._expert_counts(), decode_start, energy=energy,
-                    )
-                    yield Delta(
-                        content=tail.content,
-                        reasoning=tail.reasoning,
-                        tool_calls=tool_calls,
-                        finish_reason=finish,
-                        completion_tokens=len(splitter.tokens),
-                        prompt_tokens=n_prompt,
-                        reused_prefix_tokens=reused,
-                        prefill_seconds=prefill_seconds,
-                        decode_seconds=event.decode_seconds,
-                        energy=energy,
-                    )
+                        yield Delta(
+                            content=tail.content,
+                            reasoning=tail.reasoning,
+                            tool_calls=tool_calls,
+                            finish_reason=finish,
+                            completion_tokens=len(splitter.tokens),
+                            prompt_tokens=n_prompt,
+                            reused_prefix_tokens=reused,
+                            prefill_seconds=prefill_seconds,
+                            decode_seconds=event.decode_seconds,
+                            energy=energy,
+                        )
+            finally:
+                if lift_budget:
+                    store.decode_miss_budget = budget_before
 
     def chat(self, req: ChatRequest) -> ChatOutput:
         content, reasoning = [], []
