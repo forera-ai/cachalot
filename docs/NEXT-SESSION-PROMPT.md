@@ -1,11 +1,12 @@
-# Next-session prompt — **v295**, written 2026-11-02
+# Next-session prompt — **v296**, written 2026-11-02
 
 **This is the file to paste.** `docs/NEXT-SESSION-PROMPT.md` is always current; superseded ones live in
 `docs/next-session-prompts/`.
 
 | version | written | produced by | what changed |
 |---|---|---|---|
-| **v295** | 2026-11-02 | Hamed: "Yes, push 0.73.0", then "Go, run A/B" (the 1017 hotlist first-turn A/B) | **0.73.1, measurement: ABBA through `serve.sh` on the 1017 live session's cold first request (16,040 tokens, DI-1 on, budget 0): the hotlist leaves prefill unchanged (103.9 against 103.5 s, +0.37 %), raises the turn's hit rate 0.260 to 0.281 and cuts budget 0's drops 29.2 to 27.2 a token on an 8-9-token reply; the preload changes the reply's wording deterministically. 5 of 5 held; the hotlist stays on.** §18.249 |
+| **v296** | 2026-11-02 | Hamed: "Yes, push 0.73.1", then "Keep both" (the first release and its X10Pro bank) | **0.73.2, documentation: the first release stays as a fallback; the 1017 lane is closed. Next lane is Hamed's choice.** §18.250 |
+| v295 | 2026-11-02 | Hamed: "Yes, push 0.73.0", then "Go, run A/B" (the 1017 hotlist first-turn A/B) | **0.73.1, measurement: ABBA through `serve.sh` on the 1017 live session's cold first request (16,040 tokens, DI-1 on, budget 0): the hotlist leaves prefill unchanged (103.9 against 103.5 s, +0.37 %), raises the turn's hit rate 0.260 to 0.281 and cuts budget 0's drops 29.2 to 27.2 a token on an 8-9-token reply; the preload changes the reply's wording deterministically. 5 of 5 held; the hotlist stays on.** §18.249 |
 | v294 | 2026-11-02 | Hamed: "Yes, push 0.72.5", "Yes, step 8", then "Go, run it" (the floor re-record) | **0.73.0, a default change and a measurement: DeepSeek-V4.1-Flash-1017 is the default in `serve.sh`, `chat.sh` and `pareto.serve_defaults` (its internal bank and own hotlist; `CACHALOT_MODEL_PATH=/Volumes/X10Pro/Flash4-1/DeepSeek-V4.1-Flash` serves the first release). Floor re-recorded at 48 GiB with 0.60.10's driver: exact all-resident 76.7-78.0 ms, mixed 115.7 ms at 23.7 misses (1.62 ms a miss), budget 0 89.8 ms, hit rate 0.898 / 0.928; the 1017 hotlist did not lower the miss count on short prompts. 4 held, 1 split. Quiet gate at 5-minute load under 3.5 (erratum before any arm).** §18.248 |
 | v293 | 2026-11-01 | Hamed: killed the stale codebase-memory holders and cleared their locks, stopped a 58.7 GiB `llama-server`, then "Step 5 gate" | **0.72.5, measurement: runbook step 5, 1017 against the old checkpoint on `pareto.py` at 40 GiB (48 did not fit beside the open applications): old dNLL +0.0240 [-0.0150, +0.0610] (positive = old worse), KL 0.121, tasks 20/21 against 1017's 21/21 (reverse-word); 1017 noise KL 0.0117, `act_quant(o)` neutral (KL 0.0130, dNLL +0.0005). 5 of 7 predictions held; the old arm's X10Pro speed (1,278 ms a step, 10x) falsified. `docs/v1017-gate/`.** §18.247 |
 | **v292** | 2026-11-01 | Hamed: "Yes, start step 7", "Yes, run them" (replay the dumped sessions), then "Yes, release 0.72.4" | **0.72.4, measurement: 1017 routing traced from its two live sessions; at 8 GiB the old hotlist covers 16-17 % of a session's expert requests, a 1017 ranking from the other session 33 %; `~/cachalot-hotlist-DeepSeek-V4.1-Flash-1017.json` built, `serve.sh` on 1017 preloads 863 experts in 2 s. `docs/v1017-hotlist/`.** §18.246 |
@@ -256,6 +257,10 @@
 | v47 | 2026-09-25 | Hamed asked for the v44-v46 levers planned, built, measured and documented | **0.18.0: GLM prefill 60 to 90 tok/s, bit-identical (a store path that never evicts, plus the next layer read early), GLM's missing MLX buffer-cache cap added, GLM disk snapshots (a restart reuses the system block). DeepSeek: an `iostat` trace shows prefill is not read-bound on either drive; the lookahead A/B drowned in a 124-to-200 s drift across back-to-back prefills.** §17.1, §15.13 |
 | v46 | 2026-09-25 | Hamed asked for GLM-5.3-Flash on Cachalot | 0.17.0: GLM through `serve-glm.sh` / `chat-glm.sh`. §17 |
 | v45 | 2026-09-24 | same as v47, one day earlier | 0.16.0: disk snapshot store by last use; lookahead and local compression closed. §15.12 |
+
+## First jobs (v296): the 1017 lane is closed; ask Hamed which lane is next
+
+Read HANDOFF 18.250, 18.249, 18.248. 1017 is the default, its hotlist stays on, the first release stays on the X10Pro as a fallback (Hamed, do not re-ask about deleting it). No job is waiting on Hamed. **Ask him which lane is next** in the standing order (Hermes usage, vision, speed); offer from what is open: the optional long-reply hotlist ABBA (~15-20 minutes, decode side of 18.249), and the other models' lanes (MiniMax-M3, GLM-5.3) per `docs/HANDOFF.md`. **Autonomous, small:** `cache_sim.py --floor-ms` 80 -> 77 (LEDGER DS1017-FLOOR-SRV) with the next cache_sim job. **Rules kept:** the earlier ones.
 
 ## First jobs (v295): the 1017 lane is done except the first release's fate, which is Hamed's
 

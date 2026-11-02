@@ -1,8 +1,8 @@
 # Experiment index (charter section 7.2 and section 10)
 
-Written 2026-10-09 against runtime 0.73.1; regenerate with `benchmarks/experiment_index.py`. The charter asks for "a file of experiment records whose predictions were written before the build". The records themselves live in `docs/HANDOFF.md` section 18 (each with Baseline, Prediction, Method, Result, Explanation, Limits, Kind); this file is the index: where each record is, whether it carries a written prediction, and what kind of result it is, as its own **Kind** line says. It does not restate results. Sections before 18.75 predate the record format and are not listed; sections without a **Kind** line are listed as unlabelled and have no claim made for them here.
+Written 2026-10-09 against runtime 0.73.2; regenerate with `benchmarks/experiment_index.py`. The charter asks for "a file of experiment records whose predictions were written before the build". The records themselves live in `docs/HANDOFF.md` section 18 (each with Baseline, Prediction, Method, Result, Explanation, Limits, Kind); this file is the index: where each record is, whether it carries a written prediction, and what kind of result it is, as its own **Kind** line says. It does not restate results. Sections before 18.75 predate the record format and are not listed; sections without a **Kind** line are listed as unlabelled and have no claim made for them here.
 
-Counts of the 175 sections listed (18.75-18.249): 89 research, 26 measurement, 22 unlabelled, 18 engineering, 18 planning, 2 pricing.
+Counts of the 176 sections listed (18.75-18.250): 89 research, 26 measurement, 23 unlabelled, 18 engineering, 18 planning, 2 pricing.
 
 Research means predicted, measured and explained (charter section 8.1 rule 6); a falsified prediction is still research and is marked so in its Kind line. Engineering means it works without a written prediction, or an instrument was built.
 
@@ -10,6 +10,7 @@ Research means predicted, measured and explained (charter section 8.1 rule 6); a
 
 | section | title | prediction written | kind (as recorded) |
 |---|---|:---:|---|
+| §18.250 | Decision: the first release and its X10Pro bank stay as a fallback (0.73.2) | no | Decision record; no code, default or measurement changed. The 1017 lane (`docs/V41-1017-RUNBOOK.md`) is closed. |
 | §18.249 | The 1017 hotlist on a Hermes first turn: no measurable prefill effect, about 2 fewer dropped experts a token (0.73.1) | yes | Research: 5 predictions, 5 held. No code or default changed. |
 | §18.248 | Runbook step 8: 1017 is the default checkpoint; its floor and hit rate at 48 GiB (0.73.0) | yes | Research and a default change: 5 predictions, 4 held, 1 split (F-5); F-2's mechanism falsified. One default changed (the DeepSeek checkpoint, Hamed's call). |
 | §18.247 | Runbook step 5: 1017 against the old checkpoint on the quality gate (0.72.5) | yes | Research (predicted, measured, explained as hypothesis): 5 held, 2 split (G-6, G-7: the old arm's speed falsified). No default changed. |

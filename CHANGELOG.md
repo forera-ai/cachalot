@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.73.2 (2026-11-02)
+
+HANDOFF "Start here (2026-11-02, 0.73.2)" and section 18.250. Documentation only; no code, default or measurement changed.
+
+### Decided
+- **The first-release DeepSeek checkpoint and its X10Pro bank stay as a fallback** (Hamed): `CACHALOT_MODEL_PATH=/Volumes/X10Pro/Flash4-1/DeepSeek-V4.1-Flash` serves it with its own bank and hotlist. The 1017 lane is closed.
+
 ## 0.73.1 (2026-11-02)
 
 HANDOFF "Start here (2026-11-02, 0.73.1)" and section 18.249; record, predictions, scripts and scorer in `docs/v1017-hotlist-ab/`. Measurement only; no code or default changed.

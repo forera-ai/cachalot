@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-11-02, 0.73.2): the 1017 lane is closed; the first release and its X10Pro bank stay as a fallback (Hamed)
+>
+> Section 18.250. 1017 is the default (18.248), its hotlist stays on (18.249), and `CACHALOT_MODEL_PATH=/Volumes/X10Pro/Flash4-1/DeepSeek-V4.1-Flash` still serves the first release from the X10Pro. Nothing is waiting on Hamed in this lane; the next lane is his choice in the standing order (Hermes, vision, speed).
+
 > ## Start here (2026-11-02, 0.73.1): the 1017 hotlist does not change a Hermes first turn's prefill (+0.4 %); it keeps about 2 more experts a token resident, so budget 0 drops ~7 % fewer
 >
 > Section 18.249 (`docs/v1017-hotlist-ab/`). ABBA through `serve.sh`, four fresh servers, the 1017 live session's first request cold (16,040 tokens, DI-1 on, budget 0): prefill 103.9 s on against 103.5 off, hit rate over the turn 0.281 against 0.260, dropped 27.2 against 29.2 a token (on an 8-9-token reply). 5 of 5 predictions held. The hotlist stays on. **Needs Hamed:** keep or delete the first release (475 GiB) and its X10Pro bank (142 GiB).
@@ -9514,6 +9518,14 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.250 Decision: the first release and its X10Pro bank stay as a fallback (0.73.2)
+
+**Goal.** Close the last open item of the 1017 lane (runbook step 8's fallback question).
+
+**Decision.** Hamed, 2026-11-02: "Keep both". The first-release checkpoint (`/Volumes/X10Pro/Flash4-1/DeepSeek-V4.1-Flash`, 475 GiB) and its 2-bit bank beside it (`DeepSeek-V4.1-Flash-q2g128`, 142 GiB) stay on the X10Pro. `CACHALOT_MODEL_PATH=/Volumes/X10Pro/Flash4-1/DeepSeek-V4.1-Flash ./serve.sh` serves it with its own bank and hotlist (`cachalot-hotlist.json`); its expert misses read from the X10Pro (about 0.29 GB/s a demand-read expert, §18.247), so it is a fallback, not a speed peer of 1017.
+
+**Kind.** Decision record; no code, default or measurement changed. The 1017 lane (`docs/V41-1017-RUNBOOK.md`) is closed.
 
 ### 18.249 The 1017 hotlist on a Hermes first turn: no measurable prefill effect, about 2 fewer dropped experts a token (0.73.1)
 
