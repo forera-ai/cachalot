@@ -257,14 +257,16 @@ def apply_decode_arm(model, cfg: dict) -> None:
 def serve_defaults() -> None:
     """The environment `serve.sh` gives DeepSeek, unless already set (so an arm measures what is served)."""
     home = Path.home()
-    verified = home / "DeepSeek-V4.1-Flash-q2g128" / ".cachalot-verified"
-    bank = home / "DeepSeek-V4.1-Flash-q2g128" if verified.exists() else Path(
-        "/Volumes/X10Pro/Flash4-1/DeepSeek-V4.1-Flash-q2g128")
-    os.environ.setdefault("CACHALOT_MODEL_PATH", "/Volumes/X10Pro/Flash4-1/DeepSeek-V4.1-Flash")
+    # 1017 is the default checkpoint since 0.73.0; bank and hotlist follow the checkpoint directory's name as in serve.sh.
+    model = Path(os.environ.setdefault("CACHALOT_MODEL_PATH", "/Volumes/X10Pro/Flash4-1/DeepSeek-V4.1-Flash-1017"))
+    name = model.name
+    internal = home / f"{name}-q2g128"
+    bank = internal if (internal / ".cachalot-verified").exists() else model.parent / f"{name}-q2g128"
+    hotlist = home / ("cachalot-hotlist.json" if name == "DeepSeek-V4.1-Flash" else f"cachalot-hotlist-{name}.json")
     os.environ.setdefault("CACHALOT_EXPERT_BANK", str(bank))
     os.environ.setdefault("CACHALOT_PAGE_CACHE", "1")
     os.environ.setdefault("CACHALOT_MLX_WIRED_LIMIT_GIB", "80")
-    os.environ.setdefault("CACHALOT_HOTLIST", str(home / "cachalot-hotlist.json"))
+    os.environ.setdefault("CACHALOT_HOTLIST", str(hotlist) if hotlist.exists() else "")
     os.environ.setdefault("CACHALOT_HOTLIST_GIB", "8")
     os.environ.setdefault("MLX_METAL_FAST_SYNCH", "1")
 

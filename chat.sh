@@ -27,9 +27,11 @@ if pgrep -fl "deepseek-v41/bin/python|cachalot\.cli|Python\.app/Contents/MacOS/P
     exit 1
 fi
 
-export CACHALOT_MODEL_PATH=${CACHALOT_MODEL_PATH:-/Volumes/X10Pro/Flash4-1/DeepSeek-V4.1-Flash}
+# DeepSeek-V4.1-Flash-1017 is the default since 0.73.0 (Hamed, 2026-11-02): at least as good as the first release on the quality gate
+# (HANDOFF 18.247). CACHALOT_MODEL_PATH=/Volumes/X10Pro/Flash4-1/DeepSeek-V4.1-Flash serves the first release with its own bank and hotlist.
+export CACHALOT_MODEL_PATH=${CACHALOT_MODEL_PATH:-/Volumes/X10Pro/Flash4-1/DeepSeek-V4.1-Flash-1017}
 # Each checkpoint has its own bank and hotlist, named after the checkpoint directory, so pointing CACHALOT_MODEL_PATH at another
-# revision (DeepSeek-V4.1-Flash-1017, docs/V41-1017-RUNBOOK.md) never pairs its trunk with another revision's experts.
+# revision (docs/V41-1017-RUNBOOK.md) never pairs its trunk with another revision's experts.
 DS_NAME=$(basename "$CACHALOT_MODEL_PATH")
 # The 2-bit bank is read from the internal SSD (6.8 GB/s) when a verified copy exists there, else from beside the checkpoint on the
 # X10Pro (1 GB/s, six times dearer a miss; HANDOFF 18.51). The internal copy is trusted only when it carries the marker, written after
