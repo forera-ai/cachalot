@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.75.0 (2026-11-02)
+
+HANDOFF "Start here (2026-11-02, 0.75.0)" and section 18.253. Hamed's call.
+
+### Changed
+- **`serve.sh` turns on DI-2 keep 140** (`CACHALOT_PREFILL_DECODER_KEEP=140` unless the environment sets it; an explicit empty value is DI-1's exact tail): every cold prompt longer than one 4,096-token call prefills 11-13 s faster (0.74.1) at a quality cost inside noise (0.74.0). Disk snapshots key `-keep140`, so the first start re-prefills each system block cold once. `chat.sh`, `pareto.serve_defaults` and the code default are unchanged.
+
+### Tests
+- New `tests/test_di2_default_on.py` (4 tests).
+
 ## 0.74.1 (2026-11-02)
 
 HANDOFF "Start here (2026-11-02, 0.74.1)" and section 18.252; record, scripts, prompt and report in `docs/v1017-di2-server/`. Measurement only; no code or default changed.

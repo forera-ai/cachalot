@@ -1,11 +1,12 @@
-# Next-session prompt — **v298**, written 2026-11-02
+# Next-session prompt — **v299**, written 2026-11-02
 
 **This is the file to paste.** `docs/NEXT-SESSION-PROMPT.md` is always current; superseded ones live in
 `docs/next-session-prompts/`.
 
 | version | written | produced by | what changed |
 |---|---|---|---|
-| **v298** | 2026-11-02 | Hamed: "Push, then run A/B" (DI-2 server speed) | **0.74.1, measurement: ABBA through `serve.sh`, DI-1 exact against `CACHALOT_PREFILL_DECODER_KEEP=140`: cold 16,040-token Hermes block 102.75 to 90.06 s (-12.3 %), 4,277-token prompt 39.73 to 28.68 s (-27.8 %); a fixed 11-13 s on every cold multi-call prefill. 5 of 5 held; default is Hamed's.** §18.252 |
+| **v299** | 2026-11-02 | Hamed: "Yes, make default" (DI-2 keep 140) | **0.75.0: `serve.sh` exports `CACHALOT_PREFILL_DECODER_KEEP=140` (empty = DI-1's exact tail; `chat.sh` and code default off); snapshots re-key `-keep140`. New `tests/test_di2_default_on.py`.** §18.253 |
+| v298 | 2026-11-02 | Hamed: "Push, then run A/B" (DI-2 server speed) | **0.74.1, measurement: ABBA through `serve.sh`, DI-1 exact against `CACHALOT_PREFILL_DECODER_KEEP=140`: cold 16,040-token Hermes block 102.75 to 90.06 s (-12.3 %), 4,277-token prompt 39.73 to 28.68 s (-27.8 %); a fixed 11-13 s on every cold multi-call prefill. 5 of 5 held; default is Hamed's.** §18.252 |
 | v297 | 2026-11-02 | Hamed: "Yes, push 0.73.2", "speed", then "DI-2 quality curve" | **0.74.0: `CACHALOT_PREFILL_DECODER_KEEP=N` (DI-2 bounded decoder replay, default off; window keys before the replay start masked). Long gate on 1017: KL 0.0011 / 0.0012 / 0.0017 / 0.0020 at keep 1,024 / 512 / 256 / 140 against noise 0.0116, all inside noise; keep 140 about 11 s less per 8,192-token prefill than DI-1 (derived from arm wall time). 6 held, 1 falsified (run time).** §18.251 |
 | v296 | 2026-11-02 | Hamed: "Yes, push 0.73.1", then "Keep both" (the first release and its X10Pro bank) | **0.73.2, documentation: the first release stays as a fallback; the 1017 lane is closed. Next lane is Hamed's choice.** §18.250 |
 | v295 | 2026-11-02 | Hamed: "Yes, push 0.73.0", then "Go, run A/B" (the 1017 hotlist first-turn A/B) | **0.73.1, measurement: ABBA through `serve.sh` on the 1017 live session's cold first request (16,040 tokens, DI-1 on, budget 0): the hotlist leaves prefill unchanged (103.9 against 103.5 s, +0.37 %), raises the turn's hit rate 0.260 to 0.281 and cuts budget 0's drops 29.2 to 27.2 a token on an 8-9-token reply; the preload changes the reply's wording deterministically. 5 of 5 held; the hotlist stays on.** §18.249 |
@@ -259,6 +260,10 @@
 | v47 | 2026-09-25 | Hamed asked for the v44-v46 levers planned, built, measured and documented | **0.18.0: GLM prefill 60 to 90 tok/s, bit-identical (a store path that never evicts, plus the next layer read early), GLM's missing MLX buffer-cache cap added, GLM disk snapshots (a restart reuses the system block). DeepSeek: an `iostat` trace shows prefill is not read-bound on either drive; the lookahead A/B drowned in a 124-to-200 s drift across back-to-back prefills.** §17.1, §15.13 |
 | v46 | 2026-09-25 | Hamed asked for GLM-5.3-Flash on Cachalot | 0.17.0: GLM through `serve-glm.sh` / `chat-glm.sh`. §17 |
 | v45 | 2026-09-24 | same as v47, one day earlier | 0.16.0: disk snapshot store by last use; lookahead and local compression closed. §15.12 |
+
+## First jobs (v299): DI-2 keep 140 is the serve.sh default; a live session with it on is the open check
+
+Read HANDOFF 18.253, 18.252, 18.251. **Needs Hamed:** a live Hermes session on the new default (he drives it; with `CACHALOT_SERVER_DUMP` set, read the dump for tool-call format, thinking and image turns, and the `[request]` prefill times; the first start prefills each system block cold once because snapshots re-keyed `-keep140`). **Optional:** a continuation-case gate for DI-2 (snapshot plus a short suffix). **Autonomous, small:** `cache_sim.py --floor-ms` 80 -> 77. Otherwise ask Hamed which lane is next (Hermes, vision, speed). **Rules kept:** the earlier ones.
 
 ## First jobs (v298): DI-2 keep 140 is measured for quality and speed; turning it on is Hamed's
 

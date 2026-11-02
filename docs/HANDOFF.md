@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-11-02, 0.75.0): `serve.sh` replays 140 decoder rows by default (DI-2 on top of DI-1); `CACHALOT_PREFILL_DECODER_KEEP=` is the exact tail
+>
+> Section 18.253. Hamed's call after 18.251 (inside noise, KL 0.0020) and 18.252 (-12.7 s on a cold 16k Hermes block, -28 % on 4.3k). Snapshots re-key `-keep140`: the first start prefills each system block cold once. `chat.sh` and the code default stay off. Not yet seen: a live Hermes session with it on.
+
 > ## Start here (2026-11-02, 0.74.1): DI-2 keep 140 measured on the server: -12.7 s on a cold 16k Hermes block (-12 %), -11.1 s on a 4.3k prompt (-28 %); the default is Hamed's
 >
 > Section 18.252 (`docs/v1017-di2-server/`). ABBA, four fresh `serve.sh`, DI-1 exact against `CACHALOT_PREFILL_DECODER_KEEP=140`: block 102.75 against 90.06 s, mid prompt 39.73 against 28.68 s, pairs within 2.1 %. With 18.251's quality curve (inside noise), keep 140 saves a fixed 11-13 s on every cold multi-call prefill. 5 of 5 predictions held. **Needs Hamed:** whether `serve.sh` turns it on by default (optionally after a live Hermes session with it set).
@@ -9526,6 +9530,18 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.253 DI-2 keep 140 is the `serve.sh` default (0.75.0)
+
+**Goal.** Hamed, 2026-11-02: "Yes, make default" (after the quality curve, §18.251, and the server A/B, §18.252).
+
+**Change.** `serve.sh` exports `CACHALOT_PREFILL_DECODER_KEEP=${CACHALOT_PREFILL_DECODER_KEEP-140}` after the DI-1 export: inside DI-1's encoder-only prefill the decoder half replays the last 140 rows with its windows cut at the replay start. An explicit empty value (`CACHALOT_PREFILL_DECODER_KEEP=`) is DI-1's exact 2,541-row tail; `CACHALOT_PREFILL_ENCODER_ONLY=0` turns both off. `chat.sh`, `pareto.serve_defaults` and the code default (`prefill_tail_plan.decoder_keep`, unset = exact) are unchanged, as they were for DI-1. The server prints the DI-2 startup line. Disk snapshots key on it (`0.68.0-di1.1-keep140`), so the first `serve.sh` start after the switch prefills each system block cold once, and the exact-tail snapshots stay valid for `CACHALOT_PREFILL_DECODER_KEEP=`. New `tests/test_di2_default_on.py` (4 tests: the `serve.sh` default and an explicit value, the empty override, `chat.sh` unset, the code default and the snapshot key).
+
+**Evidence (recorded).** Long gate KL 0.0020 against the full prefill (noise arm 0.0116), dNLL -0.0041 [-0.0104, +0.0037], top-1 98.8 % (§18.251); server, cold: -12.7 s on a 16,040-token Hermes block (102.75 to 90.06 s), -11.1 s on a 4,277-token prompt (§18.252).
+
+**Not measured.** A live Hermes session with the default on (Hamed may drive one; read the dump for tool calls, thinking and image turns as before); the continuation case (snapshot plus short suffix); free-running long replies.
+
+**Kind.** A default change (Hamed's call); no new measurement.
 
 ### 18.252 DI-2 keep 140 on the server: -12.7 s on a cold 16k Hermes block, -11.1 s (-28 %) on a 4.3k prompt (0.74.1)
 

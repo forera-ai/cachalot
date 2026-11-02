@@ -87,7 +87,7 @@ The asymptote is -50 %. Prefill is partly read-bound and partly compute-bound (D
 
 **Status.** UNRESOLVED. Hamed decides whether a snapshot policy change is acceptable (it touches the in-block pins of 0.13.0 and 0.59.0).
 
-### DI-2. Approximate bounded replay (keep 140, DeepInfer's setting) — QUALITY PRICED 0.74.0 (`docs/v1017-di2-curve/`, HANDOFF 18.251): inside noise at every keep down to 140 (KL 0.0020); built behind `CACHALOT_PREFILL_DECODER_KEEP` (default off); server A/B 0.74.1: keep 140 -12.7 s on a cold 16k block, -11.1 s (-28 %) on 4.3k (HANDOFF 18.252); default is Hamed's
+### DI-2. Approximate bounded replay (keep 140, DeepInfer's setting) — QUALITY PRICED 0.74.0 (`docs/v1017-di2-curve/`, HANDOFF 18.251): inside noise at every keep down to 140 (KL 0.0020); built behind `CACHALOT_PREFILL_DECODER_KEEP` (default off); server A/B 0.74.1: keep 140 -12.7 s on a cold 16k block, -11.1 s (-28 %) on 4.3k (HANDOFF 18.252); keep 140 is the `serve.sh` default since 0.75.0 (Hamed, 18.253)
 
 **Source.** Report 3.2.2; `doc/inference_deployment_qa.md:183-191`; `deepinfer/hugging_face/config.py` and `csrc/engine/input_metadata/prepare_tensor_input_v4.cpp:129-168` (`yoco_swa_visibility`: a query at `pos` sees keys from `max(pos - W + 1, data_len - keep_tokens)`), `environ.py:188-194` (mode `off`, `mask`, `compact`; `keep_tokens >= window + max_backtracking`).
 

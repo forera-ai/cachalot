@@ -68,6 +68,10 @@ export CACHALOT_DECODE_MISS_BUDGET=${CACHALOT_DECODE_MISS_BUDGET-0}
 # (18.241), inside noise on the long-context gate (18.238). It changes outputs in rounding, so its disk snapshots carry their own key;
 # CACHALOT_PREFILL_ENCODER_ONLY=0 is the full prefill. chat.sh keeps the full prefill, as it keeps the exact decode.
 export CACHALOT_PREFILL_ENCODER_ONLY=${CACHALOT_PREFILL_ENCODER_ONLY-1}
+# DI-2 bounded decoder replay (Hamed's default since 0.75.0, HANDOFF 18.251-18.253): inside DI-1 the decoder half replays only the last 140
+# rows, windows cut at the replay start: 11-13 s less on every cold multi-call prefill (18.252), inside noise on the long gate (18.251).
+# Its snapshots carry a -keep140 key; CACHALOT_PREFILL_DECODER_KEEP= (empty) is DI-1's exact 2,541-row tail. chat.sh keeps the full prefill.
+export CACHALOT_PREFILL_DECODER_KEEP=${CACHALOT_PREFILL_DECODER_KEEP-140}
 
 # A request without max_tokens gets 8192 (cut to what fits in max_seq_len). At 2000, Hermes's context
 # summaries and one long delegate_task call were cut mid-output, and the truncated tool call reached
