@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-11-02, 0.76.0): `CACHALOT_DECODE_TOOL_EXACT=1` decodes tool-call blocks exact under budget 0; replay 0 of 24 non-JSON against 2 of 24; the default is Hamed's
+>
+> Section 18.255 (`docs/v1017-tool-exact/`). New default-off knob: once a reply opens a DSML tool-call block the decode miss budget is lifted until the request ends. Replay of Hermes's Desktop turn (three recorded versions, ABBA, 24 replies an arm): non-JSON `search_files` `limit` 2 of 24 at budget 0, 0 of 24 with the knob (p = 0.245; with 18.243's replay 4/34 against 0/34, p = 0.057); every knob call well formed; cost 0 on warm requests, about 15-30 % slower tool-call tokens on a fresh server's first requests. **Needs Hamed:** whether `serve.sh` turns it on; whether to fit an explicit `max_tokens` (the other 18.254 fix).
+
 > ## Start here (2026-11-02, 0.75.1): DI-2 keep 140 ran a clean live Hermes session; the budget 0 non-JSON integer argument is still live on 1017
 >
 > Section 18.254 (`docs/DI2-LIVE-SESSION.md`). Hamed drove three `serve.sh` starts on 0.75.0 with a dump. Clean 13-request session: system block reused from disk in 0.87 s, follow-up prefills 6,624 tokens 33.4 s and 2,292 24.2 s, decode 9.4-11.1 tok/s, tool calls, image, code and translations correct. First start: cold block 91.2 s (the A/B's 90.1), and three non-JSON `search_files` `limit` values made Hermes retry four times and the server refuse a 65,536-token `max_tokens`; the 2026-11-01 dump (before DI-2) has the same 3 of 5, so it is budget 0 (18.243), not DI-2. **Needs Hamed:** whether to build exact decode inside DSML tool-call blocks (output-changing, replay A/B) and/or fit an explicit `max_tokens` to the room left (output unchanged). Otherwise his choice of lane.
@@ -9534,6 +9538,28 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.255 Exact decode inside tool-call blocks under the decode miss budget: replay A/B (0.76.0)
+
+**Goal.** Hamed, 2026-11-02: "Do A/B Test now" (the first of the two fixes 18.254 offered for budget 0's non-JSON integer tool arguments).
+
+**Baseline (recorded).** 18.243: replay of the 2026-11-01 Desktop turn, non-JSON `limit` 2 of 10 at budget 0, 0 of 10 exact; live 3 of 4 (2026-11-01) and 3 of 4 (2026-11-02 run 1, 18.254). Token = 77 + 1.62 ms a miss at 48 GiB (DS1017-MISS-48).
+
+**Intervention.** `CACHALOT_DECODE_TOOL_EXACT=1` (`server/engine.py`, default off): after the token that completes the DSML opener, `expert_store.decode_miss_budget` is set to `None` for the rest of the reply and restored in a `finally` when the request ends (completion, cancel, client gone). `stream_tokens` yields a token before decoding it, so the next decode already runs exact. A startup line when set. 6 tests (`tests/test_tool_exact_decode.py`).
+
+**Prediction.** `docs/v1017-tool-exact/RECORD.md` section 4, committed before the run (8b0864c): T-1 budget 0 at least 2 of 24 non-JSON; T-2 tool-exact 0 of 24; T-3 Fisher p < 0.10; T-4 24 of 24 well formed; T-5 cost +3 to +25 % a reply token; T-6 15-25 minutes.
+
+**Method.** ABBA, four fresh `serve.sh` (shipped 0.75.1 defaults, snapshots warm from disk) under `guarded_run.sh --budget-gib 48 --force`, quiet gate (load under 3.5) and `settle.sh` between; `driver.py` posts 12 requests an arm rotating three recorded versions of the turn (the two that failed live and run 3's clean one, pinned by dump line and messages sha256; the dumps stay out of the repository), temperature 0.7, 21 tools, non-streaming, `max_tokens` 400; `analyse.py` scores.
+
+**Result (measured).** Non-JSON `limit`: budget 0 **2 of 24** (`COP...`, `grep`), tool-exact **0 of 24**; one-sided Fisher p = 0.245; pooled with 18.243's replay 4 of 34 against 0 of 34, p = 0.057 (derived; that exact arm lifted the budget for the whole reply). Tool-exact wrote `limit` 100 or 200 every time; budget 0 also 30 and 2. Decode, steady requests (4th to 12th, 0-4 misses a token): B 11.66-12.86 tok/s against A2 12.43-12.80; the first three requests of a fresh server (10-27 misses a token): B1 7.23-9.78 and B2 7.92-10.43 against A2 10.38-12.32 (worst: a 77-token call 10.6 against 7.4 s). A1 drifted slow throughout (10.05-11.36, with `mediaanalysisd` busy before it) and prefilled one system block cold (90.0 s). Scorecard: T-1 held at its edge, T-2 held, T-3 missed (2 against 0 of 24 cannot reach p < 0.10; the prediction's arithmetic was wrong), T-4 held, T-5 falsified as written (pooled median -8.0 %, A1's drift; against A2 the cost is 0 warm and 15-30 % cold), T-6 half held (19 minutes in all; three arms under 3 minutes).
+
+**Explanation.** The replay warms the cache over 12 identical requests, so budget 0 drops almost nothing after the first few and the defect is rarer (8 %) than live (6 of 9). Where experts are missing, budget 0 replaces some of them and the integer argument becomes a word or an unusual number; the knob reads them, at the read cost on those tokens only.
+
+**Limits.** One turn, one tool, temperature 0.7, 24 an arm: a large effect only, and not significant on this replay alone. Thinking-mode tool calls and other tools' arguments not exercised.
+
+**Bottleneck after.** Unchanged by default. With the knob on, tool-call tokens on a cold cache pay the miss reads (token = 77 + 1.62 ms a miss).
+
+**Kind.** Research: predicted, measured and explained (T-3 missed, T-5 falsified as written).
 
 ### 18.254 DI-2 keep 140 in live Hermes sessions: clean; the budget 0 non-JSON argument is still there (0.75.1)
 

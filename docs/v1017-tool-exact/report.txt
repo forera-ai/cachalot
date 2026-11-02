@@ -1,0 +1,12 @@
+A1 (budget0): P1:valid, P2:valid, P3:valid, P1:valid, P2:valid, P3:nonjson=COP, P1:valid, P2:valid, P3:valid, P1:valid, P2:valid, P3:valid
+B1 (toolexact): P1:valid, P2:valid, P3:valid, P1:valid, P2:valid, P3:valid, P1:valid, P2:valid, P3:valid, P1:valid, P2:valid, P3:valid
+B2 (toolexact): P1:valid, P2:valid, P3:valid, P1:valid, P2:valid, P3:valid, P1:valid, P2:valid, P3:valid, P1:valid, P2:valid, P3:valid
+A2 (budget0): P1:nonjson=grep, P2:valid, P3:valid, P1:valid, P2:valid, P3:valid, P1:valid, P2:valid, P3:valid, P1:valid, P2:valid, P3:valid
+
+budget0: non-JSON 2/24  {'valid': 22, 'nonjson': 2, 'other-call': 0, 'no-call': 0, 'error': 0}  by prompt {'P1': '1/8', 'P2': '0/8', 'P3': '1/8'}
+   decode tok/s median 11.24 (range 10.05-12.80), ms/token median 89.0, miss/tok median 0.9, completion median 93.0
+toolexact: non-JSON 0/24  {'valid': 24, 'nonjson': 0, 'other-call': 0, 'no-call': 0, 'error': 0}  by prompt {'P1': '0/8', 'P2': '0/8', 'P3': '0/8'}
+   decode tok/s median 12.22 (range 7.23-12.86), ms/token median 81.8, miss/tok median 1.2, completion median 93.0
+
+one-sided Fisher, tool-exact fewer non-JSON than budget 0: p = 0.2447
+ms a reply token, median: budget0 89.0, toolexact 81.8 (-8.0 %)

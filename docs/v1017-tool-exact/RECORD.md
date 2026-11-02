@@ -54,3 +54,37 @@ lines. Raw output in `benchmarks/results/tool-exact/` (gitignored). The dumps ho
 The replay repeats one turn; the expert cache warms over 12 requests, so later samples drop fewer experts than a live turn would (run 1's
 retries still failed at 1.6-2.8 misses a token). Sampling at temperature 0.7 makes each reply a draw; 24 an arm detects a large effect
 only. The knob is only priced on tool-call replies; it costs nothing elsewhere by construction. Any default change is Hamed's.
+
+## 7. Results (2026-11-02, 18:54-19:13; `report.txt`)
+
+Four arms ran, no guard kill, every request answered (48 replies).
+
+| | budget 0 (A1 + A2) | tool-exact (B1 + B2) |
+|---|---|---|
+| non-JSON `limit` | **2 of 24** (A1 P3 `COP...`, A2 P1 `grep`) | **0 of 24** |
+| well-formed tool calls | 22 of 24 | 24 of 24 |
+| `limit` values written | 50 x6, 100 x6, 200 x5, 30, 2, and the two words | 200 x13, 100 x8 (others without a `limit`) |
+| decode, steady requests (4th to 12th of an arm) | A1 10.65-11.36 tok/s, A2 12.43-12.80 | B1 11.85-12.86, B2 11.66-12.67 |
+| decode, the first three requests (10-27 misses a token) | A1 10.05-10.38, A2 10.38-12.32 | B1 7.23-9.78, B2 7.92-10.43 |
+
+- Fisher one-sided, tool-exact fewer than budget 0: p = 0.245. Pooled with 18.243's replay of the same turn (budget 0 2 of 10, exact 0 of
+  10): 4 of 34 against 0 of 34, p = 0.057 (derived; 18.243's exact arm lifted the budget for the whole reply, not only the block).
+- A1 ran slower throughout (10.05-11.36 tok/s, including steady requests at 0.3-1.1 misses a token) and prefilled P2's system block cold
+  (90.0 s; the later arms found it on disk); the 5-minute load was 3.4-3.7 with `mediaanalysisd` busy before it. A2, run under the same
+  quiet gate after the B arms, is the clean budget 0 comparison.
+- Cost: on steady requests (0-4 misses a token) tool-exact equals budget 0 (B 11.66-12.86 against A2 12.43-12.80 tok/s); on the first
+  requests of a fresh server, where 10-27 experts a token are missing, the exact block runs about 15-30 % slower (B1 7.23 against A2 10.38
+  on the first request). The pooled median (-8.0 % a token for tool-exact) is A1's drift, not a speed-up.
+
+Predictions: T-1 held at its edge (2 of 24). T-2 held (0 of 24). T-3 missed: with 2 against 0 of 24 the test cannot reach p < 0.10 (it
+needed 3 or more in A; the arithmetic in the prediction was wrong). T-4 held (24 of 24). T-5 falsified as written (pooled median -8.0 %,
+below 0) because A1 drifted; read against A2 the cost is 0 on warm requests and 15-30 % on the first cold ones, inside the predicted band
+only for the latter. T-6 half held: 19 minutes in all (inside 15-25), but arms of 2.0-3.7 minutes, three of them under the predicted 3.
+
+## 8. What it means
+
+The replay keeps the defect rare (8 % at budget 0 against 6 of 9 in the live turns) because the cache warms over 12 identical requests:
+budget 0 drops almost nothing once the turn's experts are resident. In the regime where the defect lives (a turn's first draws, many
+misses) the knob does what it is meant to: budget 0 wrote words for an integer, tool-exact wrote 100 or 200 every time. It never made a call
+worse, and its cost is confined to tool-call tokens: zero when the experts are resident, about 15-30 % on those tokens when they are not
+(the worst measured: a 77-token call 10.6 s against 7.4 s, about 3 s more). Whether it becomes `serve.sh`'s default is Hamed's call.

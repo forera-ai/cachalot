@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.76.0 (2026-11-02)
+
+HANDOFF "Start here (2026-11-02, 0.76.0)" and section 18.255; record, driver, scripts and report in `docs/v1017-tool-exact/`. A default-off knob and a measurement; no default changed.
+
+### Added
+- **`CACHALOT_DECODE_TOOL_EXACT=1`** (default off, `serve`): under a decode miss budget, once a reply opens a DSML tool-call block the budget is lifted for the rest of that reply (every missing expert is read) and restored when the request ends, however it ends. Text before the opener and replies without a tool call are unchanged. A startup line when set, after the miss-budget line.
+
+### Measured
+- **Replay A/B of Hermes's Desktop-listing turn** (three recorded versions of it, ABBA, four fresh `serve.sh` with the shipped defaults, 24 replies an arm, predictions T-1 to T-6 committed first): non-JSON `search_files` `limit` 2 of 24 at budget 0 (`COP...`, `grep`), 0 of 24 with tool-exact (p = 0.245; pooled with 0.72.1's replay 4 of 34 against 0 of 34, p = 0.057); tool-exact wrote 100 or 200 every time, budget 0 also 30 and 2. Cost: none on warm requests (11.7-12.9 against 12.4-12.8 tok/s), about 15-30 % slower tool-call tokens on a fresh server's first requests (10-27 misses a token). 3 predictions held, 1 half held, 1 missed (the significance threshold was unreachable at 2 against 0), 1 falsified (cost, by one drifting arm).
+
+### Tests
+- New `tests/test_tool_exact_decode.py` (6 tests).
+
 ## 0.75.1 (2026-11-02)
 
 HANDOFF "Start here (2026-11-02, 0.75.1)" and section 18.254; write-up in `docs/DI2-LIVE-SESSION.md`. Measurement only; no code or default changed.
