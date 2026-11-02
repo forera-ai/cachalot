@@ -1,11 +1,12 @@
-# Next-session prompt — **v296**, written 2026-11-02
+# Next-session prompt — **v297**, written 2026-11-02
 
 **This is the file to paste.** `docs/NEXT-SESSION-PROMPT.md` is always current; superseded ones live in
 `docs/next-session-prompts/`.
 
 | version | written | produced by | what changed |
 |---|---|---|---|
-| **v296** | 2026-11-02 | Hamed: "Yes, push 0.73.1", then "Keep both" (the first release and its X10Pro bank) | **0.73.2, documentation: the first release stays as a fallback; the 1017 lane is closed. Next lane is Hamed's choice.** §18.250 |
+| **v297** | 2026-11-02 | Hamed: "Yes, push 0.73.2", "speed", then "DI-2 quality curve" | **0.74.0: `CACHALOT_PREFILL_DECODER_KEEP=N` (DI-2 bounded decoder replay, default off; window keys before the replay start masked). Long gate on 1017: KL 0.0011 / 0.0012 / 0.0017 / 0.0020 at keep 1,024 / 512 / 256 / 140 against noise 0.0116, all inside noise; keep 140 about 11 s less per 8,192-token prefill than DI-1 (derived from arm wall time). 6 held, 1 falsified (run time).** §18.251 |
+| v296 | 2026-11-02 | Hamed: "Yes, push 0.73.1", then "Keep both" (the first release and its X10Pro bank) | **0.73.2, documentation: the first release stays as a fallback; the 1017 lane is closed. Next lane is Hamed's choice.** §18.250 |
 | v295 | 2026-11-02 | Hamed: "Yes, push 0.73.0", then "Go, run A/B" (the 1017 hotlist first-turn A/B) | **0.73.1, measurement: ABBA through `serve.sh` on the 1017 live session's cold first request (16,040 tokens, DI-1 on, budget 0): the hotlist leaves prefill unchanged (103.9 against 103.5 s, +0.37 %), raises the turn's hit rate 0.260 to 0.281 and cuts budget 0's drops 29.2 to 27.2 a token on an 8-9-token reply; the preload changes the reply's wording deterministically. 5 of 5 held; the hotlist stays on.** §18.249 |
 | v294 | 2026-11-02 | Hamed: "Yes, push 0.72.5", "Yes, step 8", then "Go, run it" (the floor re-record) | **0.73.0, a default change and a measurement: DeepSeek-V4.1-Flash-1017 is the default in `serve.sh`, `chat.sh` and `pareto.serve_defaults` (its internal bank and own hotlist; `CACHALOT_MODEL_PATH=/Volumes/X10Pro/Flash4-1/DeepSeek-V4.1-Flash` serves the first release). Floor re-recorded at 48 GiB with 0.60.10's driver: exact all-resident 76.7-78.0 ms, mixed 115.7 ms at 23.7 misses (1.62 ms a miss), budget 0 89.8 ms, hit rate 0.898 / 0.928; the 1017 hotlist did not lower the miss count on short prompts. 4 held, 1 split. Quiet gate at 5-minute load under 3.5 (erratum before any arm).** §18.248 |
 | v293 | 2026-11-01 | Hamed: killed the stale codebase-memory holders and cleared their locks, stopped a 58.7 GiB `llama-server`, then "Step 5 gate" | **0.72.5, measurement: runbook step 5, 1017 against the old checkpoint on `pareto.py` at 40 GiB (48 did not fit beside the open applications): old dNLL +0.0240 [-0.0150, +0.0610] (positive = old worse), KL 0.121, tasks 20/21 against 1017's 21/21 (reverse-word); 1017 noise KL 0.0117, `act_quant(o)` neutral (KL 0.0130, dNLL +0.0005). 5 of 7 predictions held; the old arm's X10Pro speed (1,278 ms a step, 10x) falsified. `docs/v1017-gate/`.** §18.247 |
@@ -257,6 +258,10 @@
 | v47 | 2026-09-25 | Hamed asked for the v44-v46 levers planned, built, measured and documented | **0.18.0: GLM prefill 60 to 90 tok/s, bit-identical (a store path that never evicts, plus the next layer read early), GLM's missing MLX buffer-cache cap added, GLM disk snapshots (a restart reuses the system block). DeepSeek: an `iostat` trace shows prefill is not read-bound on either drive; the lookahead A/B drowned in a 124-to-200 s drift across back-to-back prefills.** §17.1, §15.13 |
 | v46 | 2026-09-25 | Hamed asked for GLM-5.3-Flash on Cachalot | 0.17.0: GLM through `serve-glm.sh` / `chat-glm.sh`. §17 |
 | v45 | 2026-09-24 | same as v47, one day earlier | 0.16.0: disk snapshot store by last use; lookahead and local compression closed. §15.12 |
+
+## First jobs (v297): DI-2 passed its quality curve; its server speed A/B and any default are Hamed's
+
+Read HANDOFF 18.251, 18.245, 18.242 and `docs/DEEPINFER-LEVER-LANE.md` (DI-2). **Needs his go (about 25-35 minutes, estimate and confirm first):** a server-path prefill A/B through `serve.sh`, ABBA, DI-1 exact against `CACHALOT_PREFILL_DECODER_KEEP=140` (or 256), on the 1017 dump's cold first request (16,040 tokens) and a mid-size prompt (4-5k tokens, where the derived saving is largest); predictions first; snapshots off. **Then Hamed's call:** whether a keep becomes the `serve.sh` default (output-changing; snapshots re-key `-keepN`). **Optional:** a continuation-case gate (snapshot plus a short suffix), DI-2's other use. **Autonomous, small:** `cache_sim.py --floor-ms` 80 -> 77. **Rules kept:** the earlier ones. New: DI-1's exact tail attends to its zeroed window ring as valid zero keys (harmless there); any shorter replay must use the floor.
 
 ## First jobs (v296): the 1017 lane is closed; ask Hamed which lane is next
 
@@ -848,6 +853,7 @@ check `pgrep -f Flurry.appex` before each arm instead.
 
 ## What is closed, so nobody spends a session there
 
+- **DI-2's quality on the long gate (0.74.0, §18.251):** inside noise at keep 1,024 to 140. Re-run only with new texts, a continuation shape or a free-running check.
 - **The 1017 hotlist on a Hermes first turn (0.73.1, §18.249):** prefill unchanged (+0.37 %), budget 0 drops ~7 % fewer in the first reply; it stays on. Reopen only for a long-reply decode check.
 - **Re-recording the DeepSeek floor after the 1017 switch (0.73.0, §18.248):** exact all-resident 76.7-78.0 ms, 1.62 ms a miss, 115.7 ms at 23.7 misses, budget 0 89.8 ms, hit rate 0.898 / 0.928 at 48 GiB on W1; LEDGER DS1017-*. Re-run only when the runtime, budget or sysctl changes.
 - **Re-gating 1017 against the old checkpoint on the standard gate (0.72.5, §18.247):** 1017 is at least as good (old dNLL +0.024 [-0.015, +0.061], tasks 21/21 against 20/21) and its bank sits in the old band; reopen only for a different workload class (long context through the server, sampling, tool calls under Hermes's real prompt).

@@ -87,7 +87,7 @@ The asymptote is -50 %. Prefill is partly read-bound and partly compute-bound (D
 
 **Status.** UNRESOLVED. Hamed decides whether a snapshot policy change is acceptable (it touches the in-block pins of 0.13.0 and 0.59.0).
 
-### DI-2. Approximate bounded replay (keep 140, DeepInfer's setting) — PRICE FIRST with a mask-only quality curve
+### DI-2. Approximate bounded replay (keep 140, DeepInfer's setting) — QUALITY PRICED 0.74.0 (`docs/v1017-di2-curve/`, HANDOFF 18.251): inside noise at every keep down to 140 (KL 0.0020); built behind `CACHALOT_PREFILL_DECODER_KEEP` (default off); server speed A/B next
 
 **Source.** Report 3.2.2; `doc/inference_deployment_qa.md:183-191`; `deepinfer/hugging_face/config.py` and `csrc/engine/input_metadata/prepare_tensor_input_v4.cpp:129-168` (`yoco_swa_visibility`: a query at `pos` sees keys from `max(pos - W + 1, data_len - keep_tokens)`), `environ.py:188-194` (mode `off`, `mask`, `compact`; `keep_tokens >= window + max_backtracking`).
 
@@ -99,7 +99,7 @@ The asymptote is -50 %. Prefill is partly read-bound and partly compute-bound (D
 
 **Draft prediction and falsifier.** dNLL inside the noise band for `keep >= 256`; top-1 agreement at least 90 % at `keep = 140`. Falsified by dNLL above +0.05 at `keep = 256` or top-1 below 88 %. An output-changing default is Hamed's call regardless (charter and `SKILL.md` section 5).
 
-**Status.** UNRESOLVED.
+**Status.** Quality curve measured 0.74.0 (compact mode with a window floor, not DeepInfer's mask mode; the two are equal by DeepInfer's `yoco_equiv.py`): KL 0.0011 / 0.0012 / 0.0017 / 0.0020 at keep 1,024 / 512 / 256 / 140, noise 0.0116, the draft prediction held. Server speed and the continuation case are open.
 
 ### DI-3. Deferred decoder completion for intermediate snapshots — UNRESOLVED (variant of the snapshot policy in DI-1)
 

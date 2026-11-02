@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-11-02, 0.74.0): DI-2 bounded decoder replay is inside noise at every length down to 140 rows (KL 0.0020 against noise 0.0116); new default-off `CACHALOT_PREFILL_DECODER_KEEP`
+>
+> Section 18.251 (`docs/v1017-di2-curve/`). The 0.72.3 long gate on 1017, seven arms: DI-1's exact tail KL 0.0011, keep 1,024 / 512 / 256 / 140 KL 0.0011 / 0.0012 / 0.0017 / 0.0020, every dNLL interval containing or below 0, top-1 98.4-98.8 %. Arm wall time says keep 140 cuts an 8,192-token prefill by about 11 s more than DI-1 (derived). 6 of 7 predictions held (the run time was falsified, short). **Needs Hamed:** a server-path speed A/B (about 25-35 minutes), then whether a keep becomes the `serve.sh` default.
+
 > ## Start here (2026-11-02, 0.73.2): the 1017 lane is closed; the first release and its X10Pro bank stay as a fallback (Hamed)
 >
 > Section 18.250. 1017 is the default (18.248), its hotlist stays on (18.249), and `CACHALOT_MODEL_PATH=/Volumes/X10Pro/Flash4-1/DeepSeek-V4.1-Flash` still serves the first release from the X10Pro. Nothing is waiting on Hamed in this lane; the next lane is his choice in the standing order (Hermes, vision, speed).
@@ -9518,6 +9522,46 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.251 DI-2, bounded decoder replay: every replay length from 1,024 down to 140 rows is inside noise on the long gate (0.74.0)
+
+**Goal.** Hamed: "speed", then "DI-2 quality curve" (the first priced step of DI-2 in `docs/DEEPINFER-LEVER-LANE.md`: how far the model moves when the decoder half of an encoder-only prefill replays fewer rows than DI-1's exact 2,541).
+
+**Change.** New default-off `CACHALOT_PREFILL_DECODER_KEEP=N` (N in [128, 2,541]; `prefill_tail_plan.decoder_keep`). `finish_decoder` replays the last N rows and sets `attention_prefill_batched.WINDOW_FLOOR` to the replay start, so no decoder-layer window key before it is seen (DeepInfer's visibility rule). Found while building it: the exact tail starts each decoder layer with a zeroed window ring that the batched attention treats as valid zero keys (only negative positions were masked); harmless for DI-1, whose contaminated rows never reach the end, but not DI-2's semantics, so the floor masks them. Unset, the path is the 0.73.2 one by construction (floor 0, tail 2,541). Snapshots get a `-keepN` key (`snapshot_store.numerics_version`); a startup line names the knob when set; it needs the batched prefill attention. New `tests/test_di2_bounded_replay.py` (12 tests: the knob's range, the floor masking the ring instead of attending to zero keys, the snapshot key).
+
+**Baseline (recorded).** 0.72.3, §18.245, the same gate: noise-chunk3000 KL 0.0116, DI-1 exact KL 0.0011, dNLL -0.0018 [-0.0055, +0.0018]. The lane's draft: inside noise for keep >= 256, top-1 at least 90 % at 140.
+
+**Prediction.** `docs/v1017-di2-curve/RECORD.md`, D-1 to D-7, committed with the knob in 07cdc48 before any arm.
+
+**Method.** `docs/v1017-di2-curve/run.sh`: `pareto.py run` per arm in its own `guarded_run.sh --budget-gib 34` process, `settle.sh` before each, 14:45-15:21; the 0.72.3 long gate (texts hash `05a1148ccc1ff338`, 8,192-token prefill in two 4,096-token calls, 192 teacher-forced positions a text, 576 in all), 1017 internal bank, no hotlist; git 07cdc48 clean in every manifest. Report in `docs/v1017-di2-curve/report.txt`. Peak wired 58.9-63.0 GiB; swap 3.5 GB at the start, 4.2 GB from the keep1024 arm on (grown between arms, not inside one).
+
+**Result (measured).**
+
+| arm | decoder replay | dNLL nats [95 % CI] | KL mean / max | top-1 | arm wall time |
+|---|---|---|---|---|---|
+| ref (full prefill) | all 8,192 rows | | | | 346 s |
+| noise-chunk3000 | all | -0.0042 [-0.0245, +0.0167] | 0.0116 / 0.283 | 95.3 % | 396 s |
+| di1 (exact tail) | 2,541 | -0.0018 [-0.0055, +0.0018] | 0.0011 / 0.036 | 98.6 % | 276 s |
+| keep1024 | 1,024 | -0.0030 [-0.0079, +0.0018] | 0.0011 / 0.013 | 98.8 % | 258 s |
+| keep512 | 512 | -0.0044 [-0.0087, -0.0003] | 0.0012 / 0.025 | 98.4 % | 250 s |
+| keep256 | 256 | -0.0049 [-0.0108, +0.0020] | 0.0017 / 0.065 | 98.4 % | 247 s |
+| **keep140** | **140** | **-0.0041 [-0.0104, +0.0037]** | **0.0020 / 0.129** | **98.8 %** | **242 s** |
+
+The ref, noise and di1 rows reproduce 0.72.3 to every printed digit. Every keep arm is "inside noise" by `pareto.py`'s rule; KL grows as the replay shrinks but stays at a sixth of the noise arm's at 140; no arm's dNLL is positive (keep512's interval lies just below 0).
+
+Predictions: **D-1 held** (noise KL 0.0116, CI contains 0). **D-2 held** (di1 0.0011). **D-3 held** (1,024 and 512 inside noise). **D-4 held** (keep256 CI contains 0, KL 0.0017 under 1.5 times noise). **D-5 held** (keep140 dNLL -0.0041, top-1 98.8 %). **D-6 held** (KL 0.0020 >= 0.0017 >= 0.0012 >= 0.0011 = 0.0011). **D-7 falsified** on the short side: arms 242-396 s, run 36 minutes against 40-55 (the encoder-only arms are shorter than 0.72.3's mean, which included two full-prefill arms). 6 held, 1 falsified.
+
+**Speed (derived from arm wall time, not a prefill timer; one run each).** Every arm loads the model (~20 s) and decodes the same 576 teacher-forced positions; what differs is three 8,192-token prefills. di1 is 70 s shorter than ref and keep140 34 s shorter than di1: about 11 s less prefill per 8,192-token prompt than DI-1 (very roughly -19 % of DI-1's prefill at this length, inside the lane's derived -5 points at 22k and -26 at 4.5k). The teacher-forced misses a step fall from 40.5 to 38.5 as the replay shrinks (the decoder admits fewer experts). A server-path prefill A/B is what would measure it.
+
+**Explanation.** The released weights were post-trained with the replay simulated (DeepInfer report 3.2.2), and on this gate the decoder windows' history before the last 140 rows carries almost no information the global KV does not already give: the next-token distribution moves by a KL of 0.002, against 0.012 for changing the prefill chunk size. The effect is largest right after the prefill and fades as decode refills the windows; these 192 positions are that regime.
+
+**Limits.** One run an arm, three texts, 576 positions, a single prompt length (8,192 in two calls); no continuation case (a short suffix after a snapshot, DI-2's other use); no battery, no free-running long reply, no server path; speed derived, not measured.
+
+**What did not go well.** The time prediction was sized on 0.72.3's mean arm, which mixed full and encoder-only prefills.
+
+**Open / needs Hamed.** Whether to measure the speed through the server (a cold Hermes block and a mid-size prompt, ABBA, DI-1 against keep 140 or 256, about 25-35 minutes), and only then whether to make a keep the `serve.sh` default (output-changing: his call). A continuation-case gate (snapshot plus short suffix) would cover DI-2's other use.
+
+**Kind.** Research and a default-off knob: 7 predictions, 6 held, 1 falsified (time). No default changed.
 
 ### 18.250 Decision: the first release and its X10Pro bank stay as a fallback (0.73.2)
 

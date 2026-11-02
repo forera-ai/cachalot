@@ -1,0 +1,25 @@
+| arm | verdict | dNLL nats [95 % CI] | KL mean / max | top-1 | tasks (Wilson low) | ms a token | misses | frontier |
+|---|---|---|---|---|---|---|---|---|
+| ref | reference | +0.0000 [+0.0000, +0.0000] | 0.0000 / 0.000 | 100.0% | 0/0 (0%) | 148 | 40.7 |  |
+| noise-chunk3000 | noise arm | -0.0042 [-0.0245, +0.0167] | 0.0116 / 0.283 | 95.3% | 0/0 (0%) | 147 | 40.1 |  |
+| di1 | inside noise | -0.0018 [-0.0055, +0.0018] | 0.0011 / 0.036 | 98.6% | 0/0 (0%) | 141 | 40.5 | yes |
+| keep1024 | inside noise | -0.0030 [-0.0079, +0.0018] | 0.0011 / 0.013 | 98.8% | 0/0 (0%) | 142 | 40.1 |  |
+| keep512 | inside noise | -0.0044 [-0.0087, -0.0003] | 0.0012 / 0.025 | 98.4% | 0/0 (0%) | 142 | 39.7 |  |
+| keep256 | inside noise | -0.0049 [-0.0108, +0.0020] | 0.0017 / 0.065 | 98.4% | 0/0 (0%) | 143 | 39.1 |  |
+| keep140 | inside noise | -0.0041 [-0.0104, +0.0037] | 0.0020 / 0.129 | 98.8% | 0/0 (0%) | 142 | 38.5 |  |
+
+ms is the teacher-forced decode step on one process (indicative: alternate arms and confirm a win through the server path). 'inside noise' needs a `noise: true` arm; default-on stays Hamed's call.
+=== ref start 14:45:16
+footprint: 346 s | peak wired 63.0 GiB
+=== noise-chunk3000 start 14:51:24
+footprint: 396 s | peak wired 61.7 GiB
+=== di1 start 14:58:22
+footprint: 276 s | peak wired 60.1 GiB
+=== keep1024 start 15:03:19
+footprint: 258 s | peak wired 59.4 GiB
+=== keep512 start 15:07:59
+footprint: 250 s | peak wired 58.9 GiB
+=== keep256 start 15:12:31
+footprint: 247 s | peak wired 60.5 GiB
+=== keep140 start 15:17:00
+footprint: 242 s | peak wired 59.2 GiB

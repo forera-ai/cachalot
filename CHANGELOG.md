@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.74.0 (2026-11-02)
+
+HANDOFF "Start here (2026-11-02, 0.74.0)" and section 18.251; record, arms, run script and report in `docs/v1017-di2-curve/`. A default-off knob and a measurement; no default changed.
+
+### Added
+- **`CACHALOT_PREFILL_DECODER_KEEP=N`** (DI-2, default off, N in [128, 2,541]): an encoder-only (DI-1) prefill replays the decoder half over only the last N rows, and every decoder-layer sliding window sees no key before the replay start (`attention_prefill_batched.WINDOW_FLOOR`; DeepInfer's bounded replay). Approximate below 2,541. Snapshots keyed `-keepN`; a startup line when set; needs the batched prefill attention. Unset, the exact DI-1 tail is unchanged.
+
+### Measured
+- **DI-2 quality curve on the long gate** (1017, 8,192-token prefills, 576 teacher-forced positions, seven guarded arms, predictions D-1 to D-7 committed first): KL against the full prefill 0.0011 (DI-1 exact), 0.0011 / 0.0012 / 0.0017 / 0.0020 at keep 1,024 / 512 / 256 / 140, noise arm 0.0116; every keep arm inside noise, no dNLL positive, top-1 98.4-98.8 %. From arm wall time, keep 140 takes about 11 s more off an 8,192-token prefill than DI-1 (derived, about -19 % of DI-1's prefill). 6 predictions held, 1 falsified (run time, shorter than predicted).
+
+### Tests
+- New `tests/test_di2_bounded_replay.py` (12 tests).
+
 ## 0.73.2 (2026-11-02)
 
 HANDOFF "Start here (2026-11-02, 0.73.2)" and section 18.250. Documentation only; no code, default or measurement changed.
