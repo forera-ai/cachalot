@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-11-02, 0.73.0): DeepSeek-V4.1-Flash-1017 is the default checkpoint; at 48 GiB its server floor is 76.7-78.0 ms and a miss costs 1.62 ms (exact)
+>
+> Section 18.248 (`docs/v1017-floor/`). `serve.sh`, `chat.sh` and `pareto.serve_defaults` default to 1017 with its internal bank and own hotlist; `CACHALOT_MODEL_PATH=/Volumes/X10Pro/Flash4-1/DeepSeek-V4.1-Flash` still serves the first release. Two fresh servers, 0.60.10's driver: exact mixed token 115.7 ms at 23.7 misses (first release at 0.60.10: 126.2 at 23.5), budget 0 (shipped) 89.8 ms, hit rate 0.898 / 0.928. The 1017 hotlist did not lower the miss count on this short-prompt workload. 4 of 5 predictions held, 1 split. **Needs Hamed:** keep or delete the first release (475 GiB) and its X10Pro bank (142 GiB); the hotlist first-turn A/B.
+
 > ## Start here (2026-11-01, 0.72.5): on the quality gate 1017 is at least as good as the old checkpoint (old dNLL +0.024 [-0.015, +0.061], tasks 21/21 against 20/21); the default switch is Hamed's
 >
 > Section 18.247 (`docs/v1017-gate/`). `pareto.py`, four guarded arms at 40 GiB (48 did not fit beside the open applications; outputs do not depend on the budget): 1017's rounding arm KL 0.0117 (the old bank's band was 0.0144-0.0146), `act_quant(o)` on 1017 neutral (KL 0.0130, dNLL +0.0005), old against 1017 KL 0.121 and the one task 1017 passes and the old checkpoint fails is reverse-word. 5 of 7 predictions held; the old arm's speed (1,278 ms a step, 10 times 1017, about 0.29 GB/s from the X10Pro) was falsified. **Needs Hamed:** step 8 (1017 as the default) and the hotlist first-turn A/B.
@@ -9506,6 +9510,41 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.248 Runbook step 8: 1017 is the default checkpoint; its floor and hit rate at 48 GiB (0.73.0)
+
+**Goal.** Hamed: "Yes, step 8", then "Go, run it" (the re-record of the DeepSeek floor and hit rate on 1017 at 48 GiB, which the runbook asks for after the switch because the routing changed).
+
+**Change.** `serve.sh` and `chat.sh` default `CACHALOT_MODEL_PATH` to `/Volumes/X10Pro/Flash4-1/DeepSeek-V4.1-Flash-1017`; bank and hotlist still follow the checkpoint directory's name, so the default resolves to the verified internal `~/DeepSeek-V4.1-Flash-1017-q2g128` and `~/cachalot-hotlist-DeepSeek-V4.1-Flash-1017.json`. `benchmarks/pareto.py`'s `serve_defaults` no longer hard-codes the first release: it derives the bank (internal when verified, else beside the checkpoint) and the hotlist (empty when the file is missing) from `CACHALOT_MODEL_PATH` the way `serve.sh` does. `CACHALOT_MODEL_PATH=/Volumes/X10Pro/Flash4-1/DeepSeek-V4.1-Flash` still serves the first release with its X10Pro bank and `cachalot-hotlist.json`. Nothing in `src/` changed but the version. New `tests/test_v1017_default.py` (6 tests: both scripts' defaults, the first-release override, `serve_defaults` equal to `serve.sh` for both checkpoints, a checkpoint without a hotlist). Disk snapshots are keyed on the checkpoint's `config.json` and index (`snapshot_store.runtime_identity`), so the two checkpoints never load each other's; the default `CACHALOT_SNAPSHOT_DIR` is unchanged, so the first `serve.sh` start on 1017 prefills its system blocks cold once (the 1017 live sessions' snapshots are in `prefix-snapshots-1017`). The older benchmark scripts that hard-code the first release's paths are records of their runs and were left as they are.
+
+**Baseline (recorded).** 0.60.10, §18.76, first release on its internal bank and old hotlist, the same driver at 48 GiB: exact floor 79.2-80.3 ms, mixed 126.2 ms at 23.5 misses a token (1.97 ms a miss), end-of-run hit rate 0.896; budget 0 floor 81.3-81.9, mixed 93.3 ms with 16.5 dropped a token, hit rate 0.923. Since then FP8 GEMV decode went on (0.66.0) and MLX moved to 0.32.4 (0.68.0); §18.231's exact all-resident token on the first release was 75.3-76.0 ms. No same-day first-release arm: its bank is X10Pro-only since 2026-11-01, so such an arm would be read-bound.
+
+**Prediction.** `docs/v1017-floor/RECORD.md`, F-1 to F-5, committed with the switch in f827c42 before any arm; an erratum (ee6caee, before any arm) moved the quiet gate from a 5-minute load under 2.5 to under 3.5.
+
+**Method.** `docs/v1017-floor/run-all.sh`: quiet gate, arm A (`CACHALOT_DECODE_MISS_BUDGET=off`), `settle.sh --budget-gib 48 --timeout 600`, quiet gate, arm C (`=0`, shipped). Each arm a fresh `./serve.sh` under `guarded_run.sh --budget-gib 48 --max-seconds 2400 --force` (preflight 71.4 of 77 GiB; the force skips only that arithmetic, as in §18.76), `CACHALOT_SNAPSHOT_DIR=`, the 1017 internal bank, the 1017 hotlist (863 experts, 8.0 GiB in 2.1 s), a manifest from `run_manifest.py` (A `69aa1b1830bb3baf`, C `cebcad2d4347388f`). Driver `docs/v1017-floor/driver.py`, byte-identical to 0.60.10's: warm-up, the floor prompt three times, twelve mixed prompts, the floor prompt twice more, greedy, 120 tokens, non-streaming. Scored by `docs/v1017-floor/analyse.py` (ms a token from the usage block, misses from the server's `[request]` lines, hit rate as the `/v1/stats` difference from warm-up to end). Arm A 12:16-12:21, arm C 12:31-12:35; peak wired 73.1 / 73.4 GiB, swap flat at 3.5 GB (stale, from before), pressure 1. Workload class W1 only.
+
+**Result (measured).**
+
+| | first release, 0.60.10 | 1017, exact (A) | 1017, budget 0 (C) |
+|---|---|---|---|
+| floor, repeats 1-2 | 80.3 / 79.2 ms | **78.0 / 76.7** | 80.1 / 78.3 (3.8 / 1.7 misses) |
+| last floor repeat after the mix | | 77.7 (0 misses) | 81.8 (4.6) |
+| mixed, 12 prompts | 126.2 ms at 23.5 misses | **115.7 ms at 23.67** (108.2-128.7) | **89.8 ms** at 12.8 counted (85.7-96.6) |
+| cost of a miss | 1.97 ms | **1.62 ms** (derived) | |
+| dropped experts a token | | 0 | 15.9 (derived, 32,353 over 17 requests) |
+| hit rate (warm-up to end / end of run) | 0.896 end (A), 0.923 (C) | **0.898** / 0.895 | **0.928** / 0.925 |
+
+Predictions: **F-1 held** (77.4 in 73-80). **F-2 held by its interval, its reason falsified**: 23.67 misses a token (14-24) and hit rate 0.895 (0.89-0.95), but the predicted drop below the first release's 23.5 did not happen; the 1017 hotlist, twice the old one's coverage on 1017's own Hermes sessions (§18.246), did not lower the miss count on this workload. **F-3 held** at its low edge (1.62 in 1.6-2.4). **F-4 held** (C floor +1.8 ms over A, mixed 89.8 in 82-98, 15.9 dropped in 9-18). **F-5 split**: the last floor repeat (floor4) is +0.3 (A) and +2.6 ms (C) above repeats 1-2, held; the first repeat after the mix (floor3) is not all-resident (22.1 and 12.8 misses: the twelve mixed prompts evicted part of its set) and reads 112.1 and 90.5 ms, so as worded the prediction is falsified for it. 4 held, 1 split.
+
+**Explanation.** 1017 runs on the same architecture, expert sizes and bank format, so its server costs are the first release's under today's runtime: the 1017 floor (77.4) sits 2.4 ms under 0.60.10's and 1.4-2 ms over §18.231's first-release 75.3-76.0 (a different driver and arm, so that gap is within the drift seen between runs, §18.147). The exact mixed token is 8.3 % faster than 0.60.10's at the same miss count; with the checkpoint's shapes unchanged, the runtime changes since 0.60.10 (FP8 GEMV, MLX 0.32.4) are the likeliest cause (hypothesis: no same-day first-release arm separates checkpoint from runtime). The hotlist's coverage gain did not show because, at 48 GiB, the pool holds about 5,180 experts against the hotlist's 863, and these short generic prompts are not the Hermes traffic it was built from (hypothesis); its first-turn effect on Hermes traffic is the A/B still open. Model for 1017 at 48 GiB, exact: token = 77 + 1.6 ms x misses (derived, W1).
+
+**Limits.** One arm per setting, W1 only (short generic prompts, 120 tokens, no agent context); no Hermes-shaped context (DS-FLOOR-CTX unmeasured on 1017); the first-release comparison is against recorded numbers from an older runtime.
+
+**What did not go well.** The first launch waited 30 minutes at the quiet gate (5-minute load 3.2-3.3, `hybridsearchd` at ~87 % of a core) before I stopped it; no arm had started. The erratum states that the 0.60.10 baseline itself started at a 5-minute load of 2.93. The analysis script first read the guard's summary log, which holds only the last `[request]` lines; it now reads guarded_run's full output file.
+
+**Open / needs Hamed.** Whether the first release (475 GiB on the X10Pro) and its X10Pro bank (142 GiB) stay as a fallback: nothing is deleted without his yes. The hotlist first-turn A/B on Hermes-shaped traffic (about 10-15 minutes). `cache_sim.py --floor-ms` still defaults to 80 (DS-FLOOR-SRV, first release); moving it to 1017's 77 is a one-line instrument change worth doing with the next cache_sim job. LEDGER rows DS1017-FLOOR-SRV, DS1017-MISS-48, DS1017-TOKEN-48, DS1017-HIT-48 are new.
+
+**Kind.** Research and a default change: 5 predictions, 4 held, 1 split (F-5); F-2's mechanism falsified. One default changed (the DeepSeek checkpoint, Hamed's call).
 
 ### 18.247 Runbook step 5: 1017 against the old checkpoint on the quality gate (0.72.5)
 

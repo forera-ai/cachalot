@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.73.0 (2026-11-02)
+
+HANDOFF "Start here (2026-11-02, 0.73.0)" and section 18.248; record, predictions, arm scripts, driver and analysis in `docs/v1017-floor/`. Runbook step 8, Hamed's call.
+
+### Changed
+- **DeepSeek-V4.1-Flash-1017 is the default checkpoint.** `serve.sh` and `chat.sh` default `CACHALOT_MODEL_PATH` to `/Volumes/X10Pro/Flash4-1/DeepSeek-V4.1-Flash-1017`; bank and hotlist follow the checkpoint directory's name as before, so the default loads the verified internal `~/DeepSeek-V4.1-Flash-1017-q2g128` and `~/cachalot-hotlist-DeepSeek-V4.1-Flash-1017.json`. `CACHALOT_MODEL_PATH=/Volumes/X10Pro/Flash4-1/DeepSeek-V4.1-Flash` serves the first release with its own bank and hotlist. Disk snapshots are keyed on the checkpoint, so the first start on the new default prefills its system blocks cold once.
+- `benchmarks/pareto.py` `serve_defaults` derives bank and hotlist from `CACHALOT_MODEL_PATH` the way `serve.sh` does (it hard-coded the first release), with an empty hotlist when the file is missing.
+
+### Measured
+- **1017 floor and hit rate at 48 GiB** (two fresh `serve.sh` processes, 0.60.10's driver, W1, predictions F-1 to F-5 committed first): exact all-resident token 76.7-78.0 ms; twelve mixed prompts 115.7 ms a token at 23.7 misses (1.62 ms a miss, derived); shipped budget 0: floor 78.3-80.1, mixed 89.8 ms with 15.9 dropped experts a token; hit rate warm-up to end 0.898 exact, 0.928 budget 0. The first release at 0.60.10 read 79.2-80.3, 126.2 ms at 23.5 misses and 93.3 ms. The 1017 hotlist did not lower the miss count on this workload. 4 predictions held, 1 split. New LEDGER rows DS1017-FLOOR-SRV, DS1017-MISS-48, DS1017-TOKEN-48, DS1017-HIT-48.
+
+### Tests
+- New `tests/test_v1017_default.py` (6 tests).
+
 ## 0.72.5 (2026-11-01)
 
 HANDOFF "Start here (2026-11-01, 0.72.5)" and section 18.247; predictions, arms, manifests and report in `docs/v1017-gate/`. Measurement only; no code or default changed. The old checkpoint stays the `serve.sh` default until Hamed decides.

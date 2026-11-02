@@ -151,7 +151,7 @@ launch scripts look for:
 cd /Users/hamedprooshani/Projects/deepseek-v41-mac && PYTHONPATH=src ~/venvs/deepseek-v41/bin/python benchmarks/build_hotlist.py $HOME/cachalot-routing-1017-1.trace.npz --out /Users/hamedprooshani/cachalot-hotlist-DeepSeek-V4.1-Flash-1017.json
 ```
 
-### Step 8 — make 1017 the default (**Hamed's call**)
+### Step 8 — make 1017 the default (**Hamed's call**; **done 2026-11-02 in 0.73.0, floor and hit rate re-recorded, HANDOFF 18.248, `docs/v1017-floor/`**; the first release's fate is still open)
 
 If steps 5 and 6 favour 1017: change the `CACHALOT_MODEL_PATH` default in `serve.sh`, `chat.sh` and `benchmarks/pareto.py`
 (`serve_defaults`) to the 1017 directory, re-record the DeepSeek floor and hit rate at 48 GiB (the routing changed), and
