@@ -1,11 +1,12 @@
-# Next-session prompt — **v309**, written 2026-11-03
+# Next-session prompt — **v310**, written 2026-11-03
 
 **This is the file to paste.** `docs/NEXT-SESSION-PROMPT.md` is always current; superseded ones live in
 `docs/next-session-prompts/`.
 
 | version | written | produced by | what changed |
 |---|---|---|---|
-| **v309** | 2026-11-03 | Hamed: "Vision", then "Run it" (screenshot transcription replay) | **0.78.4, measurement: screenshot misreadings follow resolution, not the miss budget: exact misread the 492-px copy in 2 of 7 text replies, budget 0 0 of 3; the 906-px copy read cleanly 7 of 7; most replies called Hermes's `vision_analyze` instead (15/18, 11/18). Ground truth private.** §18.263 |
+| **v310** | 2026-11-03 | Hamed: "Build and test it" (V-1) | **0.79.0: `CACHALOT_VISION_MIN_PIXELS=N` (default off) upscales small images before the tower; at 810,000 the 492-px screenshot gets 486 image tokens: Hermes `vision_analyze` detours 10/20 against 17/20 (p = 0.041), transcription errors 1 of 10; +288 prompt tokens. Lab brief 0.79.0.** §18.264 |
+| v309 | 2026-11-03 | Hamed: "Vision", then "Run it" (screenshot transcription replay) | **0.78.4, measurement: screenshot misreadings follow resolution, not the miss budget: exact misread the 492-px copy in 2 of 7 text replies, budget 0 0 of 3; the 906-px copy read cleanly 7 of 7; most replies called Hermes's `vision_analyze` instead (15/18, 11/18). Ground truth private.** §18.263 |
 | v308 | 2026-11-03 | Hamed: "Build Farsi probe", then "Run both" | **0.78.3: new `benchmarks/farsi_leak_probe.py` (teacher-forced Farsi sections from dumps, exact against budget 0). Latin-token mass ratio 0.97 (0.82-1.52), budget 0 higher in 3 of 6; exact gives the stray " mattered" 93 %. The English words in Farsi are the model's own; with 18.261 no Hermes defect outside tool calls is the budget's.** §18.262 |
 | v307 | 2026-11-03 | Hamed: "Switch lane", "Hermes: budget-0 defects", "Server replay A/B" | **0.78.2, measurement: the hummingbird turn's skipped translations replayed 16 times an arm: budget 0 skipped 0, exact 0 (registered inconclusive band; below ~17 % either way); one budget-0 unrequested tool call, one exact reply without the English rewrite. The replay's re-prefills are its own shape, not live (prefix-cache replay of three live dumps unchanged by a branch-point tier).** §18.261 |
 | v306 | 2026-11-03 | Hamed: "Sysctl set, run both" (after `sudo sysctl`, stopping llama-server and `sudo purge`) | **0.78.1, measurement: the prefill rare-expert skip fails the long gate (KL 0.0118 at k=1, 0.0121 at k=2, noise 0.0116; control reproduced 0.74.0 exactly) and is closed; server A/B not run by the record's rule. Pooled mass was the wrong quality proxy: affected rows lose a median 12.5 % of their own weight.** §18.260 |
@@ -270,6 +271,10 @@
 | v47 | 2026-09-25 | Hamed asked for the v44-v46 levers planned, built, measured and documented | **0.18.0: GLM prefill 60 to 90 tok/s, bit-identical (a store path that never evicts, plus the next layer read early), GLM's missing MLX buffer-cache cap added, GLM disk snapshots (a restart reuses the system block). DeepSeek: an `iostat` trace shows prefill is not read-bound on either drive; the lookahead A/B drowned in a 124-to-200 s drift across back-to-back prefills.** §17.1, §15.13 |
 | v46 | 2026-09-25 | Hamed asked for GLM-5.3-Flash on Cachalot | 0.17.0: GLM through `serve-glm.sh` / `chat-glm.sh`. §17 |
 | v45 | 2026-09-24 | same as v47, one day earlier | 0.16.0: disk snapshot store by last use; lookahead and local compression closed. §15.12 |
+
+## First jobs (v310): the vision upscale knob's default is Hamed's call
+
+Read HANDOFF 18.264, 18.263 and `docs/v1017-image-upscale/RECORD.md`. **Needs Hamed:** whether `serve.sh` exports `CACHALOT_VISION_MIN_PIXELS=810000` (output-changing for images under 900 x 900 only; +288 prompt tokens on a 492-px image, about 2-3 s; evidence one screenshot in three copies). If yes: a `tests/test_*_default_on.py` like 0.77.0's, then a live Hermes image session with `CACHALOT_SERVER_DUMP` set (a second screenshot; check text vs `vision_analyze`). **Open, small:** the house-number split at the search-highlight boundary (a style edge, not resolution) is untouched. **Rules kept:** the earlier ones; the OCR truth file and replies stay private.
 
 ## First jobs (v309): vision lever V-1, upscaling small screenshots, priced on the 18.263 replay; needs Hamed's go
 

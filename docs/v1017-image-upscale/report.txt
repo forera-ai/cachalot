@@ -1,0 +1,4 @@
+A shipped: 20 replies (0 errors), upscale line no, prompt tokens [30591, 30752]; tool calls 17; text replies 3, with a character error 0; items {}
+B upscale: 20 replies (0 errors), upscale line yes, prompt tokens [30879, 31040]; tool calls 10; text replies 10, with a character error 1; items {'row1': 1, 'row2': 1}
+tool calls: shipped 17/20, upscale 10/20, Fisher p = 0.041
+text replies with an error: shipped 0/3, upscale 1/10, Fisher p = 1.000

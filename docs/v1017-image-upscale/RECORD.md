@@ -43,6 +43,36 @@ replies with a character error.
 Runtime estimate: about 35 minutes (two conversation prefills an arm, 20 replies of about 20 s, a settle). Needs
 `iogpu.wired_limit_mb` at 88064, no other runtime.
 
-## 5. Results
+## 5. Results (measured 2026-11-03, commit 01ea2ea)
 
-Not run yet.
+**Run.** `run-all.sh` 18:08-19:05, sysctl 88064, no other runtime; arms 1,610 s and 1,676 s (most C2 requests re-prefilled the
+conversation, the replay's prefix eviction of 18.261), peak wired 76.4 / 81.0 GiB. `report.txt` holds `analyse.py`'s output (item ids
+only).
+
+| arm | prompt tokens (C2, C1) | tool call instead of a transcription | text replies | with a character error |
+|---|---|---|---|---|
+| A, shipped | 30,591, 30,752 | 17 of 20 (C1 9, C2 8) | 3 | 0 |
+| B, `CACHALOT_VISION_MIN_PIXELS=810000` | 30,879, 31,040 | **10 of 20** (C1 8, C2 2) | 10 | 1 |
+
+Tool calls 17/20 against 10/20, Fisher p = 0.041. Text replies with an error 0/3 against 1/10 (p = 1.0). The one upscaled error is
+the same split as 18.263's exact-decode errors: the five-digit house number written as its first four digits, a space, and the last
+digit with the next ones; it occurs at the boundary of the search-match highlight in the screenshot (the typed prefix is drawn bold),
+which may be what the model splits on rather than the pixel size.
+
+**Scored.**
+- **U-1 held:** the upscale line in arm B only; prompts exactly 288 tokens longer (486 against 198 image tokens); 40 replies, no error.
+- **U-2 held:** shipped tool calls 17 of 20.
+- **U-3 held:** upscale 10 of 20, 7 fewer (predicted at least 4).
+- **U-4 split:** upscale's text error share 1 of 10 (held, at most 1 in 10); shipped's 0 of 3 is not at least as high (missed). Pooled
+  with 18.263's text replies on these two copies (exact decode 2 of 3 with an error), the shipped preprocessing has 2 of 6 against
+  upscale's 1 of 10: suggestive, not significant.
+- **Falsifier not fired** (tool calls differ by 7).
+
+**Reading (derived, hypothesis).** With about 2.5 times the image tokens the model reads the small screenshot itself twice as often
+instead of asking Hermes's vision tool for it, and its transcriptions are at least as accurate. Cost: 288 more prompt tokens an image
+(about 2-3 s of prefill at the measured short-prefill rates) and the rows of a different preprocessing (keyed apart). C3-sized images and
+larger are unchanged by construction. A default is Hamed's call; the evidence is one screenshot in three recorded copies.
+
+## 6. Kind
+
+Research and a default-off knob: predicted, measured, explained as hypothesis (U-1 to U-3 held, U-4 split). No default changed.

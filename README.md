@@ -306,6 +306,8 @@ The same configuration as a benchmark, with a colder working set than a conversa
 token (5.90 tok/s)** at an 83.5 % hit rate, reading 627 MiB per token, drive busy 55 % of decode,
 reproducible to ±0.3 %.
 
+**0.79.0 (2026-11-03): an option to upscale small images.** `CACHALOT_VISION_MIN_PIXELS=810000` gives a small screenshot about 2.5 times the image tokens; on Hermes's screenshot turn the model then read the image itself in half the replies instead of 3 in 20, with transcriptions as accurate. Off by default (HANDOFF section 18.264).
+
 **0.78.4 (2026-11-03): small screenshots, not the miss budget, cause the misread digits.** Replaying Hermes's screenshot turn, exact decode misread a 492-pixel screenshot as often as the shipped setting, while a 906-pixel copy of the same form was read cleanly every time (HANDOFF section 18.263). Upscaling small images before the vision tower is the next lever to test.
 
 **0.78.3 (2026-11-03): the English words in Farsi are the model's own.** A teacher-forced probe of six recorded Farsi translations shows the shipped decode miss budget leaves the share of English tokens unchanged (ratio 0.97), and with every expert read the model gives the stray word " mattered" 93 % at its position (HANDOFF section 18.262).

@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-11-03, 0.79.0): `CACHALOT_VISION_MIN_PIXELS` upscales small images; it halves Hermes's vision-tool detours on the small screenshot
+>
+> Section 18.264, `docs/v1017-image-upscale/RECORD.md`, Lab brief 2026-11-03-runtime-0.79.0. At 810,000 pixels the 492-pixel screenshot gets 486 image tokens instead of 198: tool calls 10/20 against 17/20 (p = 0.041), transcription errors 1 of 10. Off by default. **Needs Hamed:** whether `serve.sh` sets it (output-changing for small images only, +288 prompt tokens an image); a live Hermes image session with it would add a second screenshot.
+
 > ## Start here (2026-11-03, 0.78.4): screenshot misreadings follow the image's resolution, not the miss budget
 >
 > Section 18.263, `docs/v1017-image-ocr/RECORD.md`. Hamed chose the vision lane. Exact decode misread the 492-pixel screenshot in 2 of 7 text replies, budget 0 in 0 of 3; the 906-pixel copy read cleanly 7 of 7. Most replies called Hermes's `vision_analyze` tool on the attached path instead. **Next (not built, Hamed's go):** a knob raising the minimum pixel count before the tower (small screenshots to about 900 px, about 500 image tokens), priced on this replay.
@@ -9570,6 +9574,18 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.264 Upscaling small images before the vision tower (0.79.0)
+
+**Goal.** Hamed, 2026-11-03: "Build and test it" (V-1 from 18.263).
+
+**Build.** `CACHALOT_VISION_MIN_PIXELS=N` (default off) replaces the checkpoint's `vision_min_pixels` (544 x 544) in the MLX image preprocessing: an image under N pixels is scaled up (`ImageOps.pad`, as the reference) before the ViT, still under the 1,024-token cap. `VisionEncoder` reads it from the environment; `image_digest` adds N to an image's key when it is not the checkpoint's, so rows and prefix-cache spans of the two settings never mix (the official setting keeps its digests). Startup line; `tests/test_vision_min_pixels.py` (4). Predictions U-1 to U-4 committed first (01ea2ea).
+
+**Result (measured, `docs/v1017-image-upscale/`, two fresh `serve.sh` on the shipped defaults, C1 and C2 ten replies each).** Shipped: 17 of 20 replies called Hermes's `vision_analyze` instead of reading the image, 3 text replies, 0 errors. N = 810,000: 10 of 20 tool calls (Fisher p = 0.041), 10 text replies, 1 with an error (the house-number split at the search-highlight boundary, the 18.263 kind). Prompts exactly 288 tokens longer. U-1, U-2, U-3 held; U-4 split (shipped had no errors in its 3 text replies here; pooled with 18.263 2 of 6 against 1 of 10).
+
+**Reading.** With 2.5 times the image tokens the model reads the small screenshot itself twice as often and at least as accurately. One screenshot in three recorded copies: the default is Hamed's call; a live session would add evidence.
+
+**Kind.** Research and a default-off knob. No default changed.
 
 ### 18.263 Screenshot transcription: a replay A/B of budget 0 against exact (0.78.4)
 

@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.79.0 (2026-11-03)
+
+HANDOFF "Start here (2026-11-03, 0.79.0)" and section 18.264; record, driver, scorer and report in `docs/v1017-image-upscale/`; Lab brief `docs/lab/briefs/2026-11-03-runtime-0.79.0.md`. A default-off knob, measured; no default changed.
+
+### Added
+- **`CACHALOT_VISION_MIN_PIXELS=N`** (default off; at or under the checkpoint's 544 x 544 is off): images under N pixels are upscaled before the vision tower (`image_processor_mlx.image_config_from_env`, read by `VisionEncoder`), the 1,024-token cap unchanged. Image rows and prefix-cache spans are keyed on N when it is not the checkpoint's (`vision_prompt.image_digest`); the official setting keeps the old keys. A startup line names it. Changes outputs for images below N only.
+
+### Measured
+- On the two 492-pixel copies of Hermes's screenshot turn, 20 replies an arm: with N = 810,000 (900 x 900; 486 image tokens instead of 198) the model called Hermes's `vision_analyze` tool instead of reading the image in 10 of 20 replies, against 17 of 20 shipped (Fisher p = 0.041); its transcriptions had a character error in 1 of 10 (shipped 0 of 3 here, 2 of 3 under exact decode in 0.78.4). Cost: 288 more prompt tokens an image.
+
+### Tests
+- New `tests/test_vision_min_pixels.py` (4 tests).
+
 ## 0.78.4 (2026-11-03)
 
 HANDOFF "Start here (2026-11-03, 0.78.4)" and section 18.263; record, driver, scorer and report in `docs/v1017-image-ocr/`. Measurement only; no default changed.
