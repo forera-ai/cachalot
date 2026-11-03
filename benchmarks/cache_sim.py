@@ -203,11 +203,13 @@ def main() -> None:
     ap.add_argument("--taus", default="0", help="comma list; > 0 needs a weighted trace")
     ap.add_argument("--policy", default="lru", choices=("lru", "slru", "lfu"))
     ap.add_argument("--expert-bytes", type=int, default=Q2_EXPERT_BYTES)
-    ap.add_argument("--floor-ms", type=float, default=80.0, help="all-resident token time (docs/LEDGER.md DS-FLOOR-SRV)")
+    ap.add_argument("--floor-ms", type=float, default=77.0,
+                    help="all-resident token time (docs/LEDGER.md DS1017-FLOOR-SRV; first release DS-FLOOR-SRV 80)")
     ap.add_argument("--context-tokens", type=int, default=0,
                     help="decode context length; adds LEDGER DS-FLOOR-CTX's context term to --floor-ms (0: short prompt)")
-    ap.add_argument("--miss-ms", default="internal=2.0,usb=10.2",
-                    help="name=ms per miss, comma list (LEDGER DS-MISS-48; usb is an estimate, ST-X10)")
+    ap.add_argument("--miss-ms", default="internal=1.62,usb=10.2",
+                    help="name=ms per miss, comma list (LEDGER DS1017-MISS-48, first release DS-MISS-48 2.0; "
+                         "usb is an estimate, ST-X10)")
     ap.add_argument("--prefetch-gates", default="",
                     help="comma list of decode-prefetch predictor-weight gates ('off', 0 = every predicted load); needs predicted sets. "
                          "Adds a table of reads, predicted loads and their use per token (counts, not milliseconds)")

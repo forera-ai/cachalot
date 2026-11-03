@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.77.2 (2026-11-03)
+
+HANDOFF "Start here (2026-11-03, 0.77.2)" and section 18.258. Instrument defaults only; no runtime, default or output changed.
+
+### Changed
+- **`benchmarks/cache_sim.py` defaults follow the default checkpoint (1017):** `--floor-ms` 80 -> 77 (LEDGER DS1017-FLOOR-SRV, 76.7-78.0 ms measured at 0.73.0) and `--miss-ms` `internal=2.0` -> `internal=1.62` (DS1017-MISS-48, derived from the same driver run); `usb=10.2` stays an estimate. For first-release numbers pass `--floor-ms 80 --miss-ms internal=2.0,usb=10.2`.
+
+### Measured
+- Smoke run on the 1017 session-1 routing trace (2,893 decode tokens, 48 GiB, LRU): 19.9 misses a token, 109 ms (9.2 tok/s) under the new defaults, against 120 ms under the old pair; the measured exact token at 23.7 misses was 115.7 ms (DS1017-TOKEN-48, W1), which the new pair reproduces (77 + 1.62 x 23.7 = 115.4).
+
 ## 0.77.1 (2026-11-02)
 
 HANDOFF "Start here (2026-11-02, 0.77.1)" and section 18.257. Hamed's call. Outputs unchanged.

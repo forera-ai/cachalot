@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-11-03, 0.77.2): `cache_sim.py` defaults to the 1017 checkpoint's floor and miss cost
+>
+> Section 18.258. Instrument defaults only: `--floor-ms` 77 and `--miss-ms internal=1.62` (LEDGER DS1017-FLOOR-SRV, DS1017-MISS-48), the autonomous job v303 listed. `whatif.py` keeps its first-release constants on purpose (its validation is against first-release curves). The machine's `iogpu.wired_limit_mb` read 0 at session start (reset at a reboot): Hamed re-applies 88064 before any speed arm. **Open:** Hamed's choice of lane (Hermes, vision, speed); optional DI-2 continuation-case gate.
+
 > ## Start here (2026-11-02, 0.77.1): an explicit `max_tokens` that does not fit is shortened to the room left, not refused
 >
 > Section 18.257. The second fix 18.254 offered; Hamed's call. DeepSeek and the GLM/MiniMax engine. Outputs unchanged. With 18.256's tool-exact default the Hermes retry chain that reached 65,536 should be rare; if it happens, the request now runs. **Open:** Hamed's choice of lane (Hermes, vision, speed).
@@ -9546,6 +9550,18 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.258 `cache_sim.py` defaults follow the 1017 checkpoint (0.77.2)
+
+**Goal.** Hamed, 2026-11-03: "read the prompts and handoffs and continue with remaining tasks". v303 listed one autonomous job, `cache_sim.py --floor-ms` 80 -> 77 (18.248 flagged it); everything else waits on Hamed's choice of lane. Jev (`jev_decide`) ranked this job first over starting the DI-2 continuation gate or only asking (p = 1.00, routing metadata only).
+
+**Change.** `benchmarks/cache_sim.py`: `--floor-ms` default 80 -> 77 (DS1017-FLOOR-SRV, 76.7-78.0 ms measured through `serve.sh` at 0.73.0) and `--miss-ms` default `internal=2.0,usb=10.2` -> `internal=1.62,usb=10.2` (DS1017-MISS-48, derived from the same driver run). Both move together because 77 + 1.62 m is one fit of one run; 77 with the first release's 2.0 would mix two checkpoints. `usb=10.2` stays an estimate (ST-X10). `docs/LEDGER.md` section 7 records the change and a new row for `whatif.py`, whose DeepSeek constants (`DS_FLOOR_MS` 78.0, `DS_MISS_CPU_MS` 1.73) stay on the first release on purpose: `whatif.py --validate` checks them against ST-BW-CURVE and DS-BUDGET-CURVE, which were measured on the first release; moving them needs those curves on 1017. First-release numbers are still one flag away: `--floor-ms 80 --miss-ms internal=2.0,usb=10.2`.
+
+**Check (measured, one run).** `cache_sim.py ~/cachalot-routing-1017-s1.trace.npz --budgets-gib 48` (18.246's session-1 trace, 2,893 decode tokens, LRU): 91.7 % decode hit, 19.9 misses a token, 109 ms (9.2 tok/s) on the internal drive under the new defaults; the old pair gives 80 + 2.0 x 19.9 = 120 ms (derived). DS1017-TOKEN-48 measured 115.7 ms at 23.7 misses on W1; the new pair gives 115.4 there, the old 127.4. Tests: `test_cache_sim_segments.py` and the three CUDA tests that import `cache_sim` pass (50).
+
+**Machine state.** `sysctl iogpu.wired_limit_mb` read 0 (the Mac rebooted since 2026-11-02); no runtime ran this session. Hamed re-applies `sudo sysctl iogpu.wired_limit_mb=88064` before any speed arm.
+
+**Kind.** Engineering (an instrument default aligned with the ledger; no prediction written).
 
 ### 18.257 A client's `max_tokens` that does not fit is shortened, not refused (0.77.1)
 

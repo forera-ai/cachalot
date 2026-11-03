@@ -235,8 +235,9 @@ What bound each model, what removed it, and what bound next. "Bound" means the t
 
 | where | constant | ledger row it should cite | action |
 |---|---|---|---|
-| `benchmarks/cache_sim.py` `--floor-ms` default | 77.0 | DS-FLOOR-SRV (80) | changed to 70 in 0.60.6 (DS-FLOOR-48), to 80 in 0.60.10 (DS-FLOOR-SRV) |
-| `benchmarks/cache_sim.py` `--miss-ms` default | `internal=1.7,usb=10.2` | DS-MISS-48 (2.0, internal bank, 48 GiB) | changed to `internal=2.0,usb=10.2` in 0.60.6; the USB figure stays an estimate (ST-X10) |
+| `benchmarks/cache_sim.py` `--floor-ms` default | 77.0 | DS1017-FLOOR-SRV (77; first release DS-FLOOR-SRV 80) | changed to 70 in 0.60.6 (DS-FLOOR-48), to 80 in 0.60.10 (DS-FLOOR-SRV), to 77 in 0.77.2 (DS1017-FLOOR-SRV, the default checkpoint since 0.73.0) |
+| `benchmarks/cache_sim.py` `--miss-ms` default | `internal=1.7,usb=10.2` | DS1017-MISS-48 (1.62, derived; first release DS-MISS-48 2.0) | changed to `internal=2.0,usb=10.2` in 0.60.6, to `internal=1.62,usb=10.2` in 0.77.2; the USB figure stays an estimate (ST-X10) |
+| `benchmarks/whatif.py` DeepSeek constants | `DS_FLOOR_MS` 78.0, `DS_MISS_CPU_MS` 1.73 (fitted to ST-BW-CURVE) | first-release rows (DS-FLOOR-SRV, ST-BW-CURVE) | unchanged in 0.77.2 on purpose: `whatif.py --validate` checks them against first-release measurements (ST-BW-CURVE, DS-BUDGET-CURVE); moving them to 1017 needs those curves re-measured on 1017 |
 | `benchmarks/d2_verify_union.py` defaults | floor 70, miss 2.0, marginal 8, draft 15 | DS-FLOOR-SRV (80, was DS-FLOOR-48), DS-MISS-48; marginal 8 is Rapid-MLX's, DS-D2-VERIFY is ours (26.9) | unchanged; the section-18.56 table prints both |
 | `benchmarks/d3_layer_hits.py` | saving 0.63, rewind 0.7 | DS-D3-SAVE (borrowed) | unchanged; flagged. Under budget 0 the all-hit share is DS-MB0-HOSTLAYERS's 73.6 %, not the trace's 52.8 % |
 
