@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.78.1 (2026-11-03)
+
+HANDOFF "Start here (2026-11-03, 0.78.1)" and section 18.260; `docs/prefill-rare-skip/RECORD.md` section 5. Measurement only; no default changed.
+
+### Measured
+- **The prefill rare-expert skip fails its quality gate; closed.** The DI-2 long gate (three 8,192-token texts, 576 teacher-forced positions): the same-day keep 140 control reproduces 0.74.0 to every digit (KL 0.0020, top-1 98.8 %); `CACHALOT_PREFILL_RARE_SKIP=1` KL 0.0118 and `=2` KL 0.0121, both at or above the noise arm's 0.0116 (outside noise, top-1 95.8 % and 94.6 %). Registered predictions: R-1 held, R-2 and R-3 falsified; the server A/B (R-4 to R-7) was not run, by the record's rule.
+- Why the price misled (derived from the trace): the pooled dropped mass (0.2-0.5 %) hides that each affected row loses a median 12.5 % of its own routed weight, and about half of all tokens are hit in at least one of 40 layers.
+
+### Changed
+- Nothing in code. The knob stays, off, as an instrument.
+
 ## 0.78.0 (2026-11-03)
 
 HANDOFF "Start here (2026-11-03, 0.78.0)" and section 18.259; record, prices and harness in `docs/prefill-rare-skip/`. A default-off knob, priced offline, predictions registered before any run; no default changed.

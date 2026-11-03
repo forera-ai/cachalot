@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-11-03, 0.78.1): the prefill rare-expert skip failed its quality gate and is closed
+>
+> Section 18.260, `docs/prefill-rare-skip/RECORD.md` section 5. KL 0.0118 (k = 1) and 0.0121 (k = 2) against the noise arm's 0.0116; the control reproduced 0.74.0 exactly. The server A/B was not run. The knob stays off. **Open:** the speed lane has no priced lever left on DeepSeek prefill or decode that keeps quality; next is Hamed's call (another lane, or a live check of something already shipped).
+
 > ## Start here (2026-11-03, 0.78.0): `CACHALOT_PREFILL_RARE_SKIP` built, off, priced; its gate and server A/B are registered and wait for a run
 >
 > Section 18.259, record `docs/prefill-rare-skip/RECORD.md`. Hamed chose the speed lane. Follow-up prefills are read-bound; in the 1017 Hermes traces experts that one or two rows of a 4,096-row call route to are 16-30 % of the reads on 1.3-2.4k-token follow-ups at 0.2-0.8 % of routing mass (derived). The knob skips them in calls of at least 1,024 rows and rescales the rows' other weights; snapshots keyed on it. **Needs Hamed:** `sudo sysctl iogpu.wired_limit_mb=88064` (read 0), then his go for the gate (about 20 minutes) and the server ABBA (about 20 minutes). Any default is his call.
@@ -9554,6 +9558,20 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.260 Prefill rare-expert skip: the quality gate falsifies it (0.78.1)
+
+**Goal.** Hamed, 2026-11-03: "Sysctl set, run both". Before the run he re-applied `iogpu.wired_limit_mb=88064` (it had not taken the first time), a llama-server holding 17.7 GiB was stopped, and `sudo purge` cleared about 40 GiB of active file cache it left, which kept `settle.sh` under its 63 GiB need until a 603 s timeout (no arm ran in that attempt).
+
+**Method.** `docs/prefill-rare-skip/run-gate.sh` at commit 6f8e16b: keep 140 (same-day control), `rare1`, `rare2`, each one guarded process at 34 GiB with settle between, scored against the 0.74.0 reference and noise arm (texts hash `05a1148ccc1ff338`). 238-242 s an arm, peak swap 0 MB, peak wired 61.6-62.6 GiB.
+
+**Result (measured).** Control: KL 0.0020 / 0.129, top-1 98.8 %, dNLL -0.0041, identical to 0.74.0's keep 140 (R-1 held). `rare1`: KL **0.0118** / 0.240, top-1 95.8 %, dNLL +0.0061 [-0.0070, +0.0199], outside noise (R-2 falsified). `rare2`: KL **0.0121** / 0.200, top-1 94.6 %, outside noise (R-3 falsified). Noise arm 0.0116. The server ABBA (R-4 to R-7) was not run: the record made it conditional on a setting inside noise.
+
+**Explanation (derived, hypothesis).** The price's quality proxy, routing mass pooled over every row of a layer, was the wrong one. Per row (trace s1, single-call follow-ups of 1,024-4,096 tokens): 1.9 % of a layer's rows are touched at k = 1 (4.4 % at k = 2), and each loses a median 12.5 % of its own routed weight (p90 18.9 %), about one expert of six; over 40 layers about half of all tokens are hit at least once. Rows routed to rare experts are the unusual ones. Lesson for any later drop rule: price the per-affected-row loss and the share of tokens hit across layers, not the pooled mass.
+
+**Closed.** P-RARE as built, at k = 1 and 2, min rows 1,024. Not worth testing on this evidence: a smaller min rows, a residency-aware variant, a substitution variant (router-share substitution lost to the drop in 18.62). Knob kept, off.
+
+**Kind.** Research: predicted, measured and explained as hypothesis (R-1 held, R-2 and R-3 falsified, R-4 to R-7 not run by the registered rule). No default changed.
 
 ### 18.259 Prefill rare-expert skip: priced from the 1017 traces, built behind a knob, predictions registered (0.78.0)
 

@@ -43,10 +43,29 @@ Server ABBA (`run-all.sh`, `RARE_K` = the largest k that passed the gate, defaul
 
 Runtime estimate: gate about 20 minutes (three arms of about 5 minutes and settles), server ABBA about 20 minutes. Both need `iogpu.wired_limit_mb` at 88064 (it read 0 on 2026-11-03) and no other runtime.
 
-## 5. Results
+## 5. Results (measured 2026-11-03, runtime 0.78.0, commit 6f8e16b)
 
-Not run yet.
+**Run.** `run-gate.sh`, 11:58-12:11, sysctl 88064 (Hamed re-applied it, and ran `sudo purge` after a stopped llama-server left about 40 GiB of active file cache that held `settle.sh` below its 63 GiB), no other runtime, peak swap 0 MB in every arm, 238-242 s an arm, peak wired 61.6-62.6 GiB. Texts hash `05a1148ccc1ff338` (the 0.74.0 gate's). Report in `report.txt`; raw `.npz` in the gitignored `benchmarks/results/pareto-rare/`.
+
+| arm | verdict | dNLL nats [95 % CI] | KL mean / max | top-1 |
+|---|---|---|---|---|
+| noise-chunk3000 (0.74.0) | noise arm | -0.0042 [-0.0245, +0.0167] | 0.0116 / 0.283 | 95.3 % |
+| keep140 (control) | inside noise | -0.0041 [-0.0104, +0.0037] | 0.0020 / 0.129 | 98.8 % |
+| rare1 | **outside noise** | +0.0061 [-0.0070, +0.0199] | **0.0118** / 0.240 | 95.8 % |
+| rare2 | **outside noise** | -0.0058 [-0.0202, +0.0086] | **0.0121** / 0.200 | 94.6 % |
+
+**Scored.**
+- **R-1 held:** the same-day control reproduced 0.74.0's keep140 to every printed digit (KL 0.0020 / 0.129, top-1 98.8 %, dNLL -0.0041), so the gate is comparable.
+- **R-2 falsified:** `rare1` KL 0.0118, at the noise arm's 0.0116 (registered falsifier: at or above it), verdict outside noise, top-1 95.8 % (predicted at least 97.5 %).
+- **R-3 falsified:** `rare2` KL 0.0121, verdict outside noise, top-1 94.6 % (predicted at least 97.0 %).
+- **R-4 to R-7 not run:** the quality falsifier closes both settings, and section 4 made the server ABBA conditional on a setting that passes. About 20 minutes of machine time not spent.
+
+That the knob acted is shown by the gate itself (KL 0.0020 to 0.0118 with only the knob changed). Its `[request]` counter was not exercised (no server run).
+
+**Explanation (derived, a hypothesis about why the price misled).** The price measured the dropped mass pooled over every row of a layer (0.2-0.5 % at k = 1), which says nothing about the rows that lose it. Recomputed per row on trace s1's single-call follow-ups of 1,024-4,096 tokens: the rule touches 1.9 % of a layer's rows at k = 1 (4.4 % at k = 2), and each touched row loses a median 12.5 % of its own routed weight (mean 13.7 %, p90 18.9 %; k = 2 12.7 / 14.3 / 21.4 %), that is, about one of its six experts. Over 40 layers that reaches about half of all tokens at least once (1 - 0.981^40 = 54 %, assuming independence), and the rows hit are the unusually routed ones. The KL then sits at the noise arm's level, not at the pooled mass's. The two settings land close together (0.0118 and 0.0121), consistent with the per-row loss, not the number of rows, setting the size.
+
+**Closed.** P-RARE as built (residency-blind, min rows 1,024, k = 1 or 2) on the long gate. Not tested and not worth it on this evidence: smaller min rows (the mass per affected row only grows in short calls); a residency-aware variant (same rows lose the same weight); a substitute-a-resident-expert variant (router-share substitution was closed against the decode miss budget in 0.58.0, HANDOFF 18.62). The knob stays in the code, off, as an instrument; removing it would be a major version.
 
 ## 6. Kind
 
-Planning, an instrument and a default-off knob (predictions committed first). No default changed.
+Research: predicted, measured and explained as hypothesis. R-1 held, R-2 and R-3 falsified, R-4 to R-7 not run by the registered rule. No default changed.
