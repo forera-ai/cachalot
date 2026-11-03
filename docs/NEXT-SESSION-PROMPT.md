@@ -1,11 +1,12 @@
-# Next-session prompt — **v310**, written 2026-11-03
+# Next-session prompt — **v311**, written 2026-11-03
 
 **This is the file to paste.** `docs/NEXT-SESSION-PROMPT.md` is always current; superseded ones live in
 `docs/next-session-prompts/`.
 
 | version | written | produced by | what changed |
 |---|---|---|---|
-| **v310** | 2026-11-03 | Hamed: "Build and test it" (V-1) | **0.79.0: `CACHALOT_VISION_MIN_PIXELS=N` (default off) upscales small images before the tower; at 810,000 the 492-px screenshot gets 486 image tokens: Hermes `vision_analyze` detours 10/20 against 17/20 (p = 0.041), transcription errors 1 of 10; +288 prompt tokens. Lab brief 0.79.0.** §18.264 |
+| **v311** | 2026-11-03 | Hamed: "Live session first" (then drove the session) | **0.79.1, measurement: live Hermes session with `CACHALOT_VISION_MIN_PIXELS=810000`: the address screenshot answered in text first try with no error; a new 361 x 108 screenshot read exactly after a `vision_analyze` load; rest clean. Default still Hamed's call.** §18.265 |
+| v310 | 2026-11-03 | Hamed: "Build and test it" (V-1) | **0.79.0: `CACHALOT_VISION_MIN_PIXELS=N` (default off) upscales small images before the tower; at 810,000 the 492-px screenshot gets 486 image tokens: Hermes `vision_analyze` detours 10/20 against 17/20 (p = 0.041), transcription errors 1 of 10; +288 prompt tokens. Lab brief 0.79.0.** §18.264 |
 | v309 | 2026-11-03 | Hamed: "Vision", then "Run it" (screenshot transcription replay) | **0.78.4, measurement: screenshot misreadings follow resolution, not the miss budget: exact misread the 492-px copy in 2 of 7 text replies, budget 0 0 of 3; the 906-px copy read cleanly 7 of 7; most replies called Hermes's `vision_analyze` instead (15/18, 11/18). Ground truth private.** §18.263 |
 | v308 | 2026-11-03 | Hamed: "Build Farsi probe", then "Run both" | **0.78.3: new `benchmarks/farsi_leak_probe.py` (teacher-forced Farsi sections from dumps, exact against budget 0). Latin-token mass ratio 0.97 (0.82-1.52), budget 0 higher in 3 of 6; exact gives the stray " mattered" 93 %. The English words in Farsi are the model's own; with 18.261 no Hermes defect outside tool calls is the budget's.** §18.262 |
 | v307 | 2026-11-03 | Hamed: "Switch lane", "Hermes: budget-0 defects", "Server replay A/B" | **0.78.2, measurement: the hummingbird turn's skipped translations replayed 16 times an arm: budget 0 skipped 0, exact 0 (registered inconclusive band; below ~17 % either way); one budget-0 unrequested tool call, one exact reply without the English rewrite. The replay's re-prefills are its own shape, not live (prefix-cache replay of three live dumps unchanged by a branch-point tier).** §18.261 |
@@ -271,6 +272,10 @@
 | v47 | 2026-09-25 | Hamed asked for the v44-v46 levers planned, built, measured and documented | **0.18.0: GLM prefill 60 to 90 tok/s, bit-identical (a store path that never evicts, plus the next layer read early), GLM's missing MLX buffer-cache cap added, GLM disk snapshots (a restart reuses the system block). DeepSeek: an `iostat` trace shows prefill is not read-bound on either drive; the lookahead A/B drowned in a 124-to-200 s drift across back-to-back prefills.** §17.1, §15.13 |
 | v46 | 2026-09-25 | Hamed asked for GLM-5.3-Flash on Cachalot | 0.17.0: GLM through `serve-glm.sh` / `chat-glm.sh`. §17 |
 | v45 | 2026-09-24 | same as v47, one day earlier | 0.16.0: disk snapshot store by last use; lookahead and local compression closed. §15.12 |
+
+## First jobs (v311): the vision upscale default is Hamed's call, with the live session in hand
+
+Read HANDOFF 18.265, 18.264. **Needs Hamed:** whether `serve.sh` exports `CACHALOT_VISION_MIN_PIXELS=810000` (evidence: replay 17/20 to 10/20 detours, p = 0.041; live: both small screenshots read exactly). If yes: export it like `CACHALOT_DECODE_TOOL_EXACT` (`${VAR-810000}`, `=0` or empty is off), a `tests/test_vision_upscale_default_on.py`, release. **Rules kept:** the earlier ones; the OCR truth file, dumps and exports stay private.
 
 ## First jobs (v310): the vision upscale knob's default is Hamed's call
 

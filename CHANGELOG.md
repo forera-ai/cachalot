@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.79.1 (2026-11-03)
+
+HANDOFF "Start here (2026-11-03, 0.79.1)" and section 18.265; `docs/v1017-image-upscale/RECORD.md` section 6. Measurement only; no default changed.
+
+### Measured
+- **A live Hermes session with `CACHALOT_VISION_MIN_PIXELS=810000`** (15 requests, one sample): the 492-pixel address screenshot was answered in text on the first try with no transcription error; a new 361 x 108 screenshot given as a file path went through Hermes's `vision_analyze` (the message held a path) and was then read exactly at 494 image tokens. Code, stories and translations (no English inside the Farsi) were fine.
+
 ## 0.79.0 (2026-11-03)
 
 HANDOFF "Start here (2026-11-03, 0.79.0)" and section 18.264; record, driver, scorer and report in `docs/v1017-image-upscale/`; Lab brief `docs/lab/briefs/2026-11-03-runtime-0.79.0.md`. A default-off knob, measured; no default changed.

@@ -73,6 +73,22 @@ instead of asking Hermes's vision tool for it, and its transcriptions are at lea
 (about 2-3 s of prefill at the measured short-prefill rates) and the rows of a different preprocessing (keyed apart). C3-sized images and
 larger are unchanged by construction. A default is Hamed's call; the evidence is one screenshot in three recorded copies.
 
-## 6. Kind
+## 6. Live Hermes session with the knob on (2026-11-03, 0.79.0)
+
+Hamed ran his usual script against `CACHALOT_VISION_MIN_PIXELS=810000 CACHALOT_SERVER_DUMP=$HOME/cachalot-dump-upscale.jsonl ./serve.sh`
+(the startup line confirmed the setting), plus one new screenshot. 15 requests, no error; the dump and Hermes's export stay outside the
+repository. One sample, not an A/B.
+
+- **The address-form screenshot (492 x 512, now 486 image tokens):** answered in text on the first try, no `vision_analyze` detour;
+  scored against the private truth file: no error (label, typed value without punctuation, five address lines, cities, button). Prefill
+  585 tokens in 12.66 s.
+- **A new screenshot** (361 x 108 JPEG of a calendar card, given as `@file:` in the user message; 494 image tokens instead of the
+  checkpoint's 202): the model called `vision_analyze` on the path (the message carried a path, not an image), Hermes's tool loaded the
+  image into the context, and the next reply transcribed all four strings exactly (two times, an event title, a location).
+- **The rest:** Desktop listing through `search_files` (whose `*` glob returned 1.5 MB; the model recovered with `terminal`), C# (builds
+  as a library; no `Main`, as a "no project" snippet), TypeScript (syntax check passes), Python (compiles), both stories, the fish
+  translations and the hummingbird rewrite with all three translations, no English word inside the Farsi. Decode 7.3-11.3 tok/s.
+
+## 7. Kind
 
 Research and a default-off knob: predicted, measured, explained as hypothesis (U-1 to U-3 held, U-4 split). No default changed.

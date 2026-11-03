@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-11-03, 0.79.1): live session with the vision upscale: both small screenshots read exactly
+>
+> Section 18.265. The address screenshot was answered in text on the first try with no error; a new 361 x 108 screenshot given as a path went through `vision_analyze` and was read exactly. Rest of the session clean. **Needs Hamed:** whether `serve.sh` sets `CACHALOT_VISION_MIN_PIXELS=810000`.
+
 > ## Start here (2026-11-03, 0.79.0): `CACHALOT_VISION_MIN_PIXELS` upscales small images; it halves Hermes's vision-tool detours on the small screenshot
 >
 > Section 18.264, `docs/v1017-image-upscale/RECORD.md`, Lab brief 2026-11-03-runtime-0.79.0. At 810,000 pixels the 492-pixel screenshot gets 486 image tokens instead of 198: tool calls 10/20 against 17/20 (p = 0.041), transcription errors 1 of 10. Off by default. **Needs Hamed:** whether `serve.sh` sets it (output-changing for small images only, +288 prompt tokens an image); a live Hermes image session with it would add a second screenshot.
@@ -9574,6 +9578,14 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.265 The vision upscale in a live Hermes session (0.79.1)
+
+**Goal.** Hamed, 2026-11-03: "Live session first" (before deciding the 18.264 default).
+
+**Session (measured, one sample).** `CACHALOT_VISION_MIN_PIXELS=810000 CACHALOT_SERVER_DUMP=$HOME/cachalot-dump-upscale.jsonl ./serve.sh` on the 0.79.0 defaults, 15 requests, no error. The 492-pixel address screenshot (486 image tokens): text answer on the first try, no transcription error against the private truth file (18.263 replay: 17 of 20 shipped replies detoured through `vision_analyze`). A new 361 x 108 screenshot given as an `@file:` path: `vision_analyze` on the path (a path, not an attached image), then an exact transcription of all four strings at 494 image tokens (the checkpoint's preprocessing gives it 202). Code (C# builds as a library, TypeScript syntax-checks, Python compiles), stories, translations (no English inside the Farsi) correct; decode 7.3-11.3 tok/s; the address image turn prefilled 585 tokens in 12.66 s. Details: `docs/v1017-image-upscale/RECORD.md` section 6.
+
+**Kind.** Measurement (a live check of a default-off knob). No default changed.
 
 ### 18.264 Upscaling small images before the vision tower (0.79.0)
 
