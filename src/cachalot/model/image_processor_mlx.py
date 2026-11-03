@@ -16,6 +16,7 @@ from __future__ import annotations
 import base64
 import io
 import math
+import os
 from dataclasses import dataclass
 from urllib.request import urlopen
 
@@ -32,6 +33,26 @@ class ImageProcessorConfig:
     max_n_token: int = 1024
     min_pixels: int = 544 * 544
     max_wh_ratio: float | None = None
+
+
+OFFICIAL_MIN_PIXELS = 544 * 544
+
+
+def min_pixels_from_env() -> int | None:
+    """CACHALOT_VISION_MIN_PIXELS (default off, docs/v1017-image-upscale/RECORD.md): a pixel count below which an image is upscaled
+    before the tower, in place of the checkpoint's 544 x 544. Unset, empty, 0 or a value at or under the official minimum is off.
+    Changes outputs for images only: a small screenshot gets more image tokens (still capped at max_n_token)."""
+    raw = os.environ.get("CACHALOT_VISION_MIN_PIXELS", "").strip()
+    if not raw:
+        return None
+    value = int(raw)
+    return value if value > OFFICIAL_MIN_PIXELS else None
+
+
+def image_config_from_env() -> ImageProcessorConfig:
+    """The checkpoint's preprocessing, with CACHALOT_VISION_MIN_PIXELS applied when set."""
+    value = min_pixels_from_env()
+    return ImageProcessorConfig() if value is None else ImageProcessorConfig(min_pixels=value)
 
 
 def num_image_tokens(n_llm_h: int, n_llm_w: int) -> int:

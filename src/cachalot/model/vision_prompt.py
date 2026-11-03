@@ -29,7 +29,9 @@ from dataclasses import dataclass, field
 import mlx.core as mx
 
 from cachalot.model.image_processor_mlx import (
+    OFFICIAL_MIN_PIXELS,
     ImageProcessorConfig,
+    image_config_from_env,
     load_image,
     load_image_bytes,
 )
@@ -141,6 +143,15 @@ def image_span_rows(
     )
 
 
+def image_digest(raw: bytes, image_cfg: ImageProcessorConfig) -> str:
+    """The key an image's rows and prefix-cache spans go by: the bytes, plus the upscale threshold when it is not the checkpoint's
+    (other rows, so another key; the official setting keeps the old digests)."""
+    h = hashlib.sha256(raw)
+    if image_cfg.min_pixels != OFFICIAL_MIN_PIXELS:
+        h.update(f"|min_pixels={image_cfg.min_pixels}".encode())
+    return h.hexdigest()[:32]
+
+
 class VisionEncoder:
     """ViT + aligner + delimiter vectors, loaded from the checkpoint on first use."""
 
@@ -148,11 +159,12 @@ class VisionEncoder:
         self,
         tensor_index,
         cfg: VisionConfig = VisionConfig(),
-        image_cfg: ImageProcessorConfig = ImageProcessorConfig(),
+        image_cfg: ImageProcessorConfig | None = None,
     ) -> None:
         self._index = tensor_index
         self.cfg = cfg
-        self.image_cfg = image_cfg
+        # CACHALOT_VISION_MIN_PIXELS (default off) raises the upscale threshold for small images
+        self.image_cfg = image_config_from_env() if image_cfg is None else image_cfg
         self._weights: VisionWeights | None = None
         self._delims: dict[str, mx.array] | None = None
         self._load_lock = threading.Lock()
@@ -192,7 +204,7 @@ class VisionEncoder:
     def encode(self, record: dict) -> tuple[mx.array, str]:
         """One image record -> (span rows [span_len, dim], content digest)."""
         raw = load_image_bytes(record)
-        digest = hashlib.sha256(raw).hexdigest()[:32]
+        digest = image_digest(raw, self.image_cfg)
         cached = self._rows.get(digest)
         if cached is not None:
             self._rows.move_to_end(digest)

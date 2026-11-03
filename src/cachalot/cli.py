@@ -285,6 +285,13 @@ def cmd_serve(args) -> None:
                 # default off, under test (docs/v1017-tool-exact/)
                 print("tool-call blocks decode exact: the miss budget is lifted from a reply's tool-call opener to its end "
                       "(CACHALOT_DECODE_TOOL_EXACT)", file=sys.stderr, flush=True)
+        from cachalot.model.image_processor_mlx import min_pixels_from_env
+
+        min_px = min_pixels_from_env()
+        if min_px is not None:
+            # default off, under test (docs/v1017-image-upscale/RECORD.md)
+            print(f"vision upscale: images under {min_px:,} pixels are upscaled before the tower (checkpoint: 544 x 544; changes outputs "
+                  f"for images only; CACHALOT_VISION_MIN_PIXELS)", file=sys.stderr, flush=True)
         from cachalot.model.prefill_rare_skip import rare_skip
 
         rare = rare_skip()
