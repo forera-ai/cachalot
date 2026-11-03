@@ -6,7 +6,8 @@ Live Hermes sessions under `CACHALOT_DECODE_MISS_BUDGET=0` wrote one stray Engli
 ("mattered", "heard"). This probe takes the six recorded replies from the local server dumps (their exact prompt and reply token ids,
 `CACHALOT_SERVER_DUMP` reply rows), prefills the prompt and the reply up to its Farsi section once, snapshots that state, and then
 teacher-forces the recorded Farsi tokens one decode step at a time under each arm: exact (no budget) and budget 0, restoring the
-snapshot between them. Arms alternate which goes first per section, because the first arm warms the expert cache for the second.
+snapshot between them. Budget 0 goes first in every section, so it meets the expert cache the prefill left (as the live decode
+did); exact decode reads every expert, so its output does not depend on the cache the first arm leaves.
 
 Per forced position it records: the probability mass on tokens that carry two or more ASCII letters (the "leak" mass: a Latin word
 starting or continuing), the log-probability of the recorded token, the arm's top 1,024 log-probabilities (for KL between arms), and
@@ -119,6 +120,7 @@ def cmd_run(args) -> None:
     os.environ.setdefault("CACHALOT_PREFILL_DECODER_KEEP", "140")
     serve_defaults()
     from cachalot.model.api import V41Model
+    from cachalot.model.text_decode_runtime import IMAGE_TOKEN_ID
 
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -139,7 +141,8 @@ def cmd_run(args) -> None:
             targets = reply[s:]
             if args.limit:
                 targets = targets[: args.limit]
-            context = prompt + reply[:s]
+            # The conversations' one image is not rebuilt (no vision tower here): its placeholder tokens are removed, in both arms.
+            context = [t for t in prompt + reply[:s] if t != IMAGE_TOKEN_ID]
             stray = [i for i, t in enumerate(targets) if LATIN.search(rt.tokenizer.decode([t]))]
             t0 = time.perf_counter()
             rt.reset()
@@ -149,10 +152,13 @@ def cmd_run(args) -> None:
             res = rt.finish_decoder()
             snap = rt.snapshot(logits=res.logits)
             prefill_s = time.perf_counter() - t0
-            order = ["exact", "budget0"] if si % 2 == 0 else ["budget0", "exact"]
+            # budget 0 first, always: it then meets the expert cache the prefill left, as the live decode did; exact reads every
+            # expert, so its output does not depend on what the first arm left resident (the smoke run, exact first, saw 0 drops)
+            order = ["budget0", "exact"]
             print(f"[probe] {label} {name}:{row} sha {sha}: context {len(context):,} prefilled in {prefill_s:.0f} s, "
                   f"{len(targets)} Farsi tokens, stray at {stray}, order {order}", file=sys.stderr, flush=True)
-            info = {"dump": name, "row": row, "sha": sha, "context": len(context), "farsi_tokens": len(targets),
+            info = {"dump": name, "row": row, "sha": sha, "context": len(context),
+                    "image_tokens_removed": len(prompt) + s - len(context), "farsi_tokens": len(targets),
                     "stray_positions": stray, "stray_text": [rt.tokenizer.decode([targets[i]]) for i in stray],
                     "order": order, "prefill_s": round(prefill_s, 1)}
             for arm in order:
@@ -204,13 +210,14 @@ def cmd_report(args) -> None:
         print(f"| {label} | {info['farsi_tokens']} | {'/'.join(info['order'])} | {la:.4%} | {lb:.4%} | {lb / max(la, 1e-12):.2f} | "
               f"{b['skipped'].mean():.1f} | {kl:.4f} | {stray or '-'} |")
     ea, eb = np.concatenate(pooled["exact"]), np.concatenate(pooled["budget0"])
-    # a block bootstrap over 64-position blocks within the pooled sequence, for the ratio of means
+    # a block bootstrap over 64-position blocks (fewer for a smoke run) within the pooled sequence, for the ratio of means
     rng = np.random.default_rng(0)
-    nb = len(ea) // 64
+    bs = 64 if len(ea) >= 256 else max(1, len(ea) // 4)
+    nb = len(ea) // bs
     ratios = []
     for _ in range(2000):
         pick = rng.integers(0, nb, nb)
-        ia = np.concatenate([np.arange(k * 64, k * 64 + 64) for k in pick])
+        ia = np.concatenate([np.arange(k * bs, k * bs + bs) for k in pick])
         ratios.append(eb[ia].mean() / max(ea[ia].mean(), 1e-12))
     lo, hi = np.percentile(ratios, [2.5, 97.5])
     print(f"pooled: leak exact {ea.mean():.4%}, budget 0 {eb.mean():.4%}, ratio {eb.mean() / ea.mean():.2f} [95 % {lo:.2f}, {hi:.2f}], "

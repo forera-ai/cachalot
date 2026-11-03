@@ -20,10 +20,12 @@ shows as an occasional English word. Alternative: the model itself leaves that m
 For each section F1-F6 (pinned by dump file, reply row and the sha256 of its prompt and reply token ids): one process, 48 GiB, the
 `serve.sh` environment (`pareto.serve_defaults`, DI-1 + keep 140), max_seq_len 49,152. Prefill the recorded prompt plus the reply up to
 the line where Persian script begins (31-37k tokens, encoder-only in 4,096 calls, then the decoder tail), snapshot, then teacher-force
-the recorded Farsi tokens under each arm, restoring the snapshot between them: exact (no budget) and budget 0. The arm that goes first
-alternates by section (it warms the expert cache for the second). Per position: the probability mass on tokens with two or more ASCII
+the recorded Farsi tokens under each arm, restoring the snapshot between them: exact (no budget) and budget 0. **Amended before the
+full run (smoke finding):** budget 0 goes first in every section. The registered alternation let exact warm the cache for budget 0 (the
+smoke, exact first, saw 0 drops on 40 tokens); exact reads every expert, so its output does not depend on the cache the first arm leaves,
+and budget 0 first meets the cache the prefill left, as the live decode did. Per position: the probability mass on tokens with two or more ASCII
 letters ("leak"), the recorded token's log-probability, the top 1,024 log-probabilities (KL between arms on that support), the experts
-budget 0 dropped. Image rows are not rebuilt: the conversations' one image is prefilled as its placeholder tokens in both arms.
+budget 0 dropped. Image rows are not rebuilt: the conversations' one image has its placeholder tokens removed from the context in both arms (the runtime refuses placeholders without rows; found by the smoke run, fixed before the full run; the count removed is in the manifest).
 
 ## 4. Predictions (registered before any run)
 
@@ -42,4 +44,9 @@ Runtime estimate: a smoke run (`--only F1 --limit 40`, about 6 minutes) to check
 
 ## 5. Results
 
-Not run yet.
+**Smoke run (2026-11-03, `--only F1 --limit 40`).** The first attempt failed: the runtime refuses image placeholder tokens without image
+rows; the probe now removes them. The second: context 35,185 tokens prefilled in 177 s, both arms forced 40 tokens, leak 0.0034 % in
+each, 0 experts dropped by budget 0 (exact had gone first; see the amendment in section 3). Footprint 205 s, peak wired 76.0 GiB, peak
+swap 104 MB. The report's bootstrap needed at least 64 positions; fixed.
+
+**Full run.** Not run yet.
