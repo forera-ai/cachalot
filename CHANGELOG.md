@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.78.2 (2026-11-03)
+
+HANDOFF "Start here (2026-11-03, 0.78.2)" and section 18.261; record, driver and report in `docs/v1017-translate-skip/`. Measurement only; no default changed.
+
+### Measured
+- **Hermes's skipped translations do not reproduce on replay.** The hummingbird turn ("change the story ... and translate that to these 3 languages too") skipped its translations in 1 of 4 live sessions under the decode miss budget 0. Replayed from its four recorded copies through two fresh `serve.sh` servers, 16 replies an arm: budget 0 skipped 0 of 16, exact decode 0 of 16 (the registered inconclusive band; skip rate below about 17 % either way, one-sided 95 %). One budget-0 reply made a tool call instead of translating; one exact reply translated without the English rewrite.
+- Re-prefills in that replay (18-20k tokens on repeated requests) come from its shape (one prompt sent four times), not from live sessions: a replay of three live dumps through the prefix cache with a branch-point eviction tier prefills the same tokens as today.
+
+### Added
+- `docs/v1017-translate-skip/`: `driver.py` (streams, disconnects when a translation starts), `arm.sh`, `run-all.sh`, `analyse.py`, `RECORD.md`, `report.txt`.
+
 ## 0.78.1 (2026-11-03)
 
 HANDOFF "Start here (2026-11-03, 0.78.1)" and section 18.260; `docs/prefill-rare-skip/RECORD.md` section 5. Measurement only; no default changed.

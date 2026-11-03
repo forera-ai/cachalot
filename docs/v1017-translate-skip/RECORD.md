@@ -52,6 +52,44 @@ against 0 is p = 0.04.
 Runtime estimate: about 70 minutes (two arms of about 30 minutes: four conversation prefills and 16 English parts of about 85 s, plus a
 settle). Needs `iogpu.wired_limit_mb` at 88064, no other runtime.
 
-## 5. Results
+## 5. Results (measured 2026-11-03, runtime 0.78.1, harness commit 569b8d1)
 
-Not run yet.
+**Run.** `run-all.sh` 12:29-13:52, sysctl 88064, no other runtime; arm A 2,454 s, arm B 2,424 s, peak swap 128 MB in each (the guardian
+allows growth up to 512 MB), pressure 1. `report.txt` holds `analyse.py`'s output; the replies are in the gitignored
+`benchmarks/results/translate-skip/`.
+
+| arm | replies | translated | skip | cap | tool call | error |
+|---|---|---|---|---|---|---|
+| A, budget 0 (shipped) | 16 | 15 | **0** | 0 | 1 (H2) | 0 |
+| B, exact | 16 | 16 | **0** | 0 | 0 | 0 |
+
+Every translated reply was marked by a German heading after the English story (`**Deutsch**`, `## German`, ...), at 2,400-3,200
+characters, except one exact reply (H2, k = 2) that wrote "Here are the three translations of the hummingbird version" and went straight
+to `## German` with no English rewrite (195 characters): a different omission, under exact decode. The budget 0 tool call (H2, k = 2,
+758 tokens, 16.3 misses a token) is a tool call where the user asked for a translation; which tool is not recorded (no server dump in this
+run). Decode under budget 0: 9.6-11.4 tok/s at 4.6-16.3 misses a token.
+
+**Scored.**
+- **S-1 held:** arm A printed the budget line, arm B did not; 32 replies, no error.
+- **S-2 missed:** 0 skips of 16 under budget 0 (predicted 1 to 6).
+- **S-3 held:** 0 skips of 16 exact.
+- **S-4 not testable:** no skips. H1, the copy that skipped live, translated 4 of 4 under budget 0 and 4 of 4 exact.
+- **S-5 split:** no cap reply in either arm (held); one tool call under budget 0 (predicted none, missed).
+- **Falsifier and the inconclusive clause.** The written falsifier ("exact skips at least as often as budget 0") is met by its letter
+  (0 against 0), but this outcome is the one section 4 called inconclusive by design (budget 0 with 0-2 skips, exact 0). Read: no claim
+  that the budget causes the skip, and none that it does not.
+
+**What it does say (derived).** The live skip did not come back in 16 budget-0 replays of the same four turns. With 0 of 16 the skip
+rate on this replay is below about 17 % under budget 0 (one-sided 95 % bound, 1 - 0.05^(1/16) = 0.171), and also below it exact; the live 1 of
+4 is consistent with a rare event of a few percent in either mode. The replay differs from the live turn in one known way: a fresh
+server's expert cache instead of a session's, so budget 0 dropped what a fresh cache drops.
+
+**Side checks (measured offline, same session).** Arm A re-prefilled 18-20k tokens on every H4 request and on H3's last (177-201 s
+each) while only the 16k system block was reused. The cause is the replay shape: four requests share one prompt, each reply's snapshot
+makes the prompt's own snapshot "a prefix of another entry", which the 1.5 GiB prefix cache evicts first once full. Replaying the three
+live session dumps through `PrefixCache` with that tier changed (a snapshot with two or more extensions ranked with the leaves) prefills
+exactly the same tokens as today's order (134,162; 164,826; 34,785, no request different), so live Hermes sessions do not pay it; not a
+lever.
+
+**Kind.** Research: predicted and measured; the result falls in the registered inconclusive band (S-1, S-3 held; S-2 missed; S-4 not
+testable; S-5 split). No default changed.

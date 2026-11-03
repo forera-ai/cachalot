@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-11-03, 0.78.2): Hermes's skipped translations do not reproduce under budget 0 or exact
+>
+> Section 18.261, `docs/v1017-translate-skip/RECORD.md`. Hamed chose the Hermes lane. 16 replays an arm of the hummingbird turn: 0 skips under budget 0, 0 exact (inconclusive band, below ~17 % either way). Side: one budget-0 reply made an unrequested tool call; one exact reply dropped the English rewrite. **Open:** the stray English word in the Farsi (2 of 6 live) is untested; a full-reply replay of the fish translation turn would test it (long, estimate first). Next lane step is Hamed's call.
+
 > ## Start here (2026-11-03, 0.78.1): the prefill rare-expert skip failed its quality gate and is closed
 >
 > Section 18.260, `docs/prefill-rare-skip/RECORD.md` section 5. KL 0.0118 (k = 1) and 0.0121 (k = 2) against the noise arm's 0.0116; the control reproduced 0.74.0 exactly. The server A/B was not run. The knob stays off. **Open:** the speed lane has no priced lever left on DeepSeek prefill or decode that keeps quality; next is Hamed's call (another lane, or a live check of something already shipped).
@@ -9558,6 +9562,20 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.261 Hermes's skipped translations: a replay A/B of budget 0 against exact (0.78.2)
+
+**Goal.** Hamed, 2026-11-03: "Switch lane", then "Hermes: budget-0 defects" and "Server replay A/B". The live sessions under budget 0 showed two defects outside tool calls: the hummingbird turn skipped its three translations (1 of 4 recorded sessions) and the Farsi carried a stray English word (2 of 6 complete Farsi replies). No exact-decode sample of either existed.
+
+**Method.** `docs/v1017-translate-skip/` (predictions S-1 to S-5 committed first, 569b8d1): two fresh `serve.sh` servers on the 0.78.1 defaults, budget 0 then exact (`CACHALOT_DECODE_MISS_BUDGET=`), each replaying the four recorded hummingbird requests four times (temperature 0.7, 21 tools, streamed, `max_tokens` 1,500); the client disconnects at the first sign of a translation (a German/French/Farsi heading, Persian script or function words), so only the English part and the decision are generated. 12:29-13:52, sysctl 88064, peak swap 128 MB.
+
+**Result (measured).** Budget 0: 15 translated, 0 skips, 1 tool call. Exact: 16 translated, 0 skips. Fisher p = 1.0. S-1 and S-3 held, S-2 missed (predicted 1-6 skips), S-4 not testable, S-5 split (one unpredicted tool call under budget 0). The outcome is the registered inconclusive band: no claim either way about the budget causing the skip. Derived: on this replay the skip rate is below about 17 % in each mode (one-sided 95 %); the live 1 of 4 fits a rare event. One exact reply translated without the English rewrite (a different omission). Decode under budget 0 at 34-37k context: 9.6-11.4 tok/s.
+
+**Side check (offline).** The replay re-prefilled 18-20k tokens on repeated requests because one prompt was sent four times and its snapshot, shadowed by each reply's, is evicted first under the 1.5 GiB budget. Through `PrefixCache` with a branch-point tier, three live dumps prefill the same tokens as today (134,162 / 164,826 / 34,785): live sessions do not pay it; not a lever.
+
+**Not tested.** The stray English word in the Farsi (it needs full 3-4k-token replies of the fish turn: about 6 minutes a reply, so 16 replies an arm is over 3 hours); which tool the budget-0 reply called (no dump in the run).
+
+**Kind.** Research: predicted and measured, result in the registered inconclusive band. No default changed.
 
 ### 18.260 Prefill rare-expert skip: the quality gate falsifies it (0.78.1)
 
