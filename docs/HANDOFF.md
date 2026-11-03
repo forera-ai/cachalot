@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-11-03, 0.78.4): screenshot misreadings follow the image's resolution, not the miss budget
+>
+> Section 18.263, `docs/v1017-image-ocr/RECORD.md`. Hamed chose the vision lane. Exact decode misread the 492-pixel screenshot in 2 of 7 text replies, budget 0 in 0 of 3; the 906-pixel copy read cleanly 7 of 7. Most replies called Hermes's `vision_analyze` tool on the attached path instead. **Next (not built, Hamed's go):** a knob raising the minimum pixel count before the tower (small screenshots to about 900 px, about 500 image tokens), priced on this replay.
+
 > ## Start here (2026-11-03, 0.78.3): the English words in the Farsi are the model's own, not the miss budget's
 >
 > Section 18.262, `docs/v1017-farsi-leak/RECORD.md`, new `benchmarks/farsi_leak_probe.py`. Exact against budget 0 on six recorded Farsi sections: Latin-token mass ratio 0.97 (0.82-1.52); exact gives " mattered" 93 %. With 18.261, neither Hermes defect outside tool calls is the budget's. **Open:** nothing in the Hermes lane needs the runtime; prompt or temperature for translation turns would be a Hermes question. Next lane is Hamed's call.
@@ -9566,6 +9570,20 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.263 Screenshot transcription: a replay A/B of budget 0 against exact (0.78.4)
+
+**Goal.** Hamed, 2026-11-03: "Vision", then "Run it". Live transcriptions of Hermes's address-form screenshot had character errors (an added comma after the typed value in 0.77.0's session; two digit errors in 0.58.x), all decoded under budget 0.
+
+**Method.** `docs/v1017-image-ocr/` (predictions O-1 to O-4 committed first, dd90b8a): two fresh `serve.sh` servers, budget 0 then exact, each replaying the three recorded copies of the turn (C1 and C2 492 x 512 PNG, C3 906 x 943) six times, temperature 0.7, non-streaming; the scorer reads a ground truth kept in `~/cachalot-private/` and prints item ids only.
+
+**Result (measured).** Tool call (`vision_analyze` on the attached path) instead of a transcription: budget 0 15/18, exact 11/18 (p = 0.26). Text replies with a character error: budget 0 0 of 3 (all C3), exact 2 of 7 (both C2: an address number split or truncated, letters invented on digits). C3 read cleanly 7 of 7. O-1 held, O-2 missed, O-3 falsified (exact at least as bad as budget 0; the registered falsifier fired), O-4 not testable (no glued punctuation at all).
+
+**Explanation (derived, hypothesis).** Resolution: the official preprocessing (`vision_min_pixels` 544 x 544, cap 1,024 tokens) gives the 492-pixel screenshot about 198 image tokens of about 42 x 42 source pixels each; the 906-pixel copy gets about 530 and is read cleanly. Live, the image was prefilled in a 298-token call after the previous turn and the model answered in text both times; on a cold replay it mostly calls Hermes's vision tool, at the same prompt.
+
+**Next (not built).** `CACHALOT_VISION_MIN_PIXELS`-style upscaling of small images before the tower, measured with this replay on C1/C2; output-changing for images only; Hamed's go.
+
+**Kind.** Research: predicted, measured, explained as hypothesis; falsified on the budget question. No default changed.
 
 ### 18.262 English words in the Farsi: a teacher-forced probe of budget 0 against exact (0.78.3)
 

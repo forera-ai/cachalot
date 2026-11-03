@@ -306,6 +306,8 @@ The same configuration as a benchmark, with a colder working set than a conversa
 token (5.90 tok/s)** at an 83.5 % hit rate, reading 627 MiB per token, drive busy 55 % of decode,
 reproducible to ±0.3 %.
 
+**0.78.4 (2026-11-03): small screenshots, not the miss budget, cause the misread digits.** Replaying Hermes's screenshot turn, exact decode misread a 492-pixel screenshot as often as the shipped setting, while a 906-pixel copy of the same form was read cleanly every time (HANDOFF section 18.263). Upscaling small images before the vision tower is the next lever to test.
+
 **0.78.3 (2026-11-03): the English words in Farsi are the model's own.** A teacher-forced probe of six recorded Farsi translations shows the shipped decode miss budget leaves the share of English tokens unchanged (ratio 0.97), and with every expert read the model gives the stray word " mattered" 93 % at its position (HANDOFF section 18.262).
 
 **0.78.2 (2026-11-03): skipped translations do not reproduce.** A Hermes turn that once wrote only the English story and skipped the three translations was replayed 32 times; neither the shipped decode miss budget nor exact decode skipped once, so the miss budget is not shown to cause it (HANDOFF section 18.261).

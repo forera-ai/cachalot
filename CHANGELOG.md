@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.78.4 (2026-11-03)
+
+HANDOFF "Start here (2026-11-03, 0.78.4)" and section 18.263; record, driver, scorer and report in `docs/v1017-image-ocr/`. Measurement only; no default changed.
+
+### Measured
+- **Screenshot misreadings come from the image's resolution, not the decode miss budget.** The Hermes address-form turn replayed from three recorded copies, 18 replies an arm: text transcriptions had character errors in 0 of 3 under budget 0 and 2 of 7 under exact decode, both on the 492-pixel copy (address numbers split or truncated, letters invented on digits, the live kinds); the 906-pixel copy read cleanly in 7 of 7. Most replies called Hermes's `vision_analyze` tool on the attached path instead (15/18 budget 0, 11/18 exact, p = 0.26). The official preprocessing gives the 492-pixel screenshot about 198 image tokens. The ground truth stays outside the repository.
+
+### Added
+- `docs/v1017-image-ocr/`: `driver.py`, `arm.sh`, `run-all.sh`, `analyse.py` (reads a private truth file, prints item ids only), `RECORD.md`, `report.txt`.
+
 ## 0.78.3 (2026-11-03)
 
 HANDOFF "Start here (2026-11-03, 0.78.3)" and section 18.262; `docs/v1017-farsi-leak/RECORD.md`. A new instrument and a measurement; no default changed.

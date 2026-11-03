@@ -1,0 +1,9 @@
+A budget0: 18 replies, budget line yes; errors a reply 0.83, replies with any error 15/18; items {'tool_call': 15}
+   C1: errors [1, 1, 1, 1, 1, 1]
+   C2: errors [1, 1, 1, 1, 1, 1]
+   C3: errors [0, 0, 1, 1, 0, 1]
+B exact: 18 replies, budget line no; errors a reply 0.89, replies with any error 13/18; items {'tool_call': 11, 'row1': 2, 'row2': 2, 'row4': 1}
+   C1: errors [1, 1, 1, 1, 0, 1]
+   C2: errors [1, 2, 3, 1, 1, 1]
+   C3: errors [1, 0, 0, 0, 1, 0]
+errors a reply: budget 0 0.83, exact 0.89; permutation p = 1.000
