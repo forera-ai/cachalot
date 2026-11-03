@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.80.0 (2026-11-03)
+
+HANDOFF "Start here (2026-11-03, 0.80.0)" and section 18.266; Lab brief `docs/lab/briefs/2026-11-03-runtime-0.80.0.md`. Hamed's call.
+
+### Changed
+- **`serve.sh` upscales small images before the vision tower** (`CACHALOT_VISION_MIN_PIXELS=810000` unless the environment sets it; `=0` or an explicit empty value is the checkpoint's 544 x 544 preprocessing): an image under 810,000 pixels takes more image tokens (a 492 x 512 screenshot 486 instead of 198), capped at 1,024 as before. Evidence: replay 17/20 to 10/20 `vision_analyze` detours (p = 0.041, 18.264) and a live session that read two small screenshots exactly (18.265). Changes outputs for small images only; about 288 more prompt tokens such an image. `chat.sh` and the code default are unchanged.
+
+### Tests
+- New `tests/test_vision_upscale_default_on.py` (3 tests).
+
 ## 0.79.1 (2026-11-03)
 
 HANDOFF "Start here (2026-11-03, 0.79.1)" and section 18.265; `docs/v1017-image-upscale/RECORD.md` section 6. Measurement only; no default changed.

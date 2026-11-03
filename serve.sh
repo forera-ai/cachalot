@@ -67,6 +67,11 @@ export CACHALOT_DECODE_MISS_BUDGET=${CACHALOT_DECODE_MISS_BUDGET-0}
 # wrote 0 of 24 non-JSON arguments against 2 of 24, at no cost with the experts resident and about 3 s a call on a cold cache.
 # CACHALOT_DECODE_TOOL_EXACT=0 (or empty) keeps budget 0 inside tool calls too.
 export CACHALOT_DECODE_TOOL_EXACT=${CACHALOT_DECODE_TOOL_EXACT-1}
+# Small images are upscaled to about 900 x 900 pixels before the vision tower (Hamed's default since 0.80.0, HANDOFF 18.263-18.266): a
+# 492-pixel screenshot gets 486 image tokens instead of 198; Hermes's vision_analyze detours fell from 17 to 10 of 20 on replay and a
+# live session read two small screenshots exactly. Images at or above 810,000 pixels are unchanged; about 288 more prompt tokens a small
+# image. CACHALOT_VISION_MIN_PIXELS=0 (or empty) is the checkpoint's 544 x 544 preprocessing.
+export CACHALOT_VISION_MIN_PIXELS=${CACHALOT_VISION_MIN_PIXELS-810000}
 
 # DI-1 encoder-only prefill (Hamed's default since 0.72.0, HANDOFF 18.242, docs/DI1-DEFAULT-ON-PLAN.md): a text prompt of more than one
 # 4,096-token call runs layers 20 to 39 once over its last 2,541 rows; 0.668 of the full prefill's time on Hermes's large prefills

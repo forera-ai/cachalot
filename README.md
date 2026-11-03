@@ -306,6 +306,8 @@ The same configuration as a benchmark, with a colder working set than a conversa
 token (5.90 tok/s)** at an 83.5 % hit rate, reading 627 MiB per token, drive busy 55 % of decode,
 reproducible to ±0.3 %.
 
+**0.80.0 (2026-11-03): small images are upscaled by default.** `serve.sh` now gives a small screenshot about 2.5 times the image tokens before the vision tower, so DeepSeek reads it itself more often and as accurately; images of about 900 x 900 pixels and up are unchanged. `CACHALOT_VISION_MIN_PIXELS=0` restores the checkpoint's preprocessing (HANDOFF section 18.266).
+
 **0.79.1 (2026-11-03): the upscale in a live session.** With `CACHALOT_VISION_MIN_PIXELS=810000` a Hermes session read both small screenshots exactly, the address form on the first try without a tool detour (HANDOFF section 18.265). Still off by default.
 
 **0.79.0 (2026-11-03): an option to upscale small images.** `CACHALOT_VISION_MIN_PIXELS=810000` gives a small screenshot about 2.5 times the image tokens; on Hermes's screenshot turn the model then read the image itself in half the replies instead of 3 in 20, with transcriptions as accurate. Off by default (HANDOFF section 18.264).

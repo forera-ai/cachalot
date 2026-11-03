@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-11-03, 0.80.0): `serve.sh` upscales small images by default; `CACHALOT_VISION_MIN_PIXELS=0` is the checkpoint's preprocessing
+>
+> Section 18.266. Hamed's call after the replay (18.264) and the live session (18.265). Changes outputs for images under 810,000 pixels only. `chat.sh` and the code default stay off. **Open:** nothing in the vision lane needs the runtime; the house-number split at a bold search-highlight edge is untouched. Next lane is Hamed's call.
+
 > ## Start here (2026-11-03, 0.79.1): live session with the vision upscale: both small screenshots read exactly
 >
 > Section 18.265. The address screenshot was answered in text on the first try with no error; a new 361 x 108 screenshot given as a path went through `vision_analyze` and was read exactly. Rest of the session clean. **Needs Hamed:** whether `serve.sh` sets `CACHALOT_VISION_MIN_PIXELS=810000`.
@@ -9578,6 +9582,18 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.266 The vision upscale on by default in `serve.sh` (0.80.0)
+
+**Goal.** Hamed, 2026-11-03: "Yes, make default" (after 18.265).
+
+**Change.** `serve.sh` exports `CACHALOT_VISION_MIN_PIXELS=${CACHALOT_VISION_MIN_PIXELS-810000}` after the tool-exact export; `=0` or an explicit empty value keeps the checkpoint's 544 x 544 preprocessing. `chat.sh` (terminal chat) and the code default are unchanged. The startup line appears. Disk snapshots are unaffected (an image's key carries the setting; system blocks hold no images in Hermes's use). New `tests/test_vision_upscale_default_on.py` (3).
+
+**Evidence (recorded).** 18.264: replay on the two 492-pixel copies, `vision_analyze` detours 17/20 shipped against 10/20 (p = 0.041), transcription errors 1 of 10; 18.263: the misreadings follow resolution, not the decode miss budget; 18.265: a live session read the address screenshot in text on the first try and a new 361 x 108 screenshot exactly.
+
+**Not measured.** Large images (unchanged by construction); photographs; many small images in one context (each costs up to about 300 more tokens).
+
+**Kind.** A default change (Hamed's call) on recorded evidence; no new measurement.
 
 ### 18.265 The vision upscale in a live Hermes session (0.79.1)
 

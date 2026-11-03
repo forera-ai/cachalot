@@ -1,8 +1,8 @@
 # Experiment index (charter section 7.2 and section 10)
 
-Written 2026-10-09 against runtime 0.79.1; regenerate with `benchmarks/experiment_index.py`. The charter asks for "a file of experiment records whose predictions were written before the build". The records themselves live in `docs/HANDOFF.md` section 18 (each with Baseline, Prediction, Method, Result, Explanation, Limits, Kind); this file is the index: where each record is, whether it carries a written prediction, and what kind of result it is, as its own **Kind** line says. It does not restate results. Sections before 18.75 predate the record format and are not listed; sections without a **Kind** line are listed as unlabelled and have no claim made for them here.
+Written 2026-10-09 against runtime 0.80.0; regenerate with `benchmarks/experiment_index.py`. The charter asks for "a file of experiment records whose predictions were written before the build". The records themselves live in `docs/HANDOFF.md` section 18 (each with Baseline, Prediction, Method, Result, Explanation, Limits, Kind); this file is the index: where each record is, whether it carries a written prediction, and what kind of result it is, as its own **Kind** line says. It does not restate results. Sections before 18.75 predate the record format and are not listed; sections without a **Kind** line are listed as unlabelled and have no claim made for them here.
 
-Counts of the 191 sections listed (18.75-18.265): 97 research, 28 measurement, 25 unlabelled, 20 engineering, 19 planning, 2 pricing.
+Counts of the 192 sections listed (18.75-18.266): 97 research, 28 measurement, 26 unlabelled, 20 engineering, 19 planning, 2 pricing.
 
 Research means predicted, measured and explained (charter section 8.1 rule 6); a falsified prediction is still research and is marked so in its Kind line. Engineering means it works without a written prediction, or an instrument was built.
 
@@ -10,6 +10,7 @@ Research means predicted, measured and explained (charter section 8.1 rule 6); a
 
 | section | title | prediction written | kind (as recorded) |
 |---|---|:---:|---|
+| §18.266 | The vision upscale on by default in `serve.sh` (0.80.0) | no | A default change (Hamed's call) on recorded evidence; no new measurement. |
 | §18.265 | The vision upscale in a live Hermes session (0.79.1) | no | Measurement (a live check of a default-off knob). No default changed. |
 | §18.264 | Upscaling small images before the vision tower (0.79.0) | no | Research and a default-off knob. No default changed. |
 | §18.263 | Screenshot transcription: a replay A/B of budget 0 against exact (0.78.4) | no | Research: predicted, measured, explained as hypothesis; falsified on the budget question. No default changed. |
