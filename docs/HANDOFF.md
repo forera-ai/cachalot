@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-11-03, 0.78.3): the English words in the Farsi are the model's own, not the miss budget's
+>
+> Section 18.262, `docs/v1017-farsi-leak/RECORD.md`, new `benchmarks/farsi_leak_probe.py`. Exact against budget 0 on six recorded Farsi sections: Latin-token mass ratio 0.97 (0.82-1.52); exact gives " mattered" 93 %. With 18.261, neither Hermes defect outside tool calls is the budget's. **Open:** nothing in the Hermes lane needs the runtime; prompt or temperature for translation turns would be a Hermes question. Next lane is Hamed's call.
+
 > ## Start here (2026-11-03, 0.78.2): Hermes's skipped translations do not reproduce under budget 0 or exact
 >
 > Section 18.261, `docs/v1017-translate-skip/RECORD.md`. Hamed chose the Hermes lane. 16 replays an arm of the hummingbird turn: 0 skips under budget 0, 0 exact (inconclusive band, below ~17 % either way). Side: one budget-0 reply made an unrequested tool call; one exact reply dropped the English rewrite. **Open:** the stray English word in the Farsi (2 of 6 live) is untested; a full-reply replay of the fish translation turn would test it (long, estimate first). Next lane step is Hamed's call.
@@ -9562,6 +9566,20 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.262 English words in the Farsi: a teacher-forced probe of budget 0 against exact (0.78.3)
+
+**Goal.** Hamed, 2026-11-03: "Build Farsi probe", then "Run both" (smoke, then the full run). Two of six live Farsi translations under budget 0 held a stray English word ("mattered", "heard"); 18.261 left that untested because a free-running replay costs about six minutes a reply.
+
+**Instrument.** `benchmarks/farsi_leak_probe.py`: per recorded section (the six story replies with Farsi, pinned by dump row and token sha256) prefill the recorded prompt and the reply up to the Farsi line (DI-1 + keep 140, 48 GiB), snapshot, then teacher-force the recorded Farsi tokens under budget 0 and under exact decode, restoring the snapshot between them. Per position: probability on tokens with two or more ASCII letters, the recorded token's log-probability, top 1,024 log-probabilities (KL), experts dropped. Predictions L-1 to L-5 committed first (fae69d0). Two smoke findings fixed and committed before the full run (39c1b2f): image placeholder tokens are removed (no vision tower in the probe, same in both arms), and budget 0 goes first in every section (with exact first it dropped 0 experts; exact's output does not depend on the cache).
+
+**Result (measured, 2,306 s, 6,014 positions an arm).** Latin-token mass exact 0.0247 %, budget 0 0.0239 % a position, ratio 0.97 (block bootstrap 95 % 0.82-1.52), budget 0 higher in 3 of 6 sections (F4 2.12, F6 1.26, F5 1.03; F1 0.90, F3 0.84, F2 0.77). Budget 0 dropped 12.2-15.3 experts a token; KL between arms 0.0016-0.0107 a position. At the stray positions exact gives " mattered" 0.934 (budget 0 0.839), and at F2 ranks the Persian word first (0.925) with " heard" second (0.046; budget 0 0.016). L-4 held, L-1 and L-5 missed low, L-2 and L-3 falsified (the registered falsifier fired).
+
+**Explanation.** The stray words are the model's own choice at those positions, sampled at temperature 0.7 under either arm; the budget moves the distribution by a small KL in no consistent direction for Latin tokens. With 18.261, neither defect seen outside tool calls in the live sessions (skipped translations, English in the Farsi) is attributable to the decode miss budget.
+
+**Closed.** The miss budget as the cause of English words in Farsi. A prompt instruction or a lower temperature for translation turns is a Hermes-side question, not studied.
+
+**Kind.** Research: predicted, measured and explained; falsified. No default changed.
 
 ### 18.261 Hermes's skipped translations: a replay A/B of budget 0 against exact (0.78.2)
 

@@ -306,6 +306,8 @@ The same configuration as a benchmark, with a colder working set than a conversa
 token (5.90 tok/s)** at an 83.5 % hit rate, reading 627 MiB per token, drive busy 55 % of decode,
 reproducible to ±0.3 %.
 
+**0.78.3 (2026-11-03): the English words in Farsi are the model's own.** A teacher-forced probe of six recorded Farsi translations shows the shipped decode miss budget leaves the share of English tokens unchanged (ratio 0.97), and with every expert read the model gives the stray word " mattered" 93 % at its position (HANDOFF section 18.262).
+
 **0.78.2 (2026-11-03): skipped translations do not reproduce.** A Hermes turn that once wrote only the English story and skipped the three translations was replayed 32 times; neither the shipped decode miss budget nor exact decode skipped once, so the miss budget is not shown to cause it (HANDOFF section 18.261).
 
 **0.78.1 (2026-11-03): the prefill rare-expert skip is closed.** On the long quality gate, skipping experts that only one or two rows use moved the model as much as the noise arm does (KL 0.0118-0.0121 against 0.0116), because each affected token loses about an eighth of its routed weight. The knob stays off (HANDOFF section 18.260).

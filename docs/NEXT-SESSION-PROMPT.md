@@ -1,11 +1,12 @@
-# Next-session prompt — **v307**, written 2026-11-03
+# Next-session prompt — **v308**, written 2026-11-03
 
 **This is the file to paste.** `docs/NEXT-SESSION-PROMPT.md` is always current; superseded ones live in
 `docs/next-session-prompts/`.
 
 | version | written | produced by | what changed |
 |---|---|---|---|
-| **v307** | 2026-11-03 | Hamed: "Switch lane", "Hermes: budget-0 defects", "Server replay A/B" | **0.78.2, measurement: the hummingbird turn's skipped translations replayed 16 times an arm: budget 0 skipped 0, exact 0 (registered inconclusive band; below ~17 % either way); one budget-0 unrequested tool call, one exact reply without the English rewrite. The replay's re-prefills are its own shape, not live (prefix-cache replay of three live dumps unchanged by a branch-point tier).** §18.261 |
+| **v308** | 2026-11-03 | Hamed: "Build Farsi probe", then "Run both" | **0.78.3: new `benchmarks/farsi_leak_probe.py` (teacher-forced Farsi sections from dumps, exact against budget 0). Latin-token mass ratio 0.97 (0.82-1.52), budget 0 higher in 3 of 6; exact gives the stray " mattered" 93 %. The English words in Farsi are the model's own; with 18.261 no Hermes defect outside tool calls is the budget's.** §18.262 |
+| v307 | 2026-11-03 | Hamed: "Switch lane", "Hermes: budget-0 defects", "Server replay A/B" | **0.78.2, measurement: the hummingbird turn's skipped translations replayed 16 times an arm: budget 0 skipped 0, exact 0 (registered inconclusive band; below ~17 % either way); one budget-0 unrequested tool call, one exact reply without the English rewrite. The replay's re-prefills are its own shape, not live (prefix-cache replay of three live dumps unchanged by a branch-point tier).** §18.261 |
 | v306 | 2026-11-03 | Hamed: "Sysctl set, run both" (after `sudo sysctl`, stopping llama-server and `sudo purge`) | **0.78.1, measurement: the prefill rare-expert skip fails the long gate (KL 0.0118 at k=1, 0.0121 at k=2, noise 0.0116; control reproduced 0.74.0 exactly) and is closed; server A/B not run by the record's rule. Pooled mass was the wrong quality proxy: affected rows lose a median 12.5 % of their own weight.** §18.260 |
 | v305 | 2026-11-03 | Hamed: "Speed" (the lane, after 0.77.2) | **0.78.0: `CACHALOT_PREFILL_RARE_SKIP=k` (default off, min rows 1,024) skips experts that at most k rows of a prefill call route to and rescales the rows' other weights; priced on the 1017 traces (16-30 % of reads on 1.3-2.4k-token follow-ups at 0.2-0.8 % of routing mass, derived); gate and server ABBA registered with predictions R-1 to R-7, not run. `docs/prefill-rare-skip/`.** §18.259 |
 | v304 | 2026-11-03 | Hamed: "/ca read the prompts and handoffs and continue with remaining tasks" | **0.77.2, instrument only: `cache_sim.py` defaults `--floor-ms` 77 and `--miss-ms internal=1.62` (LEDGER DS1017-FLOOR-SRV, DS1017-MISS-48); `whatif.py` keeps its first-release constants on purpose. sysctl read 0 at session start.** §18.258 |
@@ -268,6 +269,10 @@
 | v47 | 2026-09-25 | Hamed asked for the v44-v46 levers planned, built, measured and documented | **0.18.0: GLM prefill 60 to 90 tok/s, bit-identical (a store path that never evicts, plus the next layer read early), GLM's missing MLX buffer-cache cap added, GLM disk snapshots (a restart reuses the system block). DeepSeek: an `iostat` trace shows prefill is not read-bound on either drive; the lookahead A/B drowned in a 124-to-200 s drift across back-to-back prefills.** §17.1, §15.13 |
 | v46 | 2026-09-25 | Hamed asked for GLM-5.3-Flash on Cachalot | 0.17.0: GLM through `serve-glm.sh` / `chat-glm.sh`. §17 |
 | v45 | 2026-09-24 | same as v47, one day earlier | 0.16.0: disk snapshot store by last use; lookahead and local compression closed. §15.12 |
+
+## First jobs (v308): the Hermes lane has nothing left for the runtime; ask Hamed which lane is next
+
+Read HANDOFF 18.262, 18.261, 18.260. Speed: no priced quality-keeping DeepSeek lever left (18.260). Hermes: both defects outside tool calls are the model's, not the miss budget's (18.261, 18.262); a translation-turn prompt or temperature change is a Hermes-side question for Hamed. **Ask Hamed which lane is next** (vision is the untouched one this session), or for a live Hermes session with `CACHALOT_SERVER_DUMP` set to watch the shipped defaults. **New instrument:** `benchmarks/farsi_leak_probe.py` (any "does the budget move token class X" question on recorded replies: change the mask). **Rules kept:** the earlier ones; dumps and Hermes exports stay out of the repository.
 
 ## First jobs (v307): the Hermes lane's skip defect does not reproduce; ask Hamed what is next
 
@@ -903,6 +908,7 @@ check `pgrep -f Flurry.appex` before each arm instead.
 
 ## What is closed, so nobody spends a session there
 
+- **Budget 0 as the cause of English words in Farsi (0.78.3, §18.262):** teacher-forced ratio 0.97 (0.82-1.52), exact gives " mattered" 93 %; the model's own.
 - **Budget 0 as the cause of skipped translations (0.78.2, §18.261):** 0 of 16 skips under budget 0 and 0 of 16 exact on the hummingbird turn; reopen only if live sessions show the skip again with a dump. **A branch-point eviction tier in `PrefixCache`:** live dumps prefill the same tokens with it.
 - **Prefill rare-expert skip, P-RARE (0.78.1, §18.260):** `CACHALOT_PREFILL_RARE_SKIP` k = 1 and 2 at min rows 1,024 are outside noise on the long gate (KL 0.0118, 0.0121 against 0.0116). Smaller min rows, residency-aware and substitution variants not worth testing (each affected row loses about one expert of six). Knob kept, off.
 - **DI-2 keep 140's server speed (0.74.1, §18.252):** -12.7 s on a cold 16k block, -11.1 s on 4.3k. Re-time only with a different keep or machine state.

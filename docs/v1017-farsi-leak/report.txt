@@ -1,0 +1,10 @@
+git {'sha': '39c1b2f', 'dirty': False}, budget 48.0 GiB, complete True
+| section | tokens | order | leak exact | leak budget 0 | ratio | dropped/token (b0) | KL mean | stray: logp exact / budget 0 |
+|---|---|---|---|---|---|---|---|---|
+| F1 | 1065 | budget0/exact | 0.0930% | 0.0841% | 0.90 | 14.8 | 0.0107 | ' mattered' -0.07 / -0.18 |
+| F2 | 1220 | budget0/exact | 0.0220% | 0.0169% | 0.77 | 12.2 | 0.0058 | ' heard' -3.08 / -4.16 |
+| F3 | 970 | budget0/exact | 0.0065% | 0.0054% | 0.84 | 14.6 | 0.0085 | - |
+| F4 | 951 | budget0/exact | 0.0109% | 0.0231% | 2.12 | 14.8 | 0.0033 | - |
+| F5 | 901 | budget0/exact | 0.0054% | 0.0055% | 1.03 | 15.0 | 0.0074 | - |
+| F6 | 907 | budget0/exact | 0.0010% | 0.0013% | 1.26 | 15.3 | 0.0016 | - |
+pooled: leak exact 0.0247%, budget 0 0.0239%, ratio 0.97 [95 % 0.82, 1.52], budget 0 higher in 3 of 6 sections; positions with leak > 5 %: exact 1, budget 0 2 of 6014

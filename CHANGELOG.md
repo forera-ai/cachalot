@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.78.3 (2026-11-03)
+
+HANDOFF "Start here (2026-11-03, 0.78.3)" and section 18.262; `docs/v1017-farsi-leak/RECORD.md`. A new instrument and a measurement; no default changed.
+
+### Added
+- `benchmarks/farsi_leak_probe.py` (tests `tests/test_farsi_leak_probe.py`): teacher-forces recorded Farsi translation sections from server dumps under exact decode and under the decode miss budget, restoring one prefilled snapshot between arms, and reports per position the probability on Latin-letter tokens, KL between arms, experts dropped and the recorded stray tokens.
+
+### Measured
+- **The decode miss budget does not put English words into Farsi.** Six recorded Farsi sections (6,014 tokens an arm): Latin-token mass 0.0247 % a position exact against 0.0239 % at budget 0 (ratio 0.97, 95 % 0.82-1.52; budget 0 higher in 3 of 6). At the two live stray words exact decode favours them more than budget 0 does: " mattered" 93.4 % against 83.9 %, " heard" 4.6 % against 1.6 %. The words are the model's own. Predictions: L-4 held, L-1 and L-5 missed low, L-2 and L-3 falsified.
+
 ## 0.78.2 (2026-11-03)
 
 HANDOFF "Start here (2026-11-03, 0.78.2)" and section 18.261; record, driver and report in `docs/v1017-translate-skip/`. Measurement only; no default changed.

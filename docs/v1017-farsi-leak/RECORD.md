@@ -49,4 +49,42 @@ rows; the probe now removes them. The second: context 35,185 tokens prefilled in
 each, 0 experts dropped by budget 0 (exact had gone first; see the amendment in section 3). Footprint 205 s, peak wired 76.0 GiB, peak
 swap 104 MB. The report's bootstrap needed at least 64 positions; fixed.
 
-**Full run.** Not run yet.
+**Full run (2026-11-03, commit 39c1b2f, 2,306 s).** One guarded process, 48 GiB, sysctl 88064, peak wired 75.7 GiB, peak swap 104 MB,
+pressure 1. Contexts 32,591-38,530 tokens prefilled in 164-194 s; 6,014 forced Farsi tokens an arm. `report.txt` holds the table; the
+per-position arrays are in the gitignored `benchmarks/results/farsi-leak/`.
+
+| section | tokens | leak exact | leak budget 0 | ratio | dropped a token (budget 0) | KL a position | stray token: log p exact / budget 0 |
+|---|---|---|---|---|---|---|---|
+| F1 | 1,065 | 0.0930 % | 0.0841 % | 0.90 | 14.8 | 0.0107 | " mattered" -0.07 / -0.18 |
+| F2 | 1,220 | 0.0220 % | 0.0169 % | 0.77 | 12.2 | 0.0058 | " heard" -3.08 / -4.16 |
+| F3 | 970 | 0.0065 % | 0.0054 % | 0.84 | 14.6 | 0.0085 | |
+| F4 | 951 | 0.0109 % | 0.0231 % | 2.12 | 14.8 | 0.0033 | |
+| F5 | 901 | 0.0054 % | 0.0055 % | 1.03 | 15.0 | 0.0074 | |
+| F6 | 907 | 0.0010 % | 0.0013 % | 1.26 | 15.3 | 0.0016 | |
+
+Pooled: leak exact 0.0247 %, budget 0 0.0239 %, ratio **0.97** (block bootstrap 95 % 0.82-1.52), budget 0 higher in 3 of 6 sections;
+positions with leak above 5 %: exact 1, budget 0 2 of 6,014.
+
+At the stray positions (top three, probabilities): F1 exact " mattered" 0.934, " اهمیت" 0.032, " مهم" 0.025; budget 0 " mattered"
+0.839, " اهمیت" 0.088, " مهم" 0.057. F2 exact " شن" 0.925, " heard" 0.046; budget 0 " شن" 0.973, " heard" 0.016.
+
+**Scored.**
+- **L-1 missed (low):** exact leak 0.0247 % a position, under the predicted 0.05-1.0 %.
+- **L-2 falsified:** ratio 0.97, budget 0 higher in 3 of 6 (predicted 1.2-3.0 and at least 4 of 6). The registered falsifier fires on
+  both counts (ratio at or below 1.05; budget 0 lower in 3 of 6).
+- **L-3 falsified:** exact gives both recorded stray tokens a higher probability than budget 0 does.
+- **L-4 held:** 12.2-15.3 experts dropped a forced token.
+- **L-5 missed (low):** KL 0.0016-0.0107 a position (predicted 0.01-0.10); only F1 reaches 0.01.
+
+**Explanation (measured at the two positions; the general reading a hypothesis).** The stray English words are the model's own: with
+every expert read, it puts 93 % on " mattered" at F1's position, where its Persian synonyms get 3 % and 2.5 %; at F2's it ranks the
+Persian word first and " heard" second (4.6 %). At temperature 0.7 such a word is sampled at about those rates, under either arm.
+Budget 0 changes the distribution by a small KL (mean about 0.006) in no consistent direction for Latin tokens.
+
+**Closed.** The decode miss budget as the cause of English words in Farsi. Not studied: whether a prompt instruction or a sampling
+rule (lower temperature for the translation turns) removes them; that is a Hermes/prompt question, not a runtime one.
+
+## 6. Kind
+
+Research: predicted, measured and explained (L-4 held; L-1 and L-5 missed low; L-2 and L-3 falsified, the falsifier fired). No default
+changed.
