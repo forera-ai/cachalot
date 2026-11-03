@@ -18,6 +18,7 @@ from cachalot.model.expert_metal import (
 from cachalot.model.fp4_sgmm_metal import (
     routed_expert_forward_sgmm,
 )
+from cachalot.model import prefill_rare_skip
 from cachalot.model.moe_prefill_batched import (
     route_topk_rows,
     routed_expert_forward_batched,
@@ -68,6 +69,8 @@ def _speculate_next_layer(layer_id, expert_index, expert_store, expert_prefetche
     expert_prefetcher.speculated = getattr(expert_prefetcher, "speculated", 0) + submitted
     return submitted
 SGMM_MAX_ROWS = int(os.environ.get("CACHALOT_SGMM_MAX_ROWS", "64"))
+# CACHALOT_PREFILL_RARE_SKIP (default off, changes outputs): docs/prefill-rare-skip/RECORD.md
+RARE_SKIP = prefill_rare_skip.rare_skip()
 
 
 
@@ -223,6 +226,11 @@ def moe_prefill_grouped(
                     float(router_weight),
                 )
             )
+
+    if RARE_SKIP is not None and batched:
+        # Experts only a few rows of a long call route to are not read; the rows' other weights are rescaled. A skipped
+        # (token, slot) pair keeps its zero in slot_buffer. Only the batched path: the per-token path needs every slot.
+        assignments, _ = prefill_rare_skip.plan_rare_skip(assignments, n_tokens, *RARE_SKIP)
 
     # Store each routed-expert result in its original top-k slot.
     #

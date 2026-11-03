@@ -1,11 +1,12 @@
-# Next-session prompt — **v304**, written 2026-11-03
+# Next-session prompt — **v305**, written 2026-11-03
 
 **This is the file to paste.** `docs/NEXT-SESSION-PROMPT.md` is always current; superseded ones live in
 `docs/next-session-prompts/`.
 
 | version | written | produced by | what changed |
 |---|---|---|---|
-| **v304** | 2026-11-03 | Hamed: "/ca read the prompts and handoffs and continue with remaining tasks" | **0.77.2, instrument only: `cache_sim.py` defaults `--floor-ms` 77 and `--miss-ms internal=1.62` (LEDGER DS1017-FLOOR-SRV, DS1017-MISS-48); `whatif.py` keeps its first-release constants on purpose. sysctl read 0 at session start.** §18.258 |
+| **v305** | 2026-11-03 | Hamed: "Speed" (the lane, after 0.77.2) | **0.78.0: `CACHALOT_PREFILL_RARE_SKIP=k` (default off, min rows 1,024) skips experts that at most k rows of a prefill call route to and rescales the rows' other weights; priced on the 1017 traces (16-30 % of reads on 1.3-2.4k-token follow-ups at 0.2-0.8 % of routing mass, derived); gate and server ABBA registered with predictions R-1 to R-7, not run. `docs/prefill-rare-skip/`.** §18.259 |
+| v304 | 2026-11-03 | Hamed: "/ca read the prompts and handoffs and continue with remaining tasks" | **0.77.2, instrument only: `cache_sim.py` defaults `--floor-ms` 77 and `--miss-ms internal=1.62` (LEDGER DS1017-FLOOR-SRV, DS1017-MISS-48); `whatif.py` keeps its first-release constants on purpose. sysctl read 0 at session start.** §18.258 |
 | v303 | 2026-11-02 | Hamed: "Yes, push 0.77.0", then "Yes, build it" (the max_tokens fit) | **0.77.1: an explicit `max_tokens` that does not fit is shortened to `max_seq_len` minus the prompt (DeepSeek and GLM/MiniMax engines), not refused; only a prompt with no room is refused. `ChatRequest.max_tokens_defaulted` removed.** §18.257 |
 | v302 | 2026-11-02 | Hamed: "Yes, push 0.76.0", "Live session first", then "Yes, make default" | **0.77.0: `serve.sh` exports `CACHALOT_DECODE_TOOL_EXACT=1` (`=0` or empty keeps budget 0 in tool calls). Live session with it: both tool calls valid first try, no retry, about +3 s a call cold; three defects outside tool calls (skipped translations, one English word in the Farsi, a comma in the image text). New `tests/test_tool_exact_default_on.py`.** §18.256 |
 | v301 | 2026-11-02 | Hamed: "Yes, push 0.75.1", then "Do A/B Test now" (exact decode inside tool-call blocks) | **0.76.0: `CACHALOT_DECODE_TOOL_EXACT=1` (default off) lifts the decode miss budget from a reply's tool-call opener to its end. Replay A/B of the Desktop turn, 24 replies an arm: non-JSON `limit` 2 of 24 at budget 0, 0 of 24 with the knob (p = 0.245; pooled with 18.243 4/34 against 0/34, p = 0.057); cost 0 warm, 15-30 % on tool-call tokens cold. New `tests/test_tool_exact_decode.py`.** §18.255 |
@@ -265,6 +266,10 @@
 | v47 | 2026-09-25 | Hamed asked for the v44-v46 levers planned, built, measured and documented | **0.18.0: GLM prefill 60 to 90 tok/s, bit-identical (a store path that never evicts, plus the next layer read early), GLM's missing MLX buffer-cache cap added, GLM disk snapshots (a restart reuses the system block). DeepSeek: an `iostat` trace shows prefill is not read-bound on either drive; the lookahead A/B drowned in a 124-to-200 s drift across back-to-back prefills.** §17.1, §15.13 |
 | v46 | 2026-09-25 | Hamed asked for GLM-5.3-Flash on Cachalot | 0.17.0: GLM through `serve-glm.sh` / `chat-glm.sh`. §17 |
 | v45 | 2026-09-24 | same as v47, one day earlier | 0.16.0: disk snapshot store by last use; lookahead and local compression closed. §15.12 |
+
+## First jobs (v305): run the registered prefill rare-skip gate, then its server A/B
+
+Read HANDOFF 18.259 and `docs/prefill-rare-skip/RECORD.md` (sections 2 and 4: price and predictions R-1 to R-7). **Before anything:** `sysctl -n iogpu.wired_limit_mb` must read 88064 (it read 0 on 2026-11-03; Hamed runs `sudo sysctl iogpu.wired_limit_mb=88064`), no other runtime, screensaver off. **Job 1, needs Hamed's go (about 20 minutes):** `docs/prefill-rare-skip/run-gate.sh` (keep140 control, rare1, rare2 against the 0.74.0 reference; R-1 must hold or the gate is void). **Job 2, needs his go (about 20 minutes):** `RARE_K=<largest k inside noise> docs/prefill-rare-skip/run-all.sh`, then `~/venvs/deepseek-v41/bin/python docs/prefill-rare-skip/analyse.py benchmarks/results/rare-server`. Score every prediction in the record (held / missed / falsified), write section 5, HANDOFF 18.260. A default stays Hamed's call; if the gate passes and the A/B wins, the next question is a live Hermes session with it on, then a smaller min rows (512) arm on a short-prompt gate. **If a falsifier fires, close the lever** and write why. **Rules kept:** the earlier ones; dumps and Hermes exports stay out of the repository.
 
 ## First jobs (v304): the autonomous job is done; ask Hamed which lane is next
 

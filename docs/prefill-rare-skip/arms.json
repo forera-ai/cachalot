@@ -1,0 +1,29 @@
+{
+ "about": "Prefill rare-expert skip quality gate (docs/prefill-rare-skip/RECORD.md): the DI-2 curve's long gate (docs/v1017-di2-curve/arms.json; texts pinned to git c1831dd, hash 05a1148ccc1ff338, recreated by run-gate.sh) on DeepSeek-V4.1-Flash-1017, internal bank, no hotlist. keep140 is the shipped prefill (DI-1 + keep 140), re-run as the same-day control; rareN adds CACHALOT_PREFILL_RARE_SKIP=N. The reference and the noise arm are the 0.74.0 files in benchmarks/results/pareto-di2 (no prefill numerics changed since).",
+ "base": {
+  "budget_gib": 34,
+  "max_seq_len": 8704,
+  "prefill": 8192,
+  "decode": 192,
+  "prefill_chunk": 4096,
+  "battery": false,
+  "texts": [
+   {"name": "prose", "path": "TEXTS/HANDOFF.md", "start": 1057561, "chars": 60000},
+   {"name": "code", "path": "TEXTS/text_decode_runtime.py", "start": 0, "chars": 60000},
+   {"name": "markdown", "path": "TEXTS/CHANGELOG.md", "start": 0, "chars": 60000}
+  ],
+  "env": {
+   "CACHALOT_MODEL_PATH": "/Volumes/X10Pro/Flash4-1/DeepSeek-V4.1-Flash-1017",
+   "CACHALOT_EXPERT_BANK": "/Users/hamedprooshani/DeepSeek-V4.1-Flash-1017-q2g128",
+   "CACHALOT_HOTLIST": ""
+  }
+ },
+ "reference": "ref",
+ "arms": [
+  {"name": "ref"},
+  {"name": "noise-chunk3000", "noise": true, "prefill_chunk": 3000},
+  {"name": "keep140", "encoder_only": true, "env": {"CACHALOT_PREFILL_DECODER_KEEP": "140"}},
+  {"name": "rare1", "encoder_only": true, "env": {"CACHALOT_PREFILL_DECODER_KEEP": "140", "CACHALOT_PREFILL_RARE_SKIP": "1"}},
+  {"name": "rare2", "encoder_only": true, "env": {"CACHALOT_PREFILL_DECODER_KEEP": "140", "CACHALOT_PREFILL_RARE_SKIP": "2"}}
+ ]
+}

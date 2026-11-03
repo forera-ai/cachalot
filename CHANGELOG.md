@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.78.0 (2026-11-03)
+
+HANDOFF "Start here (2026-11-03, 0.78.0)" and section 18.259; record, prices and harness in `docs/prefill-rare-skip/`. A default-off knob, priced offline, predictions registered before any run; no default changed.
+
+### Added
+- **`CACHALOT_PREFILL_RARE_SKIP=k`** (default off; `CACHALOT_PREFILL_RARE_MIN_ROWS`, default 1024): in a DeepSeek prefill call of at least that many rows, an expert that at most `k` rows route to is not read, and the affected rows' other router weights are rescaled to their original total (the decode miss budget's rescale). Blind to residency, so a snapshot with it on equals a cold prefill with the same setting; snapshots are keyed `-rare{k}m{min}`. Changes outputs. New module `cachalot.model.prefill_rare_skip`, a startup line and a cumulative ` rare_skip=` field on the `[request]` line when on (Lab brief `docs/lab/briefs/2026-11-03-runtime-0.78.0.md`).
+- `docs/prefill-rare-skip/`: `RECORD.md` (baseline, price, predictions R-1 to R-7 with falsifiers), `price_rows.py` and `price_reads.py` (offline price from a routing trace), `arms.json` and `run-gate.sh` (quality gate), `arm.sh`, `run-all.sh`, `analyse.py` and `short_prompt.txt` (server ABBA).
+
+### Measured, not shipped (derived offline)
+- On the two 1017 Hermes routing traces (HANDOFF 18.246), with the shipped DI-1/keep 140 eligibility and a per-layer LRU at 48 GiB: on single-call follow-ups of 1.3-2.4k tokens, `k=1` saves 16-18 % of expert reads (0.21-0.34 % of routing mass), `k=2` 28-30 % (0.51-0.81 %); over a session's follow-ups 6.8 % and 11.3 %. Not yet run on the machine.
+
+### Changed
+- `benchmarks/cache_sim.py` docstring names the 0.77.2 defaults.
+
+### Tests
+- New `tests/test_prefill_rare_skip.py` (7 tests).
+
 ## 0.77.2 (2026-11-03)
 
 HANDOFF "Start here (2026-11-03, 0.77.2)" and section 18.258. Instrument defaults only; no runtime, default or output changed.

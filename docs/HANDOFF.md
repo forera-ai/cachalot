@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-11-03, 0.78.0): `CACHALOT_PREFILL_RARE_SKIP` built, off, priced; its gate and server A/B are registered and wait for a run
+>
+> Section 18.259, record `docs/prefill-rare-skip/RECORD.md`. Hamed chose the speed lane. Follow-up prefills are read-bound; in the 1017 Hermes traces experts that one or two rows of a 4,096-row call route to are 16-30 % of the reads on 1.3-2.4k-token follow-ups at 0.2-0.8 % of routing mass (derived). The knob skips them in calls of at least 1,024 rows and rescales the rows' other weights; snapshots keyed on it. **Needs Hamed:** `sudo sysctl iogpu.wired_limit_mb=88064` (read 0), then his go for the gate (about 20 minutes) and the server ABBA (about 20 minutes). Any default is his call.
+
 > ## Start here (2026-11-03, 0.77.2): `cache_sim.py` defaults to the 1017 checkpoint's floor and miss cost
 >
 > Section 18.258. Instrument defaults only: `--floor-ms` 77 and `--miss-ms internal=1.62` (LEDGER DS1017-FLOOR-SRV, DS1017-MISS-48), the autonomous job v303 listed. `whatif.py` keeps its first-release constants on purpose (its validation is against first-release curves). The machine's `iogpu.wired_limit_mb` read 0 at session start (reset at a reboot): Hamed re-applies 88064 before any speed arm. **Open:** Hamed's choice of lane (Hermes, vision, speed); optional DI-2 continuation-case gate.
@@ -9550,6 +9554,20 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.259 Prefill rare-expert skip: priced from the 1017 traces, built behind a knob, predictions registered (0.78.0)
+
+**Goal.** Hamed, 2026-11-03: "Speed" (the lane, after 0.77.2). The honest ceiling (session skill): DeepSeek decode has no bit-identical lever left (18.249-18.255 and the closed list), so the search went to where a live Hermes session spends its time that no earlier lever touched: follow-up prefills of a few thousand tokens (DS1017-DI2-LIVE: 2,292 tokens in 24.2 s, 6,624 in 33.4 s), which 18.89 showed are bound by expert reads.
+
+**Price (derived offline; full numbers in `docs/prefill-rare-skip/RECORD.md` section 2).** `price_rows.py` and `price_reads.py` on 18.246's two 1017 routing traces: in follow-ups of 1,000-6,500 tokens, experts that only one row of a 4,096-position call routes to are 11-17 % of a layer's distinct experts at 0.2-0.5 % of its routing mass; at most two rows, 20-25 % at 0.4-1.2 %. With a per-layer LRU at 48 GiB and the shipped DI-1/keep 140 eligibility (layers 20-39 of a multi-call prompt see 140 rows and are never eligible), skipping them saves on single-call follow-ups of 1.3-2.4k tokens 16-18 % of reads (`k=1`) or 28-30 % (`k=2`); over session 1's 13 follow-ups 6.8 % or 11.3 %; on the 16k cold block 5.0 % or 8.7 %. At 1.0-1.6 ms of exposed drive time a read that is 2.4-3.9 s on a 2.4k follow-up at `k=2`. Session-wide single-digit percent: worth one gate and one A/B, not more without a result.
+
+**Build.** `cachalot.model.prefill_rare_skip` (`rare_skip`, `plan_rare_skip`, `snapshot_tag`, `log_field`, `STATS`); `moe_prefill_grouped` applies it on the batched path right after building the expert-to-rows map, before the store plans the layer, so skipped experts are neither read nor admitted. Rescale: each affected row's kept weights times its total over its kept total, as `moe_layer_metal` does for the decode budget; a skipped (row, slot) pair keeps its zero in `slot_buffer`. Residency-blind by design (a call's result depends only on the call), so snapshots stay reproducible; `snapshot_store.numerics_version` appends `-rare{k}m{min}`. Startup line and a cumulative ` rare_skip=<experts>/<mass %>` field on the `[request]` line when on (Lab brief 2026-11-03-runtime-0.78.0). `tests/test_prefill_rare_skip.py` (7): off by default, parsing, the min-rows bypass, the rescale (the affected row sums to its total, other rows bit-equal), rows counted not mass, the snapshot key, the log field. Full suite 1250 passed. Not run on the model yet (the machine's `iogpu.wired_limit_mb` read 0, which blocks benchmarks).
+
+**Predictions (registered in the record before any run).** R-1 the same-day keep 140 control reproduces 0.74.0 (KL 0.0015-0.0025); R-2 `rare1` KL 0.0020-0.0040, inside noise; R-3 `rare2` KL 0.0025-0.0060, inside noise; R-4 the startup line and counters appear in B arms only; R-5 the 2,300-token single-call prompt prefills 12-30 % faster at `k=2` (7-18 % at `k=1`), both B arms below both A arms; R-6 the Hermes block 3-9 % faster at `k=2` (a null inside the 1.5-3 % pair spread does not falsify); R-7 the block's greedy replies equal. Falsifiers: KL at or above the noise arm's 0.0116, or a short-prompt saving under 5 %.
+
+**Not done.** Prompts under 1,024 tokens (most of a session's small follow-ups) are left alone: their rare experts hold 1-17 % of the mass and the long gate cannot judge them. Decode is untouched.
+
+**Kind.** Planning, instruments and a default-off knob (predictions committed first). No default changed, nothing measured on the model.
 
 ### 18.258 `cache_sim.py` defaults follow the 1017 checkpoint (0.77.2)
 

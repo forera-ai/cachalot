@@ -10,11 +10,10 @@ It joins three things the repo already has but kept apart:
     runtime's own paths;
   * the cost model of docs/SPEED-RESEARCH-2026-10-03.md section 1.1,
     `token = floor + misses x cost per miss`, with the cost per miss of each
-    drive as a parameter. `--context-tokens N` adds DS-FLOOR-CTX's context term. Defaults cite docs/LEDGER.md: floor 80 ms
-    (DS-FLOOR-SRV, the server's all-resident token measured in 0.60.10; the
-    70 ms of DS-FLOOR-48 was a fit intercept) and 2.0 ms a miss on the
-    internal bank (DS-MISS-48, reproduced as 1.97 against that floor); the USB figure (10.2 ms) is still an estimate
-    from the 1.0 GB/s wall (ST-X10);
+    drive as a parameter. `--context-tokens N` adds DS-FLOOR-CTX's context term. Defaults cite docs/LEDGER.md: floor 77 ms
+    (DS1017-FLOOR-SRV, the 1017 checkpoint's all-resident server token, 0.73.0; the first release's was 80, DS-FLOOR-SRV)
+    and 1.62 ms a miss on the internal bank (DS1017-MISS-48; first release 2.0, DS-MISS-48); the USB figure (10.2 ms)
+    is still an estimate from the 1.0 GB/s wall (ST-X10);
   * the miss-drop rule of the MiniMax substitution (a missing expert whose
     router share of its layer is under tau is not read). It needs router
     weights, which traces recorded by 0.52.4 and later carry; older traces

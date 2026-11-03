@@ -285,6 +285,14 @@ def cmd_serve(args) -> None:
                 # default off, under test (docs/v1017-tool-exact/)
                 print("tool-call blocks decode exact: the miss budget is lifted from a reply's tool-call opener to its end "
                       "(CACHALOT_DECODE_TOOL_EXACT)", file=sys.stderr, flush=True)
+        from cachalot.model.prefill_rare_skip import rare_skip
+
+        rare = rare_skip()
+        if rare is not None:
+            # default off, under test (docs/prefill-rare-skip/RECORD.md)
+            print(f"prefill rare-expert skip: in a prefill call of at least {rare[1]} rows an expert routed by at most {rare[0]} rows "
+                  f"is not read and the rows' other weights are rescaled (changes outputs; snapshots keyed on it; "
+                  f"CACHALOT_PREFILL_RARE_SKIP)", file=sys.stderr, flush=True)
         from cachalot.model.generation import encoder_only_enabled
 
         if encoder_only_enabled():

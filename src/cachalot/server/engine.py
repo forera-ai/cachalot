@@ -18,6 +18,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field, replace
 from typing import Any
 
+from cachalot.model import prefill_rare_skip
 from cachalot.model.api import V41Model
 from cachalot.metrics.energy import log_fields
 from cachalot.model.generation import (
@@ -603,7 +604,8 @@ def _log_request(prompt, reused, prefill_s, completion, decode_s, finish, n_imag
     print(
         f"[request] prompt={prompt} reused={reused} prefilled={prompt - reused} "
         f"prefill={prefill_s:.2f}s completion={completion} decode={decode_s:.2f}s "
-        f"({tps:.2f} tok/s) images={n_images} spliced={spliced}{misses}{log_fields(energy)} finish={finish}{_mlx_memory()}",
+        f"({tps:.2f} tok/s) images={n_images} spliced={spliced}{misses}{log_fields(energy)}{prefill_rare_skip.log_field()} finish={finish}"
+        f"{_mlx_memory()}",
         file=sys.stderr,
         flush=True,
     )

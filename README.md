@@ -306,6 +306,8 @@ The same configuration as a benchmark, with a colder working set than a conversa
 token (5.90 tok/s)** at an 83.5 % hit rate, reading 627 MiB per token, drive busy 55 % of decode,
 reproducible to ±0.3 %.
 
+**0.78.0 (2026-11-03): a prefill rare-expert skip, off by default.** Follow-up prefills of a few thousand tokens wait on expert reads; in recorded Hermes sessions 16-30 % of those reads go to experts only one or two rows of the prompt use, holding well under 1 % of the routing weight. `CACHALOT_PREFILL_RARE_SKIP=k` skips them in prefill calls of at least 1,024 rows. Priced offline only; the quality gate and the server A/B are registered and wait for a run (HANDOFF section 18.259).
+
 **0.77.2 (2026-11-03): the cache simulator models the 1017 checkpoint.** `benchmarks/cache_sim.py` now defaults to 1017's measured 77 ms all-resident token and 1.62 ms a miss instead of the first release's 80 ms and 2.0 ms (HANDOFF section 18.258). Instrument only.
 
 **0.77.1 (2026-11-02): an oversized `max_tokens` is shortened, not refused.** A client asking for more new tokens than the context has room for now gets what fits, as a request without `max_tokens` already did; Hermes's retry at 65,536 tokens no longer fails (HANDOFF section 18.257).
