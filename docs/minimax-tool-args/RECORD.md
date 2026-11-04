@@ -28,12 +28,18 @@ reasoning effort none), non-streaming, `max_tokens` 1,500 (MiniMax may reason fi
 (a `search_files` call with an integer or absent `limit`), nonjson, other-call (another tool), no-call (text only, a lost call),
 error. Each arm's manifest records its environment; the driver records `/v1/stats` at the end.
 
+**Amended before any reply was produced (2026-11-03, Hamed: "Rerun at 48 GiB").** The first attempt at the shipped 68 GiB was stopped by
+the guardian 11 s after start (swap 57 to 1,467 MB under pressure 2; 74.8 GiB available against 97 GiB needed, with desktop apps and the
+screensaver running); no reply was produced. Both arms now run at `--expert-budget-gib 48`. A smaller budget means more missing
+experts, so the shipped arm substitutes more often than at 68 GiB: a harsher test of the same question. A clean shipped arm here covers
+68 GiB too; a broken one would need a 68 GiB check before any port is decided.
+
 ## 4. Predictions (registered before the run)
 
 - **M-1.** 24 replies, no error; every reply makes a tool call or (at most 2 an arm) answers in text.
 - **M-2.** Shipped: non-JSON arguments plus lost calls 0-2 of 12.
 - **M-3.** Exact: 0-1 of 12.
-- **M-4.** Decode 2.5-4.5 tok/s shipped, exact 10-30 % slower on the cold server.
+- **M-4.** Decode 2.5-4.5 tok/s shipped, exact 10-30 % slower on the cold server (at 48 GiB both nearer the low end).
 - **Decision rule.** Port tool-exact to MiniMax only if shipped has 3 or more bad replies and exact at most 1; otherwise record that
   MiniMax's tool arguments do not need it (with this sample's bound).
 
