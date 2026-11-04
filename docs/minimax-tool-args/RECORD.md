@@ -46,6 +46,32 @@ experts, so the shipped arm substitutes more often than at 68 GiB: a harsher tes
 Runtime estimate: about 70 minutes (two cold MiniMax servers, three prompt prefills of about 3 minutes each at 80-100 tok/s, 12 replies
 of 30-90 s, a settle). Needs `iogpu.wired_limit_mb` at 88064, the X10Pro mounted, no other runtime.
 
-## 5. Results
+## 5. Results (measured 2026-11-04, commit f92c80c, 48 GiB)
 
-Not run yet.
+**Run.** `run-all.sh` 11:26-12:04, sysctl 88064, mirror on, no other runtime; arms 991 s and 952 s, peak wired 78.5 / 77.8 GiB, peak
+swap 125 / 794 MB (1,467 MB of stale swap from the first attempt; the guardian measures growth). Arm B's manifest records both drops at
+0, arm A's leaves them at the 0.20 default; MiniMax's `/v1/stats` has no substitution counter (its `skipped_experts` is the DeepSeek
+store's and read 0 in both), so the manifests are the arm-state proof. `report.txt` holds `analyse.py`'s output.
+
+| arm | replies | non-JSON / lost call / error | calls |
+|---|---|---|---|
+| A, shipped (drop 0.20, substitution 4) | 12 | **0** | `terminal` 11 (`ls -la ~/Desktop`, 9 with `2>&1 | head -50`), `tool_call` 1 (Hermes's dispatcher, a deferred tool) |
+| B, exact | 12 | **0** | `terminal` 11, `search_files` 1 (no `limit`) |
+
+Every argument string parsed as JSON. Unlike DeepSeek, MiniMax chose `terminal` for the Desktop listing in 23 of 24 replies and never
+wrote an integer argument, so the integer-as-word failure of 18.243 was not exercised. Each request re-prefilled its 15.6-15.8k-token
+prompt (about 70 s; three rotating prompts did not stay in the prefix cache). Decode: shipped 5.25-11.69 tok/s, exact 4.32-5.97 tok/s
+on 30-69-token replies.
+
+**Scored.**
+- **M-1 held:** 24 replies, no error, every reply a tool call.
+- **M-2 held:** shipped 0 of 12 bad.
+- **M-3 held:** exact 0 of 12 bad.
+- **M-4 missed (high):** shipped decode 5.25-11.69 tok/s (predicted 2.5-4.5) on very short replies with the experts warm after each
+  prefill; exact 4.32-5.97, slower as predicted.
+- **Decision rule:** shipped had fewer than 3 bad replies: no tool-exact port to MiniMax. Bound: with 0 of 12 at a harsher budget than
+  shipped, the bad rate on this turn is under about 22 % (one-sided 95 %), and integer arguments are untested.
+
+## 6. Kind
+
+Research: predicted and measured (M-1 to M-3 held, M-4 missed high); the decision rule applied. No default changed.

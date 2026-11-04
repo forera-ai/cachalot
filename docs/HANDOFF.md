@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-11-04, 0.80.1): MiniMax's substitution leaves tool-call JSON intact; no tool-exact port
+>
+> Section 18.267, `docs/minimax-tool-args/RECORD.md`. Hermes Desktop turn on `serve-minimax.sh` at 48 GiB (68 needs a quiet machine: 97 GiB free), 12 replies an arm: 0 of 12 malformed shipped and exact. MiniMax used `terminal`, never an integer argument. **Open:** GLM (budget 2) has not been checked the same way; next is Hamed's call.
+
 > ## Start here (2026-11-03, 0.80.0): `serve.sh` upscales small images by default; `CACHALOT_VISION_MIN_PIXELS=0` is the checkpoint's preprocessing
 >
 > Section 18.266. Hamed's call after the replay (18.264) and the live session (18.265). Changes outputs for images under 810,000 pixels only. `chat.sh` and the code default stay off. **Open:** nothing in the vision lane needs the runtime; the house-number split at a bold search-highlight edge is untouched. Next lane is Hamed's call.
@@ -9582,6 +9586,20 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.267 MiniMax tool calls under its decode miss substitution: a replay A/B (0.80.1)
+
+**Goal.** Hamed, 2026-11-03: "MiniMax or GLM", then "MiniMax: tool-call replay" (does MiniMax need DeepSeek's tool-exact decode?), then "Rerun at 48 GiB" after the first attempt.
+
+**Method.** `docs/minimax-tool-args/` (predictions M-1 to M-4 committed first, c83baa0; amended to 48 GiB before any reply, f92c80c): two fresh `serve-minimax.sh --expert-budget-gib 48` servers, no disk snapshots, shipped (drop 0.20, substitution 4, prefill drop 0.20) then exact (both drops 0), each replaying 18.255's three recorded Hermes Desktop requests four times (temperature 0.7, 21 tools, `max_tokens` 1,500). The first attempt at 68 GiB was killed by the guardian 11 s after start (swap 57 to 1,467 MB at pressure 2; 74.8 GiB available against 97 GiB needed with ChatGPT, Codex, Chrome and the screensaver running).
+
+**Result (measured).** Shipped 0 of 12 malformed, lost or failed calls; exact 0 of 12; every argument string valid JSON. Calls: `terminal` 23 of 24 (`ls -la ~/Desktop`), one `tool_call` (Hermes's dispatcher, shipped), one `search_files` without `limit` (exact). Prefill 15.6-15.8k tokens about 70 s a request (the three rotating prompts did not stay cached); decode shipped 5.25-11.69, exact 4.32-5.97 tok/s on 30-69-token replies. M-1 to M-3 held, M-4 missed high.
+
+**Decision.** No tool-exact port to MiniMax (the registered rule needed 3 or more bad shipped replies). Bound: under about 22 % bad on this turn (one-sided 95 %, 0 of 12, at a harsher budget than shipped); integer arguments untested because MiniMax chose `terminal`.
+
+**Machine note.** MiniMax at 68 GiB needs about 97 GiB available: close desktop apps, stop the screensaver and `sudo purge` first.
+
+**Kind.** Research: predicted, measured, decision rule applied. No default changed.
 
 ### 18.266 The vision upscale on by default in `serve.sh` (0.80.0)
 

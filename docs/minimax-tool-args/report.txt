@@ -1,0 +1,30 @@
+A shipped: server stats substitution fields: 
+A shipped: 12 replies; {'other-call': 12}; limits []
+   decode 5.25-11.69 tok/s, completions [38, 30, 38, 38, 38, 38, 38, 69, 48, 38, 38, 38], manifest env drops: see benchmarks/results/minimax-tool-args/manifest-*.json
+   P1: other-call 'terminal'
+   P2: other-call 'terminal'
+   P3: other-call 'terminal'
+   P1: other-call 'terminal'
+   P2: other-call 'terminal'
+   P3: other-call 'terminal'
+   P1: other-call 'terminal'
+   P2: other-call 'tool_call'
+   P3: other-call 'terminal'
+   P1: other-call 'terminal'
+   P2: other-call 'terminal'
+   P3: other-call 'terminal'
+B exact: server stats substitution fields: 
+B exact: 12 replies; {'other-call': 11, 'valid': 1}; limits [None]
+   decode 4.32-5.97 tok/s, completions [38, 51, 30, 38, 30, 30, 38, 30, 30, 38, 30, 30], manifest env drops: see benchmarks/results/minimax-tool-args/manifest-*.json
+   P1: other-call 'terminal'
+   P3: other-call 'terminal'
+   P1: other-call 'terminal'
+   P2: other-call 'terminal'
+   P3: other-call 'terminal'
+   P1: other-call 'terminal'
+   P2: other-call 'terminal'
+   P3: other-call 'terminal'
+   P1: other-call 'terminal'
+   P2: other-call 'terminal'
+   P3: other-call 'terminal'
+bad (non-JSON, no call, error): shipped 0/12, exact 0/12; one-sided p (exact no worse by chance) = 1.000

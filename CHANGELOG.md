@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.80.1 (2026-11-04)
+
+HANDOFF "Start here (2026-11-04, 0.80.1)" and section 18.267; `docs/minimax-tool-args/`. Measurement only; no default changed.
+
+### Measured
+- **MiniMax's decode miss substitution does not break tool-call JSON.** The recorded Hermes Desktop turn through `serve-minimax.sh` at 48 GiB, 12 replies an arm: shipped (drop 0.20, substitution 4) 0 of 12 malformed or lost calls, exact 0 of 12. MiniMax listed the Desktop with `terminal` in 23 of 24 replies and never wrote an integer argument, so DeepSeek's integer-as-word failure was not exercised. No tool-exact port to MiniMax. A first attempt at the shipped 68 GiB was stopped by the guardian 11 s in (74.8 GiB available against 97 needed with desktop apps open).
+
+### Added
+- `docs/minimax-tool-args/`: `driver.py` (the 18.255 replay for any server, `max_tokens` argument, `/v1/stats` recorded), `arm.sh`, `run-all.sh`, `analyse.py`, `RECORD.md`, `report.txt`.
+
 ## 0.80.0 (2026-11-03)
 
 HANDOFF "Start here (2026-11-03, 0.80.0)" and section 18.266; Lab brief `docs/lab/briefs/2026-11-03-runtime-0.80.0.md`. Hamed's call.
