@@ -306,6 +306,8 @@ The same configuration as a benchmark, with a colder working set than a conversa
 token (5.90 tok/s)** at an 83.5 % hit rate, reading 627 MiB per token, drive busy 55 % of decode,
 reproducible to ±0.3 %.
 
+**0.80.2 (2026-11-05): GLM on screenshots.** Asked directly to transcribe, GLM-5.3-Flash read a small calendar card cleanly but made small letter errors on a 492-pixel address form in 3 of 4 replies (13 replies in all, HANDOFF 18.268). No upscale knob for GLM on this evidence; DeepSeek's upscale stays DeepSeek's.
+
 **0.80.1 (2026-11-04): MiniMax's tool calls stay well formed.** Replaying the Hermes tool turn on MiniMax-M3, its shipped decode approximation produced 0 malformed calls in 12, as exact decoding did, so DeepSeek's tool-exact fix is not needed there (HANDOFF section 18.267).
 
 **0.80.0 (2026-11-03): small images are upscaled by default.** `serve.sh` now gives a small screenshot about 2.5 times the image tokens before the vision tower, so DeepSeek reads it itself more often and as accurately; images of about 900 x 900 pixels and up are unchanged. `CACHALOT_VISION_MIN_PIXELS=0` restores the checkpoint's preprocessing (HANDOFF section 18.266).

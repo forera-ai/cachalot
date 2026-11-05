@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-11-05, 0.80.2): GLM misreads the address form, not the small card; no GLM upscale knob
+>
+> Section 18.268, `docs/glm-image-ocr/RECORD.md`. Direct transcription, no Hermes context, 40 GiB, budget 2, 13 replies (the guard's 3,000 s limit stopped the run): 492-pixel form 3 of 4 with an error, 906-pixel form 1 of 3, 361 x 108 card 0 of 3, padded card 0 of 3. Registered rule case (c), no knob. **Open:** padding on the form itself and exact decode are both untested; next is Hamed's call.
+
 > ## Start here (2026-11-04, 0.80.1): MiniMax's substitution leaves tool-call JSON intact; no tool-exact port
 >
 > Section 18.267, `docs/minimax-tool-args/RECORD.md`. Hermes Desktop turn on `serve-minimax.sh` at 48 GiB (68 needs a quiet machine: 97 GiB free), 12 replies an arm: 0 of 12 malformed shipped and exact. MiniMax used `terminal`, never an integer argument. **Open:** GLM (budget 2) has not been checked the same way; next is Hamed's call.
@@ -9586,6 +9590,22 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.268 GLM-5.3-Flash on small screenshots: a direct transcription test (0.80.2)
+
+**Goal.** Hamed, 2026-11-05: "GLM vision, ~30 min" from v313's first jobs: does GLM's tower also misread small screenshots? Then "Use 40 GiB" when memory fell short of 46.
+
+**Prediction.** `docs/glm-image-ocr/RECORD.md` section 4, committed first (4302c4e), amended to 40 GiB before any reply (ad0ddd0): G-1 prompt differences match the derived image tokens, G-2 906-pixel form at most 1 of 5 with an error, G-3 492-pixel form 1 to 3 of 5, G-4 361 x 108 card at least 2 of 5, G-5 the card padded to 902 x 270 at least 2 fewer.
+
+**Method.** One fresh `serve-glm.sh --expert-budget-gib 40` (budget 2, prefetch off, contiguous bank) under `guarded_run.sh --force`; the guard's sum asked 69 GiB, 63 GiB were available after `sudo purge` and closing Chrome and Word. Four images in rotation, Hamed's recorded words, temperature 0.7, no system prompt, no tools. GLM has no image-token floor beyond 16, so tokens are 342 (form, 492 x 512), 1,122 (form, 906 x 943), 52 (card) and 330 (padded card).
+
+**Result (measured).** The guardian's 3,000 s limit stopped the run at 13 of 20 replies; memory was not the cause (swap 1,792 to 1,933 MB, pressure level 1). 492-pixel form 3 of 4 with an error (one or two wrong letters in one address line, the same line each time); 906-pixel form 1 of 3 (one extra digit); card 0 of 3; padded card 0 of 3. Decode 0.86-0.94 tok/s at 65-71 misses a token. G-1 split (differences exact, 13 replies), G-2 and G-3 held so far, G-4 not supported, G-5 falsified as measured. The 35-minute estimate missed: replies ran 91-202 tokens and the first round's prefills 70-284 s.
+
+**Decision.** Registered case (c): no GLM upscale knob. Padding ran only on the card, which GLM read cleanly, so its effect on the form is not measured. Whether budget 2 causes the errors is open.
+
+**Reading (derived, hypothesis).** The token count alone does not order GLM's errors (52 tokens clean, 342 not). The card holds a few short strings in large type, the form long lines in small type; that is one screenshot of each kind at n = 3-4.
+
+**Kind.** Research: predicted, measured, explained as hypothesis; cut short by the guard's limit. No code or default changed.
 
 ### 18.267 MiniMax tool calls under its decode miss substitution: a replay A/B (0.80.1)
 

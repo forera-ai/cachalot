@@ -62,10 +62,40 @@ guard's count, short of 75 at 46 GiB (about 68 by GLM's real 5.5 GiB trunk, deri
 run uses `--force` with the guardian armed; about 62 GiB is the real need (derived). With fewer resident experts, budget 2 drops more, so
 errors here may lean above a 46 or 52 GiB run. Predictions and decision rule unchanged.
 
-## 5. Results
+## 5. Results (measured 2026-11-05, commit ad0ddd0)
 
-Not yet run.
+**Run.** One fresh `serve-glm.sh --expert-budget-gib 40`, 21:59-22:50, sysctl 88064, no other runtime, Chrome and Word closed, ChatGPT and
+Codex open. The guardian stopped it at its 3,000 s limit, not for memory: 13 of 20 replies landed (the other 7 rows are connection errors).
+My 35-minute estimate missed: replies ran 91-202 tokens, not about 60, and the first round's cold prefills took 70-284 s each. Free
+memory fell to 0.1 GiB, wired 63.8-65 GiB, swap 1,792 to 1,933 MB, pressure level 1 throughout. `report.txt` holds `analyse.py`'s output.
+
+| image | GLM image tokens | replies | with an error | reply tokens |
+|---|---|---|---|---|
+| A492 | 342 | 4 | **3** (row5 each time) | 164-202 |
+| A906 | 1,122 | 3 | 1 (row4) | 178-202 |
+| C361 | 52 | 3 | **0** | 106-116 |
+| C902 | 330 | 3 | 0 | 91-100 |
+
+Error kinds, read from a private diff by character class, no text kept: the A492 errors are one or two wrong letters in one address line;
+the A906 error is one extra digit. Every reply had all four city rows. Decode 0.86-0.94 tok/s, 65-71 misses a token, hit 75-78 %.
+
+**Scored.**
+- **G-1 split:** the prompt differences held exactly (780, 290, 278); no tool call; 13 replies, not 20 (the guard's limit).
+- **G-2 held so far:** 1 of 3; at most 1 of 5 is not settled.
+- **G-3 held so far:** 3 of 4, inside 1 to 3 of 5 only if a fifth reply were clean; a higher rate than A906.
+- **G-4 not supported:** 0 of 3; it would need both unrun replies wrong.
+- **G-5 falsified as measured:** the card had no errors for padding to remove.
+
+**Decision rule.** Case (c): errors on A492, G-5 missed, so no GLM knob. Limit: padding ran only on the card, which GLM read cleanly, so
+this does not show that padding fails on the address form. Whether budget 2 causes the errors is also open; an exact-decode control is
+Hamed's call.
+
+**Reading (derived, hypothesis).** The image token count alone does not order GLM's errors: 52 tokens read cleanly and 342 did not. The
+card holds a few short strings in large type; the form holds long lines in small type. That is one screenshot of each kind at n = 3-4,
+and 40 GiB leans towards more dropped experts than GLM's other runs. GLM's own rate on the form (4 of 7 across the two sizes) is no
+better than DeepSeek's recorded 2 of 6 and 1 of 10.
 
 ## 6. Kind
 
-Not yet scored.
+Research: predicted, measured, explained as hypothesis (G-1 split, G-2 and G-3 held so far, G-4 not supported, G-5 falsified); cut short by the
+guard's time limit. No code or default changed.

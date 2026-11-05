@@ -1,0 +1,5 @@
+20 replies, 7 errors
+A492: 4 replies, with an error 3, per reply [1, 1, 0, 1], items {'row5': 3}, prompt tokens [369], reply tokens 164-202, wall median 221.2 s, finish {'stop': 4}
+A906: 3 replies, with an error 1, per reply [1, 0, 0], items {'row4': 1}, prompt tokens [1149], reply tokens 178-202, wall median 231.0 s, finish {'stop': 3}
+C361: 3 replies, with an error 0, per reply [0, 0, 0], items {}, prompt tokens [79], reply tokens 106-116, wall median 125.9 s, finish {'stop': 3}
+C902: 3 replies, with an error 0, per reply [0, 0, 0], items {}, prompt tokens [357], reply tokens 91-100, wall median 107.5 s, finish {'stop': 3}

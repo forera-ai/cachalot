@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.80.2 (2026-11-05)
+
+HANDOFF "Start here (2026-11-05, 0.80.2)" and section 18.268; `docs/glm-image-ocr/`. Measurement only; no default changed.
+
+### Measured
+- **GLM-5.3-Flash on screenshots, direct transcription with no agent context.** 40 GiB, budget 2, 13 of 20 planned replies (the guard's 3,000 s limit stopped the run): a 492-pixel address form 3 of 4 with an error, its 906-pixel copy 1 of 3, a 361 x 108 calendar card 0 of 3, the card padded to 902 x 270 0 of 3. Image token count alone does not order the errors (52 tokens clean, 342 not). Registered decision: no GLM upscale knob; padding on the form and exact decode remain untested.
+
+### Added
+- `docs/glm-image-ocr/`: `driver.py`, `arm.sh`, `analyse.py`, `RECORD.md`, `report.txt`.
+
 ## 0.80.1 (2026-11-04)
 
 HANDOFF "Start here (2026-11-04, 0.80.1)" and section 18.267; `docs/minimax-tool-args/`. Measurement only; no default changed.
