@@ -28,7 +28,7 @@ about as good as at 1,122, and padding the card up to 330 tokens helps it. Alter
 
 ## 3. Design and method
 
-One fresh `./serve-glm.sh --expert-budget-gib 46` on the shipped GLM defaults (decode miss budget 2, prefetch off, contiguous bank), under
+One fresh `./serve-glm.sh --expert-budget-gib 40` (amended from 46, section 4) on the shipped GLM defaults (decode miss budget 2, prefetch off, contiguous bank), under
 `benchmarks/guarded_run.sh`. `driver.py 5`: five rounds over the four images, in rotation so that the warming expert cache falls on all
 four alike, 20 replies. Each request carries Hamed's recorded words ("check this image and write me what is written inside the image"),
 temperature 0.7, `reasoning_effort` none, `max_tokens` 400, no system prompt, no tools, non-streaming. The padded copy is made in the
@@ -39,7 +39,7 @@ the card against five strings read from the image (`ocr-truth-card.json`). Image
 output is item ids and counts.
 
 Limits, written first: no Hermes context, so this tests the tower and not Hermes's `vision_analyze` detour; five replies a cell; one
-screenshot of each kind; decode runs at budget 2, so an error is not separated from the budget by this run; 46 GiB as in GLM's other runs.
+screenshot of each kind; decode runs at budget 2, so an error is not separated from the budget by this run; 40 GiB, below GLM's other runs at 46.
 
 ## 4. Predictions (registered before the run)
 
@@ -56,6 +56,11 @@ padding does not help, no knob; an exact-decode control would separate the budge
 
 Runtime estimate: about 35 minutes (server start, 20 replies at about 2 minutes on a cold cache at 1.1-1.6 s a token). Needs no other
 runtime; the guard's arithmetic at 46 GiB asks for 75 GiB available.
+
+**Amendment before any reply (2026-11-05).** The budget is 40 GiB, not 46: `sudo purge` and closing Chrome and Word left 63 GiB by the
+guard's count, short of 75 at 46 GiB (about 68 by GLM's real 5.5 GiB trunk, derived). Hamed: "Use 40 GiB". The guard's sum at 40 is 69, so the
+run uses `--force` with the guardian armed; about 62 GiB is the real need (derived). With fewer resident experts, budget 2 drops more, so
+errors here may lean above a 46 or 52 GiB run. Predictions and decision rule unchanged.
 
 ## 5. Results
 
