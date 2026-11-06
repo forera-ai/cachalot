@@ -20,7 +20,7 @@ def wait_ready(timeout=900):
     return False
 
 
-bodies = [json.loads(l)["body"] for l in open(DUMP)]
+bodies = [json.loads(l).get("body") or {} for l in open(DUMP)]  # the dump also holds response rows, without a body
 bodies = [b for b in bodies if b.get("messages")]
 if not wait_ready():
     sys.exit("server not ready")

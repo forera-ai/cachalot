@@ -13,7 +13,7 @@ Alternative: the internal drive's sustained rate beside the GPU falls short, as 
 
 ## 3. Design
 
-One fresh `serve-glm.sh --expert-budget-gib 40` (amended from 46, section 4), same knobs as the live session, no disk snapshots, the same five requests from the private dump, non-streaming, bank at `~/GLM-5.3-Flash-bank` (byte-identical to the X10Pro copy, 44 files). One arm: the live session is the control, on a different run and with Hermes's window open.
+One fresh `serve-glm.sh --expert-budget-gib 46`, same knobs as the live session, no disk snapshots, the same five requests from the private dump, non-streaming, bank at `~/GLM-5.3-Flash-bank` (byte-identical to the X10Pro copy, 44 files). One arm: the live session is the control, on a different run and with Hermes's window open.
 
 ## 4. Predictions (registered before the run)
 
@@ -26,6 +26,8 @@ One fresh `serve-glm.sh --expert-budget-gib 40` (amended from 46, section 4), sa
 Runtime estimate: about 12 minutes.
 
 **Amendment before any reply (2026-11-06).** The budget is 40 GiB, not 46: after `sudo purge`, with Chrome and ChatGPT open, the guard counted 61 GiB, under the about 68 GiB that 46 needs and about the 62 that 40 needs. The internal disk has 12 GiB free, so a swap run is worth avoiding. Fewer resident experts lean against the arm: decode at 40 GiB ran 0.87-0.89 tok/s on the X10Pro (18.269) against the live session's 0.83-1.06. Predictions unchanged.
+
+**Second amendment, before any reply.** The 40 GiB attempt returned no data: `driver.py` crashed on the dump's response rows while the server loaded, and the server idled 40 minutes to the guard's limit (fixed in the driver and in `arm.sh`). The machine then showed 75 GiB, so the run goes back to the registered 46 GiB, the live session's budget.
 
 ## 5. Results
 

@@ -17,7 +17,8 @@ PY
 benchmarks/guarded_run.sh --budget-gib "$GIB" --max-seconds 2400 --force --tag "glm-speed-$TAG" -- ./serve-glm.sh --expert-budget-gib "$GIB" > "$D/$TAG.server.log" 2>&1 &
 GPID=$!
 sleep 10; ~/venvs/deepseek-v41/bin/python docs/glm-speed/driver.py > "$D/$TAG.driver.jsonl" 2>&1
-SPID=$(lsof -ti tcp:8011 -sTCP:LISTEN)
-[ -n "$SPID" ] && kill -INT $SPID
+# a driver that dies while the server loads must not leave it idling to the guard's limit: wait for the port, then stop it
+for _ in $(seq 1 120); do SPID=$(lsof -ti tcp:8011 -sTCP:LISTEN); [ -n "$SPID" ] && break; kill -0 $GPID 2>/dev/null || break; sleep 5; done
+[ -n "${SPID:-}" ] && kill -INT $SPID
 wait $GPID
 echo "arm $TAG done $(date +%T)"
