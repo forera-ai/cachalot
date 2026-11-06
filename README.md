@@ -306,6 +306,8 @@ The same configuration as a benchmark, with a colder working set than a conversa
 token (5.90 tok/s)** at an 83.5 % hit rate, reading 627 MiB per token, drive busy 55 % of decode,
 reproducible to ±0.3 %.
 
+**0.80.3 (2026-11-06): padding helps GLM read small text.** On GLM-5.3-Flash's weak case, a 492-pixel address form, enlarging the image before the tower took letter errors from 5 replies of 10 to 0 of 10, and exact decoding made no real difference (HANDOFF 18.269). This replaces the 0.80.2 reading below; a GLM upscale option is a candidate, not built.
+
 **0.80.2 (2026-11-05): GLM on screenshots.** Asked directly to transcribe, GLM-5.3-Flash read a small calendar card cleanly but made small letter errors on a 492-pixel address form in 3 of 4 replies (13 replies in all, HANDOFF 18.268). No upscale knob for GLM on this evidence; DeepSeek's upscale stays DeepSeek's.
 
 **0.80.1 (2026-11-04): MiniMax's tool calls stay well formed.** Replaying the Hermes tool turn on MiniMax-M3, its shipped decode approximation produced 0 malformed calls in 12, as exact decoding did, so DeepSeek's tool-exact fix is not needed there (HANDOFF section 18.267).

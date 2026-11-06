@@ -36,10 +36,32 @@ knob, and the GLM screenshot question closes as the model's own at this checkpoi
 
 Runtime estimate: about 2 hours (arm A about 45 minutes, a settle, arm B about 65 minutes at 190-200 tokens a reply, 0.9 and about 1.6 s a token).
 
-## 5. Results
+## 5. Results (measured 2026-11-05 to 06, commit 8c1ad8a)
 
-Not yet run.
+**Run.** `run-form.sh` 23:15-01:08, sysctl 88064, no other runtime, ChatGPT open; arm A 45 minutes, settle 25 s, arm B 67 minutes, against the
+2-hour estimate. No guard stop, pressure level 1, swap at most 2,033 MB (1,892 at the start), peak wired 67.1 GiB. `form-report.txt` holds
+`analyse-form.py`'s output.
+
+| decode | A492, 342 image tokens | A886, 1,056 image tokens | token, misses a token |
+|---|---|---|---|
+| budget 2 | 3 of 5 with an error | **0 of 5** | 1.14 s, 69-70 |
+| exact | 2 of 5 | **0 of 5** | 1.85 s, 118-121 |
+
+Pooled: native 5 of 10, padded 0 of 10, Fisher p = 0.033. Budget 2 3 of 10, exact 2 of 10, p = 1.0. Four errors are the row5 letters of
+`RECORD.md`; one exact reply got the button word wrong, the only one of its kind (without it native is 4 of 9, and the rule still holds).
+
+**Scored.** H-1 held (20 replies, difference exactly 714 in both arms, no stop). H-2 held (3 of 5). H-3 held (3 fewer). H-4 held (2 against 3). H-5 held (0 of 5).
+
+**Decision rule.** Case (a): padded is 5 of 10 fewer, so a GLM upscale knob is a candidate; a build is Hamed's go. Case (b) did not fire: exact is 1 of 10 fewer,
+so budget 2 is not what causes the form's errors.
+
+**Reading (derived, hypothesis).** Padding adds no pixels of information, yet GLM's letter errors on the form went from 5 of 10 to 0 of 10. As with DeepSeek (18.264), a larger
+image reaches the tower with each character spread over more patches. Pooled with `RECORD.md`'s runs, the native form is 8 of 14 and the padded copy 0 of 10; the true
+906-pixel copy had 1 of 3. The card's clean result at 52 tokens says the need depends on type size, not on the image's token count alone. One screenshot.
+
+**Cost not priced.** The padded image is 714 prompt tokens longer. Its first prefill cannot be compared here: it ran second, on a warmer cache (150 s against 265 s). A knob's
+threshold would also pad small images that read cleanly, such as the card.
 
 ## 6. Kind
 
-Not yet scored.
+Research: predicted, measured, explained as hypothesis (5 held). No code or default changed.

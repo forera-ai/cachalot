@@ -1,10 +1,11 @@
-# Next-session prompt — **v314**, written 2026-11-05
+# Next-session prompt — **v315**, written 2026-11-06
 
 **This is the file to paste.** `docs/NEXT-SESSION-PROMPT.md` is always current; superseded ones live in
 `docs/next-session-prompts/`.
 
 | version | written | produced by | what changed |
 |---|---|---|---|
+| **v315** | 2026-11-06 | Hamed: "Yes, ~2 hours" (v314 option 1) | **0.80.3, measurement: GLM address form, native 5 of 10 with an error, padded 0 of 10 (p = 0.033); budget 2 3 of 10, exact 2 of 10. A GLM upscale knob is a candidate, not built.** §18.269 |
 | **v314** | 2026-11-05 | Hamed: "GLM vision, ~30 min", "Use 40 GiB" | **0.80.2, measurement: GLM direct transcription at 40 GiB, budget 2, 13 replies: 492-pixel form 3 of 4 with an error, 906-pixel form 1 of 3, 361 x 108 card 0 of 3, padded card 0 of 3; no GLM upscale knob (registered case c).** §18.268 |
 | **v313** | 2026-11-04 | Hamed: "MiniMax or GLM", "MiniMax: tool-call replay", "Rerun at 48 GiB" | **0.80.1, measurement: MiniMax substitution leaves tool-call JSON intact (0/12 shipped, 0/12 exact, 48 GiB); MiniMax used `terminal`, no integer argument; no tool-exact port. 68 GiB needs ~97 GiB free.** §18.267 |
 | v312 | 2026-11-03 | Hamed: "Yes, make default" | **0.80.0: `serve.sh` exports `CACHALOT_VISION_MIN_PIXELS=810000` (`=0` or empty is the checkpoint preprocessing); `chat.sh` and the code default unchanged. New `tests/test_vision_upscale_default_on.py`. Lab brief 0.80.0.** §18.266 |
@@ -275,6 +276,10 @@
 | v47 | 2026-09-25 | Hamed asked for the v44-v46 levers planned, built, measured and documented | **0.18.0: GLM prefill 60 to 90 tok/s, bit-identical (a store path that never evicts, plus the next layer read early), GLM's missing MLX buffer-cache cap added, GLM disk snapshots (a restart reuses the system block). DeepSeek: an `iostat` trace shows prefill is not read-bound on either drive; the lookahead A/B drowned in a 124-to-200 s drift across back-to-back prefills.** §17.1, §15.13 |
 | v46 | 2026-09-25 | Hamed asked for GLM-5.3-Flash on Cachalot | 0.17.0: GLM through `serve-glm.sh` / `chat-glm.sh`. §17 |
 | v45 | 2026-09-24 | same as v47, one day earlier | 0.16.0: disk snapshot store by last use; lookahead and local compression closed. §15.12 |
+
+## First jobs (v315): the GLM upscale knob is Hamed's go
+
+Read HANDOFF 18.269, 18.268, `docs/glm-image-ocr/FORM-RECORD.md`. **Options for Hamed:** (1) build a GLM upscale knob, off by default, as `CACHALOT_VISION_MIN_PIXELS` in `glm.vision` geometry (raising `min_image_tokens` is the seam; check `image_digest`-style keying so rows of two settings never mix), then a live check; output-changing for small images, +714 prompt tokens on this form; (2) the GLM tool-call replay, 3 hours or more; (3) another lane. **Machine:** two GLM arms at 40 GiB ran beside ChatGPT with 72.7-76.1 GiB available, swap +141 MB. **Budget:** 40 GiB token 1.14 s at budget 2, 1.85 s exact; transcription replies 150-240 tokens. **Rules kept:** the earlier ones.
 
 ## First jobs (v314): GLM's small-screenshot question answered in part; next lane is Hamed's call
 
@@ -938,7 +943,7 @@ check `pgrep -f Flurry.appex` before each arm instead.
 
 ## What is closed, so nobody spends a session there
 
-- **A GLM upscale knob on current evidence (0.80.2, §18.268):** the 52-token card read cleanly, padding had nothing to fix; reopen only with an A/B on the address form.
+- **Budget 2 as the cause of GLM's letter errors on the form (0.80.3, §18.269):** exact 2 of 10 against 3 of 10.
 - **A tool-exact port to MiniMax (0.80.1, §18.267):** 0 of 12 malformed calls under the shipped substitution (48 GiB) and exact; reopen only if a live MiniMax session shows malformed integer arguments.
 - **Budget 0 as the cause of screenshot misreadings (0.78.4, §18.263):** exact decode misread the 492-px copy as well (2 of 7); resolution is the lead.
 - **Budget 0 as the cause of English words in Farsi (0.78.3, §18.262):** teacher-forced ratio 0.97 (0.82-1.52), exact gives " mattered" 93 %; the model's own.

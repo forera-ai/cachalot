@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-11-06, 0.80.3): padding GLM's address form removed its letter errors; budget 2 does not cause them
+>
+> Section 18.269, `docs/glm-image-ocr/FORM-RECORD.md`. Fresh servers at 40 GiB, five replies a cell: native 5 of 10 with an error, padded to 886 x 922 0 of 10 (p = 0.033); budget 2 3 of 10, exact 2 of 10. This replaces 0.80.2's "no knob" reading: that test padded only the card. **Needs Hamed:** whether to build a GLM upscale knob (output-changing for small images, +714 prompt tokens on this form).
+
 > ## Start here (2026-11-05, 0.80.2): GLM misreads the address form, not the small card; no GLM upscale knob
 >
 > Section 18.268, `docs/glm-image-ocr/RECORD.md`. Direct transcription, no Hermes context, 40 GiB, budget 2, 13 replies (the guard's 3,000 s limit stopped the run): 492-pixel form 3 of 4 with an error, 906-pixel form 1 of 3, 361 x 108 card 0 of 3, padded card 0 of 3. Registered rule case (c), no knob. **Open:** padding on the form itself and exact decode are both untested; next is Hamed's call.
@@ -9590,6 +9594,22 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.269 GLM's address form: padded against native, budget 2 against exact (0.80.3)
+
+**Goal.** Hamed, 2026-11-05: "Yes, ~2 hours", the open points of 18.268: padding on the form itself, and whether budget 2 causes the errors.
+
+**Prediction.** `docs/glm-image-ocr/FORM-RECORD.md` section 4, committed first (8c1ad8a): H-1 20 replies, prompt difference 714; H-2 budget 2 native 2 to 4 of 5; H-3 padded at least 2 fewer; H-4 exact native within 1; H-5 exact padded at most 1 of 5. Pooled rule: padded at least 4 of 10 fewer makes a knob a candidate; exact at least 4 of 10 fewer blames budget 2; neither closes the question.
+
+**Method.** Two fresh `serve-glm.sh --expert-budget-gib 40` servers, budget 2 then exact (`CACHALOT_GLM_DECODE_MISS_BUDGET=off`), each with the 492 x 512 form (342 image tokens) and a copy padded to 886 x 922 (1,056), five replies a cell, otherwise as 18.268. Sequential arms, one screenshot, no Hermes context.
+
+**Result (measured).** Budget 2: native 3 of 5 with an error, padded 0 of 5. Exact: native 2 of 5, padded 0 of 5. Pooled native 5 of 10, padded 0 of 10 (Fisher p = 0.033); budget 2 3 of 10, exact 2 of 10 (p = 1.0). A token 1.14 s at budget 2 (69-70 misses), 1.85 s exact (118-121). Arms 45 and 67 minutes, no guard stop, pressure level 1. All five predictions held.
+
+**Decision.** Case (a): a GLM upscale knob is a candidate; building it is Hamed's go. Budget 2 is not the cause. This replaces 18.268's "no knob", which rested on padding only the card.
+
+**Reading (derived, hypothesis).** Interpolated pixels added no information, yet the errors went: as with DeepSeek, each character spreads over more patches. The card's clean 52-token result says the need follows type size. One screenshot; the padded prefill's cost was not separable from cache warming; a threshold would also pad images that read cleanly.
+
+**Kind.** Research: predicted, measured, explained as hypothesis (5 held). No code or default changed.
 
 ### 18.268 GLM-5.3-Flash on small screenshots: a direct transcription test (0.80.2)
 

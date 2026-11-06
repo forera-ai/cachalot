@@ -1,0 +1,8 @@
+A budget2: 10 rows, 0 errors
+  A492: 5 replies, with an error 3, per reply [1, 0, 1, 0, 1], items {'row5': 3}, prompt [369], reply tokens 207-241, wall median 266.5 s
+  A886: 5 replies, with an error 0, per reply [0, 0, 0, 0, 0], items {}, prompt [1083], reply tokens 149-206, wall median 199.7 s
+B exact: 10 rows, 0 errors
+  A492: 5 replies, with an error 2, per reply [0, 1, 0, 1, 0], items {'button': 1, 'row5': 1}, prompt [369], reply tokens 156-243, wall median 408.6 s
+  A886: 5 replies, with an error 0, per reply [0, 0, 0, 0, 0], items {}, prompt [1083], reply tokens 166-197, wall median 333.2 s
+native 5/10, padded 0/10, Fisher p = 0.033
+budget 2 3/10, exact 2/10, Fisher p = 1.000

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.80.3 (2026-11-06)
+
+HANDOFF "Start here (2026-11-06, 0.80.3)" and section 18.269; `docs/glm-image-ocr/FORM-RECORD.md`. Measurement only; no default changed.
+
+### Measured
+- **Padding GLM's 492-pixel address form removed its letter errors.** Two fresh servers at 40 GiB, five replies a cell: native 5 of 10 with an error, padded to 886 x 922 0 of 10 (Fisher p = 0.033); budget 2 3 of 10, exact 2 of 10 (p = 1.0). Replaces 0.80.2's "no knob" reading, which padded only a card with no errors. A GLM upscale knob is a candidate; nothing built.
+
+### Added
+- `docs/glm-image-ocr/`: `FORM-RECORD.md`, `driver-form.py`, `arm-form.sh`, `run-form.sh`, `analyse-form.py`, `form-report.txt`.
+
 ## 0.80.2 (2026-11-05)
 
 HANDOFF "Start here (2026-11-05, 0.80.2)" and section 18.268; `docs/glm-image-ocr/`. Measurement only; no default changed.
