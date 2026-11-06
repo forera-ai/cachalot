@@ -241,6 +241,14 @@ def cmd_serve(args) -> None:
             print(f"GLM decode miss budget {glm_budget}: at most {glm_budget} non-resident experts are read per layer "
                   f"in decode ({layers} MoE layers), the rest dropped (changes outputs; CACHALOT_GLM_DECODE_MISS_BUDGET)",
                   file=sys.stderr, flush=True)
+        if family == "glm":
+            from cachalot.glm.vision import min_pixels_from_env as glm_min_pixels
+
+            glm_min_px = glm_min_pixels()
+            if glm_min_px is not None:
+                # default off, HANDOFF 18.269, docs/glm-image-ocr/KNOB-RECORD.md
+                print(f"GLM vision upscale: still images under {glm_min_px:,} pixels are upscaled before the tower (changes outputs for "
+                      f"small images only; CACHALOT_GLM_VISION_MIN_PIXELS)", file=sys.stderr, flush=True)
         trace_path = os.environ.get("CACHALOT_ROUTING_TRACE")
         if trace_path:
             # HANDOFF 18.92, 18.102: a routing trace saved when the server stops (MiniMax: experts only; GLM: also router weights and predicted sets)

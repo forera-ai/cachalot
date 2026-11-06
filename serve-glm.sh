@@ -56,6 +56,10 @@ export CACHALOT_GLM_PREDICT_TOPK=${CACHALOT_GLM_PREDICT_TOPK:-0}
 # 24 replies. CACHALOT_GLM_DECODE_MISS_BUDGET=off restores the exact path; 4 is the conservative setting (-7 %).
 export CACHALOT_GLM_DECODE_MISS_BUDGET=${CACHALOT_GLM_DECODE_MISS_BUDGET:-2}
 
+# GLM keeps a small image's native pixels, and misread a 492-pixel screenshot in 5 of 10 replies against 0 of 10 padded (HANDOFF 18.269).
+# CACHALOT_GLM_VISION_MIN_PIXELS=810000 upscales still images under that pixel count before the tower. Off by default; CHANGES OUTPUTS for
+# small images (a 492 x 512 screenshot: +714 prompt tokens).
+
 exec ~/venvs/deepseek-v41/bin/python -m cachalot.cli serve \
     --model "$CACHALOT_MODEL_PATH" \
     --expert-budget-gib 52 \

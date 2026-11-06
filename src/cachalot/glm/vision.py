@@ -44,6 +44,17 @@ VIDEO_MAX_TOKENS = int(os.environ.get("CACHALOT_GLM_VIDEO_MAX_TOKENS", "4000")) 
 VIDEO_MAX_FRAMES = int(os.environ.get("CACHALOT_GLM_VIDEO_MAX_FRAMES", "128"))  # sampled frames (mlx-vlm's ceiling 2048)
 
 
+def min_pixels_from_env() -> int | None:
+    """CACHALOT_GLM_VISION_MIN_PIXELS (default off, docs/glm-image-ocr/KNOB-RECORD.md): a pixel count below which a still image is upscaled
+    before the tower. Unset, empty or 0 is the checkpoint's preprocessing. Changes outputs for small images only, by adding image tokens
+    (a 492 x 512 screenshot at 810,000: 342 to 1,056); the token ceiling still applies, video is untouched."""
+    raw = os.environ.get("CACHALOT_GLM_VISION_MIN_PIXELS", "").strip()
+    if not raw:
+        return None
+    value = int(raw)
+    return value if value > 0 else None
+
+
 def smart_resize(num_frames, height, width, temporal_factor=2, factor=28, min_pixels=16, max_pixels=8000):
     """The aligned canvas (height, width) for an image under a token budget (mlx-vlm's `smart_resize`)."""
     if min(num_frames, height, width, temporal_factor, factor) <= 0:
@@ -97,28 +108,34 @@ class ImageProcessorConfig:
     max_image_tokens: int = 8000
     image_mean: tuple = (0.48145466, 0.4578275, 0.40821073)
     image_std: tuple = (0.26862954, 0.26130258, 0.27577711)
+    upscale_min_pixels: int = 0  # CACHALOT_GLM_VISION_MIN_PIXELS; 0 is the checkpoint's preprocessing
 
     @classmethod
     def from_model(cls, model_path) -> ImageProcessorConfig:
         path = Path(model_path) / "processor_config.json"
+        upscale = min_pixels_from_env() or 0
         if not path.exists():
-            return cls()
+            return cls(upscale_min_pixels=upscale)
         raw = dict(json.loads(path.read_text()).get("image_processor", {}))
         fields = cls.__dataclass_fields__
         values = {k: (tuple(v) if isinstance(v, list) else v) for k, v in raw.items() if k in fields}
-        return cls(**values)
+        return cls(**{**values, "upscale_min_pixels": upscale})
 
 
 def _geometry(height, width, cfg: ImageProcessorConfig, num_frames: int | None = None):
-    num_frames = cfg.temporal_patch_size if num_frames is None else num_frames
+    still = num_frames is None
+    num_frames = cfg.temporal_patch_size if still else num_frames
     factor = cfg.patch_size * cfg.merge_size * cfg.patch_expand_factor
     per_token = cfg.temporal_patch_size * factor**2
+    min_tokens = cfg.min_image_tokens
+    if still and cfg.upscale_min_pixels:  # video keeps the checkpoint's floor
+        min_tokens = min(cfg.max_image_tokens, max(min_tokens, math.ceil(cfg.upscale_min_pixels / factor**2)))
     target_h, target_w = smart_resize(
         num_frames, height, width, temporal_factor=cfg.temporal_patch_size, factor=factor,
-        min_pixels=cfg.min_image_tokens, max_pixels=cfg.max_image_tokens,
+        min_pixels=min_tokens, max_pixels=cfg.max_image_tokens,
     )
     scale = min(target_h / height, target_w / width)
-    if num_frames * height * width >= cfg.min_image_tokens * per_token:
+    if num_frames * height * width >= min_tokens * per_token:
         scale = min(1.0, scale)
     content_h = max(1, min(target_h, math.floor(height * scale)))
     content_w = max(1, min(target_w, math.floor(width * scale)))
@@ -310,7 +327,10 @@ def load_inputs(records: list[dict], cfg: ImageProcessorConfig) -> list:
             continue
         with Image.open(io.BytesIO(data)) as source:
             patches, grid = preprocess(source, cfg)
-        out.append(ImageInput(hashlib.sha256(data).hexdigest(), patches, grid, grid[1] * grid[2] // cfg.merge_size**2))
+        digest = hashlib.sha256(data)
+        if cfg.upscale_min_pixels:  # rows and prefix spans of the two settings never mix; the checkpoint's setting keeps its digests
+            digest.update(f"/min-pixels/{cfg.upscale_min_pixels}".encode())
+        out.append(ImageInput(digest.hexdigest(), patches, grid, grid[1] * grid[2] // cfg.merge_size**2))
     return out
 
 
