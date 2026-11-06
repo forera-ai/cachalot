@@ -1,8 +1,8 @@
 # Experiment index (charter section 7.2 and section 10)
 
-Written 2026-10-09 against runtime 0.82.0; regenerate with `benchmarks/experiment_index.py`. The charter asks for "a file of experiment records whose predictions were written before the build". The records themselves live in `docs/HANDOFF.md` section 18 (each with Baseline, Prediction, Method, Result, Explanation, Limits, Kind); this file is the index: where each record is, whether it carries a written prediction, and what kind of result it is, as its own **Kind** line says. It does not restate results. Sections before 18.75 predate the record format and are not listed; sections without a **Kind** line are listed as unlabelled and have no claim made for them here.
+Written 2026-10-09 against runtime 0.83.0; regenerate with `benchmarks/experiment_index.py`. The charter asks for "a file of experiment records whose predictions were written before the build". The records themselves live in `docs/HANDOFF.md` section 18 (each with Baseline, Prediction, Method, Result, Explanation, Limits, Kind); this file is the index: where each record is, whether it carries a written prediction, and what kind of result it is, as its own **Kind** line says. It does not restate results. Sections before 18.75 predate the record format and are not listed; sections without a **Kind** line are listed as unlabelled and have no claim made for them here.
 
-Counts of the 198 sections listed (18.75-18.272): 102 research, 29 measurement, 26 unlabelled, 20 engineering, 19 planning, 2 pricing.
+Counts of the 199 sections listed (18.75-18.273): 103 research, 29 measurement, 26 unlabelled, 20 engineering, 19 planning, 2 pricing.
 
 Research means predicted, measured and explained (charter section 8.1 rule 6); a falsified prediction is still research and is marked so in its Kind line. Engineering means it works without a written prediction, or an instrument was built.
 
@@ -10,6 +10,7 @@ Research means predicted, measured and explained (charter section 8.1 rule 6); a
 
 | section | title | prediction written | kind (as recorded) |
 |---|---|:---:|---|
+| §18.273 | G2: GLM's system block across restarts and days (0.83.0) | yes | Research and a default: predicted, measured, explained (3 held). Bit-identical. |
 | §18.272 | G3: GLM's expert bank on the internal SSD (0.82.0) | yes | Research: predicted, measured, explained (3 held, 1 split). One default changed (Hamed's call). |
 | §18.271 | The live GLM session: clean, unusable, and the GLM speed lane (0.81.1) | no | Measurement and planning: one live session, offline prices, no prediction written. No code or default changed. |
 | §18.270 | `CACHALOT_GLM_VISION_MIN_PIXELS`: GLM's upscale knob and its server check (0.81.0) | yes | Research and a default-off knob: predicted, measured, explained (3 held). No default changed. |

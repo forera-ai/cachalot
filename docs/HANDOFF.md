@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-11-06, 0.83.0): GLM's cold block is solved for ordinary use: restart 5.7 s, new day 29 s, bit-identical
+>
+> Section 18.273, `docs/glm-speed/G2-RECORD.md`. `CACHALOT_GLM_BLOCK_PINS` (default 3): the last three chunk boundaries inside a system block go to disk. A changed block reused 14,336 tokens and took 29.2 s against 186.6 s cold; 146 tensors identical. Pins appear after the next cold prefill. **Next:** G6's price, then G4; `docs/GLM-SPEED-LANE.md`.
+
 > ## Start here (2026-11-06, 0.82.0): GLM's bank is on the internal SSD: 3.4-3.9 tok/s, cold block 205 s, turns 26-63 s
 >
 > Section 18.272, `docs/glm-speed/G3-RECORD.md`. Same five live requests: decode 0.83-1.06 to 3.39-3.94 tok/s, cold block 1,317 to 205 s, turns 65-317 s to 26-63 s. `serve-glm.sh` prefers a verified `~/GLM-5.3-Flash-bank`; the X10Pro copy is the fallback. Internal disk now has 13 GiB free. **Next:** G2 (restart check, in-block pins); `docs/GLM-SPEED-LANE.md`.
@@ -9606,6 +9610,24 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.273 G2: GLM's system block across restarts and days (0.83.0)
+
+**Goal.** Hamed, 2026-11-06: "Yes, do G2", then "Yes, run it".
+
+**Restart check (measured).** The 15,564-token snapshot written in the live session loaded after a restart: `reused=15564`, prefill 2.09 s, turn 5.73 s, against 208 s cold.
+
+**Pricing (measured).** Rendered with GLM's template, today's request shares 15,434 of 15,568 tokens with the 2026-11-03 block, 15,217 and 11,419 with two 2026-11-02 blocks: tools come first and the date sits near the end, unlike DeepSeek's (18.65).
+
+**Build.** `GlmModel.BLOCK_PINS` (`CACHALOT_GLM_BLOCK_PINS`, default 3, 0 off): the last three chunk boundaries strictly inside a block go to disk through `SnapshotStore.persist_pin`, not into memory. `PIN_MAX_TOKENS` rises for GLM. MiniMax sets 0 (a block is about 2.4 GB). No numerics bump. `tests/test_glm_block_pins.py` (4).
+
+**Prediction.** `docs/glm-speed/G2-RECORD.md` section 4, committed first (52289f0): P-1 pins written and prefill within 15 s of 205; P-2 a changed block reuses 14,336 and prefills in 15-45 s; P-3 identical tensors; falsifier P-3 fails.
+
+**Result (measured).** A: today's block cold, 195.9 s, pins at 10,240, 12,288, 14,336. B: restart, 2026-11-03 block, `reused=14336`, 1,234 tokens in 29.2 s. C: same block cold, 186.6 s. B against C: 146 tensors, 0 differ. All held. A first restart check returned no data: its driver raced the guard's one-runtime check; fixed.
+
+**Limit.** Pins reach the shipped directory only on the next cold prefill. A short request's decode here is warm-set dependent and not a decode number.
+
+**Kind.** Research and a default: predicted, measured, explained (3 held). Bit-identical.
 
 ### 18.272 G3: GLM's expert bank on the internal SSD (0.82.0)
 

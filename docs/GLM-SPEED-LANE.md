@@ -1,6 +1,6 @@
 # GLM-5.3-Flash speed lane
 
-Written 2026-11-06 at runtime 0.81.1, revised at 0.82.0 after G3. Hamed, after the live session of HANDOFF 18.271: "update the next lanes to focus on GLM speed. it is unusable now!" Every price below is derived from
+Written 2026-11-06 at runtime 0.81.1, revised at 0.83.0 after G3 and G2. Hamed, after the live session of HANDOFF 18.271: "update the next lanes to focus on GLM speed. it is unusable now!" Every price below is derived from
 recorded numbers unless it says measured; none is a result until its experiment record runs. Rank order: expected gain, confidence, cost, and whether output changes.
 
 ## 1. Where the time goes (measured, 2026-11-06, `serve-glm.sh --expert-budget-gib 46`, knob on, Hermes, 21 tools)
@@ -21,8 +21,8 @@ chunk of a long prefill scans most of the 163 GB bank: the 15.6k block made abou
 
 | id | lever | price (derived) | output | needs | closes on |
 |---|---|---|---|---|---|
-| G1 | `CACHALOT_GLM_PREFILL_CHUNK=8192` on the X10Pro. The knob exists; chunk 2,048 was chosen on the internal drive | cold block 1,317 s to about 350 s (2 passes, not 8) | changes KV bits; 17.1: chunkings differ by KL ~0.024, flat NLL. Gate on a long context | a run, about 1 hour | no gain, or memory: MiniMax needed a prefill capacity plan at large chunks |
-| G2 | In-block snapshot pins, DeepSeek's 0.59.0, and a same-day restart check | 22,618 of 23,104 system-block characters are shared across days, so a new day re-prefills about the tail chunk, not the block: minutes, not 22 | bit-identical at chunk boundaries | a build | the shared prefix shrinks |
+| G1 | `CACHALOT_GLM_PREFILL_CHUNK=8192`. The knob exists; 2,048 was chosen long ago | only a fully cold block now: 196 s to perhaps 100 s (derived); G2 removed most of its use | changes KV bits and every snapshot's identity | a run | not worth a re-prefill of everything unless cold blocks recur |
+| G2 | In-block snapshot pins and a same-block restart check | **DONE, measured 0.83.0 (18.273):** same block after a restart 5.7 s, changed block 29 s, bit-identical | bit-identical | shipped, `CACHALOT_GLM_BLOCK_PINS=0` is off | |
 | G3 | Expert bank on the internal SSD | **DONE, measured 0.82.0 (18.272):** decode 3.39-3.94 tok/s, cold block 205 s, turns 26-63 s | bit-identical | shipped | |
 | G4 | Expert budget 60-68 GiB | `cache_sim`: misses -18 to -27 % against 46 GiB on two traces, token about -15 to -25 % | bit-identical | a quiet machine: 68 needs about 97 GiB available | the guardian; GLM at 52 GiB was killed with apps open |
 | G5 | Decode budget 1 | 1,100-1,133 to 642-693 ms a token, about -40 % (18.107); budget 0 is 68 ms | changes outputs: b1 KL 0.04-0.14, b0 dNLL +0.185 on prose | a blind replay and the compile panel; default Hamed's | visible loss |
@@ -35,11 +35,10 @@ Bank layout (shipped, 18.86), pair index, S1c, MTP, decode prefetch (off, 18.105
 
 ## 4. Honest ceiling
 
-GLM's resident token is 63 ms; on the internal drive a Hermes token is now about 0.27 s. What is left is misses (58-75 a token), short prefill (19-26 s a turn) and the cold block (205 s). G4 and G5 act on the token, G6 on short prefill, G1 and G2 on the cold block. M19 stays halted.
+GLM's resident token is 63 ms; on the internal drive a Hermes token is about 0.27 s. The cold block is solved for ordinary use (2-30 s). What is left is misses (58-75 a token) and short prefill (19-26 s a turn), so G4, G5 and G6 are what a turn feels now. M19 stays halted.
 
 ## 5. First jobs
 
-1. G2: same-day restart check of the disk snapshot, then in-block pins. The cold block is the worst turn left.
-2. G6's price: per-turn reads of a short prefill, from a trace, before any port.
-3. G4 on a quiet machine: GLM at 60-68 GiB. Internal disk has 13 GiB free, so a swap-prone run is not free.
-4. G1 only if a cold block is still hit after G2.
+1. G6's price: count a short prefill's reads per turn from a trace, then decide on a port. A 160-token prefill costs 19 s of a 26 s turn. Price per affected row (18.260).
+2. G4 on a quiet machine: GLM at 60-68 GiB. Internal disk has 15 GiB free, so a swap-prone run is not free.
+3. G5, a blind replay at budget 1, if a token at 0.27 s is still too slow: a default is Hamed's call.

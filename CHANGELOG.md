@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.83.0 (2026-11-06)
+
+HANDOFF "Start here (2026-11-06, 0.83.0)" and section 18.273; `docs/glm-speed/G2-RECORD.md`; Lab brief `docs/lab/briefs/2026-11-06-runtime-0.83.0.md`.
+
+### Added
+- **GLM in-block snapshot pins** (`CACHALOT_GLM_BLOCK_PINS`, default 3, `0` off): the last chunk boundaries inside a system block are kept on disk, so a block changed near its end resumes there. Bit-identical; no numerics bump. MiniMax keeps none.
+
+### Measured
+- Same block after a restart: 5.73 s, against 208 s cold. A changed block after a restart: reused 14,336 tokens, 29.2 s, against 186.6 s cold; 146 tensors identical to the cold prefill.
+
+### Tests
+- New `tests/test_glm_block_pins.py` (4 tests).
+
 ## 0.82.0 (2026-11-06)
 
 HANDOFF "Start here (2026-11-06, 0.82.0)" and section 18.272; `docs/glm-speed/G3-RECORD.md`; Lab brief `docs/lab/briefs/2026-11-06-runtime-0.82.0.md`. Hamed's call.

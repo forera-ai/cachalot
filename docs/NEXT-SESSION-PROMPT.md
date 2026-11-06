@@ -1,10 +1,11 @@
-# Next-session prompt — **v318**, written 2026-11-06
+# Next-session prompt — **v319**, written 2026-11-06
 
 **This is the file to paste.** `docs/NEXT-SESSION-PROMPT.md` is always current; superseded ones live in
 `docs/next-session-prompts/`.
 
 | version | written | produced by | what changed |
 |---|---|---|---|
+| **v319** | 2026-11-06 | Hamed: "Yes, do G2", "Yes, run it" | **0.83.0: GLM in-block pins, `CACHALOT_GLM_BLOCK_PINS` default 3: restart 5.73 s, changed block 29.2 s against 186.6 s, 146 tensors identical. Lab brief 0.83.0.** §18.273 |
 | **v318** | 2026-11-06 | Hamed: "Decide G3 first", full bank, Docker removed, "Purged, run it" | **0.82.0: GLM bank on the internal SSD, `serve-glm.sh` prefers it: decode 3.39-3.94 tok/s, cold block 205 s, turns 26-63 s, same requests. Lab brief 0.82.0.** §18.272 |
 | **v317** | 2026-11-06 | Hamed: "analyze the chat and the dump and performance then, update the next lanes to focus on GLM speed. it is unusable now!" | **0.81.1, measurement and planning: live GLM session correct but cold block 1,328 s, image turns about 5 minutes, 0.83-1.06 tok/s; new `docs/GLM-SPEED-LANE.md`, levers G1-G7.** §18.271 |
 | **v316** | 2026-11-06 | Hamed: "Yes, build it", "Yes, run it" | **0.81.0: `CACHALOT_GLM_VISION_MIN_PIXELS` (default off) upscales GLM's small still images; server check at 810,000: form 0 of 5 with an error, card 0 of 3; pooled upscaled 0 of 15 against native 8 of 14. New `tests/test_glm_vision_min_pixels.py`. Lab brief 0.81.0.** §18.270 |
@@ -279,6 +280,10 @@
 | v47 | 2026-09-25 | Hamed asked for the v44-v46 levers planned, built, measured and documented | **0.18.0: GLM prefill 60 to 90 tok/s, bit-identical (a store path that never evicts, plus the next layer read early), GLM's missing MLX buffer-cache cap added, GLM disk snapshots (a restart reuses the system block). DeepSeek: an `iostat` trace shows prefill is not read-bound on either drive; the lookahead A/B drowned in a 124-to-200 s drift across back-to-back prefills.** §17.1, §15.13 |
 | v46 | 2026-09-25 | Hamed asked for GLM-5.3-Flash on Cachalot | 0.17.0: GLM through `serve-glm.sh` / `chat-glm.sh`. §17 |
 | v45 | 2026-09-24 | same as v47, one day earlier | 0.16.0: disk snapshot store by last use; lookahead and local compression closed. §15.12 |
+
+## First jobs (v319): GLM speed continues; short prefill and misses are what a turn feels now
+
+Read `docs/GLM-SPEED-LANE.md`, HANDOFF 18.273, 18.272. **First:** G6's price: reads per short prefill from a trace (a 160-token prefill costs 19 s of a 26 s turn), per affected row (18.260), before any port. **Then:** G4 at 60-68 GiB on a quiet machine; G5, a blind replay at budget 1, if a 0.27 s token is still too slow, default Hamed's. G1 is now low: it would re-prefill every snapshot for a rare cold block. **Machine:** internal disk 15 GiB free, guard floor 10; GLM at 46 GiB needs about 68 GiB available. **Watch in a live session:** the first new-day block is cold once if no pins exist yet, then `reused=14336`. **Parked:** the GLM upscale default, the GLM tool-call replay. **New rule:** start a driver at least 12 s after `guarded_run.sh`, or its preflight sees the driver as a second runtime. **Rules kept:** the earlier ones; M19 stays halted.
 
 ## First jobs (v318): GLM speed continues; the cold block is the worst turn left
 

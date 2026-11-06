@@ -27,10 +27,24 @@ Keeping the last chunk boundaries inside the block on disk lets a new day resume
 
 Runtime estimate: about 10 minutes.
 
-## 5. Results
+## 5. Results (measured 2026-11-06, commit 52289f0)
 
-Not yet run.
+**Run.** `pin-check.sh` 17:34-17:42, sysctl 88064, no other runtime, fresh temporary snapshot directories, deleted afterwards. No guard stop.
+
+| arm | request | reused | prefilled | prefill | turn |
+|---|---|---:|---:|---:|---:|
+| A | today's block, cold | 0 | 15,569 | 195.9 s | 196.4 s |
+| B | 2026-11-03 block, after a restart on A's directory | **14,336** | 1,234 | **29.2 s** | 29.7 s |
+| C | 2026-11-03 block, cold | 0 | 15,570 | 186.6 s | 187.0 s |
+
+`compare_blocks.py`: B's and C's 15,565-token block snapshots, 146 tensors, 0 differ. Arm A wrote pins at 10,240, 12,288 and 14,336 and the block; arm B indexed them (3 more on disk).
+
+**Scored.** P-1 held (195.9 s, within 15 s of 205). P-2 held (14,336, 29.2 s). P-3 held (identical). Falsifier not fired.
+
+**Reading (derived).** A new day's block costs about 30 s, not about 190 s, and a same-block restart about 2 s (`restart-check.sh`), bit-identically. Pins reach the shipped snapshot directory only on the next cold prefill: that one still costs about 200 s, and the day after it benefits.
+
+**Not measured.** A Hermes block whose change sits earlier than the last three boundaries, as one 2026-11-02 block did at token 11,419: that one still resumes, from 10,240.
 
 ## 6. Kind
 
-Not yet scored.
+Research and a default: predicted, measured, explained (3 held). Bit-identical, on by default, `CACHALOT_GLM_BLOCK_PINS=0` is off.
