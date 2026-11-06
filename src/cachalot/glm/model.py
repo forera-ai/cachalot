@@ -864,6 +864,7 @@ class GlmModel:
         keep = int(os.environ.get("CACHALOT_SNAPSHOT_KEEP", "32"))
         store = GlmSnapshotStore(directory, glm_identity(self.model_path, self.max_seq_len, self.PREFILL_CHUNK,
                                                           self.NUMERICS_TAG), keep=keep, preload=preload)
+        store.PIN_MAX_TOKENS = self.PIN_MAX_TOKENS
         loaded = store.load_all()
         for snap in loaded:
             self._add_prefix(snap)
@@ -997,6 +998,28 @@ class GlmModel:
         except Exception as exc:  # a full disk must not fail the request
             print(f"prefix snapshot not saved: {exc}", flush=True)
 
+    # HANDOFF 18.273: the last chunk boundaries inside a system block go to disk, so a block that changes near its end (a Hermes block changes
+    # with the date, about 130 tokens from its end) resumes there on the next day instead of prefilling again. Same chunks from zero, so the
+    # result is bit-identical to a cold prefill. Not kept in memory. MiniMax sets 0.
+    BLOCK_PINS = int(os.environ.get("CACHALOT_GLM_BLOCK_PINS", "3"))
+    PIN_MAX_TOKENS = 1 << 20
+
+    @classmethod
+    def _block_pin_due(cls, pos: int, boundary: int) -> bool:
+        """Is `pos` one of the last BLOCK_PINS chunk boundaries strictly inside a block ending at `boundary`?"""
+        if cls.BLOCK_PINS <= 0 or pos <= 0 or pos >= boundary or pos % cls.PREFILL_CHUNK:
+            return False
+        last = (boundary - 1) // cls.PREFILL_CHUNK * cls.PREFILL_CHUNK
+        return pos > last - cls.BLOCK_PINS * cls.PREFILL_CHUNK
+
+    def _persist_pin(self, tokens, cache) -> None:
+        if self.disk is None:
+            return
+        try:
+            self.disk.persist_pin(self.snapshot(tokens, cache, None))
+        except Exception as exc:  # a full disk must not fail the request
+            print(f"prefix pin not saved: {exc}", flush=True)
+
     def _find_prefix(self, tokens: tuple[int, ...]) -> Snapshot | None:
         best = None
         for snap in self.prefix:
@@ -1103,6 +1126,8 @@ class GlmModel:
                             else self._forward(real[pos:end], cache)
                         mx.eval(logits)
                         pos = end
+                        if self._block_pin_due(pos, boundary):
+                            self._persist_pin(tokens[:pos], cache)
                     if cut < len(tokens):
                         block = self.snapshot(tokens[:cut], cache, None)
                         self._add_prefix(block)

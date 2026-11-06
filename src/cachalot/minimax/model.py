@@ -213,6 +213,7 @@ class MiniMaxModel(GlmModel):
     # bytes for more tokens: 8,192 prefills at ~230 tok/s against ~74-85 at 2,048, same NLL (HANDOFF 18.1).
     PREFILL_CHUNK = int(os.environ.get("CACHALOT_MINIMAX_PREFILL_CHUNK", "8192"))
     PREFILL_FULL_TOKENS = PREFILL_FULL_TOKENS
+    BLOCK_PINS = 0  # HANDOFF 18.273: a MiniMax block is about 2.4 GB; pins would fill the drive
     # HANDOFF 18.22: a system block on disk leaves memory after each request (2.4 GiB of a Hermes session's GPU
     # memory back to the expert cache; a new conversation reloads it in ~0.4 s). Bit-identical.
     SPILL_PERSISTED = os.environ.get("CACHALOT_MINIMAX_SPILL_BLOCKS", "1") != "0"
