@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.81.0 (2026-11-06)
+
+HANDOFF "Start here (2026-11-06, 0.81.0)" and section 18.270; `docs/glm-image-ocr/KNOB-RECORD.md`; Lab brief `docs/lab/briefs/2026-11-06-runtime-0.81.0.md`. No default changed.
+
+### Added
+- **`CACHALOT_GLM_VISION_MIN_PIXELS=N`** (default off): still images under N pixels are scaled up before GLM's vision tower, under its 8,000-token ceiling; video keeps the checkpoint's floor. An image's digest carries N, so rows of two settings never mix; off keeps old digests. Startup line. Changes outputs for small images only when set. `serve-glm.sh` documents it and does not set it.
+- `docs/glm-image-ocr/`: `KNOB-RECORD.md`, `driver-knob.py`, `arm-knob.sh`, `analyse-knob.py`, `knob-report.txt`.
+
+### Measured
+- Through a fresh `serve-glm.sh` at 40 GiB with N = 810,000: the 492-pixel form 0 of 5 replies with an error, the 361 x 108 card 0 of 3. Pooled upscaled form 0 of 15 against native 8 of 14.
+
+### Tests
+- New `tests/test_glm_vision_min_pixels.py` (7 tests).
+
 ## 0.80.3 (2026-11-06)
 
 HANDOFF "Start here (2026-11-06, 0.80.3)" and section 18.269; `docs/glm-image-ocr/FORM-RECORD.md`. Measurement only; no default changed.

@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-11-06, 0.81.0): `CACHALOT_GLM_VISION_MIN_PIXELS` built, off; the form reads clean through the runtime path
+>
+> Section 18.270, `docs/glm-image-ocr/KNOB-RECORD.md`, Lab brief 2026-11-06-runtime-0.81.0. At 810,000 pixels through a fresh `serve-glm.sh`: form 0 of 5 with an error, card 0 of 3; pooled upscaled form 0 of 15 against native 8 of 14. **Needs Hamed:** whether `serve-glm.sh` sets it; a live Hermes image session on GLM would add evidence.
+
 > ## Start here (2026-11-06, 0.80.3): padding GLM's address form removed its letter errors; budget 2 does not cause them
 >
 > Section 18.269, `docs/glm-image-ocr/FORM-RECORD.md`. Fresh servers at 40 GiB, five replies a cell: native 5 of 10 with an error, padded to 886 x 922 0 of 10 (p = 0.033); budget 2 3 of 10, exact 2 of 10. This replaces 0.80.2's "no knob" reading: that test padded only the card. **Needs Hamed:** whether to build a GLM upscale knob (output-changing for small images, +714 prompt tokens on this form).
@@ -9594,6 +9598,20 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.270 `CACHALOT_GLM_VISION_MIN_PIXELS`: GLM's upscale knob and its server check (0.81.0)
+
+**Goal.** Hamed, 2026-11-06: "Yes, build it" (18.269 case (a)), then "Yes, run it".
+
+**Build.** `CACHALOT_GLM_VISION_MIN_PIXELS=N` (default off; unset, empty or 0 is the checkpoint's preprocessing): a still image under N pixels is scaled up before GLM's tower through `glm.vision._geometry`, under the 8,000-token ceiling. Video keeps the checkpoint's floor. The digest adds N when set, so rows of two settings never mix; off keeps old digests. Startup line. `serve-glm.sh` documents it and does not set it. `tests/test_glm_vision_min_pixels.py` (7).
+
+**Prediction.** `docs/glm-image-ocr/KNOB-RECORD.md` section 4, committed first (1b64560): K-1 startup line, 8 replies, prompts 1,083 and 1,089; K-2 form at most 1 of 5 with an error; K-3 card at most 1 of 3; falsifier form at 2 or more of 5.
+
+**Result (measured).** One fresh `serve-glm.sh --expert-budget-gib 40` with N = 810,000, budget 2, native image bytes: form 0 of 5, card 0 of 3, prompts exactly as predicted, 32 minutes. All three held. Pooled upscaled form 0 of 15 against native 8 of 14. The cold first prefill took 276 s against the native form's 246-284 s; a warm cost is unmeasured.
+
+**Not measured.** Other screenshots, photographs, several small images in a context (each up to about 1,000 more tokens), a Hermes session, 46 or 52 GiB.
+
+**Kind.** Research and a default-off knob: predicted, measured, explained (3 held). No default changed.
 
 ### 18.269 GLM's address form: padded against native, budget 2 against exact (0.80.3)
 

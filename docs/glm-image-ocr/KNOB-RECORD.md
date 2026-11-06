@@ -30,10 +30,22 @@ controls (A492 8 of 14 with an error, C361 0 of 3).
 
 Runtime estimate: about 30 minutes (server start, two cold prefills, 8 replies). `serve-glm.sh`'s default stays off whatever this shows; a default is Hamed's call.
 
-## 5. Results
+## 5. Results (measured 2026-11-06, commit 1b64560)
 
-Not yet run.
+**Run.** `arm-knob.sh` 09:02-09:34, 32 minutes, sysctl 88064, no other runtime, ChatGPT open; pressure level 1, swap at most 1,878 MB, peak wired 68.7 GiB. `knob-report.txt` holds `analyse-knob.py`'s output.
+
+| image | replies | with an error | prompt tokens | reply tokens | control, knob off |
+|---|---|---|---|---|---|
+| A492 | 5 | **0** | 1,083 | 186-208 | 8 of 14 with an error, 369 tokens |
+| C361 | 3 | **0** | 1,089 | 93-116 | 0 of 3, 79 tokens |
+
+**Scored.** K-1 held (startup line, 8 replies, no error, 1,083 and 1,089 exactly). K-2 held (0 of 5). K-3 held (0 of 3). Falsifier not fired.
+
+**Reading (derived).** The runtime path reproduces the client padding: pooled upscaled form 0 of 15 against native 8 of 14. The cold first prefill of the upscaled form took 276 s, inside the native form's 246-284 s, so
+on a cold server the extra 714 tokens are not visible against the reads; a warm cost is unmeasured. Decode a token is unchanged (1.14 s, 70 misses).
+
+**Not measured.** Other screenshots; photographs; several small images in one context (each adds up to about 1,000 tokens); a Hermes session; 46 or 52 GiB.
 
 ## 6. Kind
 
-Not yet scored.
+Research and a default-off knob: predicted, measured, explained (3 held). No default changed; a default is Hamed's call.

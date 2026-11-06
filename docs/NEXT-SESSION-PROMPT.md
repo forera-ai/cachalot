@@ -1,10 +1,11 @@
-# Next-session prompt — **v315**, written 2026-11-06
+# Next-session prompt — **v316**, written 2026-11-06
 
 **This is the file to paste.** `docs/NEXT-SESSION-PROMPT.md` is always current; superseded ones live in
 `docs/next-session-prompts/`.
 
 | version | written | produced by | what changed |
 |---|---|---|---|
+| **v316** | 2026-11-06 | Hamed: "Yes, build it", "Yes, run it" | **0.81.0: `CACHALOT_GLM_VISION_MIN_PIXELS` (default off) upscales GLM's small still images; server check at 810,000: form 0 of 5 with an error, card 0 of 3; pooled upscaled 0 of 15 against native 8 of 14. New `tests/test_glm_vision_min_pixels.py`. Lab brief 0.81.0.** §18.270 |
 | **v315** | 2026-11-06 | Hamed: "Yes, ~2 hours" (v314 option 1) | **0.80.3, measurement: GLM address form, native 5 of 10 with an error, padded 0 of 10 (p = 0.033); budget 2 3 of 10, exact 2 of 10. A GLM upscale knob is a candidate, not built.** §18.269 |
 | **v314** | 2026-11-05 | Hamed: "GLM vision, ~30 min", "Use 40 GiB" | **0.80.2, measurement: GLM direct transcription at 40 GiB, budget 2, 13 replies: 492-pixel form 3 of 4 with an error, 906-pixel form 1 of 3, 361 x 108 card 0 of 3, padded card 0 of 3; no GLM upscale knob (registered case c).** §18.268 |
 | **v313** | 2026-11-04 | Hamed: "MiniMax or GLM", "MiniMax: tool-call replay", "Rerun at 48 GiB" | **0.80.1, measurement: MiniMax substitution leaves tool-call JSON intact (0/12 shipped, 0/12 exact, 48 GiB); MiniMax used `terminal`, no integer argument; no tool-exact port. 68 GiB needs ~97 GiB free.** §18.267 |
@@ -276,6 +277,10 @@
 | v47 | 2026-09-25 | Hamed asked for the v44-v46 levers planned, built, measured and documented | **0.18.0: GLM prefill 60 to 90 tok/s, bit-identical (a store path that never evicts, plus the next layer read early), GLM's missing MLX buffer-cache cap added, GLM disk snapshots (a restart reuses the system block). DeepSeek: an `iostat` trace shows prefill is not read-bound on either drive; the lookahead A/B drowned in a 124-to-200 s drift across back-to-back prefills.** §17.1, §15.13 |
 | v46 | 2026-09-25 | Hamed asked for GLM-5.3-Flash on Cachalot | 0.17.0: GLM through `serve-glm.sh` / `chat-glm.sh`. §17 |
 | v45 | 2026-09-24 | same as v47, one day earlier | 0.16.0: disk snapshot store by last use; lookahead and local compression closed. §15.12 |
+
+## First jobs (v316): the GLM upscale default is Hamed's call
+
+Read HANDOFF 18.270, 18.269, `docs/glm-image-ocr/KNOB-RECORD.md`. **Options for Hamed:** (1) `serve-glm.sh` sets `CACHALOT_GLM_VISION_MIN_PIXELS=810000` (output-changing for small images, up to about 1,000 more tokens an image); (2) first a live Hermes image session on GLM with the knob on and `CACHALOT_SERVER_DUMP`: Hamed drives, GLM's cold 21k block takes about 40 minutes once; (3) the GLM tool-call replay, 3 hours or more; (4) another lane. **Rules kept:** the earlier ones; images, replies and truth files stay private.
 
 ## First jobs (v315): the GLM upscale knob is Hamed's go
 

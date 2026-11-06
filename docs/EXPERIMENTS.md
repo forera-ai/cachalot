@@ -1,8 +1,8 @@
 # Experiment index (charter section 7.2 and section 10)
 
-Written 2026-10-09 against runtime 0.80.3; regenerate with `benchmarks/experiment_index.py`. The charter asks for "a file of experiment records whose predictions were written before the build". The records themselves live in `docs/HANDOFF.md` section 18 (each with Baseline, Prediction, Method, Result, Explanation, Limits, Kind); this file is the index: where each record is, whether it carries a written prediction, and what kind of result it is, as its own **Kind** line says. It does not restate results. Sections before 18.75 predate the record format and are not listed; sections without a **Kind** line are listed as unlabelled and have no claim made for them here.
+Written 2026-10-09 against runtime 0.81.0; regenerate with `benchmarks/experiment_index.py`. The charter asks for "a file of experiment records whose predictions were written before the build". The records themselves live in `docs/HANDOFF.md` section 18 (each with Baseline, Prediction, Method, Result, Explanation, Limits, Kind); this file is the index: where each record is, whether it carries a written prediction, and what kind of result it is, as its own **Kind** line says. It does not restate results. Sections before 18.75 predate the record format and are not listed; sections without a **Kind** line are listed as unlabelled and have no claim made for them here.
 
-Counts of the 195 sections listed (18.75-18.269): 100 research, 28 measurement, 26 unlabelled, 20 engineering, 19 planning, 2 pricing.
+Counts of the 196 sections listed (18.75-18.270): 101 research, 28 measurement, 26 unlabelled, 20 engineering, 19 planning, 2 pricing.
 
 Research means predicted, measured and explained (charter section 8.1 rule 6); a falsified prediction is still research and is marked so in its Kind line. Engineering means it works without a written prediction, or an instrument was built.
 
@@ -10,6 +10,7 @@ Research means predicted, measured and explained (charter section 8.1 rule 6); a
 
 | section | title | prediction written | kind (as recorded) |
 |---|---|:---:|---|
+| §18.270 | `CACHALOT_GLM_VISION_MIN_PIXELS`: GLM's upscale knob and its server check (0.81.0) | yes | Research and a default-off knob: predicted, measured, explained (3 held). No default changed. |
 | §18.269 | GLM's address form: padded against native, budget 2 against exact (0.80.3) | yes | Research: predicted, measured, explained as hypothesis (5 held). No code or default changed. |
 | §18.268 | GLM-5.3-Flash on small screenshots: a direct transcription test (0.80.2) | yes | Research: predicted, measured, explained as hypothesis; cut short by the guard's limit. No code or default changed. |
 | §18.267 | MiniMax tool calls under its decode miss substitution: a replay A/B (0.80.1) | no | Research: predicted, measured, decision rule applied. No default changed. |
