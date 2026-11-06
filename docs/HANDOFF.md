@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-11-06, 0.82.0): GLM's bank is on the internal SSD: 3.4-3.9 tok/s, cold block 205 s, turns 26-63 s
+>
+> Section 18.272, `docs/glm-speed/G3-RECORD.md`. Same five live requests: decode 0.83-1.06 to 3.39-3.94 tok/s, cold block 1,317 to 205 s, turns 65-317 s to 26-63 s. `serve-glm.sh` prefers a verified `~/GLM-5.3-Flash-bank`; the X10Pro copy is the fallback. Internal disk now has 13 GiB free. **Next:** G2 (restart check, in-block pins); `docs/GLM-SPEED-LANE.md`.
+
 > ## Start here (2026-11-06, 0.81.1): the live GLM session was clean but unusable; the next lanes are GLM speed
 >
 > Section 18.271, `docs/GLM-SPEED-LANE.md`. Hamed: "update the next lanes to focus on GLM speed. it is unusable now!" Cold block 1,328 s, image turns about 5 minutes, a tool call 65 s, 0.83-1.06 tok/s; both prefill and decode are bound by the X10Pro's 1 GB/s. Answers correct. **First job:** G1, `CACHALOT_GLM_PREFILL_CHUNK=8192`, about 1 hour, needs Hamed's go. **Needs Hamed:** G3, where the bank's 152 GiB goes on the internal SSD (103 GiB free). The knob's default is parked.
@@ -9602,6 +9606,22 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.272 G3: GLM's expert bank on the internal SSD (0.82.0)
+
+**Goal.** Hamed, 2026-11-06: "Decide G3 first", then the full bank, freeing space by clearing caches and removing Docker's data.
+
+**Corrections to 18.271 and `docs/GLM-SPEED-LANE.md`'s first version.** The bank is 163.3 GiB, not 152. The X10Pro's `MiniMax-M3-coded-bank` is a 46 GiB partial mirror, not a full copy; moving MiniMax was never a simple swap. Cleanup freed 47 GiB, not the 73 estimated: most of uv's cache is cloned or root-owned, and running apps hold their Library caches.
+
+**Change.** Deleted with Hamed's yes: stale partial `~/GLM-5.3-Flash-bank` (11 GiB), `~/.npm/_cacache` (24), user-owned uv cache files (6), idle Library caches (5); Hamed removed `Docker.raw` (25). Copied the bank to `~/GLM-5.3-Flash-bank`, 256 s, compared all 44 files byte for byte with the X10Pro copy, 849 s, marker `.cachalot-verified`. `serve-glm.sh` prefers the verified copy; `CACHALOT_GLM_BANK` still wins. `tests/test_glm_internal_bank_default.py` (2). `chat-glm.sh` has no bank default and is unchanged.
+
+**Prediction.** `docs/glm-speed/G3-RECORD.md` section 4, committed first: B-2 cold block 200-420 s, B-3 decode 2.5-4.5 tok/s, B-4 image prefills 30-70 s; falsifier decode under 2 tok/s.
+
+**Result (measured).** A first attempt returned no data: the driver crashed on the dump's response rows and the server idled 40 minutes to the guard's limit; both fixed. `arm.sh R2 46`, one fresh server, no snapshots, the five live requests: cold block 205.2 s (1,316.8), decode 3.60, 3.90, 3.39, 3.94 tok/s (0.97, 1.06, 0.83, 1.05), turns 63, 59, 26, 52 s (317, 298, 65, 289), 57-75 misses a token, swap flat. B-1 to B-3 held; B-4 faster than predicted (22-26 s). One replay against one live run; Hermes did not drive this arm.
+
+**Which bottleneck moved.** The token fell to about 0.27 s as priced. Left: misses, short prefill (a 160-token prefill 19 s) and the cold block.
+
+**Kind.** Research: predicted, measured, explained (3 held, 1 split). One default changed (Hamed's call).
 
 ### 18.271 The live GLM session: clean, unusable, and the GLM speed lane (0.81.1)
 

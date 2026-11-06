@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.82.0 (2026-11-06)
+
+HANDOFF "Start here (2026-11-06, 0.82.0)" and section 18.272; `docs/glm-speed/G3-RECORD.md`; Lab brief `docs/lab/briefs/2026-11-06-runtime-0.82.0.md`. Hamed's call.
+
+### Changed
+- **`serve-glm.sh` prefers a verified internal bank** at `~/GLM-5.3-Flash-bank` (marker `.cachalot-verified`, written after a byte compare); the X10Pro copy is the fallback and `CACHALOT_GLM_BANK` still wins. Same bytes, same outputs.
+
+### Measured
+- **GLM on the internal SSD, the live session's five requests at 46 GiB:** decode 0.83-1.06 to 3.39-3.94 tok/s, cold 15.6k block 1,317 to 205 s, turns 65-317 s to 26-63 s. One replay against one live run.
+
+### Fixed
+- `docs/GLM-SPEED-LANE.md`: the bank is 163 GiB, not 152; the X10Pro holds no full copy of MiniMax's bank.
+
+### Tests
+- New `tests/test_glm_internal_bank_default.py` (2 tests).
+
 ## 0.81.1 (2026-11-06)
 
 HANDOFF "Start here (2026-11-06, 0.81.1)" and section 18.271; `docs/GLM-SPEED-LANE.md`. Measurement and planning; no code or default changed.

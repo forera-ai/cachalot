@@ -306,6 +306,8 @@ The same configuration as a benchmark, with a colder working set than a conversa
 token (5.90 tok/s)** at an 83.5 % hit rate, reading 627 MiB per token, drive busy 55 % of decode,
 reproducible to ±0.3 %.
 
+**0.82.0 (2026-11-06): GLM reads from the internal SSD.** With its expert bank on the internal drive, GLM-5.3-Flash decodes at 3.4-3.9 tokens a second instead of about 1, a cold Hermes system block takes 205 s instead of 22 minutes, and turns take 26-63 s instead of 1-5 minutes, on the same requests (HANDOFF 18.272).
+
 **0.81.1 (2026-11-06): GLM speed is the next lane.** A live Hermes session on GLM-5.3-Flash gave correct answers, but a cold system block took 22 minutes and an image turn about 5, at about 1 token a second from the external drive (HANDOFF 18.271). [`docs/GLM-SPEED-LANE.md`](docs/GLM-SPEED-LANE.md) orders the levers.
 
 **0.81.0 (2026-11-06): GLM can upscale small images.** `CACHALOT_GLM_VISION_MIN_PIXELS=810000` enlarges small still images before GLM-5.3-Flash's vision tower. It is off by default. With it on, the 492-pixel test screenshot read without an error in 5 of 5 replies (HANDOFF 18.270).
@@ -731,7 +733,7 @@ changing the cache policy or budget.
 
 ## Roadmap
 
-**Next: GLM-5.3-Flash speed** ([`docs/GLM-SPEED-LANE.md`](docs/GLM-SPEED-LANE.md)): a larger prefill chunk, in-block snapshot pins, and a place for the expert bank on the internal SSD. Nothing in that lane is measured yet.
+**Next: GLM-5.3-Flash speed** ([`docs/GLM-SPEED-LANE.md`](docs/GLM-SPEED-LANE.md)): the bank move is done; next are in-block snapshot pins for the cold block, short-prefill reads and a larger expert budget.
 
 Ordered by measured size in a token, not by expected difficulty. The full ranking, with what closed each
 line, is `docs/HANDOFF.md` section 9.25.

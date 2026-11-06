@@ -29,10 +29,24 @@ Runtime estimate: about 12 minutes.
 
 **Second amendment, before any reply.** The 40 GiB attempt returned no data: `driver.py` crashed on the dump's response rows while the server loaded, and the server idled 40 minutes to the guard's limit (fixed in the driver and in `arm.sh`). The machine then showed 75 GiB, so the run goes back to the registered 46 GiB, the live session's budget.
 
-## 5. Results
+## 5. Results (measured 2026-11-06, commit of the second amendment)
 
-Not yet run.
+**Run.** `arm.sh R2 46`, about 7 minutes, sysctl 88064, no other runtime, ChatGPT open; 75.4 GiB by the guard's count, pressure level 1, swap flat at 1,573 MB, peak wired 74.3 GiB. Replies were not stored; the replay's text differs from the live run's, so prefilled counts after turn 1 differ.
+
+| turn | X10Pro, live (18.271) | internal, replay | decode tok/s, then and now | misses a token |
+|---|---|---|---|---|
+| cold block | 1,316.8 s prefill, 1,328 s turn | **205.2 s** prefill, 208 s turn | | 57 |
+| address form | 159.2 s for 1,240, 317 s turn | 26.2 s for 1,252, **63 s** turn | 0.97, **3.60** | 67 |
+| logo | 168.6 s for 1,170, 298 s turn | 22.5 s for 1,322, **59 s** turn | 1.06, **3.90** | 58 |
+| tool call | 37.3 s for 25, 65 s turn | 19.4 s for 160, **26 s** turn | 0.83, **3.39** | 75 |
+| tool result | 166.9 s for 528, 289 s turn | 18.8 s for 528, **52 s** turn | 1.05, **3.94** | 58 |
+
+**Scored.** B-1 held. B-2 held (205 s, low edge). B-3 held (3.60-3.94). B-4: image prefills 22-26 s, faster than the predicted 30-70; the 25-token case did not recur (160 tokens prefilled in 19 s, not comparable). Falsifier not fired.
+
+**Reading (derived).** The token moved from about 1.05 s to 0.25-0.29 s, as G3's price said (0.27 s). The bottleneck stays reads, now on the internal drive, and short prefill: a 160-token prefill still costs 19 s. Same bank bytes; the X10Pro copy stays as a fallback.
+
+**Limit.** One replay against one live run, not a pair; Hermes was not driving this arm, and its window state here was not recorded. Internal disk has 13 GiB free.
 
 ## 6. Kind
 
-Not yet scored.
+Research: predicted, measured, explained (B-1 to B-3 held, B-4 split). One default changed (the bank's location, Hamed's call).
