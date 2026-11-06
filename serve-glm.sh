@@ -40,7 +40,12 @@ export CACHALOT_SNAPSHOT_DIR=${CACHALOT_GLM_SNAPSHOT_DIR-$HOME/.cache/cachalot/p
 # The contiguous expert bank (one pread an expert instead of 5-9; bit-identical, HANDOFF 18.34, 18.86): on the X10Pro it reads
 # 6.6 % faster and a token is 6.1 % shorter. Used when its directory exists; CACHALOT_GLM_BANK= (empty) or
 # CACHALOT_GLM_BANK_ENABLED=0 turns it off. Build: benchmarks/glm_bank.py --write MODEL OUT (~7 min, 163 GB).
+# The bank lives on the internal SSD since 0.81.2 (HANDOFF 18.272): about 2.9 ms an expert against 14.7 ms over USB, same bytes. The X10Pro copy is the
+# fallback; `.cachalot-verified` marks a copy that passed a byte compare, so a partial directory never wins.
 GLM_BANK_DEFAULT=/Volumes/X10Pro/models/GLM-5.3-Flash-bank
+if [ -f "$HOME/GLM-5.3-Flash-bank/.cachalot-verified" ]; then
+    GLM_BANK_DEFAULT=$HOME/GLM-5.3-Flash-bank
+fi
 if [ -z "${CACHALOT_GLM_BANK+x}" ] && [ -f "$GLM_BANK_DEFAULT/bank.json" ]; then
     export CACHALOT_GLM_BANK=$GLM_BANK_DEFAULT
 fi
