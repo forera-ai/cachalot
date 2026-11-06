@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-11-06, 0.81.1): the live GLM session was clean but unusable; the next lanes are GLM speed
+>
+> Section 18.271, `docs/GLM-SPEED-LANE.md`. Hamed: "update the next lanes to focus on GLM speed. it is unusable now!" Cold block 1,328 s, image turns about 5 minutes, a tool call 65 s, 0.83-1.06 tok/s; both prefill and decode are bound by the X10Pro's 1 GB/s. Answers correct. **First job:** G1, `CACHALOT_GLM_PREFILL_CHUNK=8192`, about 1 hour, needs Hamed's go. **Needs Hamed:** G3, where the bank's 152 GiB goes on the internal SSD (103 GiB free). The knob's default is parked.
+
 > ## Start here (2026-11-06, 0.81.0): `CACHALOT_GLM_VISION_MIN_PIXELS` built, off; the form reads clean through the runtime path
 >
 > Section 18.270, `docs/glm-image-ocr/KNOB-RECORD.md`, Lab brief 2026-11-06-runtime-0.81.0. At 810,000 pixels through a fresh `serve-glm.sh`: form 0 of 5 with an error, card 0 of 3; pooled upscaled form 0 of 15 against native 8 of 14. **Needs Hamed:** whether `serve-glm.sh` sets it; a live Hermes image session on GLM would add evidence.
@@ -9598,6 +9602,24 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.271 The live GLM session: clean, unusable, and the GLM speed lane (0.81.1)
+
+**Goal.** Hamed, 2026-11-06: "Yes, live session", then "analyze the chat and the dump and performance then, update the next lanes to focus on GLM speed. it is unusable now!"
+
+**Session (measured).** `CACHALOT_GLM_VISION_MIN_PIXELS=810000 CACHALOT_SERVER_DUMP=... ./serve-glm.sh --expert-budget-gib 46`, Hermes Desktop, 21 tools, five requests, no error. Cold 15,569-token block: prefill 1,316.8 s (11.8 tok/s), turn 1,328 s. Address form: 1,240 tokens prefilled in 159 s, 153 reply tokens at 0.97 tok/s, 317 s. Logo: 298 s. Tool call: 25 tokens prefilled in 37 s, 65 s. Tool result answer: 289 s. Decode 56-75 misses a token, 70-82 % hits, MLX memory 59.5-63.3 GiB.
+
+**Quality (one sample).** The address form read with no error against the private truth, in text on the first try, with no `vision_analyze` detour. The logo answered in text; no truth file, not scored. `terminal` call well formed, listing correct.
+
+**What it did not test.** Hermes attached the 906 x 943 copy, above the threshold, so the upscale did not act on the form; only the 438 x 398 logo was upscaled (240 to 1,054 tokens), and a logo has no truth file. The knob's small-text claim still rests on 18.269 and 18.270. Its default is parked: a default would add about 100 s of prefill to a small image's turn at the measured 0.13 s a prefilled token (derived).
+
+**Analysis (derived).** A token is 63 ms of compute plus about 1 s of reads at 14.7 ms an expert. Prefill has no miss budget, so 25 tokens took 37 s; a 2,048-token chunk scans most of the bank, so the block made about 8 passes of about 165 s. New on 2026-11-06: 22,618 of 23,104 system-block characters are shared with the 2026-11-03 block; GLM has no in-block pin. Six snapshots on disk did not load (0 loaded, 0 more on disk): they predate the identity, and the new 15,564-token one is unproven until a restart.
+
+**Priced offline.** `cache_sim.py` on the two GLM traces at 13.5 MiB: misses at 46 GiB 100-103, at 68 GiB 68-73. Top 7,000 experts (92 GiB) cover 84 % of decode references on a trace pair that shares a prompt.
+
+**Decision.** `docs/GLM-SPEED-LANE.md` orders levers G1-G7; the next-session prompt leads with it. Rank order of the models is unchanged unless Hamed says so.
+
+**Kind.** Measurement and planning: one live session, offline prices, no prediction written. No code or default changed.
 
 ### 18.270 `CACHALOT_GLM_VISION_MIN_PIXELS`: GLM's upscale knob and its server check (0.81.0)
 

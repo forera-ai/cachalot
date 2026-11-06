@@ -1,10 +1,11 @@
-# Next-session prompt — **v316**, written 2026-11-06
+# Next-session prompt — **v317**, written 2026-11-06
 
 **This is the file to paste.** `docs/NEXT-SESSION-PROMPT.md` is always current; superseded ones live in
 `docs/next-session-prompts/`.
 
 | version | written | produced by | what changed |
 |---|---|---|---|
+| **v317** | 2026-11-06 | Hamed: "analyze the chat and the dump and performance then, update the next lanes to focus on GLM speed. it is unusable now!" | **0.81.1, measurement and planning: live GLM session correct but cold block 1,328 s, image turns about 5 minutes, 0.83-1.06 tok/s; new `docs/GLM-SPEED-LANE.md`, levers G1-G7.** §18.271 |
 | **v316** | 2026-11-06 | Hamed: "Yes, build it", "Yes, run it" | **0.81.0: `CACHALOT_GLM_VISION_MIN_PIXELS` (default off) upscales GLM's small still images; server check at 810,000: form 0 of 5 with an error, card 0 of 3; pooled upscaled 0 of 15 against native 8 of 14. New `tests/test_glm_vision_min_pixels.py`. Lab brief 0.81.0.** §18.270 |
 | **v315** | 2026-11-06 | Hamed: "Yes, ~2 hours" (v314 option 1) | **0.80.3, measurement: GLM address form, native 5 of 10 with an error, padded 0 of 10 (p = 0.033); budget 2 3 of 10, exact 2 of 10. A GLM upscale knob is a candidate, not built.** §18.269 |
 | **v314** | 2026-11-05 | Hamed: "GLM vision, ~30 min", "Use 40 GiB" | **0.80.2, measurement: GLM direct transcription at 40 GiB, budget 2, 13 replies: 492-pixel form 3 of 4 with an error, 906-pixel form 1 of 3, 361 x 108 card 0 of 3, padded card 0 of 3; no GLM upscale knob (registered case c).** §18.268 |
@@ -277,6 +278,10 @@
 | v47 | 2026-09-25 | Hamed asked for the v44-v46 levers planned, built, measured and documented | **0.18.0: GLM prefill 60 to 90 tok/s, bit-identical (a store path that never evicts, plus the next layer read early), GLM's missing MLX buffer-cache cap added, GLM disk snapshots (a restart reuses the system block). DeepSeek: an `iostat` trace shows prefill is not read-bound on either drive; the lookahead A/B drowned in a 124-to-200 s drift across back-to-back prefills.** §17.1, §15.13 |
 | v46 | 2026-09-25 | Hamed asked for GLM-5.3-Flash on Cachalot | 0.17.0: GLM through `serve-glm.sh` / `chat-glm.sh`. §17 |
 | v45 | 2026-09-24 | same as v47, one day earlier | 0.16.0: disk snapshot store by last use; lookahead and local compression closed. §15.12 |
+
+## First jobs (v317): GLM speed is the lane (Hamed: "it is unusable now!")
+
+Read `docs/GLM-SPEED-LANE.md`, HANDOFF 18.271, 18.161 (resident 63 ms), 18.107 (budgets), 17.1 (chunks). **First, with Hamed's go on about 1 hour:** G1, an experiment record with predictions committed first, then `CACHALOT_GLM_PREFILL_CHUNK=8192` on a cold 15.6k block (shipped 1,317 s, predicted about 350 s) with a repeat at 4,096 and a long-context quality check. **Needs Hamed:** G3, the bank on the internal SSD: 152 GiB needed, 103 GiB free; moving MiniMax's coded bank to its X10Pro copy frees it, a delete needs his explicit yes; G3b, a hot tier, fits the free space. **Then:** G2 in-block pins, with a same-day restart check of the 15,564-token snapshot; G4 at 60-68 GiB on a quiet machine. **Parked:** the GLM upscale default, the GLM tool-call replay. **Honest ceiling:** only G3 makes a Hermes turn feel usable bit-identically. **Machine:** arms at 46 GiB need about 68 GiB available; stop `serve-glm.sh` before any arm. **Rules kept:** the earlier ones; M19 stays halted.
 
 ## First jobs (v316): the GLM upscale default is Hamed's call
 

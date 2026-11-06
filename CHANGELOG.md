@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.81.1 (2026-11-06)
+
+HANDOFF "Start here (2026-11-06, 0.81.1)" and section 18.271; `docs/GLM-SPEED-LANE.md`. Measurement and planning; no code or default changed.
+
+### Measured
+- **A live Hermes session on GLM-5.3-Flash at 46 GiB:** answers correct, cold 15.6k block 1,328 s, image turns about 5 minutes, a tool call 65 s, decode 0.83-1.06 tok/s. Prefill and decode are both bound by the X10Pro's 1 GB/s. The upscale acted only on a logo, because Hermes attached the 906-pixel form.
+
+### Added
+- `docs/GLM-SPEED-LANE.md`: levers G1-G7 with derived prices; the next lanes focus on GLM speed.
+
 ## 0.81.0 (2026-11-06)
 
 HANDOFF "Start here (2026-11-06, 0.81.0)" and section 18.270; `docs/glm-image-ocr/KNOB-RECORD.md`; Lab brief `docs/lab/briefs/2026-11-06-runtime-0.81.0.md`. No default changed.
