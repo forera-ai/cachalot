@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-11-13, 0.85.0): G6b built off; its A/B is void on a failed control
+>
+> Section 18.276, `docs/glm-speed/G6B-RECORD.md`. `CACHALOT_GLM_PREFILL_PREDICT_TOPK=k` (default 0) reads ahead a short prefill chunk's predicted next-layer union, bit-identical. Priced at 3-7 % of a 150-500-token prefill. ABBA: identical outputs, but the arms without the knob took 196-197 s on a cold block the knob cannot touch (with it 180 s), and the control arms did not reproduce G6. In-session the knob is -4 to -9 % on every rung; against G6's clean arm -2 to -5 % at 342-499 tokens and nothing below. **Next:** a block-only alternation to explain the 16 s (about 16 min), the live 0.84.0 check (Hamed), G4.
+
 > ## Start here (2026-11-12, 0.84.0): `serve-glm.sh` reads ahead from 512 tokens; GLM's 172-499-token prefills 5-21 % faster, bit-identical
 >
 > Section 18.275. Hamed: "Yes, ship 512". `CACHALOT_GLM_SPECULATE_MIN_TOKENS=512` in `serve-glm.sh` (code default 128 unchanged), on 18.274's ABBA. Not yet checked in a live Hermes session. **Next:** the live check (Hamed), G6b predicted-set read-ahead, G4; `docs/GLM-SPEED-LANE.md`.
@@ -9618,6 +9622,28 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.276 G6b: a predicted-set read ahead for short GLM prefills, built off; the A/B is void (0.85.0)
+
+**Goal.** Hamed, 2026-11-12: "/ca read the prompts and handoffs and continue with remaining tasks" (v321's autonomous job: G6b, priced first), then "Yes, run it".
+
+**Pricing (derived, `docs/glm-speed/g6b_price.py`).** The weighted GLM trace records the decode predictor's top 5 (the next layer's router on this layer's MoE input) for decode tokens only; groups of N consecutive decode tokens of one reply stand in for a prefill chunk of N rows (they route 213 experts a layer at 172 rows against 224 for a real 217-token prefill). At k = 5 the predicted union holds 74-83 % of a 172-384-row chunk's routed misses for 3-4 % more reads; 56-64 % at 24-64 rows. A two-rate model fitted to G6 (2.36 ms a read ahead, 2.65 on demand) gives -4 to -7 % against demand reads below 512 tokens and -2 to -7 % against the whole-layer read ahead above: 0.5-1.5 s a short prefill.
+
+**Build.** `CACHALOT_GLM_PREFILL_PREDICT_TOPK=k` (default 0) in `glm/experts.py`: a prefill chunk of more than one row and fewer than the whole-layer floor, with no caller `speculate` list (MiniMax passes its own and has no predictor), scores the next layer's router on every row in the same sync as its own routing and passes the union of each row's top k, most-predicted first, as the store's `speculate`. Bit-identical. `tests/test_glm_prefill_predict.py` (7). `g6_driver.py` takes `G6_RUNGS`, `g6_analyse.py` arm names.
+
+**Prediction.** `docs/glm-speed/G6B-RECORD.md` sections 3-5, committed first (8535b23): G6b-1 to G6b-7, falsifier "P slower than S at 172-499 tokens".
+
+**Method (measured).** `g6b_run_all.sh 46`: S = 0.84.0 (floor 512, k 0), P = floor 1,200, k 5; ABBA S1 P1 P2 S2, fresh `serve-glm.sh` each, no disk snapshots, the live block cold then ten one-token rungs of 35-1,004 tokens (the first seven are G6's text). Settle cut to 120 s (62 of 65 GiB available, applications open). Then one arm D3 (floor 1,200, k 0, G6's D setting) to test the control. About 42 minutes, 2026-11-12 23:31 to 2026-11-13 00:06.
+
+**Result (measured).** Prefilled counts, reply hashes and decode misses identical in all five arms on every rung. Cold block: S1 196.9, P1 179.9, P2 179.7, S2 197.2, D3 195.9 s; G6 had 178.9-179.8 in three arms. Every block chunk is at or above both floors, so the knob touches only its last 5-token chunk, at most about 4 s (derived); memory, compressor and page cache matched in every arm. P1 and P2 agree within 4 % on rungs 1-8; S1 and S2 differ by 4-40 % and do not reproduce G6's D2 (+0 to +46 %). P against S, mean of pairs: -12 to -28 % on rungs 1-8, -5 to -8 % on the last two; against D3, -3.8 to -9.2 % on every rung; against G6's D2 (same setting and text, other session) -2.4 to +0.5 % at 35-239 tokens, -2.6 % at 342, -4.5 % at 499. Scored: G6b-3, G6b-5 held; G6b-1, G6b-2 missed; G6b-4 split; G6b-6 identity held, block failed; G6b-7 failed; falsifier not fired.
+
+**Reading (hypothesis).** The registered comparison is void: its controls failed and P beat S on the block by as much as on the rungs. Either the knob changes a cold block's prefill through a path the code does not show, or the machine's state alternated with the arms. On the clean cross-session baseline G6b is worth a few percent at 342-499 tokens and nothing below 240, inside the day-to-day variation.
+
+**Which bottleneck moved.** None shipped.
+
+**Open.** A block-only alternation, k 5 against k 0 at floor 1,200, with the knob's reads counted (about 16 minutes): if the 16 s follows the knob, understand it before any speed claim; if not, G6b is at most the cross-session few percent and closes unless a quieter machine shows more. The live 0.84.0 check (Hamed drives). G4.
+
+**Kind.** Research: predicted, measured, controls failed; the comparison is void and the effect unresolved. A default-off knob; no default changed.
 
 ### 18.275 GLM's short-prefill read-ahead threshold is 512 in `serve-glm.sh` (0.84.0)
 

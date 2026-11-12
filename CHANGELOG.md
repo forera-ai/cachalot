@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.85.0 (2026-11-13)
+
+HANDOFF "Start here (2026-11-13, 0.85.0)" and section 18.276; `docs/glm-speed/G6B-RECORD.md`; Lab brief `docs/lab/briefs/2026-11-13-runtime-0.85.0.md`.
+
+### Added
+- **`CACHALOT_GLM_PREFILL_PREDICT_TOPK=k`** (default 0, off; G6b): a GLM prefill chunk below the whole-layer read-ahead threshold (`CACHALOT_GLM_SPECULATE_MIN_TOKENS`) reads ahead the union of its rows' top-k predictions for the next MoE layer (the decode predictor, scored on every row in the same sync as the layer's routing), most-predicted first, instead of nothing. Bit-identical: only which reads start early changes. No numerics bump. Neither `serve-glm.sh` nor `chat-glm.sh` sets it.
+
+### Measured, not shipped
+- Priced on the weighted GLM routing trace (decode-token groups as stand-ins for prefill rows): at k = 5 the predicted union holds 74-83 % of a 172-384-row chunk's routed misses for 3-4 % more reads; about 0.5-1.5 s of a 150-500-token prefill (derived).
+- Server ABBA at 46 GiB (S = 0.84.0, P = threshold 1,200 with k = 5, plus one more knob-off arm): identical prefilled counts, reply hashes and decode misses in all five arms. The comparison is void: the knob-off arms took 196-197 s on a cold system block whose chunks the knob does not touch (P 180 s), and the knob-off arms did not reproduce 0.83.1's numbers on the same text. In-session the knob was 3.8-9.2 % faster on every prompt length; against 0.83.1's clean arm, 2.6 % at 342 tokens, 4.5 % at 499, and within 2.5 % below 240. Unresolved.
+
+### Instruments
+- `docs/glm-speed/g6b_price.py`, `g6b_arm.sh`, `g6b_run_all.sh`; `g6_driver.py` reads its prompt lengths from `G6_RUNGS`, `g6_analyse.py` takes arm names.
+
+### Tests
+- New `tests/test_glm_prefill_predict.py` (7 tests).
+
 ## 0.84.0 (2026-11-12)
 
 HANDOFF "Start here (2026-11-12, 0.84.0)" and section 18.275; measurements in 18.274 and `docs/glm-speed/G6-RECORD.md`; Lab brief `docs/lab/briefs/2026-11-12-runtime-0.84.0.md`.

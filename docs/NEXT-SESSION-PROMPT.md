@@ -1,10 +1,11 @@
-# Next-session prompt — **v321**, written 2026-11-12
+# Next-session prompt — **v322**, written 2026-11-13
 
 **This is the file to paste.** `docs/NEXT-SESSION-PROMPT.md` is always current; superseded ones live in
 `docs/next-session-prompts/`.
 
 | version | written | produced by | what changed |
 |---|---|---|---|
+| **v322** | 2026-11-13 | Hamed: "/ca read the prompts and handoffs and continue with remaining tasks", then "Yes, run it" | **0.85.0: `CACHALOT_GLM_PREFILL_PREDICT_TOPK` (default 0, G6b) reads ahead a short GLM prefill chunk's predicted next-layer union, bit-identical; priced 3-7 % of a 150-500-token prefill. ABBA void: knob-off arms 196-197 s on a cold block the knob does not touch (knob-on 180 s), control arms did not reproduce G6; in-session -3.8 to -9.2 % on every rung, against G6's clean arm -2.6 % at 342 and -4.5 % at 499 tokens. Lab brief 0.85.0.** §18.276 |
 | **v321** | 2026-11-12 | Hamed: "Yes, ship 512" | **0.84.0: `serve-glm.sh` sets `CACHALOT_GLM_SPECULATE_MIN_TOKENS=512` (code default 128 unchanged): GLM prefills under 512 tokens read only their routed experts, 5-21 % faster at 172-499 tokens on 0.83.1's ABBA, bit-identical. New `tests/test_glm_speculate_min_default.py`. Lab brief 0.84.0.** §18.275 |
 | **v320** | 2026-11-12 | Hamed: "/ca read the prompts and handoffs and continue with remaining tasks", then "Sysctl set, run it" | **0.83.1, measurement: GLM short prefills are the whole-layer read-ahead (172-795 tokens all about 20 s); `CACHALOT_GLM_SPECULATE_MIN_TOKENS=1200` (routed reads only) -21 % at 172 (clean pair), -15 % at 239, -10 % at 342, -5 % at 499, +7 % at 795, bit-identical; MiniMax's prefill miss rule closed on price. No default changed.** §18.274 |
 | **v319** | 2026-11-06 | Hamed: "Yes, do G2", "Yes, run it" | **0.83.0: GLM in-block pins, `CACHALOT_GLM_BLOCK_PINS` default 3: restart 5.73 s, changed block 29.2 s against 186.6 s, 146 tensors identical. Lab brief 0.83.0.** §18.273 |
@@ -282,6 +283,10 @@
 | v47 | 2026-09-25 | Hamed asked for the v44-v46 levers planned, built, measured and documented | **0.18.0: GLM prefill 60 to 90 tok/s, bit-identical (a store path that never evicts, plus the next layer read early), GLM's missing MLX buffer-cache cap added, GLM disk snapshots (a restart reuses the system block). DeepSeek: an `iostat` trace shows prefill is not read-bound on either drive; the lookahead A/B drowned in a 124-to-200 s drift across back-to-back prefills.** §17.1, §15.13 |
 | v46 | 2026-09-25 | Hamed asked for GLM-5.3-Flash on Cachalot | 0.17.0: GLM through `serve-glm.sh` / `chat-glm.sh`. §17 |
 | v45 | 2026-09-24 | same as v47, one day earlier | 0.16.0: disk snapshot store by last use; lookahead and local compression closed. §15.12 |
+
+## First jobs (v322): explain G6b's block gap, then the live check and G4
+
+Read `docs/GLM-SPEED-LANE.md`, `docs/glm-speed/G6B-RECORD.md`, HANDOFF 18.276, 18.274. **First (autonomous, about 16 minutes; estimate and confirm with Hamed, sysctl 88064, no other runtime):** block-only arms alternating `CACHALOT_GLM_PREFILL_PREDICT_TOPK` 5 and 0 at `CACHALOT_GLM_SPECULATE_MIN_TOKENS=1200` (the live block cold, `max_tokens` 1, four fresh `serve-glm.sh` arms), with the knob's reads counted (a counter, not a guess). In 18.276 the three knob-off arms took 196-197 s on that block and both knob-on arms 180 s, though every block chunk is 1,228 or 2,048 rows and the knob should touch only the request's last 5-token chunk (at most about 4 s, derived). If the gap follows the knob, find the path before any speed claim; if not, G6b closes at a few percent (clean cross-session baseline: -2.6 % at 342 tokens, -4.5 % at 499, nothing below 240). **Then (Hamed drives):** the live Hermes check of 0.84.0's 512 threshold. **Then:** G4 at 60-68 GiB on a quiet machine; G5 if 0.27 s a token is still too slow (Hamed's call). **New rule:** close applications before a GLM ABBA, or read the control arms first and void the comparison when they disagree by more than the effect: 18.276 ran with 62 of 65 GiB available and its knob-off arms differed by up to 40 % on the same rung. **Rules kept:** v320's and the earlier ones; M19 stays halted.
 
 ## First jobs (v321): GLM speed continues; check 0.84.0 live, then G6b
 

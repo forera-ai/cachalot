@@ -6,7 +6,7 @@ cd /Users/hamedprooshani/Projects/deepseek-v41-mac
 GIB=${1:-46}
 for arm in "S1 512 0" "P1 1200 5" "P2 1200 5" "S2 512 0"; do
   set -- $arm
-  benchmarks/settle.sh
+  benchmarks/settle.sh --timeout 120  # apps open: 62 of the 65 GiB settle wants (G6B-RECORD.md section 6)
   docs/glm-speed/g6b_arm.sh "$1" "$2" "$3" "$GIB"
 done
 echo "all arms done $(date +%T)"
