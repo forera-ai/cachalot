@@ -48,6 +48,46 @@ Per rung, D against S, the mean of the two pairs:
 
 **Decision rule.** If G6-3 and G6-4 hold, the next step is a threshold between the fastest rung D wins and the first it loses, offered to Hamed as the `serve-glm.sh` default (bit-identical; the default is still his call). A predicted-set read ahead (read only what the next router is likely to pick, MiniMax's 0.27.0) is the follow-up that keeps the overlap and drops the waste; it is not built here.
 
-## 6. Results
+## 6. Results (measured 2026-11-12, commit 6da70a4)
 
-Not run.
+**Run.** `g6_run_all.sh 46`, Hamed's `sudo sysctl iogpu.wired_limit_mb=88064` first, about 33 minutes (16:15-16:48), no other runtime, apps open (Teams, Chrome, ChatGPT; the guard counted 49-72 GiB available against 75 and ran with `--force`, as in G3), swap 0 throughout, pressure level 1, peak wired 72.7-74.2 GiB. Raw: `benchmarks/results/glm-speed/g6/`, scored by `docs/glm-speed/g6_analyse.py`.
+
+| rung | prefilled | S1 | D1 | D2 | S2 | pair 1 (D1/S1) | pair 2 (D2/S2) | mean |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| block | 15,569 | 178.9 | 212.1 | 179.7 | 179.8 | +18.5 % | -0.1 % | |
+| 1 | 35 | 7.75 | 9.89 | 7.76 | 7.63 | +27.6 % | +1.7 % | +14.6 % |
+| 2 | 62 | 10.77 | 13.78 | 10.65 | 10.61 | +27.9 % | +0.4 % | +14.2 % |
+| 3 | 116 | 13.94 | 17.84 | 13.78 | 13.84 | +27.9 % | -0.4 % | +13.8 % |
+| 4 | 172 | 20.05 | 19.11 | **15.73** | 19.86 | -4.7 % | **-20.8 %** | -12.8 % |
+| 5 | 239 | 20.05 | 16.96 | 16.88 | 19.87 | -15.4 % | -15.1 % | **-15.2 %** |
+| 6 | 342 | 20.30 | 18.27 | 18.16 | 20.03 | -10.0 % | -9.3 % | **-9.7 %** |
+| 7 | 499 | 20.39 | 19.50 | 19.27 | 20.21 | -4.3 % | -4.7 % | **-4.5 %** |
+| 8 | 795 | 20.81 | 22.53 | 21.98 | 20.80 | +8.3 % | +5.7 % | **+7.0 %** |
+| 9 | 1,223 | 23.86 | 20.39 | 20.38 | 21.62 | -14.6 % | -5.7 % | control |
+
+Prefill seconds. Rungs 1-3 are under 128 tokens and rung 9 is over 1,200 (the slices ran longer than their targets), so all four are controls: the knob changes nothing on them.
+
+**D1 ran slow at its start, not because of the knob.** Its block took 212 s against 179-180 in the other three arms, and its first three rungs, controls with no read ahead in either arm, ran 28 % slower than all three other arms, with decode reads at 5.6-6.0 ms against 4.4 ms. By rung 4 its decode reads were back at 4.3 ms. Pair 1's rungs up to 4 carry that drift; pair 2's controls agree within 2 % and its S arms agree with S1 within 1-1.6 % on every rung to 795 tokens. Rung 9's S arms differ by 9.4 %, so it is not used.
+
+**Identity (measured).** Prefilled counts and reply hashes are equal in all four arms on every rung, and the decode misses a token (61, 61, 52, 43, 29, 17, 12, 8) are equal too: the arms saw the same tokens and the same residency.
+
+**Scored.**
+- G6-1 (35, 62 tokens within +-10 %): missed on the mean (+14.6, +14.2 %), held on the clean pair (+1.7, +0.4 %). The miss is D1's drift on controls.
+- G6-2 (116 tokens within +-10 %): the same, +13.8 % mean, -0.4 % pair 2.
+- G6-3 (172 tokens, D faster by 20-45 %, S 15-23 s): **split.** Mean -12.8 % (pair 1 -4.7 % with D1's drift in it), pair 2 -20.8 %; S 19.9-20.1 s held.
+- G6-4 (239 tokens, faster by 10-35 %): held, -15.2 % (both pairs -15 %).
+- G6-5 (342 and 499 tokens, -25 to +5 %): held, -9.7 % and -4.5 %.
+- G6-6 (795 tokens, -10 to +20 %): held, +7.0 %. The 1,100-token rung became 1,223 tokens, over D's 1,200, and tested nothing.
+- G6-7 (identity): held.
+- G6-8 (S flat at 15-25 s from 160 to 1,100 tokens): held, 19.9-23.9 s.
+- Falsifier (D not faster at 172 tokens by more than the S spread, 1.0 %): not fired.
+
+**Explanation (hypothesis held).** The shipped path's short prefill is the whole-layer read ahead: about 20 s whatever the length from 172 to 795 tokens. Reading only the routed set wins while the set is small and loses once the lost overlap costs more than the reads it saves; the crossing is between 499 and 795 tokens, about 615 by linear interpolation (derived). The win shrinks faster than the read count (-26 % reads at 217 tokens priced, -15 % time at 239 measured): the demand path pays a per-layer latency the read ahead hides.
+
+**What it would mean in a turn (derived).** G3's 160-token turn (19.4 s prefill of a 26 s turn) would lose about 3-4 s; a 240-token tool result about 3 s; a 500-token one about 1 s. Prompts under 128 and over about 600 tokens are unchanged.
+
+**Limits.** One text (`RESEARCH-DIRECTION.md` slices), one residency path (the block, then one-token replies, so residency only grows rung by rung, as the miss counts show), one machine state, two pairs of which one carries drift on its first rungs. Live turns decode between prefills; their residency differs. The bound between 499 and 795 tokens is from two rungs.
+
+**Next (the decision rule).** G6-3 split and G6-4 held, so the rule's next step applies: `CACHALOT_GLM_SPECULATE_MIN_TOKENS=512` in `serve-glm.sh` (D's measured wins are at 172-499 tokens, its loss at 795; 512 keeps the read ahead from the first rung D lost on). Bit-identical, a default, so Hamed's call. The predicted-set read ahead (keep the overlap, drop the waste) is the follow-up lever.
+
+**Kind.** Research: predicted, measured, explained as hypothesis (5 held, 1 split, 2 missed on the mean by a drifting arm and held on the clean pair). No code or default changed.

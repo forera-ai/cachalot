@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.83.1 (2026-11-12)
+
+HANDOFF "Start here (2026-11-12, 0.83.1)" and section 18.274; `docs/glm-speed/G6-RECORD.md`. Measurement and instruments; no runtime code or default changed.
+
+### Measured
+- GLM short prefills on the internal SSD at 46 GiB, server path, ABBA with fresh servers: the shipped whole-layer read-ahead (`CACHALOT_GLM_SPECULATE_MIN_TOKENS=128`) makes every prefill of 172-795 tokens take 19.9-20.8 s. With it off below 1,200 tokens: 172 tokens -20.8 % (clean pair; mean -12.8 % with a drifting arm), 239 -15.2 %, 342 -9.7 %, 499 -4.5 %, 795 +7.0 %. Prefilled counts, reply hashes and decode misses identical in all four arms.
+
+### Closed
+- G6 as specified (MiniMax's prefill miss rule ported to GLM), on price from the GLM routing traces: it would change 78-99 % of a short prefill's (row, layer) pairs at a median 15-28 % of their routing weight; 8-12 % at a GLM-scaled 0.10 threshold. DeepSeek's rare-expert skip failed its gate at 12.5 % (18.260).
+
+### Corrected
+- The 17.1 premise behind the 128-token threshold ("top-8 of 288 reaches ~97 % of a layer's experts at 128 tokens") does not hold on Hermes text: 217 tokens route to 78 % of them.
+
+### Instruments
+- `docs/glm-speed/g6_price.py` (reads a short prefill pays and what two levers leave unread, from a routing trace), `g6_driver.py`, `g6_arm.sh`, `g6_run_all.sh`, `g6_analyse.py`.
+
 ## 0.83.0 (2026-11-06)
 
 HANDOFF "Start here (2026-11-06, 0.83.0)" and section 18.273; `docs/glm-speed/G2-RECORD.md`; Lab brief `docs/lab/briefs/2026-11-06-runtime-0.83.0.md`.

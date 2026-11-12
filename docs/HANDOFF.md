@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-11-12, 0.83.1): GLM's short prefills are the whole-layer read-ahead; reading only the routed set is up to 21 % faster below 500 tokens
+>
+> Section 18.274, `docs/glm-speed/G6-RECORD.md`. Every GLM prefill chunk from 128 tokens reads every missing expert of the next layer, so 172-795 tokens all take about 20 s. `CACHALOT_GLM_SPECULATE_MIN_TOKENS=1200` (demand reads only): 172 tokens -20.8 % (clean pair), 239 -15.2 %, 342 -9.7 %, 499 -4.5 %, 795 +7.0 %; bit-identical. MiniMax's prefill miss rule (G6 as listed) closed on price. **Needs Hamed:** `serve-glm.sh` default 512 (bit-identical, his call). **Next:** a predicted-set read-ahead, G4.
+
 > ## Start here (2026-11-06, 0.83.0): GLM's cold block is solved for ordinary use: restart 5.7 s, new day 29 s, bit-identical
 >
 > Section 18.273, `docs/glm-speed/G2-RECORD.md`. `CACHALOT_GLM_BLOCK_PINS` (default 3): the last three chunk boundaries inside a system block go to disk. A changed block reused 14,336 tokens and took 29.2 s against 186.6 s cold; 146 tensors identical. Pins appear after the next cold prefill. **Next:** G6's price, then G4; `docs/GLM-SPEED-LANE.md`.
@@ -9610,6 +9614,24 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.274 G6: what a GLM short prefill reads, and reading less of it (0.83.1)
+
+**Goal.** Hamed, 2026-11-12: "/ca read the prompts and handoffs and continue with remaining tasks" (v319 first job: G6's price from a trace, per affected row, before any port); then "Sysctl set, run it".
+
+**Pricing (derived, `docs/glm-speed/g6_price.py`).** On the weighted GLM trace (0.62.10) and two unweighted replays, LRU of 3,489 slots, decode budget 2: from 128 tokens (`CACHALOT_GLM_SPECULATE_MIN_TOKENS`) each layer reads every non-resident expert of the next layer, about 8,600 reads a chunk whatever its length, which matches G3's flat 19 s at 160 and 528 tokens. 17.1's premise for 128 ("~97 % of a layer's experts") is wrong on Hermes text: 217 tokens route to 78 %. Lever A, reading only the routed set, saves 26-29 % of reads at 217-304 tokens, 4-9 % on 690-2,048-token chunks. Lever B, MiniMax's 0.42.0 rule on top (the G6 the lane listed), would change 78-99 % of (row, layer) pairs at a median 15-28 % of their routing weight (8-12 % at a GLM-scaled 0.10): closed on price, against DeepSeek's 12.5 % failure (18.260).
+
+**Prediction.** `docs/glm-speed/G6-RECORD.md` sections 3-5, committed first (6da70a4): G6-1 to G6-8, falsifier "D not faster at 160 tokens than the S spread".
+
+**Method (measured).** `g6_run_all.sh 46`: ABBA (S = 128 shipped, D = 1,200), each arm a fresh `serve-glm.sh`, no disk snapshots, the live session's block cold, then nine one-token requests that keep the block and prefill 35-1,223 tokens of `RESEARCH-DIRECTION.md`. Sysctl 88064, swap 0, about 33 minutes.
+
+**Result (measured).** S prefill 19.9-20.8 s from 172 to 795 tokens. D against S, mean of two pairs: 172 tokens -12.8 % (pair 2 -20.8 %, pair 1 -4.7 %), 239 -15.2 %, 342 -9.7 %, 499 -4.5 %, 795 +7.0 %. Controls (35, 62, 116, 1,223 tokens) agree within 2 % in pair 2; D1 ran 28 % slow on its first rungs and its block (212 s against 179-180), with decode reads at 5.6-6.0 ms against 4.4: drift, not the knob. Prefilled counts, reply hashes and misses a token identical in all arms. Scored: 5 held, G6-3 split, G6-1 and G6-2 missed on the mean through D1's drift and held on the clean pair; falsifier not fired.
+
+**Which bottleneck moved.** None shipped. The short prefill's cost is the whole-layer read-ahead; the routed set wins until the lost overlap outweighs the saved reads, between 499 and 795 tokens (about 615, derived). A 160-token turn would lose about 3-4 s of 26.
+
+**Open.** `serve-glm.sh` default `CACHALOT_GLM_SPECULATE_MIN_TOKENS=512` (bit-identical; Hamed's call). A predicted-set read-ahead, which would keep the overlap and drop the waste. Prefills under 128 tokens still cost 8-14 s (35-116 tokens) and are untouched by either.
+
+**Kind.** Research: predicted, measured, explained as hypothesis (5 held, 1 split, 2 missed on the mean). No code or default changed.
 
 ### 18.273 G2: GLM's system block across restarts and days (0.83.0)
 

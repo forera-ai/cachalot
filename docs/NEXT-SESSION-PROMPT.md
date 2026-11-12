@@ -1,12 +1,13 @@
-# Next-session prompt — **v319**, written 2026-11-06
+# Next-session prompt — **v320**, written 2026-11-12
 
 **This is the file to paste.** `docs/NEXT-SESSION-PROMPT.md` is always current; superseded ones live in
 `docs/next-session-prompts/`.
 
 | version | written | produced by | what changed |
 |---|---|---|---|
+| **v320** | 2026-11-12 | Hamed: "/ca read the prompts and handoffs and continue with remaining tasks", then "Sysctl set, run it" | **0.83.1, measurement: GLM short prefills are the whole-layer read-ahead (172-795 tokens all about 20 s); `CACHALOT_GLM_SPECULATE_MIN_TOKENS=1200` (routed reads only) -21 % at 172 (clean pair), -15 % at 239, -10 % at 342, -5 % at 499, +7 % at 795, bit-identical; MiniMax's prefill miss rule closed on price. No default changed.** §18.274 |
 | **v319** | 2026-11-06 | Hamed: "Yes, do G2", "Yes, run it" | **0.83.0: GLM in-block pins, `CACHALOT_GLM_BLOCK_PINS` default 3: restart 5.73 s, changed block 29.2 s against 186.6 s, 146 tensors identical. Lab brief 0.83.0.** §18.273 |
-| **v318** | 2026-11-06 | Hamed: "Decide G3 first", full bank, Docker removed, "Purged, run it" | **0.82.0: GLM bank on the internal SSD, `serve-glm.sh` prefers it: decode 3.39-3.94 tok/s, cold block 205 s, turns 26-63 s, same requests. Lab brief 0.82.0.** §18.272 |
+| v318 | 2026-11-06 | Hamed: "Decide G3 first", full bank, Docker removed, "Purged, run it" | **0.82.0: GLM bank on the internal SSD, `serve-glm.sh` prefers it: decode 3.39-3.94 tok/s, cold block 205 s, turns 26-63 s, same requests. Lab brief 0.82.0.** §18.272 |
 | **v317** | 2026-11-06 | Hamed: "analyze the chat and the dump and performance then, update the next lanes to focus on GLM speed. it is unusable now!" | **0.81.1, measurement and planning: live GLM session correct but cold block 1,328 s, image turns about 5 minutes, 0.83-1.06 tok/s; new `docs/GLM-SPEED-LANE.md`, levers G1-G7.** §18.271 |
 | **v316** | 2026-11-06 | Hamed: "Yes, build it", "Yes, run it" | **0.81.0: `CACHALOT_GLM_VISION_MIN_PIXELS` (default off) upscales GLM's small still images; server check at 810,000: form 0 of 5 with an error, card 0 of 3; pooled upscaled 0 of 15 against native 8 of 14. New `tests/test_glm_vision_min_pixels.py`. Lab brief 0.81.0.** §18.270 |
 | **v315** | 2026-11-06 | Hamed: "Yes, ~2 hours" (v314 option 1) | **0.80.3, measurement: GLM address form, native 5 of 10 with an error, padded 0 of 10 (p = 0.033); budget 2 3 of 10, exact 2 of 10. A GLM upscale knob is a candidate, not built.** §18.269 |
@@ -280,6 +281,10 @@
 | v47 | 2026-09-25 | Hamed asked for the v44-v46 levers planned, built, measured and documented | **0.18.0: GLM prefill 60 to 90 tok/s, bit-identical (a store path that never evicts, plus the next layer read early), GLM's missing MLX buffer-cache cap added, GLM disk snapshots (a restart reuses the system block). DeepSeek: an `iostat` trace shows prefill is not read-bound on either drive; the lookahead A/B drowned in a 124-to-200 s drift across back-to-back prefills.** §17.1, §15.13 |
 | v46 | 2026-09-25 | Hamed asked for GLM-5.3-Flash on Cachalot | 0.17.0: GLM through `serve-glm.sh` / `chat-glm.sh`. §17 |
 | v45 | 2026-09-24 | same as v47, one day earlier | 0.16.0: disk snapshot store by last use; lookahead and local compression closed. §15.12 |
+
+## First jobs (v320): GLM speed continues; the short-prefill threshold is Hamed's call
+
+Read `docs/GLM-SPEED-LANE.md`, `docs/glm-speed/G6-RECORD.md`, HANDOFF 18.274, 18.273. **First, Hamed's call:** `CACHALOT_GLM_SPECULATE_MIN_TOKENS=512` as the `serve-glm.sh` default (bit-identical; measured wins at 172-499 tokens, a loss at 795; a minor release with a Lab brief), then a live Hermes check that a 150-500-token follow-up prefills in 15-19 s instead of about 20. **Then (autonomous):** G6b, a predicted-set read-ahead for short chunks (each row's top predictions of the next layer from this layer's MoE input, MiniMax's 0.27.0): price it on the weighted trace first, then the G6 ABBA (`docs/glm-speed/g6_run_all.sh`; fix the 1,100-token rung, which prefilled 1,223 tokens). **Then:** G4 at 60-68 GiB on a quiet machine; G5 if 0.27 s a token is still too slow (Hamed's call). **Machine:** internal disk 70 GiB free now; sysctl resets at reboot (0 at this session's start). **New rule:** in a G6-style ABBA, read the control rungs before the test rungs: one arm (D1) ran 28 % slow on every control with decode reads at 5.6-6.0 ms, and only the clean pair is trustworthy for its early rungs. **Rules kept:** the earlier ones; M19 stays halted.
 
 ## First jobs (v319): GLM speed continues; short prefill and misses are what a turn feels now
 
@@ -963,6 +968,8 @@ check `pgrep -f Flurry.appex` before each arm instead.
 
 ## What is closed, so nobody spends a session there
 
+- **MiniMax's prefill miss rule ported to GLM, the original G6 (0.83.1, §18.274):** on the GLM traces it changes 78-99 % of a short prefill's (row, layer) pairs at a median 15-28 % of their routing weight (8-12 % at a 0.10 threshold), worse than DeepSeek's rare skip, which failed at 12.5 %. Closed on price, never run.
+
 - **Budget 2 as the cause of GLM's letter errors on the form (0.80.3, §18.269):** exact 2 of 10 against 3 of 10.
 - **A tool-exact port to MiniMax (0.80.1, §18.267):** 0 of 12 malformed calls under the shipped substitution (48 GiB) and exact; reopen only if a live MiniMax session shows malformed integer arguments.
 - **Budget 0 as the cause of screenshot misreadings (0.78.4, §18.263):** exact decode misread the 492-px copy as well (2 of 7); resolution is the lead.
@@ -1203,6 +1210,8 @@ check `pgrep -f Flurry.appex` before each arm instead.
 
 | tool | what it answers | cost |
 |---|---|---|
+| `docs/glm-speed/g6_price.py TRACE [slots] [budget] [threshold]` | the reads a GLM prefill chunk pays under the whole-layer read-ahead, with routed reads only, and under MiniMax's miss rule, with the per-row weight it takes | offline, seconds |
+| `docs/glm-speed/g6_run_all.sh [GiB]` + `g6_analyse.py` | GLM short-prefill ABBA: block cold, then a ladder of one-token prefills, shipped against `CACHALOT_GLM_SPECULATE_MIN_TOKENS=1200` | about 33 min |
 | `benchmarks/cuda/session.sh pinroute7` + `benchmarks/cuda/pin_route_idle_score.py DIR [--failed-attempts N] [--json OUT]` | follow-up Q on an NVIDIA host: copy trains at a fixed 3.0 ms period with the sleep varied, a busy-host cell with no copies, and the staging pipeline at 2 to 4 buffers and 1 or 2 filling threads; Q-1 to Q-10 beside their intervals | ~15 s of GPU |
 | `benchmarks/cuda/session.sh pinroute6` + `benchmarks/cuda/pin_route_pipeline_score.py DIR [--failed-attempts N] [--json OUT]` | follow-up P on an NVIDIA host: copy trains on a 1.4 to 2.4 ms schedule, and a two-buffer staging pipeline (aged, `memcpy`, `memcpy` + `clflushopt`, non-temporal) serial and overlapped; P-1 to P-11 beside their intervals | ~15 s of GPU |
 | `benchmarks/cuda/session.sh pinroute5` + `benchmarks/cuda/pin_route_flush_score.py DIR [--failed-attempts N] [--json OUT]` | follow-up O on an NVIDIA host: fine idle sweep, idle-gap copy trains, `memcpy`/non-temporal/`clflushopt`/`clwb` cells (`cache_touch.c`, compiled with the instance's `cc`) and `O_DIRECT`/buffered fills; O-1 to O-15 beside their intervals | ~15 s of GPU |
