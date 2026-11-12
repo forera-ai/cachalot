@@ -61,6 +61,12 @@ export CACHALOT_GLM_PREDICT_TOPK=${CACHALOT_GLM_PREDICT_TOPK:-0}
 # 24 replies. CACHALOT_GLM_DECODE_MISS_BUDGET=off restores the exact path; 4 is the conservative setting (-7 %).
 export CACHALOT_GLM_DECODE_MISS_BUDGET=${CACHALOT_GLM_DECODE_MISS_BUDGET:-2}
 
+# Short-prefill read-ahead from 512 tokens (Hamed, 2026-11-12, HANDOFF 18.274-18.275): below it a prefill chunk reads only the experts its
+# rows route to, not every missing expert of the next layer. Bit-identical. Server ABBA on the internal bank at 46 GiB: 172 tokens -20.8 %,
+# 239 -15.2 %, 342 -9.7 %, 499 -4.5 %; at 795 the read-ahead wins by 7 %, so it stays on from 512. CACHALOT_GLM_SPECULATE_MIN_TOKENS=128
+# restores the old threshold (the code default).
+export CACHALOT_GLM_SPECULATE_MIN_TOKENS=${CACHALOT_GLM_SPECULATE_MIN_TOKENS:-512}
+
 # GLM keeps a small image's native pixels, and misread a 492-pixel screenshot in 5 of 10 replies against 0 of 10 padded (HANDOFF 18.269).
 # CACHALOT_GLM_VISION_MIN_PIXELS=810000 upscales still images under that pixel count before the tower. Off by default; CHANGES OUTPUTS for
 # small images (a 492 x 512 screenshot: +714 prompt tokens).

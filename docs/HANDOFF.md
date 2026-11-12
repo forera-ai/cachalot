@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-11-12, 0.84.0): `serve-glm.sh` reads ahead from 512 tokens; GLM's 172-499-token prefills 5-21 % faster, bit-identical
+>
+> Section 18.275. Hamed: "Yes, ship 512". `CACHALOT_GLM_SPECULATE_MIN_TOKENS=512` in `serve-glm.sh` (code default 128 unchanged), on 18.274's ABBA. Not yet checked in a live Hermes session. **Next:** the live check (Hamed), G6b predicted-set read-ahead, G4; `docs/GLM-SPEED-LANE.md`.
+
 > ## Start here (2026-11-12, 0.83.1): GLM's short prefills are the whole-layer read-ahead; reading only the routed set is up to 21 % faster below 500 tokens
 >
 > Section 18.274, `docs/glm-speed/G6-RECORD.md`. Every GLM prefill chunk from 128 tokens reads every missing expert of the next layer, so 172-795 tokens all take about 20 s. `CACHALOT_GLM_SPECULATE_MIN_TOKENS=1200` (demand reads only): 172 tokens -20.8 % (clean pair), 239 -15.2 %, 342 -9.7 %, 499 -4.5 %, 795 +7.0 %; bit-identical. MiniMax's prefill miss rule (G6 as listed) closed on price. **Needs Hamed:** `serve-glm.sh` default 512 (bit-identical, his call). **Next:** a predicted-set read-ahead, G4.
@@ -9614,6 +9618,18 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.275 GLM's short-prefill read-ahead threshold is 512 in `serve-glm.sh` (0.84.0)
+
+**Goal.** Hamed, 2026-11-12: "Yes, ship 512" (18.274's decision rule).
+
+**Change.** `serve-glm.sh` exports `CACHALOT_GLM_SPECULATE_MIN_TOKENS=${CACHALOT_GLM_SPECULATE_MIN_TOKENS:-512}`; the code default in `glm/experts.py` stays 128, so `chat-glm.sh` and direct runs are unchanged. No numerics bump (scheduling only, as 0.18.0's scan path). `tests/test_glm_speculate_min_default.py` (3). Lab brief `docs/lab/briefs/2026-11-12-runtime-0.84.0.md`.
+
+**Evidence (measured in 18.274).** Server ABBA at 46 GiB: 172 tokens -20.8 % (clean pair), 239 -15.2 %, 342 -9.7 %, 499 -4.5 %, 795 +7.0 %; identical prefilled counts, reply hashes and misses. 512 keeps the read-ahead from the first measured length where demand reads lost; 500-794 tokens are unmeasured, interpolated crossing about 615 (derived).
+
+**Open.** A live Hermes check: a 150-500-token follow-up should prefill in about 15-19 s instead of about 20 (prediction, from 18.274). G6b, a predicted-set read-ahead.
+
+**Kind.** A default change (Hamed's call) on recorded evidence; no new measurement. Bit-identical.
 
 ### 18.274 G6: what a GLM short prefill reads, and reading less of it (0.83.1)
 

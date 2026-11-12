@@ -306,6 +306,8 @@ The same configuration as a benchmark, with a colder working set than a conversa
 token (5.90 tok/s)** at an 83.5 % hit rate, reading 627 MiB per token, drive busy 55 % of decode,
 reproducible to ±0.3 %.
 
+**0.84.0 (2026-11-12): GLM's short prefills are faster.** `serve-glm.sh` now reads ahead only from 512 tokens, so a 172-499-token prefill reads just the experts it uses: 5-21 % faster, with identical results (HANDOFF 18.275).
+
 **0.83.1 (2026-11-12): why GLM's short prefills all take 20 s.** From 128 tokens, every prefill chunk reads every missing expert of the next layer ahead of time, so a 170-800-token prefill costs about 20 s whatever its length. Reading only the experts the prompt routes to is 21 % faster at 172 tokens, 15 % at 239, 10 % at 342 and 5 % at 499, and 7 % slower at 795, with identical results (HANDOFF 18.274). The switch exists (`CACHALOT_GLM_SPECULATE_MIN_TOKENS`); the default is unchanged.
 
 **0.83.0 (2026-11-06): GLM's cold start is gone for ordinary use.** A restart with the same Hermes system block takes 5.7 s, and a block changed by a new day takes 29 s instead of about 190 s, with identical results (HANDOFF 18.273).
@@ -737,7 +739,7 @@ changing the cache policy or budget.
 
 ## Roadmap
 
-**Next: GLM-5.3-Flash speed** ([`docs/GLM-SPEED-LANE.md`](docs/GLM-SPEED-LANE.md)): the bank move and in-block snapshot pins are done, and short-prefill reads are measured (0.83.1); next are a short-prefill read-ahead threshold (Hamed's call), a predicted-set read-ahead, and a larger expert budget.
+**Next: GLM-5.3-Flash speed** ([`docs/GLM-SPEED-LANE.md`](docs/GLM-SPEED-LANE.md)): the bank move and in-block snapshot pins are done, and short-prefill reads are measured and the read-ahead now starts at 512 tokens (0.83.1-0.84.0); next are a predicted-set read-ahead and a larger expert budget.
 
 Ordered by measured size in a token, not by expected difficulty. The full ranking, with what closed each
 line, is `docs/HANDOFF.md` section 9.25.

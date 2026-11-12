@@ -1,10 +1,11 @@
-# Next-session prompt — **v320**, written 2026-11-12
+# Next-session prompt — **v321**, written 2026-11-12
 
 **This is the file to paste.** `docs/NEXT-SESSION-PROMPT.md` is always current; superseded ones live in
 `docs/next-session-prompts/`.
 
 | version | written | produced by | what changed |
 |---|---|---|---|
+| **v321** | 2026-11-12 | Hamed: "Yes, ship 512" | **0.84.0: `serve-glm.sh` sets `CACHALOT_GLM_SPECULATE_MIN_TOKENS=512` (code default 128 unchanged): GLM prefills under 512 tokens read only their routed experts, 5-21 % faster at 172-499 tokens on 0.83.1's ABBA, bit-identical. New `tests/test_glm_speculate_min_default.py`. Lab brief 0.84.0.** §18.275 |
 | **v320** | 2026-11-12 | Hamed: "/ca read the prompts and handoffs and continue with remaining tasks", then "Sysctl set, run it" | **0.83.1, measurement: GLM short prefills are the whole-layer read-ahead (172-795 tokens all about 20 s); `CACHALOT_GLM_SPECULATE_MIN_TOKENS=1200` (routed reads only) -21 % at 172 (clean pair), -15 % at 239, -10 % at 342, -5 % at 499, +7 % at 795, bit-identical; MiniMax's prefill miss rule closed on price. No default changed.** §18.274 |
 | **v319** | 2026-11-06 | Hamed: "Yes, do G2", "Yes, run it" | **0.83.0: GLM in-block pins, `CACHALOT_GLM_BLOCK_PINS` default 3: restart 5.73 s, changed block 29.2 s against 186.6 s, 146 tensors identical. Lab brief 0.83.0.** §18.273 |
 | v318 | 2026-11-06 | Hamed: "Decide G3 first", full bank, Docker removed, "Purged, run it" | **0.82.0: GLM bank on the internal SSD, `serve-glm.sh` prefers it: decode 3.39-3.94 tok/s, cold block 205 s, turns 26-63 s, same requests. Lab brief 0.82.0.** §18.272 |
@@ -281,6 +282,10 @@
 | v47 | 2026-09-25 | Hamed asked for the v44-v46 levers planned, built, measured and documented | **0.18.0: GLM prefill 60 to 90 tok/s, bit-identical (a store path that never evicts, plus the next layer read early), GLM's missing MLX buffer-cache cap added, GLM disk snapshots (a restart reuses the system block). DeepSeek: an `iostat` trace shows prefill is not read-bound on either drive; the lookahead A/B drowned in a 124-to-200 s drift across back-to-back prefills.** §17.1, §15.13 |
 | v46 | 2026-09-25 | Hamed asked for GLM-5.3-Flash on Cachalot | 0.17.0: GLM through `serve-glm.sh` / `chat-glm.sh`. §17 |
 | v45 | 2026-09-24 | same as v47, one day earlier | 0.16.0: disk snapshot store by last use; lookahead and local compression closed. §15.12 |
+
+## First jobs (v321): GLM speed continues; check 0.84.0 live, then G6b
+
+Read `docs/GLM-SPEED-LANE.md`, `docs/glm-speed/G6-RECORD.md`, HANDOFF 18.275, 18.274. **First (Hamed drives):** a live Hermes session on `./serve-glm.sh`: follow-ups of 150-500 prefilled tokens should take about 15-19 s, not about 20 (prediction, 18.274); read the `[request]` lines and the dump. **Then (autonomous):** G6b, a predicted-set read-ahead for chunks under 512 tokens (each row's top predictions of the next layer from this layer's MoE input, MiniMax's 0.27.0), priced on the weighted trace first, then the G6 ABBA (`docs/glm-speed/g6_run_all.sh`; give the S arm `CACHALOT_GLM_SPECULATE_MIN_TOKENS=512` now, and fix the 1,100-token rung, which prefilled 1,223). Also unmeasured: 500-794 tokens, where the crossing is (about 615, derived). **Then:** G4 at 60-68 GiB on a quiet machine; G5 if 0.27 s a token is still too slow (Hamed's call). **Rules kept:** v320's (read the control rungs first in an ABBA) and the earlier ones; M19 stays halted.
 
 ## First jobs (v320): GLM speed continues; the short-prefill threshold is Hamed's call
 

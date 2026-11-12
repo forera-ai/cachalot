@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.84.0 (2026-11-12)
+
+HANDOFF "Start here (2026-11-12, 0.84.0)" and section 18.275; measurements in 18.274 and `docs/glm-speed/G6-RECORD.md`; Lab brief `docs/lab/briefs/2026-11-12-runtime-0.84.0.md`.
+
+### Changed
+- **`serve-glm.sh` sets `CACHALOT_GLM_SPECULATE_MIN_TOKENS=512`** (Hamed's call): a GLM prefill chunk under 512 tokens reads only the experts it routes to, not every missing expert of the next layer. Bit-identical. Measured in 0.83.1: 172 tokens -20.8 %, 239 -15.2 %, 342 -9.7 %, 499 -4.5 %; 795 tokens +7.0 % without the read-ahead, so it stays on from 512. `=128` restores the old threshold; the code default (and `chat-glm.sh`) is unchanged. No numerics bump.
+
+### Tests
+- New `tests/test_glm_speculate_min_default.py` (3 tests).
+
 ## 0.83.1 (2026-11-12)
 
 HANDOFF "Start here (2026-11-12, 0.83.1)" and section 18.274; `docs/glm-speed/G6-RECORD.md`. Measurement and instruments; no runtime code or default changed.
