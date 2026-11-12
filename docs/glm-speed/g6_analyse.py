@@ -1,15 +1,17 @@
 """Scores the G6 ABBA (docs/glm-speed/G6-RECORD.md): per rung, prefill seconds in S1, D1, D2, S2, the two pairs' D - S, and
-the identity check (prefilled counts and reply hashes equal in all four arms). Usage: g6_analyse.py [results dir]."""
+the identity check (prefilled counts and reply hashes equal in all four arms). Usage: g6_analyse.py [results dir] [arms, S1,D1,D2,S2
+in ABBA order; G6b passes S1,P1,P2,S2]."""
 import json, sys
 from pathlib import Path
 
 d = Path(sys.argv[1] if len(sys.argv) > 1 else "benchmarks/results/glm-speed/g6")
+NAMES = tuple(sys.argv[2].split(",")) if len(sys.argv) > 2 else ("S1", "D1", "D2", "S2")
 arms = {}
-for a in ("S1", "D1", "D2", "S2"):
+for a in NAMES:
     arms[a] = {r["rung"]: r for r in (json.loads(l) for l in (d / f"{a}.driver.jsonl").read_text().splitlines() if l.startswith("{"))}
-print(f"{'rung':>4} {'tokens':>6} | {'S1':>6} {'D1':>6} {'D2':>6} {'S2':>6} | {'pair1':>7} {'pair2':>7} {'mean':>7} | {'S spread':>8} | same")
+print(f"{'rung':>4} {'tokens':>6} | " + " ".join(f"{a:>6}" for a in NAMES) + " |" + f" {'pair1':>7} {'pair2':>7} {'mean':>7} | {'S spread':>8} | same")
 for k in sorted(arms["S1"]):
-    rows = [arms[a].get(k) for a in ("S1", "D1", "D2", "S2")]
+    rows = [arms[a].get(k) for a in NAMES]
     if any(r is None or "usage" not in r for r in rows):
         print(k, "missing")
         continue

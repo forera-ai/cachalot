@@ -12,7 +12,7 @@ from pathlib import Path
 
 URL = "http://127.0.0.1:8011/v1"
 DUMP = os.path.expanduser(sys.argv[1] if len(sys.argv) > 1 else "~/cachalot-dump-glm-upscale.jsonl")
-RUNGS = [25, 60, 120, 160, 250, 400, 528, 800, 1100]
+RUNGS = [int(n) for n in os.environ.get("G6_RUNGS", "25,60,120,160,250,400,528,800,1100").split(",")]  # G6B-RECORD.md sets its own
 CHARS_PER_TOKEN = 4
 
 

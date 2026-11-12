@@ -152,6 +152,12 @@ PREDICT_TOPK = int(os.environ.get("CACHALOT_GLM_PREDICT_TOPK", "5"))
 # reads started per layer (0: all of PREDICT_TOPK), and whether they wait for this layer's own reads (1) or share the
 # drive with them (0); -1 follows the store's CACHALOT_DECODE_PREFETCH_AFTER_DEMAND
 PREDICT_LIMIT = int(os.environ.get("CACHALOT_GLM_PREDICT_LIMIT", "0"))
+# G6b (docs/glm-speed/G6B-RECORD.md): a prefill chunk below the whole-layer floor (SPECULATE_MIN_TOKENS) reads ahead
+# the union of each row's top PREFILL_PREDICT_TOPK predictions for the next layer (the decode predictor above, scored
+# on every row in the same sync as this layer's routing), most-predicted first, instead of nothing. Bit-identical: only
+# which reads start early changes. 0 (default) is the shipped behaviour. Priced on the weighted trace: at k = 5 the
+# union holds 74-83 % of a 172-384-row chunk's routed misses for 3-4 % extra reads (derived, g6b_price.py).
+PREFILL_PREDICT_TOPK = int(os.environ.get("CACHALOT_GLM_PREFILL_PREDICT_TOPK", "0"))
 PREDICT_AFTER_DEMAND = int(os.environ.get("CACHALOT_GLM_PREDICT_AFTER_DEMAND", "1"))
 # 1 submits a decode layer's routed output (async) as soon as it is built when `decode_eval` is off, instead of with
 # the next layer's routing sync (HANDOFF 18.10); an int so TF_ALTERNATE can flip it
@@ -292,6 +298,14 @@ class StreamingSwitchGLU(nn.Module):
                 extra = []
                 p_idx, p_w = np.array(pred[0]).reshape(-1), np.array(pred[1]).astype(np.float32).reshape(-1)
                 pred_entries = [self._index[(self._layer + 1, int(e))] for e in p_idx[np.argsort(-p_w, kind="stable")]]
+        # G6b: a short prefill chunk's prediction of the next layer, evaluated in the same sync as this layer's routing
+        prefill_pred = None
+        if (PREFILL_PREDICT_TOPK > 0 and self.predict is not None and PREFILL_SCAN and flat_x.shape[0] > 1
+                and speculate is None and flat_x.shape[0] < self._speculate_floor()):
+            pred = self.predict(flat_x, PREFILL_PREDICT_TOPK)
+            if pred is not None:
+                prefill_pred = pred[0]
+                extra = extra + [prefill_pred]
         if extra:
             mx.eval(indices, *extra)
         routes = np.array(indices).reshape(-1).astype(np.int32)
@@ -308,9 +322,10 @@ class StreamingSwitchGLU(nn.Module):
             # speculate: the caller's prediction of the next layer's experts (MiniMax, HANDOFF 18.8); an empty
             # list reads nothing ahead. None falls back to the whole next layer from a floor of tokens.
             if speculate is None:
-                floor = SPECULATE_MIN_TOKENS if self.speculate_min_tokens is None else self.speculate_min_tokens
-                if flat_x.shape[0] >= floor:
+                if flat_x.shape[0] >= self._speculate_floor():
                     speculate = self._next_layer_entries()
+                elif prefill_pred is not None:
+                    speculate = self._predicted_entries(np.array(prefill_pred))
             residents = self._store.get_many_prefill(entries, speculate=speculate)
         else:
             on_hits = None
@@ -381,6 +396,17 @@ class StreamingSwitchGLU(nn.Module):
         if prefill:
             self._store.release_prefill_layer(self._layer)
         return y
+
+    def _speculate_floor(self) -> int:
+        return SPECULATE_MIN_TOKENS if self.speculate_min_tokens is None else self.speculate_min_tokens
+
+    def _predicted_entries(self, idx):
+        """The next layer's experts in a prefill chunk's predicted union, most rows first (ties by expert id): the store
+        reads them in this order and stops at its transient budget, so the likeliest go first."""
+        counts = np.bincount(np.asarray(idx).reshape(-1).astype(np.int64))
+        experts = np.flatnonzero(counts)
+        experts = experts[np.argsort(-counts[experts], kind="stable")]
+        return [self._index[(self._layer + 1, int(e))] for e in experts]
 
     def _next_layer_entries(self):
         nxt = getattr(self, "_next_entries", None)
