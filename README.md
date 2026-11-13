@@ -306,6 +306,8 @@ The same configuration as a benchmark, with a colder working set than a conversa
 token (5.90 tok/s)** at an 83.5 % hit rate, reading 627 MiB per token, drive busy 55 % of decode,
 reproducible to ±0.3 %.
 
+**0.85.1 (2026-11-13): the predicted read-ahead closes.** A per-layer prefill log (`CACHALOT_GLM_PREFILL_LOG=1`) showed the 0.85.0 A/B's gap on the system block was the machine, not the switch: the block took 180-210 s either way. The switch stays off; on a clean baseline it was worth at most a few percent (HANDOFF 18.277).
+
 **0.85.0 (2026-11-13): a predicted read-ahead for GLM's short prefills, off by default.** New switch `CACHALOT_GLM_PREFILL_PREDICT_TOPK`: a short prefill reads ahead the experts the next layer is predicted to use, with identical results. Its A/B was inconclusive: the arms without it were also slower on a part of the prompt it does not touch. On a clean earlier baseline it is worth at most a few percent (HANDOFF 18.276).
 
 **0.84.0 (2026-11-12): GLM's short prefills are faster.** `serve-glm.sh` now reads ahead only from 512 tokens, so a 172-499-token prefill reads just the experts it uses: 5-21 % faster, with identical results (HANDOFF 18.275).
@@ -741,7 +743,7 @@ changing the cache policy or budget.
 
 ## Roadmap
 
-**Next: GLM-5.3-Flash speed** ([`docs/GLM-SPEED-LANE.md`](docs/GLM-SPEED-LANE.md)): the bank move and in-block snapshot pins are done, and short-prefill reads are measured and the read-ahead now starts at 512 tokens (0.83.1-0.84.0); a predicted-set read-ahead is built and off, its A/B unresolved (0.85.0); next are a check of that A/B's control and a larger expert budget.
+**Next: GLM-5.3-Flash speed** ([`docs/GLM-SPEED-LANE.md`](docs/GLM-SPEED-LANE.md)): the bank move and in-block snapshot pins are done, and short-prefill reads are measured and the read-ahead now starts at 512 tokens (0.83.1-0.84.0); a predicted-set read-ahead was built and closed at a few percent (0.85.0-0.85.1); next is a larger expert budget on a quiet machine.
 
 Ordered by measured size in a token, not by expected difficulty. The full ranking, with what closed each
 line, is `docs/HANDOFF.md` section 9.25.

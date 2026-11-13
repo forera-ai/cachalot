@@ -106,3 +106,21 @@ def test_outputs_identical_on_and_off(knobs):
 def test_code_default_is_off():
     src = (experts.__file__ and open(experts.__file__).read())
     assert 'os.environ.get("CACHALOT_GLM_PREFILL_PREDICT_TOPK", "0")' in src
+
+
+def test_prefill_log_names_what_was_read_ahead(knobs, monkeypatch, capsys):
+    monkeypatch.setattr(experts, "PREFILL_LOG", True)
+    knobs(2)
+    run(make_module()[0])
+    knobs(2, floor=3)
+    run(make_module()[0])
+    knobs(0)
+    run(make_module()[0])
+    lines = [l for l in capsys.readouterr().err.splitlines() if l.startswith("[prefill-layer]")]
+    assert [l.split()[4] for l in lines] == ["ahead=pred:3", "ahead=whole:16", "ahead=none:0"]
+    assert all("layer=3 rows=3 routed=3" in l and "wait_ms=" in l for l in lines)
+
+
+def test_prefill_log_is_off_by_default():
+    src = open(experts.__file__).read()
+    assert 'os.environ.get("CACHALOT_GLM_PREFILL_LOG", "0") == "1"' in src

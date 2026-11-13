@@ -21,6 +21,8 @@ from __future__ import annotations
 import json
 import os
 import re
+import sys
+import time
 from pathlib import Path
 
 import mlx.core as mx
@@ -158,6 +160,9 @@ PREDICT_LIMIT = int(os.environ.get("CACHALOT_GLM_PREDICT_LIMIT", "0"))
 # which reads start early changes. 0 (default) is the shipped behaviour. Priced on the weighted trace: at k = 5 the
 # union holds 74-83 % of a 172-384-row chunk's routed misses for 3-4 % extra reads (derived, g6b_price.py).
 PREFILL_PREDICT_TOPK = int(os.environ.get("CACHALOT_GLM_PREFILL_PREDICT_TOPK", "0"))
+# 1 prints one stderr line per prefill layer call: rows, routed experts, what was read ahead and how long the store
+# took to hand back this layer's experts (G6B-RECORD.md section 7). An instrument; off by default.
+PREFILL_LOG = os.environ.get("CACHALOT_GLM_PREFILL_LOG", "0") == "1"
 PREDICT_AFTER_DEMAND = int(os.environ.get("CACHALOT_GLM_PREDICT_AFTER_DEMAND", "1"))
 # 1 submits a decode layer's routed output (async) as soon as it is built when `decode_eval` is off, instead of with
 # the next layer's routing sync (HANDOFF 18.10); an int so TF_ALTERNATE can flip it
@@ -326,7 +331,14 @@ class StreamingSwitchGLU(nn.Module):
                     speculate = self._next_layer_entries()
                 elif prefill_pred is not None:
                     speculate = self._predicted_entries(np.array(prefill_pred))
+            t_wait = time.perf_counter() if PREFILL_LOG else 0.0
             residents = self._store.get_many_prefill(entries, speculate=speculate)
+            if PREFILL_LOG:
+                kind = "none" if speculate is None else ("given" if prefill_pred is None and flat_x.shape[0] < self._speculate_floor()
+                                                     else "whole" if prefill_pred is None else "pred")
+                print(f"[prefill-layer] layer={self._layer} rows={flat_x.shape[0]} routed={len(entries)} "
+                      f"ahead={kind}:{0 if speculate is None else len(speculate)} "
+                      f"wait_ms={(time.perf_counter() - t_wait) * 1000:.1f}", file=sys.stderr, flush=True)
         else:
             on_hits = None
             overlap = self.hit_overlap if DECODE_HIT_OVERLAP < 0 else bool(DECODE_HIT_OVERLAP)

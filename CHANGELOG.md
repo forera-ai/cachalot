@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.85.1 (2026-11-13)
+
+HANDOFF "Start here (2026-11-13, 0.85.1)" and section 18.277; `docs/glm-speed/G6B-RECORD.md` section 7; Lab brief `docs/lab/briefs/2026-11-13-runtime-0.85.1.md`.
+
+### Instruments
+- **`CACHALOT_GLM_PREFILL_LOG=1`** (default off): one stderr line per GLM prefill layer call, `[prefill-layer] layer= rows= routed= ahead=<none|whole|pred|given>:N wait_ms=`. `docs/glm-speed/g6b_block_run.sh`; `g6b_arm.sh` reads `G6_RUNGS` from the environment.
+
+### Measured, not shipped
+- 0.85.0's open question answered: the predicted read-ahead does not change a cold system block's prefill. Block-only arms with it on, off, off, on took 185.6, 202.7, 198.7 and 209.6 s, and the new log shows the knob acting only on 5- and 35-row chunks. Over nine arms that night the block took 180-210 s whatever the setting; the variation is in the store's read waits.
+
+### Closed
+- G6b (`CACHALOT_GLM_PREFILL_PREDICT_TOPK`) as a speed lever: its only clean evidence is 2.6 % at 342 tokens and 4.5 % at 499, inside the machine's variation. The knob stays, off.
+
+### Tests
+- `tests/test_glm_prefill_predict.py` 9 tests (2 new for the log).
+
 ## 0.85.0 (2026-11-13)
 
 HANDOFF "Start here (2026-11-13, 0.85.0)" and section 18.276; `docs/glm-speed/G6B-RECORD.md`; Lab brief `docs/lab/briefs/2026-11-13-runtime-0.85.0.md`.

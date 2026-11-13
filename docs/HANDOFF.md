@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-11-13, 0.85.1): the G6b block gap was the machine, not the knob; G6b closed
+>
+> Section 18.277, `docs/glm-speed/G6B-RECORD.md` section 7. Block-only arms k 5, 0, 0, 5 with a new per-layer log (`CACHALOT_GLM_PREFILL_LOG=1`): 185.6, 202.7, 198.7, 209.6 s; the knob acts only on 5- and 35-row chunks, as the code says. Over nine arms the cold block took 180-210 s whatever the knob; the variation is in the store's read waits. G6b's clean evidence is -2.6 % at 342 tokens and -4.5 % at 499, under that noise: closed, the knob stays off. **Next:** the live 0.84.0 check (Hamed), G4 on a quiet machine.
+
 > ## Start here (2026-11-13, 0.85.0): G6b built off; its A/B is void on a failed control
 >
 > Section 18.276, `docs/glm-speed/G6B-RECORD.md`. `CACHALOT_GLM_PREFILL_PREDICT_TOPK=k` (default 0) reads ahead a short prefill chunk's predicted next-layer union, bit-identical. Priced at 3-7 % of a 150-500-token prefill. ABBA: identical outputs, but the arms without the knob took 196-197 s on a cold block the knob cannot touch (with it 180 s), and the control arms did not reproduce G6. In-session the knob is -4 to -9 % on every rung; against G6's clean arm -2 to -5 % at 342-499 tokens and nothing below. **Next:** a block-only alternation to explain the 16 s (about 16 min), the live 0.84.0 check (Hamed), G4.
@@ -9622,6 +9626,22 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.277 The G6b block check: the gap was the machine, and G6b closes (0.85.1)
+
+**Goal.** Hamed, 2026-11-13: "Yes, run it" (18.276's open item: does `CACHALOT_GLM_PREFILL_PREDICT_TOPK` change a cold block's prefill?).
+
+**Instrument.** `CACHALOT_GLM_PREFILL_LOG=1` (default off): one stderr line per GLM prefill layer call with rows, routed experts, what was read ahead and the store's hand-back time. `tests/test_glm_prefill_predict.py` (9 now). `docs/glm-speed/g6b_block_run.sh`; `g6b_arm.sh` takes `G6_RUNGS` from the environment.
+
+**Method (measured).** Four fresh `serve-glm.sh` arms at 46 GiB, floor 1,200, k 5, 0, 0, 5 (18.276's order reversed), the live block cold plus one 35-token rung, the log on; 2026-11-13 00:13-00:30, applications open as in 18.276.
+
+**Result (measured).** Block 185.55 (k 5), 202.65 (0), 198.74 (0), 209.56 s (5). The log: every 1,228- and 2,048-row chunk read the whole next layer in all arms; only the 5-row last chunk and the 35-row rung read a predicted union. Store waits per 2,048-row chunk 12.8-22.0 s, with single-chunk jumps of 5-9 s in either setting; chunk 0 18.8-19.2 s in every arm. Replies and prefilled counts identical. 35-token rung 8.09/8.72 s on, 8.66/8.12 off.
+
+**Reading.** The block does not follow the knob; 18.276's alignment over seven arms was chance (about 1 in 35). Tonight's machine varies a cold block by about +-8 % in its read waits. 18.276's in-session gain is inside that and not attributed. G6b's only clean evidence (against 18.274's D2) is -2.6 % at 342 tokens and -4.5 % at 499.
+
+**Decision.** G6b closed as a lever; the knob stays, off. No default changed.
+
+**Kind.** Measurement with an instrument (no prediction written for the check). G6b closed.
 
 ### 18.276 G6b: a predicted-set read ahead for short GLM prefills, built off; the A/B is void (0.85.0)
 

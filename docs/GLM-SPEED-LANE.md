@@ -1,6 +1,6 @@
 # GLM-5.3-Flash speed lane
 
-Written 2026-11-06 at runtime 0.81.1, revised at 0.83.0 after G3 and G2, at 0.83.1 after G6 (18.274), at 0.84.0 when its threshold shipped (18.275), and at 0.85.0 after G6b (18.276). Hamed, after the live session of HANDOFF 18.271: "update the next lanes to focus on GLM speed. it is unusable now!" Every price below is derived from
+Written 2026-11-06 at runtime 0.81.1, revised at 0.83.0 after G3 and G2, at 0.83.1 after G6 (18.274), at 0.84.0 when its threshold shipped (18.275), at 0.85.0 after G6b (18.276), and at 0.85.1 when G6b closed (18.277). Hamed, after the live session of HANDOFF 18.271: "update the next lanes to focus on GLM speed. it is unusable now!" Every price below is derived from
 recorded numbers unless it says measured; none is a result until its experiment record runs. Rank order: expected gain, confidence, cost, and whether output changes.
 
 ## 1. Where the time goes (measured, 2026-11-06, `serve-glm.sh --expert-budget-gib 46`, knob on, Hermes, 21 tools)
@@ -26,7 +26,7 @@ chunk of a long prefill scans most of the 163 GB bank: the 15.6k block made abou
 | G3 | Expert bank on the internal SSD | **DONE, measured 0.82.0 (18.272):** decode 3.39-3.94 tok/s, cold block 205 s, turns 26-63 s | bit-identical | shipped | |
 | G4 | Expert budget 60-68 GiB | `cache_sim`: misses -18 to -27 % against 46 GiB on two traces, token about -15 to -25 % | bit-identical | a quiet machine: 68 needs about 97 GiB available | the guardian; GLM at 52 GiB was killed with apps open |
 | G5 | Decode budget 1 | 1,100-1,133 to 642-693 ms a token, about -40 % (18.107); budget 0 is 68 ms | changes outputs: b1 KL 0.04-0.14, b0 dNLL +0.185 on prose | a blind replay and the compile panel; default Hamed's | visible loss |
-| G6 | Short prefill reads. **Measured 0.83.1 (18.274):** the whole-layer read-ahead from 128 tokens makes 172-795 tokens all about 20 s; routed set only (`CACHALOT_GLM_SPECULATE_MIN_TOKENS` above the prompt) -21 % at 172 (clean pair), -15 % at 239, -10 % at 342, -5 % at 499, +7 % at 795. MiniMax's miss rule (the original G6) closed on price: 78-99 % of rows changed at a median 15-28 % of their weight | bit-identical | **shipped 0.84.0:** 512 in `serve-glm.sh`. **G6b** (predicted-set read-ahead, `CACHALOT_GLM_PREFILL_PREDICT_TOPK`, 0.85.0, off): priced 3-7 %; A/B void on a failed control (18.276), at most a few percent on the clean baseline | the miss rule: closed; G6b if the block check shows no knob effect |
+| G6 | Short prefill reads. **Measured 0.83.1 (18.274):** the whole-layer read-ahead from 128 tokens makes 172-795 tokens all about 20 s; routed set only (`CACHALOT_GLM_SPECULATE_MIN_TOKENS` above the prompt) -21 % at 172 (clean pair), -15 % at 239, -10 % at 342, -5 % at 499, +7 % at 795. MiniMax's miss rule (the original G6) closed on price: 78-99 % of rows changed at a median 15-28 % of their weight | bit-identical | **shipped 0.84.0:** 512 in `serve-glm.sh`. **G6b** (predicted-set read-ahead, `CACHALOT_GLM_PREFILL_PREDICT_TOPK`, 0.85.0, off): priced 3-7 %; A/B void (18.276); the block check found the gap was the machine (18.277): **G6b closed**, at most -2.6/-4.5 % at 342/499 tokens | the miss rule and G6b: closed |
 | G7 | A 2-bit GLM bank | half the bytes a miss, twice the slots; fits the internal SSD (about 82 GiB) | changes outputs; GLM's C# already garbles at 4-bit (18.44) | a requantization and the full gate | the last resort |
 
 ## 3. What is already closed for GLM
@@ -37,9 +37,8 @@ Bank layout (shipped, 18.86), pair index, S1c, MTP, decode prefetch (off, 18.105
 
 GLM's resident token is 63 ms; on the internal drive a Hermes token is about 0.27 s. The cold block is solved for ordinary use (2-30 s). What is left is misses (58-75 a token) and short prefill (19-26 s a turn), so G4, G5 and G6 are what a turn feels now. G6's threshold (0.84.0) takes 3-4 s off a 172-token prefill; prefills under 128 tokens still cost 8-14 s. M19 stays halted.
 
-## 5. First jobs (0.85.0)
+## 5. First jobs (0.85.1)
 
-1. The G6b block check (autonomous, about 16 minutes, needs the sysctl and no other runtime): block-only arms alternating `CACHALOT_GLM_PREFILL_PREDICT_TOPK` 5 and 0 at floor 1,200, the knob's reads counted. In 18.276 the knob-off arms took 196-197 s on a cold block the knob should not touch, the knob-on arms 180 s. If the gap follows the knob, find the path before any speed claim; if not, G6b closes at a few percent.
-2. A live Hermes check of 0.84.0's 512 threshold (Hamed drives): 150-500-token follow-ups should prefill in about 15-19 s, not about 20.
-3. G4 on a quiet machine: GLM at 60-68 GiB (the internal disk has 70 GiB free). Close applications first: 18.276 ran with 62 GiB available and its control arms drifted by up to 40 %.
-4. G5, a blind replay at budget 1, if a token at 0.27 s is still too slow: a default is Hamed's call.
+1. A live Hermes check of 0.84.0's 512 threshold (Hamed drives): 150-500-token follow-ups should prefill in about 15-19 s, not about 20.
+2. G4 on a quiet machine: GLM at 60-68 GiB (the internal disk has 70 GiB free). Close applications first and meet the settle gate: on 2026-11-12/13 with applications open the same cold block took 180-210 s across nine arms, so any GLM A/B in that state needs more than two pairs. `CACHALOT_GLM_PREFILL_LOG=1` splits a prefill's time into per-layer read waits.
+3. G5, a blind replay at budget 1, if a token at 0.27 s is still too slow: a default is Hamed's call.

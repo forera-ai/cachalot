@@ -8,7 +8,7 @@ TAG=$1; SPEC=$2; TOPK=$3; GIB=${4:-46}
 D=benchmarks/results/glm-speed/g6b
 mkdir -p "$D"
 export CACHALOT_GLM_VISION_MIN_PIXELS=810000 CACHALOT_GLM_SNAPSHOT_DIR= CACHALOT_GLM_SPECULATE_MIN_TOKENS=$SPEC \
-  CACHALOT_GLM_PREFILL_PREDICT_TOPK=$TOPK G6_RUNGS=25,60,120,160,250,400,528,640,800,950
+  CACHALOT_GLM_PREFILL_PREDICT_TOPK=$TOPK G6_RUNGS=${G6_RUNGS:-25,60,120,160,250,400,528,640,800,950}
 echo "arm $TAG spec=$SPEC topk=$TOPK start $(date +%T)"
 PYTHONPATH=src ~/venvs/deepseek-v41/bin/python - "$TAG" "$GIB" "$SPEC" "$TOPK" <<'PY'
 import sys; sys.path.insert(0, "benchmarks"); import run_manifest as rm

@@ -107,3 +107,28 @@ Either way the effect is a few percent of a short prefill, about 0.5-1.5 s, insi
 **Limits.** One text, one residency path (block, then one-token replies), five arms on one night with applications open and the settle gate cut short, a stand-in price for prefill predictions, and an unexplained 16 s offset on the control.
 
 **Kind.** Research: predicted, measured; the registered controls failed, so the comparison is void and the knob's effect is unresolved (a few percent at most on the clean cross-session baseline). Knob built, default off.
+
+## 7. The block check (measured 2026-11-13, after 0.85.0)
+
+**Question.** Does `CACHALOT_GLM_PREFILL_PREDICT_TOPK` change a cold block's prefill, which section 6 found 16 s faster in both arms that set it?
+
+**Instrument.** `CACHALOT_GLM_PREFILL_LOG=1` (new, off by default) prints one stderr line per prefill layer call: rows, routed experts, what was read ahead (`none`, `whole`, `pred`, or a caller's list) and how long the store took to hand back the layer's experts (`wait_ms`).
+
+**Method.** Hamed: "Yes, run it". `docs/glm-speed/g6b_block_run.sh 46`: four fresh `serve-glm.sh` arms at floor 1,200, k = 5, 0, 0, 5 (the reverse of section 6's order), each the live block cold plus one 35-token rung, the log on. 00:13-00:30, the same machine state as section 6 (applications open, settle cut to 120 s).
+
+**Result (measured).**
+
+| arm | k | block prefill | store wait, chunks 0-7 (s each) | 35 tokens |
+|---|---:|---:|---|---:|
+| B1 | 5 | 185.55 | 19.2 13.2 13.1 13.9 14.8 14.6 14.4 16.1 | 8.09 |
+| B2 | 0 | 202.65 | 19.2 14.3 14.7 15.6 16.7 17.8 19.5 18.1 | 8.66 |
+| B3 | 0 | 198.74 | 19.2 13.1 15.5 19.8 13.1 12.8 13.0 20.9 | 8.12 |
+| B4 | 5 | 209.56 | 18.8 13.2 14.1 16.8 22.0 19.9 15.5 17.3 | 8.72 |
+
+The log shows the knob acting only where the code says: every 1,228- and 2,048-row chunk read the whole next layer (`ahead=whole:288`) in all arms, and only the request's last 5-row chunk and the 35-row rung read a predicted union (`ahead=pred:11-19` at 5 rows). Reply hashes and prefilled counts equal in all four arms.
+
+**Reading.** The block does not follow the knob: B4, with it on, was the slowest arm of the night. Over nine arms on 2026-11-12/13 the block took 179.7-209.6 s with the knob on and 195.9-202.7 s with it off; section 6's alignment (four slow arms off, three fast on) was chance, about 1 in 35. The variation is in the store's read waits, which jump by 5-9 s on single chunks within an arm, while chunk 0 is 18.8-19.2 s in every arm: the drive or the system, not the code. Section 6's in-session -3.8 to -9.2 % against D3 is inside this variation and is not attributed to G6b. The 35-token rung, where the knob does act, is 8.09 and 8.72 s on, 8.66 and 8.12 off.
+
+**Decision.** G6b closes as a speed lever: its only clean evidence (against G6's D2 the previous afternoon) is -2.6 % at 342 tokens, -4.5 % at 499 and nothing below 240, under this machine's state-to-state variation (about +-8 % on a block tonight). The knob stays in the code, off, with its tests; the log stays as an instrument. A quieter machine (applications closed, the settle gate met) could revisit it, but the price (section 2) caps it at about 1.5 s a short prefill.
+
+**Kind.** Measurement with an instrument: no prediction written for this check (the next step section 6 named). G6b closed.
