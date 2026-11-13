@@ -1,5 +1,5 @@
 #!/bin/bash
-# usage: docs/glm-speed/arm.sh <tag> [budget GiB]   one fresh ./serve-glm.sh with no disk snapshots, the live session's five requests (driver.py), then the server stops.
+# usage: [ARM_FORCE=] docs/glm-speed/arm.sh <tag> [budget GiB]   (ARM_FORCE empty: the guard may refuse; default --force) one fresh ./serve-glm.sh with no disk snapshots, the live session's five requests (driver.py), then the server stops.
 set -uo pipefail
 cd /Users/hamedprooshani/Projects/deepseek-v41-mac
 TAG=$1; GIB=${2:-46}
@@ -14,7 +14,7 @@ man = rm.collect(workload="W5:glm-live-session-2026-11-06", workload_text=Path("
                  instrument="serve-glm.sh + docs/glm-speed/driver.py " + sys.argv[1], budget_gib=int(sys.argv[2]), cache_state="fresh server, no disk snapshots")
 print("manifest", rm.write_manifest(Path("benchmarks/results/glm-speed"), man))
 PY
-benchmarks/guarded_run.sh --budget-gib "$GIB" --max-seconds 2400 --force --tag "glm-speed-$TAG" -- ./serve-glm.sh --expert-budget-gib "$GIB" > "$D/$TAG.server.log" 2>&1 &
+benchmarks/guarded_run.sh --budget-gib "$GIB" --max-seconds 2400 ${ARM_FORCE---force} --tag "glm-speed-$TAG" -- ./serve-glm.sh --expert-budget-gib "$GIB" > "$D/$TAG.server.log" 2>&1 &
 GPID=$!
 sleep 10; ~/venvs/deepseek-v41/bin/python docs/glm-speed/driver.py > "$D/$TAG.driver.jsonl" 2>&1
 # a driver that dies while the server loads must not leave it idling to the guard's limit: wait for the port, then stop it

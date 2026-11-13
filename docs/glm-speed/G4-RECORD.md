@@ -51,6 +51,10 @@ Alternative: the 10 GiB of slots move the machine into memory pressure (compress
 - **G4-5.** Replies identical between budgets where the prefilled token counts match (exact path except the shipped miss budget 2, whose drops depend on residency: a difference here is reported, not a failure).
 - **Falsifier.** Decode tok/s at 56 within 3 % of 46, or worse, with both control arms agreeing: the budget is not what a GLM token waits on, and G4 closes.
 
+**Amendment before any run (2026-11-13, measured).** After Hamed's "Apps closed, run G4" the guard's count was 65.5 GiB (free 44.0, reclaimable file cache 17.8) with ChatGPT Classic, Chrome, Toggl and Mail still open; after his `sudo purge` it was 62.9 GiB (free 58.2, file cache 1.6): purge moves file cache into free memory, which the guard already counted, so it adds nothing to the guard's figure. Anonymous memory was about 26 GiB, the four applications about 4 GiB of it, and the GPU reported 8.8 GiB of system memory allocated with no runtime running. The 56 GiB arm needs 85 GiB by the guard; even the 46 GiB control arm needs 75 (18.274-18.277's arms ran forced at 73-76). No arm ran.
+
+Runner: `bash docs/glm-speed/g4_run_all.sh [B]` (default 56). Before each B arm `settle.sh --budget-gib B` must count the guard's full need and the arm runs without `--force` (`arm.sh` now takes `ARM_FORCE=` for that); the 46 arms wait for 73 GiB and keep `--force`, as the earlier arms did; a failed gate stops the run. If only 52 fits (79 GiB), the run is `g4_run_all.sh 52`, and G4-2 and G4-3 scale to the price: misses 7-14 % fewer, decode tok/s 4-10 % higher; G4-1 becomes 77-82 GiB peak wired. The other predictions and the falsifier are unchanged.
+
 ## 6. Results
 
 Not run.
