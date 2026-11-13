@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-11-13, 0.85.2): G4 priced and parked; GLM above 46 GiB needs a restarted machine
+>
+> Section 18.278, `docs/glm-speed/G4-RECORD.md`. GLM wires about budget + 27 GiB of the 96 GiB machine (13 guard footprints at 46 GiB), so the lane's 64-68 GiB cannot fit; 56 is the realistic arm. `cache_sim` on four GLM traces: 56 GiB cuts decode misses 14-17 %, about -10 to -13 % a token (derived). The run was gated on the guard's full need: the machine counted 62.9-64.6 GiB against 85, after `sudo purge` too, so no arm ran. Parked (Hamed). **Next:** the live 0.84.0 check (Hamed), G5 (Hamed's call), G4 only after a restart with Terminal alone (`bash docs/glm-speed/g4_run_all.sh 56`).
+
 > ## Start here (2026-11-13, 0.85.1): the G6b block gap was the machine, not the knob; G6b closed
 >
 > Section 18.277, `docs/glm-speed/G6B-RECORD.md` section 7. Block-only arms k 5, 0, 0, 5 with a new per-layer log (`CACHALOT_GLM_PREFILL_LOG=1`): 185.6, 202.7, 198.7, 209.6 s; the knob acts only on 5- and 35-row chunks, as the code says. Over nine arms the cold block took 180-210 s whatever the knob; the variation is in the store's read waits. G6b's clean evidence is -2.6 % at 342 tokens and -4.5 % at 499, under that noise: closed, the knob stays off. **Next:** the live 0.84.0 check (Hamed), G4 on a quiet machine.
@@ -9626,6 +9630,30 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.278 G4: priced at the budgets GLM fits, then parked on the host's memory (0.85.2)
+
+**Goal.** v323's second job: G4, a larger GLM expert budget on a quiet machine. Hamed: "Apps closed, run G4", then, with the gate failing, "Park G4, record it".
+
+**Baseline (measured).** On the internal bank at 46 GiB a Hermes decode token is 254-295 ms at 57-75 misses (18.272). The 13 guarded GLM arms of 18.274-18.277 peaked at 72.0-74.5 GiB wired, about 6 GiB of it before the server started, with minimum free memory 0.1 GiB.
+
+**Fit (derived).** GLM wires about budget + 27 GiB of the machine: 52 about 79, 56 about 83, 60 about 87, 64 about 91, 68 about 95 GiB of 96. The lane's 64-68 GiB range and its "about 97 GiB available" note came from MiniMax (18.267); for GLM they do not fit at all. The guard's preflight uses DeepSeek's constants and under-states GLM's wired set by 6-7 GiB.
+
+**Price (derived).** `cache_sim.py` (14.16 MB, LRU) on `routing-trace-glm`, `-agent`, `-long`, `-weights`: misses a token at 46 GiB 87.7-106.6; at 52 -9 to -12 %, 56 -14 to -17 %, 60 -18 to -23 %, 68 -27 to -34 %. At about 63 ms plus 3.1 ms a miss, 56 GiB is about -10 to -13 % a token.
+
+**Prediction.** `docs/glm-speed/G4-RECORD.md` section 5, committed before any run (02ffd3e): G4-1 peak wired 81-86 GiB at 56; G4-2 misses -10 to -20 %; G4-3 decode +6 to +15 %; G4-4 cold block within 8 %; G4-5 replies identical where prefilled counts match; falsifier decode within 3 %.
+
+**Method.** `docs/glm-speed/g4_run_all.sh [B]`: `arm.sh` arms 46, B, B, 46 (the 2026-11-06 session's five requests, fresh server, no snapshots). A B arm starts only when `settle.sh --budget-gib B` counts the guard's full need, and runs without `--force` (`arm.sh` takes `ARM_FORCE=`); the 46 arms wait for 73 GiB and keep `--force` as the earlier arms did.
+
+**Result (measured).** No arm ran. The gate, no runtime, pressure 1, swap 0, sysctl 88064: 64.6-65.5 GiB available of 85 with ChatGPT Classic, Chrome, Toggl and Mail open; 62.9 after Hamed's `sudo purge` (free 58.2, file cache 1.6: purge turns file cache, which the guard already counts, into free memory); 63.1 after Teams and Calendar reopened. About 26 GiB was anonymous memory; the GPU reported 8.8 GiB of system memory allocated with no runtime.
+
+**Explanation.** On a running desktop this 96 GiB machine has room for GLM at 46 GiB and not much more: the 18.274-18.277 arms already ran forced at 73-76 GiB counted, under the guard's 75.
+
+**Decision.** Parked, not closed (Hamed). The price stands; nothing measured contradicts it. A budget above 46 is also a per-session cost: a 56 GiB default would refuse to start, or swap, in the machine's usual state. No default changed.
+
+**Open.** G4 after a restart with only Terminal open: `sudo sysctl iogpu.wired_limit_mb=88064`, then `bash docs/glm-speed/g4_run_all.sh 56` (52 if that gate fails), about 35 minutes. The live 0.84.0 check (Hamed). G5 (Hamed's call).
+
+**Kind.** Planning and an instrument (predictions committed first); the run was blocked by the host and nothing was measured on the model. No default changed.
 
 ### 18.277 The G6b block check: the gap was the machine, and G6b closes (0.85.1)
 

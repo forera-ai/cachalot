@@ -57,4 +57,8 @@ Runner: `bash docs/glm-speed/g4_run_all.sh [B]` (default 56). Before each B arm 
 
 ## 6. Results
 
-Not run.
+Not run; parked (Hamed, 2026-11-13: "Park G4, record it"). Three gate checks that evening, all with no runtime, pressure level 1, swap 0 and sysctl 88064 (`settle.sh --budget-gib 56`, measured): 64.6 GiB available of 85 needed with ChatGPT Classic, Chrome, Toggl and Mail open; 62.9 just after `sudo purge`; 63.1 after Teams and Calendar were reopened (machine up 2 days 9 hours). No prediction is scored; none is withdrawn.
+
+**Why it is parked, not closed.** The price (section 2) stands and nothing measured contradicts it. What stops the run is the host: GLM wires about budget + 27 GiB of a 96 GiB machine, and on a running desktop about 26 GiB is anonymous memory the guard cannot count as available, so a budget above 46 needs a restarted session with only Terminal open. That is a cost per GLM session, not just per experiment: a 56 GiB default would refuse to start, or swap, in the state Hamed normally uses the machine in.
+
+**To resume.** Restart, open only Terminal, `sudo sysctl iogpu.wired_limit_mb=88064`, then `bash docs/glm-speed/g4_run_all.sh 56` (or `52` if the 56 gate fails). About 35 minutes.

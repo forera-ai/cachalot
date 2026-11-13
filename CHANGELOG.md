@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.85.2 (2026-11-13)
+
+HANDOFF "Start here (2026-11-13, 0.85.2)" and section 18.278; `docs/glm-speed/G4-RECORD.md`. No runtime code or default changed.
+
+### Measured, not shipped
+- G4 (a larger GLM expert budget) priced at the budgets GLM fits: the 13 guarded GLM arms at 46 GiB peaked at 72.0-74.5 GiB wired, so GLM wires about budget + 27 GiB of the 96 GiB machine and 64-68 GiB cannot fit. `cache_sim.py` on four GLM traces: decode misses -9 to -12 % at 52 GiB, -14 to -17 % at 56, -18 to -23 % at 60; about -10 to -13 % a token at 56 (derived). Predictions committed before any run.
+- The run did not start: the guard counted 62.9-64.6 GiB available against the 85 the 56 GiB arm needs (after `sudo purge` as well, which only turns counted file cache into free memory). Parked until a restarted session with Terminal alone.
+
+### Instruments
+- `docs/glm-speed/g4_run_all.sh [B]`: arms 46, B, B, 46; a B arm starts only when `settle.sh` counts the guard's full need and runs without `--force`. `docs/glm-speed/arm.sh` takes `ARM_FORCE=` to drop `--force`.
+
 ## 0.85.1 (2026-11-13)
 
 HANDOFF "Start here (2026-11-13, 0.85.1)" and section 18.277; `docs/glm-speed/G6B-RECORD.md` section 7; Lab brief `docs/lab/briefs/2026-11-13-runtime-0.85.1.md`.
