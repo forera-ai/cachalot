@@ -49,3 +49,10 @@ def test_arm_order_rotates():
     three = ["exact", "b1", "b0"]
     firsts = [q.arm_order(three, j)[0] for j in range(6)]
     assert sorted(firsts) == sorted(three * 2)
+
+
+def test_body_temperature_falls_back_to_hermes_extra_body():
+    assert q.body_temperature({"temperature": 0.3, "extra_body": {"temperature": 0.7}}) == 0.3
+    assert q.body_temperature({"temperature": None, "extra_body": {"temperature": 0.7}}) == 0.7
+    assert q.body_temperature({"extra_body": None}) == 0.6
+    assert q.body_temperature({}) == 0.6

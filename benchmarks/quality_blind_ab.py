@@ -7,6 +7,12 @@ temperature through `Engine.chat`, the server's code path. The arms (exact, and 
 in one process: sample j of a body uses the same seed in every arm, and the order of the arms rotates with j.
 `--budget 1,0` runs three arms (exact, b1, b0) in one process; a single budget keeps the arm names exact / capped.
 
+GLM-5.3-Flash (G5, HANDOFF 18.279): CACHALOT_QB_FAMILY=glm loads `GlmModel` with `serve-glm.sh`'s environment (the caller
+exports it, see `docs/glm-speed/g5_run.sh`) and drives `GlmEngine.chat`; the arms set `GlmModel.set_decode_miss_budget`.
+CACHALOT_QB_BUDGET_GIB sets the expert budget (default 48 DeepSeek, 46 GLM), CACHALOT_QB_TOOL_BODIES the bodies whose
+replies must be tool calls (default "1"), and a body without "temperature" takes `extra_body.temperature` (Hermes sends it
+there), else 0.6, `serve-glm.sh`'s default.
+
     run    sample everything; writes samples.jsonl (arm labels inside, never shown to the grader)
     sheet  mechanical checks (tool-call validity, loops, truncation, C# `dotnet build`) and a shuffled, arm-free
            grading sheet with a separate key file
@@ -39,6 +45,17 @@ sys.path.insert(0, str(REPO / "benchmarks"))
 DUMP = os.environ.get("CACHALOT_QB_DUMP", "/tmp/cachalot-requests-0.46b.jsonl")
 BODY_ROWS = tuple(int(x) for x in os.environ.get("CACHALOT_QB_ROWS", "0,2,4,6,8,10").split(","))
 MAX_TOKENS = int(os.environ.get("CACHALOT_QB_MAX_TOKENS", "700"))
+FAMILY = os.environ.get("CACHALOT_QB_FAMILY", "deepseek")
+BUDGET_GIB = float(os.environ.get("CACHALOT_QB_BUDGET_GIB", "46" if FAMILY == "glm" else "48"))
+TOOL_BODIES = {int(x) for x in os.environ.get("CACHALOT_QB_TOOL_BODIES", "1").split(",") if x != ""}
+
+
+def body_temperature(body: dict) -> float:
+    """The body's sampling temperature: its own field, else Hermes's `extra_body.temperature`, else 0.6."""
+    if body.get("temperature") is not None:
+        return float(body["temperature"])
+    extra = body.get("extra_body") or {}
+    return float(extra["temperature"]) if extra.get("temperature") is not None else 0.6
 
 
 def _drop_images(body: dict) -> dict:
@@ -84,12 +101,27 @@ def run(budgets: list[int], n: int, out: Path) -> None:
 
     out.mkdir(parents=True, exist_ok=True)
     run_manifest.write_manifest(out, run_manifest.collect(
-        workload="W6:quality-blind", workload_text=json.dumps(load_bodies(), sort_keys=True), budget_gib=48,
+        workload="W6:quality-blind", workload_text=json.dumps(load_bodies(), sort_keys=True), budget_gib=BUDGET_GIB,
         instrument="quality_blind_ab run", params={"budgets": budgets, "n": n, "max_tokens": MAX_TOKENS,
-                                                   "dump": DUMP, "rows": BODY_ROWS}))
-    model = V41Model.from_pretrained(os.environ["CACHALOT_MODEL_PATH"], max_seq_len=65536,
-                                     expert_cache_budget_bytes=int(48 * 2**30))
-    engine = Engine(model)
+                                                   "dump": DUMP, "rows": BODY_ROWS, "family": FAMILY}))
+    top_p = 1.0
+    if FAMILY == "glm":
+        from cachalot.glm.engine import GlmEngine
+        from cachalot.glm.model import GlmModel
+
+        model = GlmModel(os.environ["CACHALOT_MODEL_PATH"], expert_budget_gib=BUDGET_GIB, load_workers=8)
+        model.max_seq_len = 131072
+        if os.environ.get("CACHALOT_SNAPSHOT_DIR"):
+            print(model.attach_snapshot_store(os.environ["CACHALOT_SNAPSHOT_DIR"],
+                                              preload=int(os.environ.get("CACHALOT_SNAPSHOT_PRELOAD", "4"))), flush=True)
+        engine = GlmEngine(model)
+        store = model.store
+        top_p = model.generation_defaults().get("top_p", 1.0)  # serve's default_top_p for GLM
+    else:
+        model = V41Model.from_pretrained(os.environ["CACHALOT_MODEL_PATH"], max_seq_len=65536,
+                                         expert_cache_budget_bytes=int(BUDGET_GIB * 2**30))
+        engine = Engine(model)
+        store = model.runtime.expert_store
     arms = arm_names(budgets)
     log = out / "samples.jsonl"
     # resume: a sample already in the log (same body, j, arm) is not generated again; seeds depend on (body, j) only,
@@ -105,15 +137,17 @@ def run(budgets: list[int], n: int, out: Path) -> None:
                     if (bi, j, arm) in done:
                         continue
                     model.set_decode_miss_budget(arms[arm])
-                    skipped0 = model.runtime.expert_store.skipped_experts
+                    skipped0 = store.skipped_experts
                     req = ChatRequest(messages=body["messages"], tools=body["tools"], thinking_mode="chat",
-                                      params=SamplingParams(max_new_tokens=MAX_TOKENS, temperature=body["temperature"],
-                                                            seed=1000 * bi + j))
+                                      params=SamplingParams(max_new_tokens=MAX_TOKENS, temperature=body_temperature(body),
+                                                            top_p=top_p, seed=1000 * bi + j))
                     res = engine.chat(req)
                     row = {"body": bi, "j": j, "arm": arm, "budget": arms[arm],
                            "tokens": res.completion_tokens, "finish": res.finish_reason,
                            "ms_tok": round(1000 * res.decode_seconds / max(res.completion_tokens, 1), 1),
-                           "skipped": model.runtime.expert_store.skipped_experts - skipped0,
+                           "skipped": store.skipped_experts - skipped0,
+                           "prompt": res.prompt_tokens, "reused": res.reused_prefix_tokens,
+                           "prefill_s": round(res.prefill_seconds, 2),
                            "text": res.raw_text, "tool_calls": res.message.get("tool_calls")}
                     fh.write(json.dumps(row) + "\n")
                     fh.flush()
@@ -196,7 +230,7 @@ def sheet(out: Path) -> None:
             sid = f"R{n:03d}"
             s = samples[idx]
             key[sid] = {"arm": s["arm"], "body": bi, "j": s["j"]}
-            problems = tool_call_problems(s["tool_calls"], bodies[bi]["tools"]) if bi == 1 else None
+            problems = tool_call_problems(s["tool_calls"], bodies[bi]["tools"]) if bi in TOOL_BODIES else None
             m = {"finish": s["finish"], "tokens": s["tokens"], "repetition": round(repetition_share(s["text"]), 3),
                  "tool_problems": problems}
             if "C#" in _context(bodies[bi]):
