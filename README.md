@@ -306,6 +306,8 @@ The same configuration as a benchmark, with a colder working set than a conversa
 token (5.90 tok/s)** at an 83.5 % hit rate, reading 627 MiB per token, drive busy 55 % of decode,
 reproducible to ±0.3 %.
 
+**0.85.4 (2026-11-17): GLM serves from the external drive again.** The internal copy of GLM's expert bank was deleted for space after 0.85.3, so `./serve-glm.sh` reads the X10Pro copy: about 1 token a second and about 20 minutes for a first cold Hermes system block, as before 0.82.0, until the bank is copied back (HANDOFF 18.280).
+
 **0.85.3 (2026-11-17): GLM decode budget 1 tested blind, not adopted.** Reading at most one missing expert a layer makes a GLM token 0.44 of exact (205 against 463 ms at a 24 GiB cache), but in 24 replies it misspelt words and identifiers 6 times where exact did so never, so `serve-glm.sh` keeps budget 2 (HANDOFF 18.279).
 
 **0.85.2 (2026-11-13): a larger GLM expert cache, priced and parked.** On this 96 GiB Mac GLM holds about its expert budget plus 27 GiB in wired memory, so the planned 64-68 GiB budgets cannot fit; 56 GiB would cut decode misses by 14-17 % (simulated, about 10-13 % a token). The test needs about 85 GiB free and a running desktop leaves about 63 GiB, so it waits for a restarted session with only Terminal open (HANDOFF 18.278).
@@ -747,7 +749,7 @@ changing the cache policy or budget.
 
 ## Roadmap
 
-**Next: GLM-5.3-Flash speed** ([`docs/GLM-SPEED-LANE.md`](docs/GLM-SPEED-LANE.md)): the bank move and in-block snapshot pins are done, and short-prefill reads are measured and the read-ahead now starts at 512 tokens (0.83.1-0.84.0); a predicted-set read-ahead was built and closed at a few percent (0.85.0-0.85.1); a larger expert budget is priced (56 GiB, about -10 to -13 % a token) and parked until a restarted, Terminal-only session (0.85.2); decode budget 1 was tested blind and not adopted, it corrupts tokens (0.85.3); next is the live check of the 512-token threshold.
+**Next: GLM-5.3-Flash speed** ([`docs/GLM-SPEED-LANE.md`](docs/GLM-SPEED-LANE.md)): the bank move and in-block snapshot pins are done, and short-prefill reads are measured and the read-ahead now starts at 512 tokens (0.83.1-0.84.0); a predicted-set read-ahead was built and closed at a few percent (0.85.0-0.85.1); a larger expert budget is priced (56 GiB, about -10 to -13 % a token) and parked until a restarted, Terminal-only session (0.85.2); decode budget 1 was tested blind and not adopted, it corrupts tokens (0.85.3); the internal bank was deleted for space afterwards, so GLM reads from the X10Pro again (0.85.4) and the next step, the live check of the 512-token threshold, needs the bank copied back first.
 
 Ordered by measured size in a token, not by expected difficulty. The full ranking, with what closed each
 line, is `docs/HANDOFF.md` section 9.25.

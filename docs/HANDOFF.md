@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-11-17, 0.85.4): the internal GLM bank is deleted again; GLM serves from the X10Pro
+>
+> Section 18.280. After 0.85.3 Hamed answered its open question ("Delete it"): `~/GLM-5.3-Flash-bank` is gone (internal free space 180 to 343 GiB) and every prefix snapshot directory has been gone since 2026-11-15. `serve-glm.sh` falls back to `/Volumes/X10Pro/models/GLM-5.3-Flash-bank` (163 GB, the same bytes the internal copy was compared against on 11-17). GLM is therefore back on the X10Pro's 1 GB/s: about 1 token a second and a first cold system block of about 20 minutes (18.271, derived for today's build), not the 3.4-3.9 tok/s and 205 s of 0.82.0. The live check of 0.84.0's 512-token threshold was predicted from internal-drive arms (18.274) and does not test that prediction from the X10Pro; `docs/glm-speed/g5_run.sh` refuses without the internal bank. No code, default or measurement changed. **Needs Hamed:** copy the bank back (about 18 minutes with the byte compare, 163 GB of the 343 GiB free) before any GLM speed work, or leave GLM on the X10Pro and move to another lane.
+
 > ## Start here (2026-11-17, 0.85.3): G5 run; budget 1 brings corrupted tokens, `serve-glm.sh` stays at budget 2
 >
 > Section 18.279, `docs/glm-speed/G5-RECORD.md`. A blind replay of six turns from Hamed's 2026-11-02 Hermes session (4 replies a turn an arm, 48 in all), exact against GLM decode miss budget 1, at 24 GiB because the desktop left 53 GiB available. Budget 1 decodes at 205 ms a token against 463 (0.44, as predicted), and the flawed counts are 14/24 against 13/24, but corrupted tokens (a misspelt path, "couldn barely", a garbled identifier, a stub `_coect`) appear in 6 budget-1 replies and no exact one; the registered rule makes that a new failure class, so budget 1 is not a candidate default. Both arms fail the same two turns for GLM's own reasons: `search_files` without its required `pattern` (7/8), and no translation at a 30k-token context (8/8). The internal GLM bank is back (`~/GLM-5.3-Flash-bank`, verified, 163 GB); `quality_blind_ab.py` has a GLM path. **Needs Hamed:** whether to keep the internal bank (it took 163 GB of the space freed on 11-15).
@@ -9634,6 +9638,18 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.280 The internal GLM bank deleted again; what GLM serves from now (0.85.4)
+
+**Goal.** Record the answer to 18.279's open question and what it changes for the GLM lane. Hamed, 2026-11-17, after 0.85.3 was pushed: "Delete it" (the internal GLM bank). Then, at the next session: "/ca read the prompts and handoffs and continue with remaining tasks".
+
+**State (measured, 2026-11-17).** `~/GLM-5.3-Flash-bank` does not exist; internal free space 343 GiB (180 before the delete). `~/.cache/cachalot/` holds no prefix snapshot directory for any model (deleted 2026-11-15, none written since). `/Volumes/X10Pro/models/GLM-5.3-Flash-bank` is present: 163 GB, `bank.json` and the layer files, no `.cachalot-verified` marker; it is the copy the internal bank was copied from and compared against byte for byte on 2026-11-17 (18.279). `serve-glm.sh` uses the internal bank only when its marker exists, otherwise the X10Pro bank (lines 45-50), so it now serves from the X10Pro.
+
+**What that means (derived from recorded numbers, not re-measured).** On the X10Pro GLM decode and prefill are bound by the drive's 1 GB/s: 0.83-1.06 tok/s and a 15.6k-token cold block of 1,317 s in the last live session there (18.271, 0.81.1). The 0.83.0 pins and the 0.84.0 threshold do not shorten a first cold block, and no snapshot exists, so the first GLM Hermes turn will again take about 20 minutes. G6's threshold arms (18.274) and G5 (18.279) ran on the internal bank; their numbers do not carry to the X10Pro, where every expert read is several times slower.
+
+**Consequences for the lane.** (1) The live check of 0.84.0's threshold (v325's first job) predicts 15-19 s for 150-500-token follow-ups on the internal drive; from the X10Pro it tests nothing registered. (2) `docs/glm-speed/g5_run.sh` exits with "no verified internal GLM bank"; a 46 GiB G5 rerun needs the bank copied back as well as about 73 GiB available. (3) G4's price (18.278) assumed internal-drive miss costs. (4) Copying back costs about 18 minutes (249 s copy and 812 s byte compare on 11-17) and 163 GB of the 343 GiB free.
+
+**Kind.** Measurement of the machine's state (files, markers, free space; no prediction, nothing run on the model) and documentation. No code or default changed.
 
 ### 18.279 G5: GLM decode miss budget 1 against exact, a blind replay (0.85.3)
 

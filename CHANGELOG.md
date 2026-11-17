@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.85.4 (2026-11-17)
+
+HANDOFF "Start here (2026-11-17, 0.85.4)" and section 18.280. Documentation only; no code, default or measurement changed.
+
+### Changed
+- Recorded that Hamed deleted the internal GLM bank again after 0.85.3 (`~/GLM-5.3-Flash-bank`; internal free space 343 GiB). `serve-glm.sh` serves the X10Pro copy, so GLM is back at about 1 token a second and a first cold system block of about 20 minutes (18.271's numbers, derived; no prefix snapshot exists since 2026-11-15). `docs/GLM-SPEED-LANE.md` and the next-session prompt (v326) say that the live 512-token threshold check, a G5 rerun and G4 were priced on the internal drive and need the bank copied back first (about 18 minutes with the byte compare).
+
 ## 0.85.3 (2026-11-17)
 
 HANDOFF "Start here (2026-11-17, 0.85.3)" and section 18.279; `docs/glm-speed/G5-RECORD.md`. No runtime code or default changed.
