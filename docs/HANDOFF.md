@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-11-17, 0.85.6): live GLM session read; the 512 band was not exercised and the machine was swapping
+>
+> Section 18.282. Hamed drove a Hermes session on `serve-glm.sh` (internal bank, no snapshots) and asked for it to be checked. No prefill fell in 128-511 tokens, so 0.84.0's threshold is still unchecked live (667 tokens 17.8 s, under 128 tokens 6.8-8.2 s, both as expected). The cold block took 558 s (clean arms 179-212 s) and a 3,115-token prefill 156 s; decode held 3.7-3.9 tok/s, then fell to 2.34 and 1.88 on the last two turns with unchanged read times. Afterwards swap stood at 5.1 of 6 GiB with 68k page-outs: host memory pressure is the leading hypothesis, not measured during the run (no purge after 0.85.5's copy, desktop applications open). The C# reply does not compile (`List<string>` into `string[]`, `.Length` on a list) and restarts itself mid-text. The block's pins are on disk now. Next: the same check with a 150-500-token follow-up, after `sudo purge` and with applications closed.
+
 > ## Start here (2026-11-17, 0.85.5): the GLM bank is back on the internal drive, verified
 >
 > Section 18.281. Hamed: "Copy it back". `~/GLM-5.3-Flash-bank` copied from the X10Pro in 258 s and compared byte for byte (44 of 44 files, 799 s), marker `.cachalot-verified` written; internal free space 180 GiB. `serve-glm.sh` serves it again, so 0.85.4's caveat is lifted: the 0.82.0 speeds and the v325 jobs apply. No prefix snapshot exists yet, so the first GLM Hermes turn pays one cold block (about 205 s on this drive, 18.272). **First (Hamed drives):** the live check of 0.84.0's 512-token threshold. The copy and compare leave active file cache that `settle.sh` does not count: before a guarded run, Hamed runs `sudo purge`.
@@ -9642,6 +9646,35 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.282 The live GLM Hermes session on 0.85.5: the 512 band was not exercised, the machine was under memory pressure (0.85.6)
+
+**Goal.** 18.281's open item, the live check of 0.84.0's 512-token threshold. Hamed ran `./serve-glm.sh` (0.85.5, internal bank, 46 GiB default, budget 2, no snapshots) and drove a Hermes session 19:06-19:54 on 2026-11-17, then: "Dobe. check the session" (sic) (the session export `list-files-in-desktop-folder-7-local-57.json`). No `CACHALOT_SERVER_DUMP` was set; the evidence is the server's six `[request]` lines and the export.
+
+**Result (measured, the `[request]` lines).**
+
+| turn | prompt | prefilled | prefill | reply tokens | decode | misses a token |
+|---|---:|---:|---:|---:|---:|---:|
+| "Hi", cold block | 15,583 | 15,583 | 558.1 s | 13 | 4.27 tok/s | 55.0 |
+| `search_files` call | 15,631 | 36 | 6.8 s | 43 | 3.75 | 63.3 |
+| `execute_code` call | 16,340 | 667 | 17.8 s | 145 | 3.73 | 65.4 |
+| Desktop answer (tool result) | 19,599 | 3,115 | 156.3 s | 470 | 3.92 | 60.6 |
+| C# snippet | 20,101 | 33 | 8.2 s | 1,115 | 2.34 | 68.5 |
+| 200-word story | 21,233 | 18 | 6.9 s | 268 | 1.88 | 53.7 |
+
+Read time a miss 4.17-4.57 ms in every turn (18.274's clean arms 4.4). The cold block wrote the in-block pins (`prefix-10240`, `-12288`, `-14336`, `-15578` in `~/.cache/cachalot/prefix-snapshots-glm`), so the next restart reuses it.
+
+**The 512 check.** Not exercised: no prefill fell in 128-511 tokens (18, 33, 36, 667, 3,115). The 667-token turn (above 512, whole-layer read-ahead) took 17.8 s, in line with 18.274's about 20 s for 172-795 tokens; the three prefills under 128 tokens took 6.8-8.2 s, at or below the lane's 8-14 s. Nothing contradicts 0.84.0; nothing confirms its 15-19 s prediction either.
+
+**What was off (measured).** (1) The cold block took 558 s against 179-212 s in nine clean arms (18.272-18.277), 2.7 times; the 3,115-token prefill took 156 s, about three times the roughly 24 s a 2,048-row chunk took in those arms (derived). (2) Decode held 3.7-3.9 tok/s on turns 2-4, then fell to 2.34 and 1.88 tok/s on turns 5-6 with the same read time a miss and fewer misses on turn 6, so the extra 0.17-0.27 s a token is not reads. (3) After the session (19:57, server stopped): swap 5.1 of 6.0 GiB used, 68,036 page-outs since boot (10:49), 7.0 GiB stored in the compressor, load average about 5. The clean arms ran with swap 0 or flat. `sudo purge` was not run after 0.85.5's copy and compare.
+
+**Reading (hypothesis, not measured during the run).** Host memory pressure, as MiniMax's in 0.44.0: GLM wires about budget + 27 GiB (73 at 46, 18.278) and its `[request]` lines peaked at 73.6 GiB, so the desktop's applications and the copy's file cache had about 23 GiB; swap traffic on the same internal drive competes with the prefill's whole-layer read-ahead. Decode reads were not slowed, which fits a contention that hits the large concurrent prefill reads and the CPU side of decode rather than single expert reads. Thermal state and the SSD's post-write state (163 GB written 2.5 h earlier) are not excluded. The `[request]` line carries no pressure or swap field, so a live session cannot separate these.
+
+**Quality (read from the export).** The C# reply restarts itself in the text ("Wait — let me give you the full working snippet properly") after an unfinished draft with `...` placeholders, and its final snippet does not compile: `ParseCsvLine` returns `List<string>` but `headers = fields` assigns it to a `string[]`, and `fields.Length` does not exist on a list; it also claims to handle embedded newlines while reading with `ReadLine`. No misspelt identifier of the kind G5 counted. The story opens "Marcus had down to his last twenty dollars" (a word missing). The Desktop answer says "Folders (20)" and lists 18, and the model capped `search_files` at 10,000 of 10,761 though asked not to limit it. GLM's C# weakness is known (18.44, 18.279); budget 2's drops cannot be excluded for the missing word without an exact replay.
+
+**Open.** The 512 check needs a 150-500-token follow-up (for example a pasted paragraph) in a session that starts with swap near 0: `sudo purge` and applications closed first. A pressure field (swap used, compressor, `kern.memorystatus_level`) on the `[request]` line would make live sessions readable; not built.
+
+**Kind.** Measurement of a live session (no prediction written for it); the threshold's check is not done. No code or default changed.
 
 ### 18.281 The GLM bank copied back to the internal drive (0.85.5)
 

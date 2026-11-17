@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.85.6 (2026-11-17)
+
+HANDOFF "Start here (2026-11-17, 0.85.6)" and section 18.282. Measurement only; no code or default changed.
+
+### Measured
+- A live GLM Hermes session on 0.85.5 (internal bank, no snapshots), read from the server's `[request]` lines and Hamed's session export. No prefill fell in 128-511 tokens, so 0.84.0's 512 threshold is still not checked live; a 667-token prefill took 17.8 s and three under 128 tokens 6.8-8.2 s, as expected.
+- The cold block took 558 s against 179-212 s in clean arms, and a 3,115-token prefill 156 s; decode held 3.7-3.9 tok/s, then 2.34 and 1.88 on the last two turns with unchanged read times. After the session swap stood at 5.1 of 6 GiB with 68,036 page-outs; host memory pressure is the leading hypothesis (no purge after the copy, applications open), not measured during the run.
+- The C# reply does not compile (`List<string>` assigned to `string[]`, `.Length` on a list) and restarts itself mid-text; the story drops a word. The block's in-block pins are now on disk.
+
 ## 0.85.5 (2026-11-17)
 
 HANDOFF "Start here (2026-11-17, 0.85.5)" and section 18.281. Documentation only; no code or default changed.
