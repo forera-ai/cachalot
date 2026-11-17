@@ -34,6 +34,18 @@ Hypothesis: the lightest experts of a layer carry little router weight and the r
 
 Decision rule, applied after scoring: an excess of at most 2 flawed of 24 and no new failure class makes budget 1 a candidate `serve-glm.sh` default, which stays Hamed's call; an excess of 3-4 keeps budget 2; 5 or more closes G5. This panel cannot see a rate difference below about 30 points (the limit of arm 2).
 
+## 3a. Amendment before the run (2026-11-17, nothing sampled yet)
+
+The first start stopped at `settle.sh`: 46 GiB needs 73 GiB available, and with Hamed's applications open the machine had about 47, then about 53 after `sudo purge` (applications hold about 35 GiB; GLM adds about budget + 21 GiB wired, G4-RECORD.md section 1). Hamed chose a lower budget over closing applications. The run uses **24 GiB** (`bash docs/glm-speed/g5_run.sh 4 24`; settle needs 51 GiB). Everything else in sections 2 and 3 stands except the speed predictions, which are replaced:
+
+| id | prediction at 24 GiB (derived) | falsifier |
+|---|---|---|
+| P-1' | Exact decode 0.40-0.62 s a token (about 63 ms + 3.1 ms x 110-180 reads: roughly half the slots of 46 GiB, the G4 table's slope extended, extrapolated) | outside the range |
+| P-2' | Budget 1 decode 0.16-0.24 s a token (at most one read a MoE layer; with more misses nearly every layer has one) | outside the range |
+| P-3' | Budget 1 / exact token ratio 0.30-0.50 | outside the range |
+
+Consequence for quality: at 24 GiB budget 1 drops more experts a token than at 46 (most of 110-180 misses, against 68-92 in arm 1), so this is a harsher test of budget 1 than the shipped 46 GiB setting would be. A clean result here covers 46 GiB a fortiori; a dirty one does not by itself condemn budget 1 at 46. Time: about 2.5 h (exact about 96 min, budget 1 about 36 min, prefills about 15 min).
+
 ## 4. Limits known before the run
 
 One conversation, one grader, n = 4, thinking off, 700-token cap (the C#, Python and translation replies will often be cut), no image turn. A null result does not show budget 1 is harmless on code or on long context beyond about 17k tokens.
