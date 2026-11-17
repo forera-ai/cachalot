@@ -1,10 +1,11 @@
-# Next-session prompt — **v324**, written 2026-11-13
+# Next-session prompt — **v325**, written 2026-11-17
 
 **This is the file to paste.** `docs/NEXT-SESSION-PROMPT.md` is always current; superseded ones live in
 `docs/next-session-prompts/`.
 
 | version | written | produced by | what changed |
 |---|---|---|---|
+| **v325** | 2026-11-17 | Hamed: "/ca check new versions of the metal mlx and cuda ...", "trim MEMORY.md under the limit", "run G5 blind replay at budget 1" (bank rebuilt internal, n = 4, then "Run at a lower budget") | **0.85.3: upstream sweep (no MLX release after 0.32.4, main unchanged since 11-06; no Metal or CUDA lever; DeepSeek banks store bf16 scales, so the 11-14 fp32 claim is withdrawn; nothing in the repo). G5 blind, 48 replies at 24 GiB: budget 1 205 against 463 ms a token (0.44), flawed 14/24 against 13/24, corrupted tokens in 6 budget-1 replies and 0 exact: a new failure class, so not a candidate; `serve-glm.sh` stays at budget 2. `quality_blind_ab.py` has a GLM path. Internal GLM bank back (163 GB, verified). No runtime code or default changed.** §18.279 |
 | **v324** | 2026-11-13 | Hamed: "/ca read the prompts and handoffs and continue with remaining tasks", "Apps closed, run G4", then "Park G4, record it" | **0.85.2: G4 priced at the budgets GLM fits: GLM wires about budget + 27 GiB of 96, so 64-68 GiB cannot fit; `cache_sim` on four traces, 56 GiB -14 to -17 % misses, about -10 to -13 % a token (derived). Predictions committed first; `docs/glm-speed/g4_run_all.sh` gates the larger arm on the guard's full need. The machine counted 62.9-64.6 GiB against 85 (after `sudo purge` too); no arm ran. Parked. No runtime code or default changed.** §18.278 |
 | **v323** | 2026-11-13 | Hamed: "Yes, run it" (v322's block check) | **0.85.1: `CACHALOT_GLM_PREFILL_LOG=1` (per-layer prefill log, off). Block arms k 5, 0, 0, 5: 185.6, 202.7, 198.7, 209.6 s; the knob acts only on 5- and 35-row chunks; the 18.276 gap was the machine (block 180-210 s over nine arms, in the read waits). G6b closed; knob stays off. Lab brief 0.85.1.** §18.277 |
 | **v322** | 2026-11-13 | Hamed: "/ca read the prompts and handoffs and continue with remaining tasks", then "Yes, run it" | **0.85.0: `CACHALOT_GLM_PREFILL_PREDICT_TOPK` (default 0, G6b) reads ahead a short GLM prefill chunk's predicted next-layer union, bit-identical; priced 3-7 % of a 150-500-token prefill. ABBA void: knob-off arms 196-197 s on a cold block the knob does not touch (knob-on 180 s), control arms did not reproduce G6; in-session -3.8 to -9.2 % on every rung, against G6's clean arm -2.6 % at 342 and -4.5 % at 499 tokens. Lab brief 0.85.0.** §18.276 |
@@ -285,6 +286,10 @@
 | v47 | 2026-09-25 | Hamed asked for the v44-v46 levers planned, built, measured and documented | **0.18.0: GLM prefill 60 to 90 tok/s, bit-identical (a store path that never evicts, plus the next layer read early), GLM's missing MLX buffer-cache cap added, GLM disk snapshots (a restart reuses the system block). DeepSeek: an `iostat` trace shows prefill is not read-bound on either drive; the lookahead A/B drowned in a 124-to-200 s drift across back-to-back prefills.** §17.1, §15.13 |
 | v46 | 2026-09-25 | Hamed asked for GLM-5.3-Flash on Cachalot | 0.17.0: GLM through `serve-glm.sh` / `chat-glm.sh`. §17 |
 | v45 | 2026-09-24 | same as v47, one day earlier | 0.16.0: disk snapshot store by last use; lookahead and local compression closed. §15.12 |
+
+## First jobs (v325): the live check; G5 is answered; ask Hamed about the internal GLM bank
+
+Read `docs/GLM-SPEED-LANE.md`, `docs/glm-speed/G5-RECORD.md`, HANDOFF 18.279, 18.278. **First (Hamed drives):** the live Hermes check of 0.84.0's 512 threshold (150-500-token follow-ups should prefill in about 15-19 s, not about 20); read the `[request]` lines and the dump. **Ask Hamed:** keep `~/GLM-5.3-Flash-bank` (163 GB, verified 2026-11-17; `serve-glm.sh` prefers it) or delete it again for space (it is his call; the X10Pro copy stays). **G5 is answered for now:** budget 1 corrupts tokens at 24 GiB (6 of 24 replies, none exact), so budget 2 stays; a rerun at 46 GiB needs about 73 GiB available (applications closed), `bash docs/glm-speed/g5_run.sh 4 46`, about 2 h. **New lead, not a lever:** GLM did not translate at a 30k-token context in 8 of 8 replies, either arm (thinking off, a DeepSeek-written history); before trusting GLM at long Hermes contexts, rerun body 5 with thinking on or a GLM-written history (`CACHALOT_QB_ROWS=5`). **G4 stays parked** (restart, Terminal only, `bash docs/glm-speed/g4_run_all.sh 56`). **New rule:** on Hamed's desktop the settle gate counts about 53 GiB available after `sudo purge` (applications about 35 GiB); a GLM arm fits at 24 GiB (settle need 51), not at 46 (73). A large copy or `cmp` leaves active file cache that `settle.sh` does not count; `sudo purge` (Hamed) releases it. `quality_blind_ab.py`'s rows go to the guard's `.out` file, not the runner's `run.log`. **Rules kept:** v324's and the earlier ones; M19 stays halted.
 
 ## First jobs (v324): the live check, then G5; G4 only after a restart
 
@@ -987,6 +992,9 @@ check `pgrep -f Flurry.appex` before each arm instead.
 ## Jobs 4-7 — the rest of the slow-window trigger and MLX buffer knobs; vision on Desktop-sized screenshots; prefill KL; 54 GiB collapse, Objective-C corpus. Unchanged from v46.
 
 ## What is closed, so nobody spends a session there
+
+- **GLM decode miss budget 1 as a default (0.85.3, §18.279):** blind at 24 GiB, corrupted words and identifiers in 6 of 24 replies against 0 exact (a new failure class by the registered rule); budget 2 stays. Reopen only with a 46 GiB rerun on a machine with about 73 GiB available.
+- **MLX/Metal/CUDA upstream as a lever source as of 2026-11-17:** no MLX release after 0.32.4; open PRs #4827 (qmv_mma on M3 Ultra, 4-16 rows), #4826 (64x64 QMM tiles), #4891 (fp32 activations with narrow scales), #4883 match no Cachalot call; #4852 (in-flight buffer reuse) is the only one aimed at memory headroom, a hypothesis until it merges.
 
 - **MiniMax's prefill miss rule ported to GLM, the original G6 (0.83.1, §18.274):** on the GLM traces it changes 78-99 % of a short prefill's (row, layer) pairs at a median 15-28 % of their routing weight (8-12 % at a 0.10 threshold), worse than DeepSeek's rare skip, which failed at 12.5 %. Closed on price, never run.
 

@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-11-17, 0.85.3): G5 run; budget 1 brings corrupted tokens, `serve-glm.sh` stays at budget 2
+>
+> Section 18.279, `docs/glm-speed/G5-RECORD.md`. A blind replay of six turns from Hamed's 2026-11-02 Hermes session (4 replies a turn an arm, 48 in all), exact against GLM decode miss budget 1, at 24 GiB because the desktop left 53 GiB available. Budget 1 decodes at 205 ms a token against 463 (0.44, as predicted), and the flawed counts are 14/24 against 13/24, but corrupted tokens (a misspelt path, "couldn barely", a garbled identifier, a stub `_coect`) appear in 6 budget-1 replies and no exact one; the registered rule makes that a new failure class, so budget 1 is not a candidate default. Both arms fail the same two turns for GLM's own reasons: `search_files` without its required `pattern` (7/8), and no translation at a 30k-token context (8/8). The internal GLM bank is back (`~/GLM-5.3-Flash-bank`, verified, 163 GB); `quality_blind_ab.py` has a GLM path. **Needs Hamed:** whether to keep the internal bank (it took 163 GB of the space freed on 11-15).
+
 > ## Start here (2026-11-13, 0.85.2): G4 priced and parked; GLM above 46 GiB needs a restarted machine
 >
 > Section 18.278, `docs/glm-speed/G4-RECORD.md`. GLM wires about budget + 27 GiB of the 96 GiB machine (13 guard footprints at 46 GiB), so the lane's 64-68 GiB cannot fit; 56 is the realistic arm. `cache_sim` on four GLM traces: 56 GiB cuts decode misses 14-17 %, about -10 to -13 % a token (derived). The run was gated on the guard's full need: the machine counted 62.9-64.6 GiB against 85, after `sudo purge` too, so no arm ran. Parked (Hamed). **Next:** the live 0.84.0 check (Hamed), G5 (Hamed's call), G4 only after a restart with Terminal alone (`bash docs/glm-speed/g4_run_all.sh 56`).
@@ -9630,6 +9634,28 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.279 G5: GLM decode miss budget 1 against exact, a blind replay (0.85.3)
+
+**Goal.** Hamed, 2026-11-17: "run G5 blind replay at budget 1" (`docs/GLM-SPEED-LANE.md` G5). He chose to copy the bank back to the internal SSD and the plan (n = 4), and, when the settle gate failed at 46 GiB, a lower budget over closing applications.
+
+**Setup.** The internal bank deleted on 2026-11-15 was copied back from the X10Pro (249 s) and compared byte for byte (44 files, 812 s), marker `.cachalot-verified`. The old replay inputs and driver were gone, so `benchmarks/quality_blind_ab.py` gained a GLM path (`CACHALOT_QB_FAMILY=glm`: `GlmModel`, `GlmEngine.chat`, `set_decode_miss_budget` per arm; `CACHALOT_QB_BUDGET_GIB`, `CACHALOT_QB_TOOL_BODIES`; a body without `temperature` takes Hermes's `extra_body.temperature`), with `docs/glm-speed/g5_bodies.py` (six bodies cut from Hermes's own request dump of the 2026-11-02 session) and `docs/glm-speed/g5_run.sh [n] [budget]` (`serve-glm.sh`'s environment without its budget, `settle.sh`, `guarded_run.sh`).
+
+**Prediction.** `docs/glm-speed/G5-RECORD.md` section 3, committed first (2400a78); amended before any sample (61e38ac) when the first start stopped at `settle.sh` (73 GiB needed at 46, 47 then 53 after `sudo purge`; applications hold about 35 GiB): 24 GiB, exact 0.40-0.62 s a token, budget 1 0.16-0.24 s, ratio 0.30-0.50; budget 1 at most 3 more flawed of 24 and no failure class exact never shows in 2 or more replies; tool calls valid; no loops.
+
+**Method.** Bodies: 0 the Desktop tool call, 1 the answer to its result, 2 a C# importer, 3 a 200-word story, 4 the Python importer, 5 the translation into German, French and Farsi (21 tools, thinking off, temperature 0.7, 700-token cap). Seeds shared across arms, arm order alternating. One guarded process, 12:42-14:26. One grader graded all 48 from the shuffled sheet before the key was opened.
+
+**Result (measured).** Decode: exact 463 ms a token median (374-564) at about 163 misses and 51 % hits; budget 1 205 ms (192-222), about 123 experts dropped a token; 0.44. Flawed: exact 13/24, budget 1 14/24 (p = 1.0). Body 0: 7 of 8 calls in both arms omit `search_files`'s required `pattern`. Body 5: no reply in either arm translates (empty `text_to_speech("Test")` or `execute_code` calls, or a cut tool block). Corrupted tokens: budget 1 6/24 (path `/Users/hamacprooshani`, "couldn barely", `generic_placeholder_line`, `for (...; i)`, a tool name holding prose, stub `def _coect`), exact 0/24 (post hoc grouping, p = 0.022; the blind "garbled" label alone 3 against 0). No loops; guard footprint peak wired 57.1 GiB, swap 1 MB.
+
+**Against the prediction.** Speed held (P-1' to P-3'). P-4 missed in both arms (GLM's `pattern` habit), its falsifier did not fire. P-5 falsified by its second clause (a new failure class). P-6 and P-7 held.
+
+**Explanation (hypothesis).** At about 123 drops a token the rescaled layer output lets a low-probability token win sampling every few hundred tokens. Exact GLM also garbles C# at times (18.108, 18.44-18.49), but not in these 24 replies.
+
+**Decision.** By the registered rule budget 1 is not a candidate default; `serve-glm.sh` stays at budget 2. 24 GiB is harsher than the shipped 46 (arm 1 dropped 68-92 a token at 46), so the run does not show what budget 1 does at 46. New, outside the budget question: GLM at a 30k-token context with a DeepSeek-written history did not do a plain translation request in 8 of 8 replies.
+
+**Open.** Keep or delete the internal GLM bank (Hamed). A 46 GiB rerun of G5 needs about 73 GiB available (applications closed). The body-5 failure is worth a check with thinking on, or a GLM-written history, before trusting GLM at long Hermes contexts.
+
+**Kind.** Research (predicted, measured, explained as hypothesis): 5 held, 1 missed for both arms, 1 falsified. Instrument extended. No default changed.
 
 ### 18.278 G4: priced at the budgets GLM fits, then parked on the host's memory (0.85.2)
 

@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.85.3 (2026-11-17)
+
+HANDOFF "Start here (2026-11-17, 0.85.3)" and section 18.279; `docs/glm-speed/G5-RECORD.md`. No runtime code or default changed.
+
+### Measured, not shipped
+- G5, GLM decode miss budget 1 against exact, blind: six turns of Hamed's 2026-11-02 Hermes session, 4 replies a turn an arm (48), at 24 GiB (the desktop left 53 GiB available, not the 73 that 46 GiB needs). Budget 1 decodes at 205 ms a token against 463 (0.44, inside the registered range). Flawed replies 14/24 against 13/24, but corrupted tokens (a misspelt path, "couldn barely", a garbled identifier, a stub function) appear in 6 budget-1 replies and no exact one; by the rule registered first that is a new failure class, so budget 1 is not a candidate default and `serve-glm.sh` stays at budget 2.
+- In both arms GLM calls `search_files` without its required `pattern` (7 of 8) and does not translate at a 30k-token context (8 of 8): GLM's own behaviour, not the budget.
+
+### Instruments
+- `benchmarks/quality_blind_ab.py` has a GLM path: `CACHALOT_QB_FAMILY=glm` (`GlmModel`, `GlmEngine.chat`, the budget set per arm), `CACHALOT_QB_BUDGET_GIB`, `CACHALOT_QB_TOOL_BODIES`; a body without `temperature` takes Hermes's `extra_body.temperature`, else 0.6. Rows record prompt, reused and prefill time.
+- `docs/glm-speed/g5_bodies.py` (bodies cut from a Hermes request dump) and `docs/glm-speed/g5_run.sh [n] [budget GiB]` (settle, guard, `serve-glm.sh`'s environment without its budget).
+
+### Tests
+- `tests/test_quality_blind_ab.py` 6 tests (1 new, the temperature fallback).
+
 ## 0.85.2 (2026-11-13)
 
 HANDOFF "Start here (2026-11-13, 0.85.2)" and section 18.278; `docs/glm-speed/G4-RECORD.md`. No runtime code or default changed.

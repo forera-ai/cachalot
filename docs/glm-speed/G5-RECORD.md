@@ -54,6 +54,56 @@ One conversation, one grader, n = 4, thinking off, 700-token cap (the C#, Python
 
 Copy and byte-compare the bank, about 18 min. Replies average about 470 tokens: exact 24 x 470 x ~0.38 s, about 71 min; budget 1, about 34 min; prefills, one cold system block (about 205 s) and the per-body increments, about 10 min. About 2 h in all.
 
-## 6. Result
+## 6. Result (measured, 2026-11-17)
 
-(filled in after the run, HANDOFF 18.279)
+Run: `bash docs/glm-speed/g5_run.sh 4 24`, 12:42-14:26 (6,200 s), one guarded process, 48 replies, no guardian action; footprint peak wired 57.1 GiB, peak compressor 14.6 GiB, minimum free 0.0 GiB, peak swap 1 MB, pressure 1. The bank had been copied back to `~/GLM-5.3-Flash-bank` first (249 s, all 44 files byte-identical to the X10Pro copy, 812 s, marker written). Samples, sheet, grades and key in `benchmarks/results/g5-glm-b1/` (gitignored; they hold Hamed's conversation).
+
+Speed (decode, replies of 20 tokens or more):
+
+| arm | ms a token, median (range) | expert reads | dropped experts a token | tokens |
+|---|---:|---|---:|---:|
+| exact | 463 (374-564) | about 163 misses at 51 % hits (a 700-token reply) | 0 | 7,756 |
+| budget 1 | 205 (192-222) | about 40-42 at 77-83 % hits | 123 (median) | 7,085 |
+
+Budget 1 / exact = 0.44.
+
+Grading: one grader (this session) graded all 48 replies from the shuffled sheet into `grades.json` before `key.json` was opened.
+
+| body | exact flawed | budget 1 flawed |
+|---|---:|---:|
+| 0 tool call | 4/4 | 3/4 |
+| 1 tool result | 0/4 | 1/4 |
+| 2 C# | 2/4 | 3/4 |
+| 3 story | 1/4 | 2/4 |
+| 4 Python | 2/4 | 1/4 |
+| 5 translation | 4/4 | 4/4 |
+| all | 13/24 | 14/24 (Fisher p = 1.0) |
+
+Flaws by arm (the grader's labels): exact: malformed tool call 4, wrong action 6, wrong code 2, invented 1. Budget 1: malformed tool call 4, wrong action 4, garbled 3, wrong code 2, invented 1. Loops: none. The mechanical checks: 0 of 8 C# replies build (all cut or not code), no 5-gram repetition over 0.3.
+
+What the flaws are (read after the key was opened):
+
+- Body 0: 7 of 8 `search_files` calls in both arms pass `file_glob` without the schema's required `pattern` (the live DeepSeek call passed `pattern`). Same rate in both arms; GLM's habit, not the budget.
+- Body 5: every reply in both arms fails to translate: empty `text_to_speech("Test")` or `execute_code` import calls, or a 700-token tool block cut at the cap. GLM at this 30k-token context (thinking off, a history written by DeepSeek) does not do the task at all; not the budget.
+- Bodies 2 and 4: exact's code flaws are structural (twice the code went into a tool-call block and only an intro line shows; two broken helper functions).
+- Corrupted tokens appear only under budget 1, in 6 replies of 24, against 0 of 24 exact: a misspelt home path (`/Users/hamacprooshani`, with a correct fallback), "couldn barely", an identifier `generic_placeholder_line`, a `for` loop with `i)` for `i++` and a broken JSON comment, a tool name that swallowed prose and `<tool_call>` text, a stray stub `def _coect(...)`. Three of these the grader labelled "garbled" blind; the other three sit under wrong code and malformed tool call. Counted post hoc as one class, 6/24 against 0/24 is Fisher p = 0.022.
+
+Against the predictions:
+
+| id | result | verdict |
+|---|---|---|
+| P-1' | exact 374-564 ms, median 463 | held |
+| P-2' | budget 1 192-222 ms, median 205 | held |
+| P-3' | 0.44 | held |
+| P-4 | valid calls 0/4 exact, 1/4 budget 1 by the schema | missed for both arms (GLM omits `pattern`); its falsifier (budget 1 worse where exact is clean) did not fire |
+| P-5 | excess +1 of 24, inside 0-3; but "garbled" 3 replies under budget 1, 0 under exact | **falsified by its second clause**: a failure class exact never shows, in 2 or more replies |
+| P-6 | C# flawed 2/4 and 3/4, builds 0/4 and 0/4 | held |
+| P-7 | no loops | held |
+
+Explanation (hypothesis): at 24 GiB budget 1 drops about 123 of about 163 needed experts a token, and the rescale keeps a layer's magnitude but not its direction often enough that, every few hundred tokens, a low-probability token wins sampling: a word or identifier comes out misspelt. Arm 1's teacher-forced numbers point the same way (top-1 0.83 on prose at 46 GiB, against 0.94 at budget 2). Exact GLM is not free of the class: its C# garbled with stray tokens at every arm of 18.108 (exact 2/2) and in 18.44-18.49; in these 24 exact replies it showed none. The blind "garbled" label alone (3 against 0) is Fisher p = 0.23; the registered rule counts the class, not the p.
+
+Decision by the registered rule: a new failure class, so budget 1 is not a candidate default. `serve-glm.sh` stays at budget 2. This was a harsher setting than Hamed's 46 GiB (123 drops a token against 68-92 in arm 1); a 46 GiB rerun could show fewer corrupted tokens, but the rule as written does not make budget 1 a default from this run.
+
+Limits: one grader, one conversation, n = 4, 24 GiB, thinking off, 700-token cap; the corrupted-token class was formed after the key was opened from labels given blind; two of six bodies (0 and 5) fail in both arms for reasons unrelated to the budget, so the panel's effective n is smaller than 24.
+
+Kind: research (predicted, measured, explained as hypothesis): 5 held, 1 missed for both arms, 1 falsified (P-5). No default changed.
