@@ -25,6 +25,10 @@ kernel (18.3), the one that cut its per-token overhead and measured it to 64k (1
 (18.1), and the one that added it as a third model (18).**
 The first block below is new; the blocks after it still hold.
 
+> ## Start here (2026-11-17, 0.85.5): the GLM bank is back on the internal drive, verified
+>
+> Section 18.281. Hamed: "Copy it back". `~/GLM-5.3-Flash-bank` copied from the X10Pro in 258 s and compared byte for byte (44 of 44 files, 799 s), marker `.cachalot-verified` written; internal free space 180 GiB. `serve-glm.sh` serves it again, so 0.85.4's caveat is lifted: the 0.82.0 speeds and the v325 jobs apply. No prefix snapshot exists yet, so the first GLM Hermes turn pays one cold block (about 205 s on this drive, 18.272). **First (Hamed drives):** the live check of 0.84.0's 512-token threshold. The copy and compare leave active file cache that `settle.sh` does not count: before a guarded run, Hamed runs `sudo purge`.
+
 > ## Start here (2026-11-17, 0.85.4): the internal GLM bank is deleted again; GLM serves from the X10Pro
 >
 > Section 18.280. After 0.85.3 Hamed answered its open question ("Delete it"): `~/GLM-5.3-Flash-bank` is gone (internal free space 180 to 343 GiB) and every prefix snapshot directory has been gone since 2026-11-15. `serve-glm.sh` falls back to `/Volumes/X10Pro/models/GLM-5.3-Flash-bank` (163 GB, the same bytes the internal copy was compared against on 11-17). GLM is therefore back on the X10Pro's 1 GB/s: about 1 token a second and a first cold system block of about 20 minutes (18.271, derived for today's build), not the 3.4-3.9 tok/s and 205 s of 0.82.0. The live check of 0.84.0's 512-token threshold was predicted from internal-drive arms (18.274) and does not test that prediction from the X10Pro; `docs/glm-speed/g5_run.sh` refuses without the internal bank. No code, default or measurement changed. **Needs Hamed:** copy the bank back (about 18 minutes with the byte compare, 163 GB of the 343 GiB free) before any GLM speed work, or leave GLM on the X10Pro and move to another lane.
@@ -9638,6 +9642,20 @@ launch per expert instead of three (small; prefill is read-bound). 7. M12.
 
 **Kind.** Engineering (a default on a prior research result).
 
+
+### 18.281 The GLM bank copied back to the internal drive (0.85.5)
+
+**Goal.** 18.280's open question. Hamed, 2026-11-17: "Copy it back".
+
+**Method (measured).** No runtime running. `cp -R /Volumes/X10Pro/models/GLM-5.3-Flash-bank ~/` (16:16-16:21, 258 s), then `cmp` of each of the 44 files against the X10Pro copy (799 s), then `touch ~/GLM-5.3-Flash-bank/.cachalot-verified` only if every file matched and the counts agreed.
+
+**Result (measured).** 44 of 44 files identical, 0 mismatches; 163 GB; marker written 16:34; internal free space 343 to 180 GiB. `serve-glm.sh` prefers the internal bank when its marker exists (lines 45-50), and `docs/glm-speed/g5_run.sh` finds it. Same times as 18.279's copy (249 and 812 s).
+
+**What it restores.** The internal-drive numbers of 18.272-18.279 apply again (decode 3.4-3.9 tok/s, a cold block about 205 s, the 0.84.0 threshold's 15-19 s prediction for 150-500-token follow-ups). No prefix snapshot exists for any model since 2026-11-15, so the first GLM and the first DeepSeek Hermes turn each pay one cold block.
+
+**Open.** The live check of 0.84.0's threshold (Hamed drives). The copy left active file cache that `settle.sh` does not count; `sudo purge` (Hamed) before any guarded run.
+
+**Kind.** Measurement of the machine's state (a copy and its byte compare; nothing run on the model). No code or default changed.
 
 ### 18.280 The internal GLM bank deleted again; what GLM serves from now (0.85.4)
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.85.5 (2026-11-17)
+
+HANDOFF "Start here (2026-11-17, 0.85.5)" and section 18.281. Documentation only; no code or default changed.
+
+### Changed
+- The GLM expert bank is back on the internal drive (Hamed: "Copy it back"): `~/GLM-5.3-Flash-bank` copied from the X10Pro in 258 s, all 44 files byte-compared identical (799 s), verified marker written; 180 GiB free afterwards. `serve-glm.sh` serves it again, so 0.85.4's caveat is lifted and the GLM lane's jobs apply. The first GLM Hermes turn still pays one cold block (about 205 s), since no prefix snapshot exists.
+
 ## 0.85.4 (2026-11-17)
 
 HANDOFF "Start here (2026-11-17, 0.85.4)" and section 18.280. Documentation only; no code, default or measurement changed.

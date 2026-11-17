@@ -1,8 +1,8 @@
 # Experiment index (charter section 7.2 and section 10)
 
-Written 2026-10-09 against runtime 0.85.4; regenerate with `benchmarks/experiment_index.py`. The charter asks for "a file of experiment records whose predictions were written before the build". The records themselves live in `docs/HANDOFF.md` section 18 (each with Baseline, Prediction, Method, Result, Explanation, Limits, Kind); this file is the index: where each record is, whether it carries a written prediction, and what kind of result it is, as its own **Kind** line says. It does not restate results. Sections before 18.75 predate the record format and are not listed; sections without a **Kind** line are listed as unlabelled and have no claim made for them here.
+Written 2026-10-09 against runtime 0.85.5; regenerate with `benchmarks/experiment_index.py`. The charter asks for "a file of experiment records whose predictions were written before the build". The records themselves live in `docs/HANDOFF.md` section 18 (each with Baseline, Prediction, Method, Result, Explanation, Limits, Kind); this file is the index: where each record is, whether it carries a written prediction, and what kind of result it is, as its own **Kind** line says. It does not restate results. Sections before 18.75 predate the record format and are not listed; sections without a **Kind** line are listed as unlabelled and have no claim made for them here.
 
-Counts of the 206 sections listed (18.75-18.280): 106 research, 31 measurement, 27 unlabelled, 20 planning, 20 engineering, 2 pricing.
+Counts of the 207 sections listed (18.75-18.281): 106 research, 32 measurement, 27 unlabelled, 20 planning, 20 engineering, 2 pricing.
 
 Research means predicted, measured and explained (charter section 8.1 rule 6); a falsified prediction is still research and is marked so in its Kind line. Engineering means it works without a written prediction, or an instrument was built.
 
@@ -10,6 +10,7 @@ Research means predicted, measured and explained (charter section 8.1 rule 6); a
 
 | section | title | prediction written | kind (as recorded) |
 |---|---|:---:|---|
+| §18.281 | The GLM bank copied back to the internal drive (0.85.5) | no | Measurement of the machine's state (a copy and its byte compare; nothing run on the model). No code or default changed. |
 | §18.280 | The internal GLM bank deleted again; what GLM serves from now (0.85.4) | no | Measurement of the machine's state (files, markers, free space; no prediction, nothing run on the model) and documentation. No code or default changed. |
 | §18.279 | G5: GLM decode miss budget 1 against exact, a blind replay (0.85.3) | yes | Research (predicted, measured, explained as hypothesis): 5 held, 1 missed for both arms, 1 falsified. Instrument extended. No default changed. |
 | §18.278 | G4: priced at the budgets GLM fits, then parked on the host's memory (0.85.2) | yes | Planning and an instrument (predictions committed first); the run was blocked by the host and nothing was measured on the model. No default changed. |
